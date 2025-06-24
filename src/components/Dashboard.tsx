@@ -2,11 +2,13 @@
 import React, { useState } from 'react';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { LogOut, Smartphone, Wifi, Zap, CreditCard, User, History } from 'lucide-react';
+import { LogOut, Smartphone, Wifi, Zap, CreditCard, User, History, Send, QrCode, Shield, Gift, Banknote, Car, Gamepad2, Plane, Home } from 'lucide-react';
 import WalletCard from './wallet/WalletCard';
 import ServiceCard from './services/ServiceCard';
 import FundWalletModal from './modals/FundWalletModal';
 import ServiceModal from './modals/ServiceModal';
+import TransferModal from './modals/TransferModal';
+import QRCodeModal from './modals/QRCodeModal';
 import WhatsAppFloat from './WhatsAppFloat';
 import { useAuth } from '@/hooks/useAuth';
 import { useWallet } from '@/hooks/useWallet';
@@ -18,6 +20,8 @@ const Dashboard = () => {
   const { wallet, loading, updateBalance } = useWallet(user?.id);
   const [fundModalOpen, setFundModalOpen] = useState(false);
   const [serviceModalOpen, setServiceModalOpen] = useState(false);
+  const [transferModalOpen, setTransferModalOpen] = useState(false);
+  const [qrModalOpen, setQrModalOpen] = useState(false);
   const [selectedService, setSelectedService] = useState<{ title: string; type: string } | null>(null);
   const { toast } = useToast();
 
@@ -44,17 +48,77 @@ const Dashboard = () => {
       type: "electricity"
     },
     {
-      title: "Bills Payment",
-      description: "Pay all your bills",
+      title: "Cable TV",
+      description: "DSTV, GOTV, Startimes",
       icon: CreditCard,
       color: "bg-red-500",
-      type: "bills"
+      type: "cable"
+    },
+    {
+      title: "Transfer Money",
+      description: "Send money to others",
+      icon: Send,
+      color: "bg-green-500",
+      type: "transfer"
+    },
+    {
+      title: "Internet Bills",
+      description: "Pay internet bills",
+      icon: Wifi,
+      color: "bg-indigo-500",
+      type: "internet"
+    },
+    {
+      title: "Insurance",
+      description: "Pay insurance premiums",
+      icon: Shield,
+      color: "bg-teal-500",
+      type: "insurance"
+    },
+    {
+      title: "Gift Cards",
+      description: "Buy digital gift cards",
+      icon: Gift,
+      color: "bg-pink-500",
+      type: "giftcards"
+    },
+    {
+      title: "Betting",
+      description: "Fund betting accounts",
+      icon: Gamepad2,
+      color: "bg-orange-500",
+      type: "betting"
+    },
+    {
+      title: "Flight Booking",
+      description: "Book domestic flights",
+      icon: Plane,
+      color: "bg-sky-500",
+      type: "flight"
+    },
+    {
+      title: "Hotel Booking",
+      description: "Book hotel rooms",
+      icon: Home,
+      color: "bg-emerald-500",
+      type: "hotel"
+    },
+    {
+      title: "Transport",
+      description: "Book bus tickets",
+      icon: Car,
+      color: "bg-gray-500",
+      type: "transport"
     }
   ];
 
   const handleServiceClick = (service: typeof services[0]) => {
-    setSelectedService({ title: service.title, type: service.type });
-    setServiceModalOpen(true);
+    if (service.type === 'transfer') {
+      setTransferModalOpen(true);
+    } else {
+      setSelectedService({ title: service.title, type: service.type });
+      setServiceModalOpen(true);
+    }
   };
 
   const handlePurchase = async (amount: number, details: any) => {
@@ -69,7 +133,7 @@ const Dashboard = () => {
           wallet_id: wallet.id,
           transaction_type: details.type,
           amount: amount,
-          description: `${selectedService?.title} - ${details.phoneNumber || details.meterNumber || 'N/A'}`,
+          description: `${selectedService?.title} - ${details.phoneNumber || details.meterNumber || details.recipient || 'N/A'}`,
           status: 'completed',
           reference_number: `TXN${Date.now()}`
         });
@@ -117,6 +181,10 @@ const Dashboard = () => {
               </h1>
             </div>
             <div className="flex items-center gap-4">
+              <Button variant="outline" size="sm" onClick={() => setQrModalOpen(true)}>
+                <QrCode className="h-4 w-4 mr-2" />
+                QR Code
+              </Button>
               <Button variant="outline" size="sm">
                 <User className="h-4 w-4 mr-2" />
                 Profile
@@ -142,7 +210,7 @@ const Dashboard = () => {
             Welcome back!
           </h2>
           <p className="text-gray-600">
-            Manage your payments and services easily
+            Your one-stop platform for all digital payments and services
           </p>
         </div>
 
@@ -160,7 +228,7 @@ const Dashboard = () => {
           <h3 className="text-lg font-semibold text-gray-900 mb-4">
             Our Services
           </h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
             {services.map((service, index) => (
               <ServiceCard
                 key={index}
@@ -224,6 +292,20 @@ const Dashboard = () => {
         service={selectedService}
         walletBalance={wallet?.balance || 0}
         onPurchase={handlePurchase}
+      />
+
+      <TransferModal
+        isOpen={transferModalOpen}
+        onClose={() => setTransferModalOpen(false)}
+        walletBalance={wallet?.balance || 0}
+        onTransfer={handlePurchase}
+      />
+
+      <QRCodeModal
+        isOpen={qrModalOpen}
+        onClose={() => setQrModalOpen(false)}
+        virtualAccountNumber={wallet?.virtual_account_number || ''}
+        userName={user?.email || 'User'}
       />
 
       {/* WhatsApp Float */}

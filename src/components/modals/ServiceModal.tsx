@@ -23,7 +23,17 @@ const ServiceModal = ({ isOpen, onClose, service, walletBalance, onPurchase }: S
   const [phoneNumber, setPhoneNumber] = useState('');
   const [provider, setProvider] = useState('');
   const [meterNumber, setMeterNumber] = useState('');
+  const [smartCardNumber, setSmartCardNumber] = useState('');
+  const [accountNumber, setAccountNumber] = useState('');
+  const [customerName, setCustomerName] = useState('');
   const { toast } = useToast();
+
+  const networkProviders = ['MTN', 'Glo', 'Airtel', '9mobile'];
+  const cableProviders = ['DSTV', 'GOTV', 'Startimes'];
+  const internetProviders = ['Spectranet', 'Smile', 'Swift', 'Coollink'];
+  const insuranceProviders = ['AXA Mansard', 'Leadway', 'AIICO', 'Cornerstone'];
+  const giftCardTypes = ['iTunes', 'Google Play', 'Amazon', 'Steam', 'Netflix'];
+  const bettingPlatforms = ['Bet9ja', 'SportyBet', 'NairaBet', '1xBet', 'BetKing'];
 
   const handlePurchase = () => {
     const purchaseAmount = parseFloat(amount);
@@ -50,6 +60,9 @@ const ServiceModal = ({ isOpen, onClose, service, walletBalance, onPurchase }: S
       phoneNumber,
       provider,
       meterNumber,
+      smartCardNumber,
+      accountNumber,
+      customerName,
       type: service?.type,
     };
 
@@ -61,6 +74,248 @@ const ServiceModal = ({ isOpen, onClose, service, walletBalance, onPurchase }: S
     setPhoneNumber('');
     setProvider('');
     setMeterNumber('');
+    setSmartCardNumber('');
+    setAccountNumber('');
+    setCustomerName('');
+  };
+
+  const renderServiceFields = () => {
+    switch (service?.type) {
+      case 'airtime':
+      case 'data':
+        return (
+          <>
+            <div className="space-y-2">
+              <Label htmlFor="phoneNumber">Phone Number</Label>
+              <Input
+                id="phoneNumber"
+                value={phoneNumber}
+                onChange={(e) => setPhoneNumber(e.target.value)}
+                placeholder="e.g., 08012345678"
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="provider">Network Provider</Label>
+              <Select value={provider} onValueChange={setProvider}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select provider" />
+                </SelectTrigger>
+                <SelectContent>
+                  {networkProviders.map((net) => (
+                    <SelectItem key={net} value={net.toLowerCase()}>{net}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </>
+        );
+
+      case 'electricity':
+        return (
+          <>
+            <div className="space-y-2">
+              <Label htmlFor="meterNumber">Meter Number</Label>
+              <Input
+                id="meterNumber"
+                value={meterNumber}
+                onChange={(e) => setMeterNumber(e.target.value)}
+                placeholder="Enter meter number"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="customerName">Customer Name</Label>
+              <Input
+                id="customerName"
+                value={customerName}
+                onChange={(e) => setCustomerName(e.target.value)}
+                placeholder="Enter customer name"
+              />
+            </div>
+          </>
+        );
+
+      case 'cable':
+        return (
+          <>
+            <div className="space-y-2">
+              <Label htmlFor="provider">Cable Provider</Label>
+              <Select value={provider} onValueChange={setProvider}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select provider" />
+                </SelectTrigger>
+                <SelectContent>
+                  {cableProviders.map((cable) => (
+                    <SelectItem key={cable} value={cable.toLowerCase()}>{cable}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="smartCardNumber">Smart Card Number</Label>
+              <Input
+                id="smartCardNumber"
+                value={smartCardNumber}
+                onChange={(e) => setSmartCardNumber(e.target.value)}
+                placeholder="Enter smart card number"
+              />
+            </div>
+          </>
+        );
+
+      case 'internet':
+        return (
+          <>
+            <div className="space-y-2">
+              <Label htmlFor="provider">Internet Provider</Label>
+              <Select value={provider} onValueChange={setProvider}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select provider" />
+                </SelectTrigger>
+                <SelectContent>
+                  {internetProviders.map((internet) => (
+                    <SelectItem key={internet} value={internet.toLowerCase()}>{internet}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="accountNumber">Account Number</Label>
+              <Input
+                id="accountNumber"
+                value={accountNumber}
+                onChange={(e) => setAccountNumber(e.target.value)}
+                placeholder="Enter account number"
+              />
+            </div>
+          </>
+        );
+
+      case 'insurance':
+        return (
+          <>
+            <div className="space-y-2">
+              <Label htmlFor="provider">Insurance Provider</Label>
+              <Select value={provider} onValueChange={setProvider}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select provider" />
+                </SelectTrigger>
+                <SelectContent>
+                  {insuranceProviders.map((insurance) => (
+                    <SelectItem key={insurance} value={insurance.toLowerCase()}>{insurance}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="accountNumber">Policy Number</Label>
+              <Input
+                id="accountNumber"
+                value={accountNumber}
+                onChange={(e) => setAccountNumber(e.target.value)}
+                placeholder="Enter policy number"
+              />
+            </div>
+          </>
+        );
+
+      case 'giftcards':
+        return (
+          <div className="space-y-2">
+            <Label htmlFor="provider">Gift Card Type</Label>
+            <Select value={provider} onValueChange={setProvider}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select gift card" />
+              </SelectTrigger>
+              <SelectContent>
+                {giftCardTypes.map((card) => (
+                  <SelectItem key={card} value={card.toLowerCase()}>{card}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        );
+
+      case 'betting':
+        return (
+          <>
+            <div className="space-y-2">
+              <Label htmlFor="provider">Betting Platform</Label>
+              <Select value={provider} onValueChange={setProvider}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select platform" />
+                </SelectTrigger>
+                <SelectContent>
+                  {bettingPlatforms.map((betting) => (
+                    <SelectItem key={betting} value={betting.toLowerCase()}>{betting}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="accountNumber">User ID</Label>
+              <Input
+                id="accountNumber"
+                value={accountNumber}
+                onChange={(e) => setAccountNumber(e.target.value)}
+                placeholder="Enter your betting user ID"
+              />
+            </div>
+          </>
+        );
+
+      case 'flight':
+        return (
+          <>
+            <div className="space-y-2">
+              <Label htmlFor="phoneNumber">Phone Number</Label>
+              <Input
+                id="phoneNumber"
+                value={phoneNumber}
+                onChange={(e) => setPhoneNumber(e.target.value)}
+                placeholder="Enter phone number"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="customerName">Passenger Name</Label>
+              <Input
+                id="customerName"
+                value={customerName}
+                onChange={(e) => setCustomerName(e.target.value)}
+                placeholder="Enter passenger name"
+              />
+            </div>
+          </>
+        );
+
+      case 'hotel':
+      case 'transport':
+        return (
+          <>
+            <div className="space-y-2">
+              <Label htmlFor="phoneNumber">Phone Number</Label>
+              <Input
+                id="phoneNumber"
+                value={phoneNumber}
+                onChange={(e) => setPhoneNumber(e.target.value)}
+                placeholder="Enter phone number"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="customerName">Full Name</Label>
+              <Input
+                id="customerName"
+                value={customerName}
+                onChange={(e) => setCustomerName(e.target.value)}
+                placeholder="Enter full name"
+              />
+            </div>
+          </>
+        );
+
+      default:
+        return null;
+    }
   };
 
   if (!service) return null;
@@ -78,46 +333,7 @@ const ServiceModal = ({ isOpen, onClose, service, walletBalance, onPurchase }: S
             </p>
           </div>
 
-          {(service.type === 'airtime' || service.type === 'data') && (
-            <>
-              <div className="space-y-2">
-                <Label htmlFor="phoneNumber">Phone Number</Label>
-                <Input
-                  id="phoneNumber"
-                  value={phoneNumber}
-                  onChange={(e) => setPhoneNumber(e.target.value)}
-                  placeholder="e.g., 08012345678"
-                />
-              </div>
-              
-              <div className="space-y-2">
-                <Label htmlFor="provider">Network Provider</Label>
-                <Select value={provider} onValueChange={setProvider}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select provider" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="mtn">MTN</SelectItem>
-                    <SelectItem value="glo">Glo</SelectItem>
-                    <SelectItem value="airtel">Airtel</SelectItem>
-                    <SelectItem value="9mobile">9mobile</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </>
-          )}
-
-          {service.type === 'electricity' && (
-            <div className="space-y-2">
-              <Label htmlFor="meterNumber">Meter Number</Label>
-              <Input
-                id="meterNumber"
-                value={meterNumber}
-                onChange={(e) => setMeterNumber(e.target.value)}
-                placeholder="Enter meter number"
-              />
-            </div>
-          )}
+          {renderServiceFields()}
 
           <div className="space-y-2">
             <Label htmlFor="amount">Amount (₦)</Label>

@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,10 +8,17 @@ import ServiceModal from './modals/ServiceModal';
 import TransferModal from './modals/TransferModal';
 import QRCodeModal from './modals/QRCodeModal';
 import WhatsAppFloat from './WhatsAppFloat';
+import ProfilePage from './profile/ProfilePage';
+import TransactionHistory from './transactions/TransactionHistory';
+import RewardsPage from './rewards/RewardsPage';
+import CardsPage from './cards/CardsPage';
+import MePage from './me/MePage';
 import { useAuth } from '@/hooks/useAuth';
 import { useWallet } from '@/hooks/useWallet';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+
+type CurrentPage = 'home' | 'rewards' | 'cards' | 'me' | 'profile' | 'history';
 
 const Dashboard = () => {
   const { user, signOut } = useAuth();
@@ -23,6 +29,7 @@ const Dashboard = () => {
   const [qrModalOpen, setQrModalOpen] = useState(false);
   const [selectedService, setSelectedService] = useState<{ title: string; type: string } | null>(null);
   const [showBalance, setShowBalance] = useState(true);
+  const [currentPage, setCurrentPage] = useState<CurrentPage>('home');
   const { toast } = useToast();
 
   const services = [
@@ -158,6 +165,32 @@ const Dashboard = () => {
     }
   };
 
+  if (currentPage === 'profile') {
+    return <ProfilePage onBack={() => setCurrentPage('me')} />;
+  }
+
+  if (currentPage === 'history') {
+    return <TransactionHistory onBack={() => setCurrentPage('me')} />;
+  }
+
+  if (currentPage === 'rewards') {
+    return <RewardsPage onBack={() => setCurrentPage('home')} />;
+  }
+
+  if (currentPage === 'cards') {
+    return <CardsPage onBack={() => setCurrentPage('home')} />;
+  }
+
+  if (currentPage === 'me') {
+    return (
+      <MePage
+        onBack={() => setCurrentPage('home')}
+        onProfileClick={() => setCurrentPage('profile')}
+        onHistoryClick={() => setCurrentPage('history')}
+      />
+    );
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-purple-50 to-blue-50">
@@ -171,11 +204,14 @@ const Dashboard = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-50">
-      {/* Header - Opay Style */}
+      {/* Header */}
       <header className="bg-gradient-to-r from-purple-600 to-blue-600 text-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center">
+              <div className="w-8 h-8 bg-white rounded-full flex items-center justify-center mr-3">
+                <span className="text-purple-600 font-bold text-sm">AL</span>
+              </div>
               <h1 className="text-xl font-bold">
                 Al-Awwaliyah Enterprise
               </h1>
@@ -184,10 +220,10 @@ const Dashboard = () => {
               <Button variant="ghost" size="sm" onClick={() => setQrModalOpen(true)} className="text-white hover:bg-white/20">
                 <QrCode className="h-4 w-4" />
               </Button>
-              <Button variant="ghost" size="sm" className="text-white hover:bg-white/20">
+              <Button variant="ghost" size="sm" onClick={() => setCurrentPage('me')} className="text-white hover:bg-white/20">
                 <User className="h-4 w-4" />
               </Button>
-              <Button variant="ghost" size="sm" className="text-white hover:bg-white/20">
+              <Button variant="ghost" size="sm" onClick={() => setCurrentPage('history')} className="text-white hover:bg-white/20">
                 <History className="h-4 w-4" />
               </Button>
               <Button variant="ghost" size="sm" onClick={signOut} className="text-white hover:bg-white/20">
@@ -210,7 +246,7 @@ const Dashboard = () => {
           </p>
         </div>
 
-        {/* Wallet Card - Opay Style */}
+        {/* Wallet Card */}
         <div className="mb-6">
           <Card className="bg-gradient-to-r from-purple-600 to-blue-600 text-white border-0 shadow-lg">
             <CardContent className="p-6">
@@ -232,8 +268,8 @@ const Dashboard = () => {
                   </div>
                 </div>
                 <div className="text-right">
-                  <p className="text-purple-100 text-sm">Virtual Account</p>
-                  <p className="font-mono text-sm">{wallet?.virtual_account_number}</p>
+                  <p className="text-purple-100 text-sm">Wallet ID</p>
+                  <p className="font-mono text-sm">{wallet?.id?.slice(0, 8)}</p>
                 </div>
               </div>
               
@@ -256,47 +292,6 @@ const Dashboard = () => {
               </div>
             </CardContent>
           </Card>
-        </div>
-
-        {/* Quick Actions */}
-        <div className="mb-6">
-          <div className="grid grid-cols-4 gap-4">
-            <Card className="bg-white shadow-sm hover:shadow-md transition-shadow cursor-pointer" onClick={() => setFundModalOpen(true)}>
-              <CardContent className="p-4 text-center">
-                <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-2">
-                  <Plus className="h-6 w-6 text-green-600" />
-                </div>
-                <p className="text-sm font-medium">Add Money</p>
-              </CardContent>
-            </Card>
-            
-            <Card className="bg-white shadow-sm hover:shadow-md transition-shadow cursor-pointer" onClick={() => setTransferModalOpen(true)}>
-              <CardContent className="p-4 text-center">
-                <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-2">
-                  <Send className="h-6 w-6 text-blue-600" />
-                </div>
-                <p className="text-sm font-medium">Transfer</p>
-              </CardContent>
-            </Card>
-            
-            <Card className="bg-white shadow-sm hover:shadow-md transition-shadow cursor-pointer" onClick={() => setQrModalOpen(true)}>
-              <CardContent className="p-4 text-center">
-                <div className="w-12 h-12 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-2">
-                  <QrCode className="h-6 w-6 text-purple-600" />
-                </div>
-                <p className="text-sm font-medium">QR Code</p>
-              </CardContent>
-            </Card>
-            
-            <Card className="bg-white shadow-sm hover:shadow-md transition-shadow cursor-pointer">
-              <CardContent className="p-4 text-center">
-                <div className="w-12 h-12 bg-orange-100 rounded-full flex items-center justify-center mx-auto mb-2">
-                  <History className="h-6 w-6 text-orange-600" />
-                </div>
-                <p className="text-sm font-medium">History</p>
-              </CardContent>
-            </Card>
-          </div>
         </div>
 
         {/* Services Grid */}
@@ -367,11 +362,55 @@ const Dashboard = () => {
         </div>
       </main>
 
+      {/* Bottom Navigation */}
+      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-4 py-2">
+        <div className="max-w-7xl mx-auto">
+          <div className="flex justify-around">
+            <Button
+              variant={currentPage === 'home' ? 'default' : 'ghost'}
+              size="sm"
+              onClick={() => setCurrentPage('home')}
+              className={`flex flex-col items-center gap-1 px-6 py-3 ${currentPage === 'home' ? 'bg-purple-600 text-white' : 'text-gray-600'}`}
+            >
+              <Home className="h-4 w-4" />
+              <span className="text-xs">Home</span>
+            </Button>
+            <Button
+              variant={currentPage === 'rewards' ? 'default' : 'ghost'}
+              size="sm"
+              onClick={() => setCurrentPage('rewards')}
+              className={`flex flex-col items-center gap-1 px-6 py-3 ${currentPage === 'rewards' ? 'bg-purple-600 text-white' : 'text-gray-600'}`}
+            >
+              <Gift className="h-4 w-4" />
+              <span className="text-xs">Reward</span>
+            </Button>
+            <Button
+              variant={currentPage === 'cards' ? 'default' : 'ghost'}
+              size="sm"
+              onClick={() => setCurrentPage('cards')}
+              className={`flex flex-col items-center gap-1 px-6 py-3 ${currentPage === 'cards' ? 'bg-purple-600 text-white' : 'text-gray-600'}`}
+            >
+              <CreditCard className="h-4 w-4" />
+              <span className="text-xs">Card</span>
+            </Button>
+            <Button
+              variant={currentPage === 'me' ? 'default' : 'ghost'}
+              size="sm"
+              onClick={() => setCurrentPage('me')}
+              className={`flex flex-col items-center gap-1 px-6 py-3 ${currentPage === 'me' ? 'bg-purple-600 text-white' : 'text-gray-600'}`}
+            >
+              <User className="h-4 w-4" />
+              <span className="text-xs">Me</span>
+            </Button>
+          </div>
+        </div>
+      </div>
+
       {/* Modals */}
       <FundWalletModal
         isOpen={fundModalOpen}
         onClose={() => setFundModalOpen(false)}
-        virtualAccountNumber={wallet?.virtual_account_number || ''}
+        virtualAccountNumber=""
       />
 
       <ServiceModal
@@ -392,7 +431,7 @@ const Dashboard = () => {
       <QRCodeModal
         isOpen={qrModalOpen}
         onClose={() => setQrModalOpen(false)}
-        virtualAccountNumber={wallet?.virtual_account_number || ''}
+        virtualAccountNumber=""
         userName={user?.email || 'User'}
       />
 

@@ -13,7 +13,7 @@ interface Transaction {
   transaction_type: string;
   amount: number;
   description: string;
-  status: 'pending' | 'completed' | 'failed';
+  status: string; // Changed from union type to string to match database
   reference_number: string;
   created_at: string;
 }

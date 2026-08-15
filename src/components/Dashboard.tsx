@@ -363,48 +363,7 @@ const Dashboard = () => {
       </main>
 
       {/* Bottom Navigation */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-4 py-2">
-        <div className="max-w-7xl mx-auto">
-          <div className="flex justify-around">
-            <Button
-              variant={currentPage === 'home' ? 'default' : 'ghost'}
-              size="sm"
-              onClick={() => setCurrentPage('home')}
-              className={`flex flex-col items-center gap-1 px-6 py-3 ${currentPage === 'home' ? 'bg-purple-600 text-white' : 'text-gray-600'}`}
-            >
-              <Home className="h-4 w-4" />
-              <span className="text-xs">Home</span>
-            </Button>
-            <Button
-              variant={currentPage === 'rewards' ? 'default' : 'ghost'}
-              size="sm"
-              onClick={() => setCurrentPage('rewards')}
-              className={`flex flex-col items-center gap-1 px-6 py-3 ${currentPage === 'rewards' ? 'bg-purple-600 text-white' : 'text-gray-600'}`}
-            >
-              <Gift className="h-4 w-4" />
-              <span className="text-xs">Reward</span>
-            </Button>
-            <Button
-              variant={currentPage === 'cards' ? 'default' : 'ghost'}
-              size="sm"
-              onClick={() => setCurrentPage('cards')}
-              className={`flex flex-col items-center gap-1 px-6 py-3 ${currentPage === 'cards' ? 'bg-purple-600 text-white' : 'text-gray-600'}`}
-            >
-              <CreditCard className="h-4 w-4" />
-              <span className="text-xs">Card</span>
-            </Button>
-            <Button
-              variant={currentPage === 'me' ? 'default' : 'ghost'}
-              size="sm"
-              onClick={() => setCurrentPage('me')}
-              className={`flex flex-col items-center gap-1 px-6 py-3 ${currentPage === 'me' ? 'bg-purple-600 text-white' : 'text-gray-600'}`}
-            >
-              <User className="h-4 w-4" />
-              <span className="text-xs">Me</span>
-            </Button>
-          </div>
-        </div>
-      </div>
+      {renderBottomNav(currentPage)}
 
       {/* Modals */}
       <FundWalletModal

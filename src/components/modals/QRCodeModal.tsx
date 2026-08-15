@@ -15,7 +15,7 @@ interface QRCodeModalProps {
 const QRCodeModal = ({ isOpen, onClose, virtualAccountNumber, userName }: QRCodeModalProps) => {
   const { toast } = useToast();
 
-  const qrData = `Al-Awwaliyah Enterprise
+  const qrData = `IyanjuPay
 Account: ${virtualAccountNumber}
 Name: ${userName}
 Bank: Virtual Account`;
@@ -31,7 +31,7 @@ Bank: Virtual Account`;
   const shareAccount = () => {
     if (navigator.share) {
       navigator.share({
-        title: 'My Al-Awwaliyah Account',
+        title: 'My IyanjuPay Account',
         text: qrData,
       });
     } else {
@@ -60,7 +60,7 @@ Bank: Virtual Account`;
             </div>
             <div className="text-sm text-gray-600">
               <p className="font-semibold">{userName}</p>
-              <p>Al-Awwaliyah Enterprise</p>
+              <p>IyanjuPay</p>
               <p className="font-mono text-lg text-green-700 mt-2">{virtualAccountNumber}</p>
             </div>
           </div>
@@ -70,7 +70,7 @@ Bank: Virtual Account`;
             <div className="space-y-1 text-sm">
               <p><span className="font-medium">Name:</span> {userName}</p>
               <p><span className="font-medium">Account:</span> {virtualAccountNumber}</p>
-              <p><span className="font-medium">Bank:</span> Al-Awwaliyah Virtual Account</p>
+              <p><span className="font-medium">Bank:</span> IyanjuPay Virtual Account</p>
             </div>
           </div>
 

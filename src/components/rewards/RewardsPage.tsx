@@ -43,12 +43,12 @@ const RewardsPage = ({ onBack }: RewardsPageProps) => {
   };
 
   const shareReferral = () => {
-    const referralLink = `https://al-awwaliyah.app/signup?ref=${referralCode}`;
-    const shareText = `Join Al-Awwaliyah Enterprise with my referral code ${referralCode} and get ₦500 bonus! ${referralLink}`;
+    const referralLink = `https://iyanjupay.app/signup?ref=${referralCode}`;
+    const shareText = `Join IyanjuPay with my referral code ${referralCode} and get ₦500 bonus! ${referralLink}`;
     
     if (navigator.share) {
       navigator.share({
-        title: 'Join Al-Awwaliyah Enterprise',
+        title: 'Join IyanjuPay',
         text: shareText,
       });
     } else {

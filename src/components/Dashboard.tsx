@@ -202,6 +202,51 @@ const Dashboard = () => {
     );
   }
 
+  const renderBottomNav = (page: CurrentPage) => (
+    <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-4 py-2">
+      <div className="max-w-7xl mx-auto">
+        <div className="flex justify-around">
+          <Button
+            variant={page === 'home' ? 'default' : 'ghost'}
+            size="sm"
+            onClick={() => setCurrentPage('home')}
+            className={`flex flex-col items-center gap-1 px-6 py-3 ${page === 'home' ? 'bg-purple-600 text-white' : 'text-gray-600'}`}
+          >
+            <Home className="h-4 w-4" />
+            <span className="text-xs">Home</span>
+          </Button>
+          <Button
+            variant={page === 'rewards' ? 'default' : 'ghost'}
+            size="sm"
+            onClick={() => setCurrentPage('rewards')}
+            className={`flex flex-col items-center gap-1 px-6 py-3 ${page === 'rewards' ? 'bg-purple-600 text-white' : 'text-gray-600'}`}
+          >
+            <Gift className="h-4 w-4" />
+            <span className="text-xs">Reward</span>
+          </Button>
+          <Button
+            variant={page === 'cards' ? 'default' : 'ghost'}
+            size="sm"
+            onClick={() => setCurrentPage('cards')}
+            className={`flex flex-col items-center gap-1 px-6 py-3 ${page === 'cards' ? 'bg-purple-600 text-white' : 'text-gray-600'}`}
+          >
+            <CreditCard className="h-4 w-4" />
+            <span className="text-xs">Card</span>
+          </Button>
+          <Button
+            variant={page === 'me' ? 'default' : 'ghost'}
+            size="sm"
+            onClick={() => setCurrentPage('me')}
+            className={`flex flex-col items-center gap-1 px-6 py-3 ${page === 'me' ? 'bg-purple-600 text-white' : 'text-gray-600'}`}
+          >
+            <User className="h-4 w-4" />
+            <span className="text-xs">Me</span>
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-50">
       {/* Header */}

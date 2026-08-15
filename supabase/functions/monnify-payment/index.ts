@@ -109,11 +109,23 @@ serve(async (req) => {
 
     const paymentData = await paymentResponse.json()
     
+    // Fetch the user's wallet so the webhook can credit it later
+    const { data: wallet, error: walletError } = await supabaseClient
+      .from('wallets')
+      .select('id')
+      .eq('user_id', user.id)
+      .single()
+
+    if (walletError) {
+      console.error('Wallet fetch error:', walletError)
+    }
+
     // Store transaction in database
     const { error: dbError } = await supabaseClient
       .from('transactions')
       .insert({
         user_id: user.id,
+        wallet_id: wallet?.id,
         transaction_type: 'wallet_funding',
         amount: amount,
         description: paymentDescription,

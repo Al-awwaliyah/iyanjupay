@@ -31,8 +31,17 @@ export const useWallet = (userId: string | undefined) => {
         .eq('user_id', userId)
         .single();
 
-      if (error) throw error;
-      setWallet(data);
+      if (error && error.code !== 'PGRST116') {
+        throw error;
+      }
+
+      if (data) {
+        setWallet(data);
+      } else if (userId) {
+        // No wallet exists yet; create one for this user
+        const newWallet = await createWallet(userId);
+        setWallet(newWallet);
+      }
     } catch (error: any) {
       console.error('Error fetching wallet:', error);
       toast({
@@ -43,6 +52,23 @@ export const useWallet = (userId: string | undefined) => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const createWallet = async (uid: string): Promise<Wallet> => {
+    const virtualAccountNumber = `VAW${Date.now().toString().slice(-8)}${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`;
+    
+    const { data, error } = await supabase
+      .from('wallets')
+      .insert({
+        user_id: uid,
+        balance: 0,
+        virtual_account_number: virtualAccountNumber,
+      })
+      .select('*')
+      .single();
+
+    if (error) throw error;
+    return data;
   };
 
   const updateBalance = async (newBalance: number) => {

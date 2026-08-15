@@ -81,7 +81,7 @@ const AuthForm = () => {
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
           <CardTitle className="text-2xl font-bold text-green-700">
-            Al-Awwaliyah Enterprise
+            IyanjuPay
           </CardTitle>
           <CardDescription>
             Your trusted payment solution in Nigeria

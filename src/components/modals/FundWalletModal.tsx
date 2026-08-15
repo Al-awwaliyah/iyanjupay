@@ -35,7 +35,7 @@ const FundWalletModal = ({ isOpen, onClose, virtualAccountNumber }: FundWalletMo
     {
       id: 'palmpay',
       name: 'PalmPay',
-      accountName: 'Al-Awwaliyah Enterprise',
+      accountName: 'IyanjuPay',
       accountNumber: '8012345678',
       color: 'bg-blue-600',
       logo: '🌴'
@@ -43,7 +43,7 @@ const FundWalletModal = ({ isOpen, onClose, virtualAccountNumber }: FundWalletMo
     {
       id: 'wema',
       name: 'Wema Bank',
-      accountName: 'Al-Awwaliyah Enterprise',
+      accountName: 'IyanjuPay',
       accountNumber: '0123456789',
       color: 'bg-purple-600',
       logo: '🏦'
@@ -51,7 +51,7 @@ const FundWalletModal = ({ isOpen, onClose, virtualAccountNumber }: FundWalletMo
     {
       id: 'moniepoint',
       name: 'Moniepoint',
-      accountName: 'Al-Awwaliyah Enterprise',
+      accountName: 'IyanjuPay',
       accountNumber: '6012345678',
       color: 'bg-orange-600',
       logo: '💰'

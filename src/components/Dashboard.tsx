@@ -258,7 +258,7 @@ const Dashboard = () => {
                 <span className="text-purple-600 font-bold text-sm">AL</span>
               </div>
               <h1 className="text-xl font-bold">
-                Al-Awwaliyah Enterprise
+                IyanjuPay
               </h1>
             </div>
             <div className="flex items-center gap-2">

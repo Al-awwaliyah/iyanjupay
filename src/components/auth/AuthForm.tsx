@@ -76,6 +76,43 @@ const AuthForm = () => {
     }
   };
 
+const handleForgotPassword = async () => {
+  if (!email.trim()) {
+    toast({
+      title: "Email required",
+      description: "Please enter your email address first.",
+      variant: "destructive",
+    });
+    return;
+  }
+
+  setIsLoading(true);
+
+  try {
+    const { error } = await supabase.auth.resetPasswordForEmail(
+      email.trim(),
+      {
+        redirectTo: `${window.location.origin}/reset-password`,
+      }
+    );
+
+    if (error) throw error;
+
+    toast({
+      title: "Reset link sent",
+      description: "Please check your email for the password reset link.",
+    });
+  } catch (error: any) {
+    toast({
+      title: "Unable to send reset link",
+      description: error.message,
+      variant: "destructive",
+    });
+  } finally {
+    setIsLoading(false);
+  }
+};
+  
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-green-50 to-blue-50 p-4">
       <Card className="w-full max-w-md">
@@ -116,9 +153,16 @@ const AuthForm = () => {
                     required
                   />
                 </div>
-                <Button type="submit" className="w-full bg-green-600 hover:bg-green-700" disabled={isLoading}>
+                <Button  type="submit" className="w-full bg-green-600 hover:bg-green-700" disabled={isLoading}
+                >
                   {isLoading ? "Signing In..." : "Sign In"}
                 </Button>
+
+                <button type="button" onClick={handleForgotPassword} disabled={isLoading}
+                  className="w-full text-sm text-green-600 hover:text-green-700 hover:underline disabled:opacity-50"
+                >
+                  Forgot password?
+                </button>
               </form>
             </TabsContent>
             

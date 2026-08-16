@@ -149,41 +149,95 @@ const Dashboard = () => {
   };
 
   const handlePurchase = async (amount: number, details: any) => {
-    if (!wallet || !user) return;
+  if (!user) {
+    toast({
+      title: "Authentication required",
+      description: "Please log in again.",
+      variant: "destructive",
+    });
+    return;
+  }
 
-    try {
-      // Create transaction record
-      const { error: transactionError } = await supabase
-        .from('transactions')
-        .insert({
-          user_id: user.id,
-          wallet_id: wallet.id,
-          transaction_type: details.type,
-          amount: amount,
-          description: `${selectedService?.title} - ${details.phoneNumber || details.meterNumber || details.recipient || 'N/A'}`,
-          status: 'completed',
-          reference_number: `TXN${Date.now()}`
-        });
+  if (!selectedService) {
+    toast({
+      title: "Service error",
+      description: "Please select a service.",
+      variant: "destructive",
+    });
+    return;
+  }
 
-      if (transactionError) throw transactionError;
+  if (!amount || amount <= 0) {
+    toast({
+      title: "Invalid amount",
+      description: "Please enter a valid amount.",
+      variant: "destructive",
+    });
+    return;
+  }
 
-      // Update wallet balance
-      const newBalance = wallet.balance - amount;
-      await updateBalance(newBalance);
+  try {
+    const { data, error } = await supabase.functions.invoke(
+      "flutterwave-service-payment",
+      {
+        body: {
+          service: selectedService.type,
+          amount,
+          details,
+        },
+      }
+    );
 
-      toast({
-        title: "Purchase Successful!",
-        description: `${selectedService?.title} of ₦${amount.toLocaleString()} completed successfully`,
-      });
-    } catch (error: any) {
-      console.error('Error processing purchase:', error);
-      toast({
-        title: "Error",
-        description: "Failed to process purchase",
-        variant: "destructive",
-      });
+    if (error) {
+      console.error("Service payment error:", error);
+      throw error;
     }
-  };
+
+    console.log("Flutterwave service response:", data);
+
+    if (!data?.success) {
+      throw new Error(
+        data?.error || "Service payment failed"
+      );
+    }
+
+    setServiceModalOpen(false);
+
+    toast({
+      title: "Payment Successful",
+      description:
+        data?.message ||
+        `${selectedService.title} payment completed successfully.`,
+    });
+
+    // Refresh wallet balance from Supabase
+    if (wallet) {
+      const { data: refreshedWallet, error: walletError } =
+        await supabase
+          .from("wallets")
+          .select("*")
+          .eq("id", wallet.id)
+          .single();
+
+      if (!walletError && refreshedWallet) {
+        await updateBalance(refreshedWallet.balance);
+      }
+    }
+  } catch (error: any) {
+    console.error(
+      "Service payment failed:",
+      error
+    );
+
+    toast({
+      title: "Payment Failed",
+      description:
+        error?.message ||
+        "Unable to complete this payment. Your wallet was not charged.",
+      variant: "destructive",
+    });
+  }
+};
 
   if (currentPage === 'profile') {
     return <ProfilePage onBack={() => setCurrentPage('me')} />;

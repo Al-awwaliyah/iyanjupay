@@ -20,7 +20,7 @@ const AppSplash = ({ children }: AppSplashProps) => {
       <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-white">
         <div className="flex flex-col items-center">
           <img
-            src="/icon-192.png"
+            src="/og-image.jpg"
             alt="IyanjuPay"
             className="h-24 w-24 object-contain animate-pulse"
           />

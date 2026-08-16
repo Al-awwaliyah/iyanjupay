@@ -554,26 +554,6 @@ export type Database = {
           isSetofReturn: false
         }
       }
-      get_my_wallet: {
-        Args: never
-        Returns: {
-          balance: number
-          created_at: string | null
-          currency: string
-          held_balance: number
-          id: string
-          status: string
-          updated_at: string | null
-          user_id: string
-          virtual_account_number: string | null
-        }
-        SetofOptions: {
-          from: "*"
-          to: "wallets"
-          isOneToOne: true
-          isSetofReturn: false
-        }
-      }
       hold_funds: {
         Args: {
           _amount: number

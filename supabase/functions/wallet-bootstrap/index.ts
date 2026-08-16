@@ -129,7 +129,7 @@ Deno.serve(async (req) => {
         .insert({
           code: `WALLET_AVAILABLE_${user.id}`,
           name: "Wallet Available Balance",
-          account_type: "asset",
+          account_type: "liability",
           purpose: "available_balance",
           wallet_id: wallet.id,
           user_id: user.id,
@@ -148,7 +148,7 @@ Deno.serve(async (req) => {
         .insert({
           code: `WALLET_HELD_${user.id}`,
           name: "Wallet Held Balance",
-          account_type: "asset",
+          account_type: "liability",
           purpose: "held_balance",
           wallet_id: wallet.id,
           user_id: user.id,

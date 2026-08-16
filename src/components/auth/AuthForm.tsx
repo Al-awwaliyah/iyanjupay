@@ -117,7 +117,7 @@ const handleForgotPassword = async () => {
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-green-50 to-blue-50 p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
-          <CardTitle className="text-2xl font-bold text-green-700">
+          <CardTitle className="text-2xl font-bold text-blue-700">
             IyanjuPay
           </CardTitle>
           <CardDescription>
@@ -153,13 +153,13 @@ const handleForgotPassword = async () => {
                     required
                   />
                 </div>
-                <Button  type="submit" className="w-full bg-green-600 hover:bg-green-700" disabled={isLoading}
+                <Button  type="submit" className="w-full bg-blue-600 hover:bg-blue-700" disabled={isLoading}
                 >
                   {isLoading ? "Signing In..." : "Sign In"}
                 </Button>
 
                 <button type="button" onClick={handleForgotPassword} disabled={isLoading}
-                  className="w-full text-sm text-green-600 hover:text-green-700 hover:underline disabled:opacity-50"
+                  className="w-full text-sm text-blue-600 hover:text-blue-700 hover:underline disabled:opacity-50"
                 >
                   Forgot password?
                 </button>
@@ -209,7 +209,7 @@ const handleForgotPassword = async () => {
                     required
                   />
                 </div>
-                <Button type="submit" className="w-full bg-green-600 hover:bg-green-700" disabled={isLoading}>
+                <Button type="submit" className="w-full bg-blue-600 hover:bg-blue-700" disabled={isLoading}>
                   {isLoading ? "Creating Account..." : "Create Account"}
                 </Button>
               </form>

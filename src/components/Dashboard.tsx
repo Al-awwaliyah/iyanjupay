@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { LogOut, User, History, Send, QrCode, Shield, Gift, Banknote, Car, Gamepad2, Plane, Home, Plus, Eye, EyeOff, Smartphone, Wifi, Zap, CreditCard } from 'lucide-react';
@@ -23,6 +23,26 @@ type CurrentPage = 'home' | 'rewards' | 'cards' | 'me' | 'profile' | 'history';
 const Dashboard = () => {
   const { user, signOut } = useAuth();
   const { wallet, loading, updateBalance } = useWallet(user?.id);
+
+  useEffect(() => {
+  if (!user) return;
+
+  const bootstrapWallet = async () => {
+    const { data, error } = await supabase.functions.invoke(
+      "wallet-bootstrap"
+    );
+
+    if (error) {
+      console.error("Wallet bootstrap error:", error);
+      return;
+    }
+
+    console.log("Wallet bootstrap:", data);
+  };
+
+  bootstrapWallet();
+}, [user]);
+  
   const [fundModalOpen, setFundModalOpen] = useState(false);
   const [serviceModalOpen, setServiceModalOpen] = useState(false);
   const [transferModalOpen, setTransferModalOpen] = useState(false);

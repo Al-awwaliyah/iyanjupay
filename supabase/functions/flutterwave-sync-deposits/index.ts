@@ -1,16 +1,20 @@
 import { corsHeaders, json, adminClient, getUser, flw } from '../_shared/auth.ts'
 
 /**
- * Reconciles bank deposits made into the user's permanent Flutterwave
- * virtual account and credits the wallet immediately.
+ * Reconciles successful Flutterwave bank-transfer deposits
+ * into the user's permanent virtual account.
  *
- * Reconciliation:
- * 1. Virtual-account order_reference / tx_ref
- * 2. Flutterwave provider_reference / flw_ref
- * 3. Virtual account number
- * 4. Full transaction JSON fallback
+ * Virtual-account transactions created by IyanjuPay use:
  *
- * Every credit is idempotent through FLW_<transaction_id>.
+ *   IYJ_VA_<user_id>_<uuid>
+ *
+ * as their tx_ref.
+ *
+ * We use that tx_ref as the primary reconciliation mechanism.
+ *
+ * Every wallet credit is idempotent using:
+ *
+ *   FLW_<flutterwave_transaction_id>
  */
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -51,7 +55,7 @@ Deno.serve(async (req) => {
     )
 
     // ==================================================
-    // 2. Get user's active Flutterwave virtual accounts
+    // 2. Get active Flutterwave virtual accounts
     // ==================================================
 
     const {
@@ -86,10 +90,6 @@ Deno.serve(async (req) => {
     }
 
     if (!accounts || accounts.length === 0) {
-      console.log(
-        `No active Flutterwave virtual account found for ${user.id}`,
-      )
-
       return json({
         success: true,
         credited: 0,
@@ -108,10 +108,6 @@ Deno.serve(async (req) => {
     )?.wallet_id
 
     if (!walletId) {
-      console.error(
-        `No wallet_id found for user ${user.id}`,
-      )
-
       return json(
         {
           success: false,
@@ -122,7 +118,7 @@ Deno.serve(async (req) => {
     }
 
     // ==================================================
-    // 4. Prepare reconciliation identifiers
+    // 4. Reconciliation identifiers
     // ==================================================
 
     const accountNumbers = accounts
@@ -143,23 +139,27 @@ Deno.serve(async (req) => {
       )
       .filter(Boolean)
 
+    // This is the reference pattern created by our
+    // virtual-account creation function.
+    const virtualAccountTxPrefix =
+      `IYJ_VA_${user.id}_`
+
     console.log(
       'Flutterwave reconciliation data:',
       {
         accountNumbers,
         orderReferences,
         providerReferences,
+        virtualAccountTxPrefix,
       },
     )
 
     // ==================================================
-    // 5. Pull recent successful Flutterwave transactions
+    // 5. Pull recent successful transactions
     // ==================================================
 
     const to = new Date()
 
-    // Search the last 14 days so the existing test transfer
-    // is definitely included.
     const from = new Date(
       to.getTime() -
         14 * 24 * 60 * 60 * 1000,
@@ -203,25 +203,7 @@ Deno.serve(async (req) => {
     )
 
     // ==================================================
-    // 6. DEBUG: print raw transactions
-    // ==================================================
-    //
-    // This is intentionally included for debugging.
-    // It lets us see exactly where Flutterwave places
-    // the virtual-account information.
-    //
-    // IMPORTANT:
-    // Remove or reduce this logging after the issue
-    // has been resolved.
-    // ==================================================
-
-    console.log(
-      'FLUTTERWAVE TRANSACTIONS RAW:',
-      JSON.stringify(body.data, null, 2),
-    )
-
-    // ==================================================
-    // 7. Identify deposits belonging to this user
+    // 6. Identify user's deposits
     // ==================================================
 
     const deposits = body.data.filter(
@@ -256,94 +238,73 @@ Deno.serve(async (req) => {
           return false
         }
 
-        // ----------------------------------------------
-        // Possible Flutterwave identifiers
-        // ----------------------------------------------
+        const paymentType = String(
+          txn?.payment_type ?? '',
+        ).toLowerCase()
+
+        // We only want bank-transfer deposits here.
+        if (
+          paymentType &&
+          paymentType !== 'bank_transfer'
+        ) {
+          return false
+        }
 
         const txRef = String(
-          txn?.tx_ref ??
-            txn?.txRef ??
-            txn?.reference ??
-            '',
+          txn?.tx_ref ?? '',
         ).trim()
 
         const flwRef = String(
-          txn?.flw_ref ??
-            txn?.flwRef ??
-            '',
+          txn?.flw_ref ?? '',
         ).trim()
 
-        const accountNumber = String(
-          txn?.account_number ??
-            txn?.accountNumber ??
-            txn?.meta_data?.account_number ??
-            txn?.meta_data?.accountNumber ??
-            txn?.meta?.account_number ??
-            txn?.meta?.accountNumber ??
-            '',
-        ).trim()
+        // ==================================================
+        // PRIMARY MATCH
+        //
+        // Our virtual-account creation function generates:
+        //
+        // IYJ_VA_<user.id>_<uuid>
+        // ==================================================
 
-        // ----------------------------------------------
-        // Primary reference matching
-        // ----------------------------------------------
+        const matchesUserVirtualAccountTxRef =
+          txRef.startsWith(
+            virtualAccountTxPrefix,
+          )
 
-        const matchesOrderReference =
+        // ==================================================
+        // Secondary matches
+        // ==================================================
+
+        const matchesStoredOrderReference =
           !!txRef &&
           orderReferences.includes(txRef)
 
-        const matchesProviderReference =
+        const matchesStoredProviderReference =
           !!flwRef &&
           providerReferences.includes(flwRef)
 
-        // ----------------------------------------------
-        // Account number matching
-        // ----------------------------------------------
+        const transactionAccountNumber =
+          String(
+            txn?.account_number ??
+              txn?.accountNumber ??
+              txn?.meta?.account_number ??
+              txn?.meta?.accountNumber ??
+              txn?.meta_data?.account_number ??
+              txn?.meta_data?.accountNumber ??
+              '',
+          ).trim()
 
         const matchesAccountNumber =
-          !!accountNumber &&
+          !!transactionAccountNumber &&
           accountNumbers.includes(
-            accountNumber,
-          )
-
-        // ----------------------------------------------
-        // Fallback: search complete transaction JSON
-        // ----------------------------------------------
-
-        const haystack =
-          JSON.stringify(txn)
-
-        const containsAccountNumber =
-          accountNumbers.length > 0 &&
-          accountNumbers.some(
-            (number) =>
-              haystack.includes(number),
-          )
-
-        const containsOrderReference =
-          orderReferences.length > 0 &&
-          orderReferences.some(
-            (reference) =>
-              haystack.includes(reference),
-          )
-
-        const containsProviderReference =
-          providerReferences.length > 0 &&
-          providerReferences.some(
-            (reference) =>
-              haystack.includes(reference),
+            transactionAccountNumber,
           )
 
         const matched =
-          matchesOrderReference ||
-          matchesProviderReference ||
-          matchesAccountNumber ||
-          containsAccountNumber ||
-          containsOrderReference ||
-          containsProviderReference
-
-        // ----------------------------------------------
-        // Detailed matching debug
-        // ----------------------------------------------
+          matchesUserVirtualAccountTxRef ||
+          matchesStoredOrderReference ||
+          matchesStoredProviderReference ||
+          matchesAccountNumber
 
         console.log(
           'Transaction matching analysis:',
@@ -353,26 +314,26 @@ Deno.serve(async (req) => {
               amount: txn?.amount ?? null,
               currency: txn?.currency ?? null,
               status: txn?.status ?? null,
+              payment_type:
+                txn?.payment_type ?? null,
               tx_ref: txRef || null,
               flw_ref: flwRef || null,
               account_number:
-                accountNumber || null,
+                transactionAccountNumber ||
+                null,
 
               matchedBy: {
-                orderReference:
-                  matchesOrderReference,
+                userVirtualAccountTxRef:
+                  matchesUserVirtualAccountTxRef,
 
-                providerReference:
-                  matchesProviderReference,
+                storedOrderReference:
+                  matchesStoredOrderReference,
+
+                storedProviderReference:
+                  matchesStoredProviderReference,
 
                 accountNumber:
                   matchesAccountNumber,
-
-                containsAccountNumber,
-
-                containsOrderReference,
-
-                containsProviderReference,
               },
 
               finalMatch: matched,
@@ -391,7 +352,7 @@ Deno.serve(async (req) => {
     )
 
     // ==================================================
-    // 8. Process deposits
+    // 7. Process matched deposits
     // ==================================================
 
     let credited = 0
@@ -415,7 +376,7 @@ Deno.serve(async (req) => {
         `FLW_${transactionId}`
 
       // ==================================================
-      // 9. Idempotency check
+      // 8. Idempotency check
       // ==================================================
 
       const {
@@ -443,7 +404,7 @@ Deno.serve(async (req) => {
       }
 
       // ==================================================
-      // 10. Re-verify transaction with Flutterwave
+      // 9. Verify transaction with Flutterwave
       // ==================================================
 
       console.log(
@@ -477,7 +438,7 @@ Deno.serve(async (req) => {
       }
 
       // ==================================================
-      // 11. Validate verified amount
+      // 10. Validate amount
       // ==================================================
 
       const amount = Number(
@@ -497,7 +458,7 @@ Deno.serve(async (req) => {
       }
 
       // ==================================================
-      // 12. Validate verified currency
+      // 11. Validate currency
       // ==================================================
 
       const verifiedCurrency =
@@ -518,7 +479,7 @@ Deno.serve(async (req) => {
       }
 
       // ==================================================
-      // 13. Credit wallet
+      // 12. Credit wallet
       // ==================================================
 
       console.log(
@@ -577,7 +538,7 @@ Deno.serve(async (req) => {
     }
 
     // ==================================================
-    // 14. Get authoritative wallet balance
+    // 13. Get authoritative wallet balance
     // ==================================================
 
     const {
@@ -596,7 +557,7 @@ Deno.serve(async (req) => {
     }
 
     // ==================================================
-    // 15. Return result
+    // 14. Final response
     // ==================================================
 
     console.log(

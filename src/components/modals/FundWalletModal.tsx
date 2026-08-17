@@ -28,12 +28,58 @@ interface VirtualAccount {
 const FundWalletModal = ({
   isOpen,
   onClose,
+  onFunded,
 }: FundWalletModalProps) => {
   const { toast } = useToast();
 
   const [account, setAccount] = useState<VirtualAccount | null>(null);
   const [loading, setLoading] = useState(false);
   const [kycRequired, setKycRequired] = useState(false);
+  const [checking, setChecking] = useState(false);
+
+  const syncDeposits = async (announce: boolean) => {
+    setChecking(true);
+
+    try {
+      const { data, error } = await supabase.functions.invoke(
+        "flutterwave-sync-deposits"
+      );
+
+      if (error) throw error;
+
+      if (!data?.success) {
+        throw new Error(data?.error || "Unable to check for payments");
+      }
+
+      await onFunded?.();
+
+      if (data.credited > 0) {
+        toast({
+          title: "Wallet funded",
+          description: `₦${Number(
+            data.credited_amount || 0
+          ).toLocaleString()} has been added to your wallet.`,
+        });
+      } else if (announce) {
+        toast({
+          title: "No new payment found yet",
+          description:
+            "Bank transfers usually arrive in seconds. Try again shortly.",
+        });
+      }
+    } catch (error: any) {
+      if (announce) {
+        toast({
+          title: "Unable to check payment",
+          description: error?.message || "Please try again.",
+          variant: "destructive",
+        });
+      }
+    } finally {
+      setChecking(false);
+    }
+  };
+
 
   const loadVirtualAccount = async () => {
     setLoading(true);

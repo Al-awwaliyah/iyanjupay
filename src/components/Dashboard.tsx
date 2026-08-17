@@ -916,8 +916,7 @@ const Dashboard = () => {
                     </span>
 
                     </Button>
-                <Button onClick={syncDeposits}>
-                  Sync Wallet
+                <Button onClick={syncDeposits}> *
                   </Button>
                     <Button
                       variant="ghost"

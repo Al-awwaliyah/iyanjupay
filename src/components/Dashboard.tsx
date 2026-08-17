@@ -1130,8 +1130,9 @@ const Dashboard = () => {
         onClose={() =>
           setFundModalOpen(false)
         }
-        virtualAccountNumber=""
+        onFunded={refreshWallet}
       />
+
 
       <ServiceModal
         isOpen={serviceModalOpen}

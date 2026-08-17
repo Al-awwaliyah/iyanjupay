@@ -1,24 +1,55 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
+/**
+ * ------------------------------------------------------------
+ * CORS
+ * ------------------------------------------------------------
+ */
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
     "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Methods":
+    "POST, OPTIONS",
   "Content-Type": "application/json",
 };
 
-function jsonResponse(body: unknown, status = 200) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: corsHeaders,
-  });
+/**
+ * ------------------------------------------------------------
+ * JSON RESPONSE
+ *
+ * IMPORTANT:
+ * Default must NOT be 204 because 204 responses cannot contain
+ * a response body.
+ * ------------------------------------------------------------
+ */
+
+function jsonResponse(
+  body: unknown,
+  status = 200
+) {
+  return new Response(
+    JSON.stringify(body),
+    {
+      status,
+      headers: corsHeaders,
+    }
+  );
 }
 
+/**
+ * ------------------------------------------------------------
+ * EDGE FUNCTION
+ * ------------------------------------------------------------
+ */
+
 Deno.serve(async (req) => {
-  // ------------------------------------------------------------
-  // CORS PREFLIGHT
-  // ------------------------------------------------------------
+  /**
+   * ----------------------------------------------------------
+   * CORS PREFLIGHT
+   * ----------------------------------------------------------
+   */
 
   if (req.method === "OPTIONS") {
     return new Response(null, {
@@ -27,24 +58,25 @@ Deno.serve(async (req) => {
     });
   }
 
-  // ------------------------------------------------------------
-  // METHOD CHECK
-  // ------------------------------------------------------------
+  /**
+   * ----------------------------------------------------------
+   * METHOD CHECK
+   * ----------------------------------------------------------
+   */
 
   if (req.method !== "POST") {
-    return jsonResponse(
-      {
-        success: false,
-        error: "Method not allowed",
-      },
-      405
-    );
+    return jsonResponse({
+      success: false,
+      error: "Method not allowed",
+    });
   }
 
   try {
-    // ------------------------------------------------------------
-    // ENVIRONMENT
-    // ------------------------------------------------------------
+    /**
+     * --------------------------------------------------------
+     * ENVIRONMENT
+     * --------------------------------------------------------
+     */
 
     const supabaseUrl =
       Deno.env.get("SUPABASE_URL") ?? "";
@@ -53,48 +85,61 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_ANON_KEY") ?? "";
 
     const serviceRoleKey =
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+      Deno.env.get(
+        "SUPABASE_SERVICE_ROLE_KEY"
+      ) ?? "";
 
     const flutterwaveSecret =
-      Deno.env.get("FLUTTERWAVE_SECRET_KEY") ?? "";
+      Deno.env.get(
+        "FLUTTERWAVE_SECRET_KEY"
+      ) ?? "";
 
     if (!supabaseUrl) {
-      throw new Error("SUPABASE_URL is not configured");
+      return jsonResponse({
+        success: false,
+        error:
+          "SUPABASE_URL is not configured",
+      });
     }
 
     if (!supabaseAnonKey) {
-      throw new Error(
-        "SUPABASE_ANON_KEY is not configured"
-      );
+      return jsonResponse({
+        success: false,
+        error:
+          "SUPABASE_ANON_KEY is not configured",
+      });
     }
 
     if (!serviceRoleKey) {
-      throw new Error(
-        "SUPABASE_SERVICE_ROLE_KEY is not configured"
-      );
+      return jsonResponse({
+        success: false,
+        error:
+          "SUPABASE_SERVICE_ROLE_KEY is not configured",
+      });
     }
 
     if (!flutterwaveSecret) {
-      throw new Error(
-        "FLUTTERWAVE_SECRET_KEY is not configured"
-      );
+      return jsonResponse({
+        success: false,
+        error:
+          "FLUTTERWAVE_SECRET_KEY is not configured",
+      });
     }
 
-    // ------------------------------------------------------------
-    // AUTHENTICATION
-    // ------------------------------------------------------------
+    /**
+     * --------------------------------------------------------
+     * AUTHENTICATION
+     * --------------------------------------------------------
+     */
 
     const authorization =
       req.headers.get("Authorization") ?? "";
 
     if (!authorization) {
-      return jsonResponse(
-        {
-          success: false,
-          error: "Unauthorized",
-        },
-        401
-      );
+      return jsonResponse({
+        success: false,
+        error: "Unauthorized",
+      });
     }
 
     const userClient = createClient(
@@ -103,7 +148,8 @@ Deno.serve(async (req) => {
       {
         global: {
           headers: {
-            Authorization: authorization,
+            Authorization:
+              authorization,
           },
         },
       }
@@ -112,7 +158,8 @@ Deno.serve(async (req) => {
     const {
       data: { user },
       error: authError,
-    } = await userClient.auth.getUser();
+    } =
+      await userClient.auth.getUser();
 
     if (authError || !user) {
       console.error(
@@ -120,35 +167,47 @@ Deno.serve(async (req) => {
         authError
       );
 
-      return jsonResponse(
-        {
-          success: false,
-          error: "Unauthorized",
-        },
-        401
-      );
+      return jsonResponse({
+        success: false,
+        error: "Unauthorized",
+      });
     }
 
-    // ------------------------------------------------------------
-    // ADMIN CLIENT
-    // ------------------------------------------------------------
+    /**
+     * --------------------------------------------------------
+     * ADMIN CLIENT
+     * --------------------------------------------------------
+     */
 
     const adminClient = createClient(
       supabaseUrl,
       serviceRoleKey
     );
 
-    // ------------------------------------------------------------
-    // REQUEST BODY
-    // ------------------------------------------------------------
+    /**
+     * --------------------------------------------------------
+     * REQUEST BODY
+     * --------------------------------------------------------
+     */
 
-    const body = await req.json();
+    let body: any;
 
-    const amount = Number(body?.amount);
+    try {
+      body = await req.json();
+    } catch {
+      return jsonResponse({
+        success: false,
+        error: "Invalid JSON request body",
+      });
+    }
+
+    const amount = Number(
+      body?.amount
+    );
 
     const accountNumber = String(
       body?.account_number ?? ""
-    ).trim();
+    ).replace(/\D/g, "");
 
     const accountBank = String(
       body?.account_bank ?? ""
@@ -159,225 +218,261 @@ Deno.serve(async (req) => {
     ).trim();
 
     const narration = String(
-      body?.narration ?? "IyanjuPay transfer"
+      body?.narration ??
+        "IyanjuPay bank transfer"
     ).trim();
 
     const idempotencyKey = String(
       body?.idempotency_key ?? ""
     ).trim();
 
-    // ------------------------------------------------------------
-    // VALIDATION
-    // ------------------------------------------------------------
+    /**
+     * --------------------------------------------------------
+     * VALIDATION
+     * --------------------------------------------------------
+     */
 
     if (
       !Number.isFinite(amount) ||
       amount <= 0
     ) {
-      return jsonResponse(
-        {
-          success: false,
-          error: "Invalid transfer amount",
-        },
-        400
-      );
+      return jsonResponse({
+        success: false,
+        error:
+          "Invalid transfer amount",
+      });
     }
 
     if (!/^\d{10}$/.test(accountNumber)) {
-      return jsonResponse(
-        {
-          success: false,
-          error:
-            "Account number must contain exactly 10 digits",
-        },
-        400
-      );
+      return jsonResponse({
+        success: false,
+        error:
+          "Account number must contain exactly 10 digits",
+      });
     }
 
     if (!accountBank) {
-      return jsonResponse(
-        {
-          success: false,
-          error: "Bank code is required",
-        },
-        400
-      );
+      return jsonResponse({
+        success: false,
+        error:
+          "Bank code is required",
+      });
     }
 
+    /**
+     * Flutterwave Nigerian bank codes are normally
+     * numeric. Keep this validation.
+     */
+
     if (!/^\d+$/.test(accountBank)) {
-      return jsonResponse(
-        {
-          success: false,
-          error: "Invalid bank code",
-        },
-        400
-      );
+      return jsonResponse({
+        success: false,
+        error:
+          "Invalid bank code",
+      });
     }
 
     if (!beneficiaryName) {
-      return jsonResponse(
-        {
-          success: false,
-          error: "Beneficiary name is required",
-        },
-        400
-      );
+      return jsonResponse({
+        success: false,
+        error:
+          "Beneficiary name is required",
+      });
     }
 
-    // ------------------------------------------------------------
-    // IDEMPOTENCY / REFERENCE
-    // ------------------------------------------------------------
+    /**
+     * --------------------------------------------------------
+     * IDEMPOTENCY + REFERENCE
+     * --------------------------------------------------------
+     */
 
     const transferKey =
       idempotencyKey ||
       `TRANSFER_${user.id}_${crypto.randomUUID()}`;
 
     const reference =
-      `IYANJUPAY_${crypto.randomUUID()
+      `IYANJUPAY_${crypto
+        .randomUUID()
         .replaceAll("-", "")
         .slice(0, 28)}`;
 
-    // ------------------------------------------------------------
-    // DEBIT WALLET
-    // ------------------------------------------------------------
+    console.log(
+      "Transfer request:",
+      JSON.stringify({
+        user_id: user.id,
+        amount,
+        account_number:
+          accountNumber,
+        account_bank:
+          accountBank,
+        beneficiary_name:
+          beneficiaryName,
+        reference,
+      })
+    );
+
+    /**
+     * --------------------------------------------------------
+     * DEBIT WALLET
+     * --------------------------------------------------------
+     */
 
     const {
       data: debitTransaction,
       error: debitError,
-    } = await adminClient.rpc(
-      "wallet_operation",
-      {
-        _user_id: user.id,
-        _operation: "DEBIT",
-        _amount: amount,
-        _description:
-          `Transfer to ${beneficiaryName}`,
-        _idempotency_key: transferKey,
-        _reference: reference,
-        _provider: "flutterwave",
-        _category: "transfer",
-        _metadata: {
-          account_number: accountNumber,
-          account_bank: accountBank,
-          beneficiary_name: beneficiaryName,
-          narration,
-          status: "pending",
-        },
-      }
-    );
+    } =
+      await adminClient.rpc(
+        "wallet_operation",
+        {
+          _user_id: user.id,
+          _operation: "DEBIT",
+          _amount: amount,
+          _description:
+            `Transfer to ${beneficiaryName}`,
+          _idempotency_key:
+            transferKey,
+          _reference:
+            reference,
+          _provider:
+            "flutterwave",
+          _category:
+            "transfer",
+          _metadata: {
+            account_number:
+              accountNumber,
+            account_bank:
+              accountBank,
+            beneficiary_name:
+              beneficiaryName,
+            narration,
+            status:
+              "pending",
+          },
+        }
+      );
 
     if (debitError) {
       console.error(
-        "Wallet debit error:",
+        "WALLET DEBIT ERROR:",
         debitError
       );
 
-      return jsonResponse(
-        {
-          success: false,
-          error:
-            debitError.message ||
-            "Unable to debit wallet",
-        },
-        400
-      );
+      return jsonResponse({
+        success: false,
+        stage: "wallet_debit",
+        error:
+          debitError.message ||
+          "Unable to debit wallet",
+      });
     }
 
     if (!debitTransaction) {
-      throw new Error(
-        "Wallet debit did not return a transaction"
+      console.error(
+        "Wallet debit returned no transaction"
       );
+
+      return jsonResponse({
+        success: false,
+        stage: "wallet_debit",
+        error:
+          "Wallet debit did not return a transaction",
+      });
     }
 
     const transactionId =
       debitTransaction.id;
 
-    // ------------------------------------------------------------
-    // FLUTTERWAVE TRANSFER
-    // ------------------------------------------------------------
-
     console.log(
-      `Initiating Flutterwave transfer ${reference}`
+      "Wallet debit successful:",
+      transactionId
     );
 
-    const flutterwaveResponse =
-      await fetch(
-        "https://api.flutterwave.com/v3/transfers",
-        {
-          method: "POST",
-          headers: {
-            Authorization:
-              `Bearer ${flutterwaveSecret}`,
-            "Content-Type": "application/json",
-            Accept: "application/json",
-          },
-          body: JSON.stringify({
-            account_bank: accountBank,
-            account_number: accountNumber,
-            amount,
-            currency: "NGN",
-            debit_currency: "NGN",
-            beneficiary_name: beneficiaryName,
-            narration,
-            reference,
-            meta: [
-              {
-                key: "iyanjupay_user_id",
-                value: user.id,
-              },
-              {
-                key: "iyanjupay_transaction_id",
-                value: transactionId,
-              },
-            ],
-          }),
-        }
-      );
+    /**
+     * --------------------------------------------------------
+     * FLUTTERWAVE TRANSFER
+     * --------------------------------------------------------
+     */
 
-    // ------------------------------------------------------------
-    // PARSE FLUTTERWAVE RESPONSE
-    // ------------------------------------------------------------
+    console.log(
+      "Calling Flutterwave:",
+      reference
+    );
 
-    let flutterwaveData: any = null;
+    let flutterwaveResponse: Response;
 
     try {
-      flutterwaveData =
-        await flutterwaveResponse.json();
-    } catch (parseError) {
+      flutterwaveResponse =
+        await fetch(
+          "https://api.flutterwave.com/v3/transfers",
+          {
+            method: "POST",
+
+            headers: {
+              Authorization:
+                `Bearer ${flutterwaveSecret}`,
+
+              "Content-Type":
+                "application/json",
+
+              Accept:
+                "application/json",
+            },
+
+            body: JSON.stringify({
+              account_bank:
+                accountBank,
+
+              account_number:
+                accountNumber,
+
+              amount,
+
+              currency:
+                "NGN",
+
+              debit_currency:
+                "NGN",
+
+              beneficiary_name:
+                beneficiaryName,
+
+              narration,
+
+              reference,
+
+              meta: [
+                {
+                  key:
+                    "iyanjupay_user_id",
+
+                  value:
+                    user.id,
+                },
+
+                {
+                  key:
+                    "iyanjupay_transaction_id",
+
+                  value:
+                    transactionId,
+                },
+              ],
+            }),
+          }
+        );
+    } catch (flutterwaveRequestError) {
       console.error(
-        "Unable to parse Flutterwave response:",
-        parseError
-      );
-    }
-
-    console.log(
-      "Flutterwave transfer response:",
-      JSON.stringify(flutterwaveData)
-    );
-
-    // ------------------------------------------------------------
-    // FLUTTERWAVE REQUEST FAILED
-    // ------------------------------------------------------------
-
-    if (
-      !flutterwaveResponse.ok ||
-      flutterwaveData?.status !== "success"
-    ) {
-      console.error(
-        "Flutterwave transfer failed:",
-        flutterwaveData
+        "FLUTTERWAVE NETWORK ERROR:",
+        flutterwaveRequestError
       );
 
-      // ----------------------------------------------------------
-      // REFUND CUSTOMER WALLET
-      // ----------------------------------------------------------
+      /**
+       * ------------------------------------------------------
+       * REFUND WALLET
+       * ------------------------------------------------------
+       */
 
-      const refundKey =
-        `REFUND_${transactionId}`;
-
-      const {
-        error: refundError,
-      } = await adminClient.rpc(
+      await adminClient.rpc(
         "wallet_operation",
         {
           _user_id: user.id,
@@ -385,118 +480,350 @@ Deno.serve(async (req) => {
           _amount: amount,
           _description:
             `Refund for failed transfer to ${beneficiaryName}`,
-          _idempotency_key: refundKey,
+          _idempotency_key:
+            `REFUND_${transactionId}`,
           _reference:
             `REFUND_${reference}`,
-          _provider: "flutterwave",
-          _provider_reference:
-            flutterwaveData?.data?.id
-              ? String(
-                  flutterwaveData.data.id
-                )
-              : null,
-          _category: "transfer_refund",
+          _provider:
+            "flutterwave",
+          _category:
+            "transfer_refund",
           _metadata: {
             original_transaction_id:
               transactionId,
+
             original_reference:
               reference,
+
             reason:
-              flutterwaveData?.message ||
-              "Flutterwave transfer failed",
+              "Unable to connect to Flutterwave",
+
+            refunded:
+              true,
           },
         }
       );
 
+      await adminClient
+        .from("transactions")
+        .update({
+          status:
+            "failed",
+
+          metadata: {
+            account_number:
+              accountNumber,
+
+            account_bank:
+              accountBank,
+
+            beneficiary_name:
+              beneficiaryName,
+
+            narration,
+
+            refunded:
+              true,
+
+            error:
+              "Flutterwave network request failed",
+          },
+        })
+        .eq(
+          "id",
+          transactionId
+        );
+
+      return jsonResponse({
+        success: false,
+        stage:
+          "flutterwave_request",
+
+        error:
+          "Unable to connect to Flutterwave. Your wallet has been refunded.",
+
+        refunded:
+          true,
+
+        reference,
+      });
+    }
+
+    /**
+     * --------------------------------------------------------
+     * READ FLUTTERWAVE RESPONSE
+     * --------------------------------------------------------
+     */
+
+    let flutterwaveData: any =
+      null;
+
+    const responseText =
+      await flutterwaveResponse.text();
+
+    try {
+      flutterwaveData =
+        responseText
+          ? JSON.parse(responseText)
+          : null;
+    } catch {
+      flutterwaveData = {
+        raw_response:
+          responseText,
+      };
+    }
+
+    console.log(
+      "Flutterwave HTTP status:",
+      flutterwaveResponse.status
+    );
+
+    console.log(
+      "Flutterwave response:",
+      JSON.stringify(
+        flutterwaveData
+      )
+    );
+
+    /**
+     * --------------------------------------------------------
+     * FLUTTERWAVE FAILED
+     * --------------------------------------------------------
+     */
+
+    if (
+      !flutterwaveResponse.ok ||
+      flutterwaveData?.status !==
+        "success"
+    ) {
+      const flutterwaveError =
+        flutterwaveData?.message ||
+        flutterwaveData?.error ||
+        "Flutterwave could not initiate the transfer";
+
+      console.error(
+        "FLUTTERWAVE TRANSFER FAILED:",
+        flutterwaveError
+      );
+
+      /**
+       * ------------------------------------------------------
+       * REFUND WALLET
+       * ------------------------------------------------------
+       */
+
+      const refundKey =
+        `REFUND_${transactionId}`;
+
+      const {
+        error: refundError,
+      } =
+        await adminClient.rpc(
+          "wallet_operation",
+          {
+            _user_id: user.id,
+            _operation: "REFUND",
+            _amount: amount,
+            _description:
+              `Refund for failed transfer to ${beneficiaryName}`,
+            _idempotency_key:
+              refundKey,
+            _reference:
+              `REFUND_${reference}`,
+            _provider:
+              "flutterwave",
+
+            _provider_reference:
+              flutterwaveData
+                ?.data
+                ?.id
+                ? String(
+                    flutterwaveData
+                      .data
+                      .id
+                  )
+                : null,
+
+            _category:
+              "transfer_refund",
+
+            _metadata: {
+              original_transaction_id:
+                transactionId,
+
+              original_reference:
+                reference,
+
+              reason:
+                flutterwaveError,
+
+              flutterwave_response:
+                flutterwaveData,
+
+              refunded:
+                true,
+            },
+          }
+        );
+
       if (refundError) {
         console.error(
-          "Wallet refund error:",
+          "REFUND ERROR:",
           refundError
         );
       }
 
-      // ----------------------------------------------------------
-      // MARK ORIGINAL TRANSACTION FAILED
-      // ----------------------------------------------------------
+      /**
+       * ------------------------------------------------------
+       * UPDATE TRANSACTION
+       * ------------------------------------------------------
+       */
 
-      const { error: transactionUpdateError } =
-        await adminClient
-          .from("transactions")
-          .update({
-            status: "failed",
-            metadata: {
-              account_number: accountNumber,
-              account_bank: accountBank,
-              beneficiary_name: beneficiaryName,
-              narration,
-              flutterwave_response:
-                flutterwaveData,
-              refunded:
-                !refundError,
-            },
-          })
-          .eq("id", transactionId);
+      await adminClient
+        .from("transactions")
+        .update({
+          status:
+            "failed",
 
-      if (transactionUpdateError) {
-        console.error(
-          "Transaction update error:",
-          transactionUpdateError
+          provider:
+            "flutterwave",
+
+          provider_reference:
+            flutterwaveData
+              ?.data
+              ?.id
+              ? String(
+                  flutterwaveData
+                    .data
+                    .id
+                )
+              : null,
+
+          metadata: {
+            account_number:
+              accountNumber,
+
+            account_bank:
+              accountBank,
+
+            beneficiary_name:
+              beneficiaryName,
+
+            narration,
+
+            flutterwave_response:
+              flutterwaveData,
+
+            refunded:
+              !refundError,
+
+            refund_error:
+              refundError
+                ?.message ??
+              null,
+          },
+        })
+        .eq(
+          "id",
+          transactionId
         );
-      }
 
-      return jsonResponse(
-        {
-          success: false,
-          error:
-            flutterwaveData?.message ||
-            "Flutterwave could not initiate the transfer",
-          refunded: !refundError,
-          reference,
-        },
-        400
-      );
+      /**
+       * Return HTTP 200 so the frontend can
+       * receive the actual error message.
+       */
+
+      return jsonResponse({
+        success: false,
+
+        stage:
+          "flutterwave",
+
+        error:
+          flutterwaveError,
+
+        refunded:
+          !refundError,
+
+        reference,
+
+        flutterwave_response:
+          flutterwaveData,
+      });
     }
 
-    // ------------------------------------------------------------
-    // TRANSFER ACCEPTED
-    // ------------------------------------------------------------
+    /**
+     * --------------------------------------------------------
+     * TRANSFER ACCEPTED
+     * --------------------------------------------------------
+     */
 
     const flutterwaveTransferId =
-      flutterwaveData?.data?.id
+      flutterwaveData
+        ?.data
+        ?.id
         ? String(
-            flutterwaveData.data.id
+            flutterwaveData
+              .data
+              .id
           )
         : null;
 
     const transferStatus =
-      flutterwaveData?.data?.status ??
+      flutterwaveData
+        ?.data
+        ?.status ??
       "NEW";
 
-    // ------------------------------------------------------------
-    // UPDATE TRANSACTION TO PENDING
-    // ------------------------------------------------------------
+    console.log(
+      "Flutterwave transfer accepted:",
+      flutterwaveTransferId
+    );
+
+    /**
+     * --------------------------------------------------------
+     * UPDATE TRANSACTION
+     * --------------------------------------------------------
+     */
 
     const {
       error: transactionUpdateError,
-    } = await adminClient
-      .from("transactions")
-      .update({
-        status: "pending",
-        provider: "flutterwave",
-        provider_reference:
-          flutterwaveTransferId,
-        metadata: {
-          account_number: accountNumber,
-          account_bank: accountBank,
-          beneficiary_name: beneficiaryName,
-          narration,
-          flutterwave_status:
-            transferStatus,
-          flutterwave_response:
-            flutterwaveData,
-        },
-      })
-      .eq("id", transactionId);
+    } =
+      await adminClient
+        .from("transactions")
+        .update({
+          status:
+            "pending",
+
+          provider:
+            "flutterwave",
+
+          provider_reference:
+            flutterwaveTransferId,
+
+          metadata: {
+            account_number:
+              accountNumber,
+
+            account_bank:
+              accountBank,
+
+            beneficiary_name:
+              beneficiaryName,
+
+            narration,
+
+            flutterwave_status:
+              transferStatus,
+
+            flutterwave_response:
+              flutterwaveData,
+          },
+        })
+        .eq(
+          "id",
+          transactionId
+        );
 
     if (transactionUpdateError) {
       console.error(
@@ -505,42 +832,61 @@ Deno.serve(async (req) => {
       );
     }
 
-    // ------------------------------------------------------------
-    // RETURN SUCCESS
-    // ------------------------------------------------------------
+    /**
+     * --------------------------------------------------------
+     * SUCCESS
+     * --------------------------------------------------------
+     */
 
     return jsonResponse({
       success: true,
-      status: "pending",
+
+      status:
+        "pending",
+
       message:
         "Transfer has been initiated and is being processed.",
+
       reference,
-      transaction_id: transactionId,
+
+      transaction_id:
+        transactionId,
+
       flutterwave_transfer_id:
         flutterwaveTransferId,
+
       beneficiary: {
-        name: beneficiaryName,
-        account_number: accountNumber,
-        bank_code: accountBank,
+        name:
+          beneficiaryName,
+
+        account_number:
+          accountNumber,
+
+        bank_code:
+          accountBank,
       },
+
       amount,
-      currency: "NGN",
+
+      currency:
+        "NGN",
     });
   } catch (error) {
     console.error(
-      "flutterwave-transfer error:",
+      "FLUTTERWAVE TRANSFER INTERNAL ERROR:",
       error
     );
 
-    return jsonResponse(
-      {
-        success: false,
-        error:
-          error instanceof Error
-            ? error.message
-            : "Internal server error",
-      },
-      500
-    );
+    return jsonResponse({
+      success: false,
+
+      stage:
+        "internal",
+
+      error:
+        error instanceof Error
+          ? error.message
+          : "Internal server error",
+    });
   }
 });

@@ -298,12 +298,28 @@ const FundWalletModal = ({
             </div>
 
             <Button
+              className="w-full"
+              onClick={() => syncDeposits(true)}
+              disabled={checking}
+            >
+              {checking ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Checking for your payment...
+                </>
+              ) : (
+                "I have made the transfer"
+              )}
+            </Button>
+
+            <Button
               variant="outline"
               className="w-full"
               onClick={onClose}
             >
               Done
             </Button>
+
           </div>
         ) : (
           <div className="py-8 text-center">

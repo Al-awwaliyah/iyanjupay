@@ -1,1 +1,4 @@
 project_id = "eekfcjpoyfcuzvvsgwaw"
+
+[functions.flutterwave-transfer]
+verify_jwt = true

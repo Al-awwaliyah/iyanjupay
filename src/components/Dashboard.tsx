@@ -6,27 +6,7 @@ import {
   Card,
   CardContent,
 } from "@/components/ui/card";
-import {
-  LogOut,
-  User,
-  History,
-  Send,
-  QrCode,
-  Shield,
-  Gift,
-  Banknote,
-  Car,
-  Gamepad2,
-  Plane,
-  Home,
-  Plus,
-  Eye,
-  EyeOff,
-  Smartphone,
-  Wifi,
-  Zap,
-  CreditCard,
-} from 'lucide-react';
+import { LogOut, User, History, Send, QrCode, Shield, Gift, Banknote, Car, Gamepad2, Plane, Home, Plus, Eye, EyeOff, Smartphone, Wifi, Zap, CreditCard, } from 'lucide-react';
 
 import ServiceCard from './services/ServiceCard';
 import FundWalletModal from './modals/FundWalletModal';
@@ -55,10 +35,10 @@ type CurrentPage =
 
 const Dashboard = () => {
   const { user, signOut } = useAuth();
+
   const {
     wallet,
     loading,
-    updateBalance,
   } = useWallet(user?.id);
 
   const [fundModalOpen, setFundModalOpen] =
@@ -230,7 +210,7 @@ const Dashboard = () => {
   };
 
   // ------------------------------------------------------------
-  // Service payments
+  // SERVICE PAYMENTS
   // ------------------------------------------------------------
 
   const handlePurchase = async (
@@ -270,8 +250,25 @@ const Dashboard = () => {
       return;
     }
 
+    if (
+      wallet &&
+      amount > Number(wallet.balance)
+    ) {
+      toast({
+        title: "Insufficient Balance",
+        description:
+          "Please fund your wallet to continue.",
+        variant: "destructive",
+      });
+
+      return;
+    }
+
     try {
-      const { data, error } =
+      const {
+        data,
+        error,
+      } =
         await supabase.functions.invoke(
           "flutterwave-service-payment",
           {
@@ -290,7 +287,10 @@ const Dashboard = () => {
           error
         );
 
-        throw error;
+        throw new Error(
+          error.message ||
+            "Unable to process service payment."
+        );
       }
 
       console.log(
@@ -301,9 +301,24 @@ const Dashboard = () => {
       if (!data?.success) {
         throw new Error(
           data?.error ||
-            "Service payment failed"
+            "Service payment failed."
         );
       }
+
+      // --------------------------------------------------------
+      // IMPORTANT
+      //
+      // Do NOT update the wallets table from the browser.
+      //
+      // The Edge Function is responsible for the wallet debit.
+      // Direct UPDATE requests from the browser were causing:
+      //
+      // 403 Forbidden
+      // permission denied for table wallets
+      //
+      // The wallet hook remains responsible for displaying the
+      // current wallet state.
+      // --------------------------------------------------------
 
       setServiceModalOpen(false);
 
@@ -313,27 +328,6 @@ const Dashboard = () => {
           data?.message ||
           `${selectedService.title} payment completed successfully.`,
       });
-
-      // Refresh wallet balance
-      if (wallet) {
-        const {
-          data: refreshedWallet,
-          error: walletError,
-        } = await supabase
-          .from("wallets")
-          .select("*")
-          .eq("id", wallet.id)
-          .single();
-
-        if (
-          !walletError &&
-          refreshedWallet
-        ) {
-          await updateBalance(
-            refreshedWallet.balance
-          );
-        }
-      }
     } catch (error: any) {
       console.error(
         "Service payment failed:",
@@ -429,10 +423,10 @@ const Dashboard = () => {
 
     try {
       // --------------------------------------------------------
-      // Create an idempotency key.
+      // CREATE IDEMPOTENCY KEY
       //
-      // This prevents accidental duplicate transfers if the
-      // user double-clicks or the request is retried.
+      // Prevents accidental duplicate transfers if the request
+      // is retried by the frontend.
       // --------------------------------------------------------
 
       const idempotencyKey =
@@ -443,6 +437,22 @@ const Dashboard = () => {
         description:
           "Please wait while we send your money.",
       });
+
+      // --------------------------------------------------------
+      // CALL SECURE EDGE FUNCTION
+      //
+      // Dashboard NEVER calls Flutterwave directly.
+      //
+      // Dashboard
+      //    ↓
+      // flutterwave-transfer
+      //    ↓
+      // wallet_operation(DEBIT)
+      //    ↓
+      // SmarterASP proxy
+      //    ↓
+      // Flutterwave
+      // --------------------------------------------------------
 
       const {
         data,
@@ -490,6 +500,10 @@ const Dashboard = () => {
         data
       );
 
+      // --------------------------------------------------------
+      // EDGE FUNCTION ERROR
+      // --------------------------------------------------------
+
       if (!data?.success) {
         throw new Error(
           data?.error ||
@@ -498,50 +512,70 @@ const Dashboard = () => {
       }
 
       // --------------------------------------------------------
-      // Refresh wallet balance
+      // IMPORTANT:
+      //
+      // DO NOT call:
+      //
+      // supabase.from("wallets").update(...)
+      //
+      // DO NOT call:
+      //
+      // updateBalance(...)
+      //
+      // The Edge Function has already performed the wallet
+      // debit using wallet_operation().
+      //
+      // The previous Dashboard code attempted to PATCH the
+      // wallets table directly and produced:
+      //
+      // 403 Forbidden
+      // permission denied for table wallets
+      //
+      // Worse, that error entered this try/catch and made a
+      // successfully queued Flutterwave transfer appear to the
+      // user as FAILED.
       // --------------------------------------------------------
 
-      if (wallet) {
-        const {
-          data: refreshedWallet,
-          error: walletError,
-        } = await supabase
-          .from("wallets")
-          .select("*")
-          .eq("id", wallet.id)
-          .single();
-
-        if (
-          !walletError &&
-          refreshedWallet
-        ) {
-          await updateBalance(
-            refreshedWallet.balance
-          );
-        }
-      }
-
       // --------------------------------------------------------
-      // Close transfer modal
+      // CLOSE TRANSFER MODAL
       // --------------------------------------------------------
 
       setTransferModalOpen(false);
 
       // --------------------------------------------------------
-      // Success message
+      // SUCCESS MESSAGE
       // --------------------------------------------------------
 
       toast({
-        title:
-          data?.transaction?.status ===
-          "pending"
-            ? "Transfer Processing"
-            : "Transfer Successful",
-
+        title: "Transfer Processing",
         description:
           data?.message ||
           `₦${amount.toLocaleString()} sent to ${details.recipient}.`,
       });
+
+      // --------------------------------------------------------
+      // LOG SUCCESS INFORMATION
+      // --------------------------------------------------------
+
+      console.log(
+        "Bank transfer successfully initiated:",
+        {
+          transaction_id:
+            data?.transaction_id,
+
+          flutterwave_transfer_id:
+            data?.flutterwave_transfer_id,
+
+          reference:
+            data?.reference,
+
+          amount,
+
+          beneficiary:
+            details.recipient,
+        }
+      );
+
     } catch (error: any) {
       console.error(
         "Bank transfer failed:",
@@ -660,6 +694,7 @@ const Dashboard = () => {
             }`}
           >
             <Home className="h-4 w-4" />
+
             <span className="text-xs">
               Home
             </span>
@@ -682,6 +717,7 @@ const Dashboard = () => {
             }`}
           >
             <Gift className="h-4 w-4" />
+
             <span className="text-xs">
               Reward
             </span>
@@ -704,6 +740,7 @@ const Dashboard = () => {
             }`}
           >
             <CreditCard className="h-4 w-4" />
+
             <span className="text-xs">
               Card
             </span>
@@ -726,6 +763,7 @@ const Dashboard = () => {
             }`}
           >
             <User className="h-4 w-4" />
+
             <span className="text-xs">
               Me
             </span>
@@ -737,7 +775,7 @@ const Dashboard = () => {
   );
 
   // ------------------------------------------------------------
-  // Dashboard
+  // DASHBOARD
   // ------------------------------------------------------------
 
   return (
@@ -746,6 +784,7 @@ const Dashboard = () => {
       {/* Header */}
 
       <header className="bg-gradient-to-r from-purple-600 to-blue-600 text-white">
+
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
 
           <div className="flex justify-between items-center h-16">
@@ -753,9 +792,11 @@ const Dashboard = () => {
             <div className="flex items-center">
 
               <div className="w-8 h-8 bg-white rounded-full flex items-center justify-center mr-3">
+
                 <span className="text-purple-600 font-bold text-sm">
                   AL
                 </span>
+
               </div>
 
               <h1 className="text-xl font-bold">
@@ -813,6 +854,7 @@ const Dashboard = () => {
           </div>
 
         </div>
+
       </header>
 
       {/* Main Content */}
@@ -852,11 +894,13 @@ const Dashboard = () => {
                   <div className="flex items-center gap-2">
 
                     <span className="text-3xl font-bold">
+
                       ₦
                       {showBalance
                         ? wallet?.balance?.toLocaleString() ||
                           '0'
                         : "****"}
+
                     </span>
 
                     <Button
@@ -903,6 +947,7 @@ const Dashboard = () => {
                   className="flex-1 bg-white text-purple-600 hover:bg-gray-100 font-semibold"
                 >
                   <Plus className="h-4 w-4 mr-2" />
+
                   Add Money
                 </Button>
 
@@ -914,6 +959,7 @@ const Dashboard = () => {
                   className="flex-1 border-white text-white hover:bg-white/20"
                 >
                   <Send className="h-4 w-4 mr-2" />
+
                   Send Money
                 </Button>
 
@@ -937,6 +983,7 @@ const Dashboard = () => {
 
             {services.map(
               (service, index) => (
+
                 <ServiceCard
                   key={index}
                   title={service.title}
@@ -951,6 +998,7 @@ const Dashboard = () => {
                     )
                   }
                 />
+
               )
             )}
 
@@ -985,7 +1033,9 @@ const Dashboard = () => {
                 </div>
 
                 <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center">
+
                   <Banknote className="h-6 w-6 text-red-600" />
+
                 </div>
 
               </div>
@@ -1017,7 +1067,9 @@ const Dashboard = () => {
                 </div>
 
                 <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
+
                   <History className="h-6 w-6 text-blue-600" />
+
                 </div>
 
               </div>
@@ -1049,7 +1101,9 @@ const Dashboard = () => {
                 </div>
 
                 <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center">
+
                   <Shield className="h-6 w-6 text-green-600" />
+
                 </div>
 
               </div>
@@ -1091,12 +1145,6 @@ const Dashboard = () => {
           handlePurchase
         }
       />
-
-      {/* IMPORTANT:
-          TransferModal now uses the dedicated
-          bank-transfer handler instead of
-          handlePurchase.
-      */}
 
       <TransferModal
         isOpen={transferModalOpen}

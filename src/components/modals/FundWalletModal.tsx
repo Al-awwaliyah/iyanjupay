@@ -129,8 +129,25 @@ const FundWalletModal = ({
     } else {
       setAccount(null);
       setKycRequired(false);
+      setChecking(false);
     }
   }, [isOpen]);
+
+  // While the modal is open, keep reconciling incoming bank deposits so
+  // the wallet is credited as soon as the money lands.
+  useEffect(() => {
+    if (!isOpen || !account) return;
+
+    syncDeposits(false);
+
+    const interval = window.setInterval(() => {
+      syncDeposits(false);
+    }, 10000);
+
+    return () => window.clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, account?.account_number]);
+
 
   const copyToClipboard = async (
     text: string,

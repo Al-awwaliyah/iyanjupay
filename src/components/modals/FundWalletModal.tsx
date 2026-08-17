@@ -13,6 +13,7 @@ import { supabase } from "@/integrations/supabase/client";
 interface FundWalletModalProps {
   isOpen: boolean;
   onClose: () => void;
+  onFunded?: () => void | Promise<unknown>;
 }
 
 interface VirtualAccount {

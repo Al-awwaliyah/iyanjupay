@@ -4,10 +4,8 @@ const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
     "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods":
-    "POST, OPTIONS",
-  "Content-Type":
-    "application/json",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Content-Type": "application/json",
 };
 
 function jsonResponse(body: unknown, status = 200) {
@@ -18,17 +16,20 @@ function jsonResponse(body: unknown, status = 200) {
 }
 
 Deno.serve(async (req) => {
-  
   // ------------------------------------------------------------
-  // CORS
+  // CORS PREFLIGHT
   // ------------------------------------------------------------
 
   if (req.method === "OPTIONS") {
-    return new Response("ok", {
+    return new Response(null, {
       status: 204,
       headers: corsHeaders,
     });
   }
+
+  // ------------------------------------------------------------
+  // METHOD CHECK
+  // ------------------------------------------------------------
 
   if (req.method !== "POST") {
     return jsonResponse(
@@ -114,6 +115,11 @@ Deno.serve(async (req) => {
     } = await userClient.auth.getUser();
 
     if (authError || !user) {
+      console.error(
+        "Authentication error:",
+        authError
+      );
+
       return jsonResponse(
         {
           success: false,
@@ -219,7 +225,7 @@ Deno.serve(async (req) => {
     }
 
     // ------------------------------------------------------------
-    // IDEMPOTENCY
+    // IDEMPOTENCY / REFERENCE
     // ------------------------------------------------------------
 
     const transferKey =
@@ -233,34 +239,32 @@ Deno.serve(async (req) => {
 
     // ------------------------------------------------------------
     // DEBIT WALLET
-    //
-    // We debit the wallet before sending the payout.
-    // If Flutterwave rejects the transfer, we immediately
-    // refund the wallet.
     // ------------------------------------------------------------
 
-    const { data: debitTransaction, error: debitError } =
-      await adminClient.rpc(
-        "wallet_operation",
-        {
-          _user_id: user.id,
-          _operation: "DEBIT",
-          _amount: amount,
-          _description:
-            `Transfer to ${beneficiaryName}`,
-          _idempotency_key: transferKey,
-          _reference: reference,
-          _provider: "flutterwave",
-          _category: "transfer",
-          _metadata: {
-            account_number: accountNumber,
-            account_bank: accountBank,
-            beneficiary_name: beneficiaryName,
-            narration,
-            status: "pending",
-          },
-        }
-      );
+    const {
+      data: debitTransaction,
+      error: debitError,
+    } = await adminClient.rpc(
+      "wallet_operation",
+      {
+        _user_id: user.id,
+        _operation: "DEBIT",
+        _amount: amount,
+        _description:
+          `Transfer to ${beneficiaryName}`,
+        _idempotency_key: transferKey,
+        _reference: reference,
+        _provider: "flutterwave",
+        _category: "transfer",
+        _metadata: {
+          account_number: accountNumber,
+          account_bank: accountBank,
+          beneficiary_name: beneficiaryName,
+          narration,
+          status: "pending",
+        },
+      }
+    );
 
     if (debitError) {
       console.error(
@@ -330,13 +334,20 @@ Deno.serve(async (req) => {
         }
       );
 
-    let flutterwaveData: any;
+    // ------------------------------------------------------------
+    // PARSE FLUTTERWAVE RESPONSE
+    // ------------------------------------------------------------
+
+    let flutterwaveData: any = null;
 
     try {
       flutterwaveData =
         await flutterwaveResponse.json();
-    } catch {
-      flutterwaveData = null;
+    } catch (parseError) {
+      console.error(
+        "Unable to parse Flutterwave response:",
+        parseError
+      );
     }
 
     console.log(
@@ -357,11 +368,16 @@ Deno.serve(async (req) => {
         flutterwaveData
       );
 
-      // Refund customer wallet.
+      // ----------------------------------------------------------
+      // REFUND CUSTOMER WALLET
+      // ----------------------------------------------------------
+
       const refundKey =
         `REFUND_${transactionId}`;
 
-      await adminClient.rpc(
+      const {
+        error: refundError,
+      } = await adminClient.rpc(
         "wallet_operation",
         {
           _user_id: user.id,
@@ -392,21 +408,41 @@ Deno.serve(async (req) => {
         }
       );
 
-      await adminClient
-        .from("transactions")
-        .update({
-          status: "failed",
-          metadata: {
-            account_number: accountNumber,
-            account_bank: accountBank,
-            beneficiary_name: beneficiaryName,
-            narration,
-            flutterwave_response:
-              flutterwaveData,
-            refunded: true,
-          },
-        })
-        .eq("id", transactionId);
+      if (refundError) {
+        console.error(
+          "Wallet refund error:",
+          refundError
+        );
+      }
+
+      // ----------------------------------------------------------
+      // MARK ORIGINAL TRANSACTION FAILED
+      // ----------------------------------------------------------
+
+      const { error: transactionUpdateError } =
+        await adminClient
+          .from("transactions")
+          .update({
+            status: "failed",
+            metadata: {
+              account_number: accountNumber,
+              account_bank: accountBank,
+              beneficiary_name: beneficiaryName,
+              narration,
+              flutterwave_response:
+                flutterwaveData,
+              refunded:
+                !refundError,
+            },
+          })
+          .eq("id", transactionId);
+
+      if (transactionUpdateError) {
+        console.error(
+          "Transaction update error:",
+          transactionUpdateError
+        );
+      }
 
       return jsonResponse(
         {
@@ -414,7 +450,7 @@ Deno.serve(async (req) => {
           error:
             flutterwaveData?.message ||
             "Flutterwave could not initiate the transfer",
-          refunded: true,
+          refunded: !refundError,
           reference,
         },
         400
@@ -427,16 +463,22 @@ Deno.serve(async (req) => {
 
     const flutterwaveTransferId =
       flutterwaveData?.data?.id
-        ? String(flutterwaveData.data.id)
+        ? String(
+            flutterwaveData.data.id
+          )
         : null;
 
     const transferStatus =
       flutterwaveData?.data?.status ??
       "NEW";
 
-    // The payout may still be processing.
-    // Do NOT tell the customer it is finally successful yet.
-    await adminClient
+    // ------------------------------------------------------------
+    // UPDATE TRANSACTION TO PENDING
+    // ------------------------------------------------------------
+
+    const {
+      error: transactionUpdateError,
+    } = await adminClient
       .from("transactions")
       .update({
         status: "pending",
@@ -456,8 +498,15 @@ Deno.serve(async (req) => {
       })
       .eq("id", transactionId);
 
+    if (transactionUpdateError) {
+      console.error(
+        "Transaction update error:",
+        transactionUpdateError
+      );
+    }
+
     // ------------------------------------------------------------
-    // RETURN
+    // RETURN SUCCESS
     // ------------------------------------------------------------
 
     return jsonResponse({

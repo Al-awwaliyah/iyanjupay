@@ -457,43 +457,14 @@ export type Database = {
       }
       credit_wallet: {
         Args: {
-          _amount: number
-          _description?: string
-          _idempotency_key?: string
-          _metadata?: Json
-          _provider?: string
-          _provider_reference?: string
-          _reference?: string
-          _user_id: string
+          p_amount: number
+          p_description?: string
+          p_provider?: string
+          p_provider_reference?: string
+          p_reference_number: string
+          p_wallet_id: string
         }
-        Returns: {
-          amount: number
-          category: string | null
-          completed_at: string | null
-          created_at: string | null
-          currency: string
-          description: string | null
-          hold_transaction_id: string | null
-          id: string
-          idempotency_key: string | null
-          metadata: Json
-          provider: string | null
-          provider_reference: string | null
-          reference_number: string
-          reversal_of: string | null
-          reversed_at: string | null
-          status: string
-          transaction_type: string
-          updated_at: string | null
-          user_id: string
-          wallet_id: string | null
-        }
-        SetofOptions: {
-          from: "*"
-          to: "transactions"
-          isOneToOne: true
-          isSetofReturn: false
-        }
+        Returns: Json
       }
       debit_wallet: {
         Args: {
@@ -712,6 +683,17 @@ export type Database = {
           isOneToOne: true
           isSetofReturn: false
         }
+      }
+      send_money: {
+        Args: {
+          p_amount: number
+          p_description?: string
+          p_idempotency_key?: string
+          p_recipient_user_id: string
+          p_reference?: string
+          p_sender_user_id: string
+        }
+        Returns: Json
       }
       sync_wallet_balances: { Args: { _wallet_id: string }; Returns: undefined }
       wallet_operation: {

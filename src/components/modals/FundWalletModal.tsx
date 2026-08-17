@@ -13,6 +13,7 @@ import { supabase } from "@/integrations/supabase/client";
 interface FundWalletModalProps {
   isOpen: boolean;
   onClose: () => void;
+  onFunded?: () => void | Promise<unknown>;
 }
 
 interface VirtualAccount {
@@ -27,12 +28,58 @@ interface VirtualAccount {
 const FundWalletModal = ({
   isOpen,
   onClose,
+  onFunded,
 }: FundWalletModalProps) => {
   const { toast } = useToast();
 
   const [account, setAccount] = useState<VirtualAccount | null>(null);
   const [loading, setLoading] = useState(false);
   const [kycRequired, setKycRequired] = useState(false);
+  const [checking, setChecking] = useState(false);
+
+  const syncDeposits = async (announce: boolean) => {
+    setChecking(true);
+
+    try {
+      const { data, error } = await supabase.functions.invoke(
+        "flutterwave-sync-deposits"
+      );
+
+      if (error) throw error;
+
+      if (!data?.success) {
+        throw new Error(data?.error || "Unable to check for payments");
+      }
+
+      await onFunded?.();
+
+      if (data.credited > 0) {
+        toast({
+          title: "Wallet funded",
+          description: `₦${Number(
+            data.credited_amount || 0
+          ).toLocaleString()} has been added to your wallet.`,
+        });
+      } else if (announce) {
+        toast({
+          title: "No new payment found yet",
+          description:
+            "Bank transfers usually arrive in seconds. Try again shortly.",
+        });
+      }
+    } catch (error: any) {
+      if (announce) {
+        toast({
+          title: "Unable to check payment",
+          description: error?.message || "Please try again.",
+          variant: "destructive",
+        });
+      }
+    } finally {
+      setChecking(false);
+    }
+  };
+
 
   const loadVirtualAccount = async () => {
     setLoading(true);
@@ -82,8 +129,25 @@ const FundWalletModal = ({
     } else {
       setAccount(null);
       setKycRequired(false);
+      setChecking(false);
     }
   }, [isOpen]);
+
+  // While the modal is open, keep reconciling incoming bank deposits so
+  // the wallet is credited as soon as the money lands.
+  useEffect(() => {
+    if (!isOpen || !account) return;
+
+    syncDeposits(false);
+
+    const interval = window.setInterval(() => {
+      syncDeposits(false);
+    }, 10000);
+
+    return () => window.clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, account?.account_number]);
+
 
   const copyToClipboard = async (
     text: string,
@@ -234,12 +298,28 @@ const FundWalletModal = ({
             </div>
 
             <Button
+              className="w-full"
+              onClick={() => syncDeposits(true)}
+              disabled={checking}
+            >
+              {checking ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Checking for your payment...
+                </>
+              ) : (
+                "I have made the transfer"
+              )}
+            </Button>
+
+            <Button
               variant="outline"
               className="w-full"
               onClick={onClose}
             >
               Done
             </Button>
+
           </div>
         ) : (
           <div className="py-8 text-center">

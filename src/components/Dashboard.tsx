@@ -39,6 +39,7 @@ const Dashboard = () => {
   const {
     wallet,
     loading,
+    refreshWallet,
   } = useWallet(user?.id);
 
   const [fundModalOpen, setFundModalOpen] =
@@ -1129,8 +1130,9 @@ const Dashboard = () => {
         onClose={() =>
           setFundModalOpen(false)
         }
-        virtualAccountNumber=""
+        onFunded={refreshWallet}
       />
+
 
       <ServiceModal
         isOpen={serviceModalOpen}

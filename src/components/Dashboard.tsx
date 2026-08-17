@@ -915,6 +915,10 @@ const Dashboard = () => {
 
                     </span>
 
+                    </Button>
+                <Button onClick={syncDeposits}>
+                  Sync Wallet
+                  </Button>
                     <Button
                       variant="ghost"
                       size="sm"
@@ -968,15 +972,12 @@ const Dashboard = () => {
                     setTransferModalOpen(true)
                   }
                   variant="outline"
-                  className="flex-1 border-white text-blue hover:bg-white/20"
+                  className="flex-1 bg-white text-purple-600 hover:bg-gray-100 font-semibold"
                 >
                   <Send className="h-4 w-4 mr-2" />
 
                   Send Money
-                </Button>
-                <Button onClick={syncDeposits}>
-  Sync Wallet
-</Button>
+                
 
               </div>
 

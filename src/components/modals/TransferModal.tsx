@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -56,6 +56,10 @@ const TransferModal = ({
 
   const [resolving, setResolving] = useState(false);
 
+  // Used to prevent an older Flutterwave response from
+  // overwriting a newer bank/account selection.
+  const resolveRequestRef = useRef(0);
+
   const { toast } = useToast();
 
   // ------------------------------------------------------------
@@ -69,9 +73,8 @@ const TransferModal = ({
       setBanksLoading(true);
 
       try {
-        const { data, error } = await supabase.functions.invoke(
-          "flutterwave-banks"
-        );
+        const { data, error } =
+          await supabase.functions.invoke("flutterwave-banks");
 
         if (error) {
           throw error;
@@ -103,104 +106,113 @@ const TransferModal = ({
   }, [isOpen, toast]);
 
   // ------------------------------------------------------------
-  // Reset resolved account when bank/account changes
+  // Automatically resolve account
   // ------------------------------------------------------------
 
   useEffect(() => {
-    setResolvedAccount(null);
-  }, [bank, accountNumber]);
+    if (!isOpen) return;
 
-  // ------------------------------------------------------------
-  // Resolve bank account
-  // ------------------------------------------------------------
+    const cleanAccountNumber =
+      accountNumber.replace(/\D/g, "");
 
-  const handleResolveAccount = async () => {
-    const cleanAccountNumber = accountNumber.replace(/\D/g, "");
-
-    if (!bank) {
-      toast({
-        title: "Select a bank",
-        description:
-          "Please select the recipient's bank first.",
-        variant: "destructive",
-      });
+    // Do not resolve until both bank and account number
+    // are ready.
+    if (
+      !bank ||
+      !/^\d{10}$/.test(cleanAccountNumber)
+    ) {
+      setResolvedAccount(null);
+      setResolving(false);
       return;
     }
 
-    if (!/^\d{10}$/.test(cleanAccountNumber)) {
-      toast({
-        title: "Invalid account number",
-        description:
-          "Enter the recipient's 10-digit account number.",
-        variant: "destructive",
-      });
-      return;
-    }
+    const requestId = ++resolveRequestRef.current;
 
-    setResolving(true);
-    setResolvedAccount(null);
+    // Small debounce so Flutterwave is not called
+    // immediately on every input update.
+    const timeout = window.setTimeout(async () => {
+      setResolving(true);
+      setResolvedAccount(null);
 
-    try {
-      const { data, error } =
-        await supabase.functions.invoke(
-          "resolve-bank-account",
-          {
-            body: {
-              account_number: cleanAccountNumber,
-              account_bank: bank,
-            },
-          }
-        );
+      try {
+        const { data, error } =
+          await supabase.functions.invoke(
+            "resolve-bank-account",
+            {
+              body: {
+                account_number: cleanAccountNumber,
+                account_bank: bank,
+              },
+            }
+          );
 
-      if (error) {
+        // Ignore response if a newer request has started.
+        if (requestId !== resolveRequestRef.current) {
+          return;
+        }
+
+        if (error) {
+          console.error(
+            "Resolve account function error:",
+            error
+          );
+
+          throw new Error(
+            error.message ||
+              "Unable to verify bank account"
+          );
+        }
+
+        if (!data?.success || !data?.account) {
+          throw new Error(
+            data?.error ||
+              "Bank account could not be verified"
+          );
+        }
+
+        setResolvedAccount({
+          account_number:
+            data.account.account_number,
+          account_name:
+            data.account.account_name,
+          bank_code:
+            data.account.bank_code,
+        });
+
+        toast({
+          title: "Account verified",
+          description:
+            data.account.account_name,
+        });
+      } catch (error: any) {
+        // Ignore errors from stale requests.
+        if (requestId !== resolveRequestRef.current) {
+          return;
+        }
+
         console.error(
-          "Resolve account function error:",
+          "Account resolution failed:",
           error
         );
 
-        throw new Error(
-          error.message ||
-            "Unable to resolve bank account"
-        );
+        toast({
+          title: "Account verification failed",
+          description:
+            error?.message ||
+            "We could not verify this bank account.",
+          variant: "destructive",
+        });
+      } finally {
+        if (requestId === resolveRequestRef.current) {
+          setResolving(false);
+        }
       }
+    }, 600);
 
-      if (!data?.success || !data?.account) {
-        throw new Error(
-          data?.error ||
-            "Bank account could not be verified"
-        );
-      }
-
-      setResolvedAccount({
-        account_number:
-          data.account.account_number,
-        account_name:
-          data.account.account_name,
-        bank_code:
-          data.account.bank_code,
-      });
-
-      toast({
-        title: "Account verified",
-        description: data.account.account_name,
-      });
-    } catch (error: any) {
-      console.error(
-        "Account resolution failed:",
-        error
-      );
-
-      toast({
-        title: "Account verification failed",
-        description:
-          error?.message ||
-          "We could not verify this bank account.",
-        variant: "destructive",
-      });
-    } finally {
-      setResolving(false);
-    }
-  };
+    return () => {
+      window.clearTimeout(timeout);
+    };
+  }, [accountNumber, bank, isOpen, toast]);
 
   // ------------------------------------------------------------
   // Transfer
@@ -234,16 +246,17 @@ const TransferModal = ({
 
     if (!resolvedAccount) {
       toast({
-        title: "Verify account first",
+        title: "Account not verified",
         description:
-          "Please resolve and verify the recipient's bank account.",
+          "Please enter a valid 10-digit account number and wait for verification.",
         variant: "destructive",
       });
       return;
     }
 
     const selectedBank = banks.find(
-      (item) => item.code === resolvedAccount.bank_code
+      (item) =>
+        item.code === resolvedAccount.bank_code
     );
 
     const details = {
@@ -275,11 +288,16 @@ const TransferModal = ({
   // ------------------------------------------------------------
 
   const handleClose = () => {
+    // Invalidate any request currently in flight.
+    resolveRequestRef.current++;
+
     setAmount('');
     setBank('');
     setAccountNumber('');
     setNarration('');
     setResolvedAccount(null);
+    setResolving(false);
+
     onClose();
   };
 
@@ -318,8 +336,15 @@ const TransferModal = ({
 
             <Select
               value={bank}
-              onValueChange={setBank}
-              disabled={banksLoading || resolving}
+              onValueChange={(value) => {
+                // Invalidate previous resolution.
+                resolveRequestRef.current++;
+
+                setBank(value);
+                setResolvedAccount(null);
+                setResolving(false);
+              }}
+              disabled={banksLoading}
             >
               <SelectTrigger id="bank">
                 <SelectValue
@@ -357,40 +382,40 @@ const TransferModal = ({
                 const value =
                   e.target.value.replace(/\D/g, "");
 
+                // Invalidate previous resolution whenever
+                // account number changes.
+                resolveRequestRef.current++;
+
                 setAccountNumber(
                   value.slice(0, 10)
                 );
+                setResolvedAccount(null);
+                setResolving(false);
               }}
               placeholder="Enter 10-digit account number"
               maxLength={10}
               inputMode="numeric"
             />
-          </div>
 
-          {/* Resolve Button */}
-          <Button
-            type="button"
-            onClick={handleResolveAccount}
-            disabled={
-              resolving ||
-              !bank ||
-              accountNumber.length !== 10
-            }
-            variant="outline"
-            className="w-full"
-          >
-            {resolving ? (
-              <>
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                Verifying Account...
-              </>
-            ) : (
-              <>
-                <CheckCircle2 className="h-4 w-4 mr-2" />
-                Resolve Account
-              </>
+            {/* Automatic verification status */}
+            {resolving && (
+              <div className="flex items-center gap-2 text-sm text-blue-600">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                <span>
+                  Verifying account...
+                </span>
+              </div>
             )}
-          </Button>
+
+            {!resolving &&
+              accountNumber.length > 0 &&
+              accountNumber.length < 10 && (
+                <p className="text-xs text-gray-500">
+                  Enter all 10 digits to automatically
+                  verify the account.
+                </p>
+              )}
+          </div>
 
           {/* Resolved Account */}
           {resolvedAccount && (
@@ -459,8 +484,17 @@ const TransferModal = ({
             }
             className="w-full bg-green-600 hover:bg-green-700"
           >
-            <Send className="h-4 w-4 mr-2" />
-            Send Money
+            {resolving ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Verifying Account...
+              </>
+            ) : (
+              <>
+                <Send className="h-4 w-4 mr-2" />
+                Send Money
+              </>
+            )}
           </Button>
         </div>
       </DialogContent>

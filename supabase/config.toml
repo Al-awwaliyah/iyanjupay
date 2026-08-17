@@ -1,28 +1,28 @@
 project_id = "eekfcjpoyfcuzvvsgwaw"
 
 [functions.flutterwave-banks]
-verify_jwt = true
+verify_jwt = false
 
 [functions.flutterwave-payment]
-verify_jwt = true
+verify_jwt = false
 
 [functions.flutterwave-transfer]
-verify_jwt = true
+verify_jwt = false
 
 [functions.flutterwave-virtual-account]
-verify_jwt = true
+verify_jwt = false
 
 [functions.flutterwave-webhook]
 verify_jwt = false
 
 [functions.monnify-payment]
-verify_jwt = true
+verify_jwt = false
 
 [functions.monnify-webhook]
 verify_jwt = false
 
 [functions.resolve-bank-account]
-verify_jwt = true
+verify_jwt = false
 
 [functions.wallet-bootstrap]
-verify_jwt = true
+verify_jwt = false

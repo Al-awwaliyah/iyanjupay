@@ -100,6 +100,17 @@ const Dashboard = () => {
     bootstrapWallet();
   }, [user]);
 
+
+  const syncDeposits = async () => {
+  console.log("Starting Flutterwave deposit sync...");
+
+  const { data, error } = await supabase.functions.invoke(
+    "flutterwave-sync-deposits"
+  );
+
+  console.log("SYNC DATA:", data);
+  console.log("SYNC ERROR:", error);
+};
   // ------------------------------------------------------------
   // Services
   // ------------------------------------------------------------
@@ -957,12 +968,15 @@ const Dashboard = () => {
                     setTransferModalOpen(true)
                   }
                   variant="outline"
-                  className="flex-1 border-white text-white hover:bg-white/20"
+                  className="flex-1 border-white text-blue hover:bg-white/20"
                 >
                   <Send className="h-4 w-4 mr-2" />
 
                   Send Money
                 </Button>
+                <Button onClick={syncDeposits}>
+  Sync Wallet
+</Button>
 
               </div>
 

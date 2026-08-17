@@ -39,6 +39,7 @@ const Dashboard = () => {
   const {
     wallet,
     loading,
+    refreshWallet,
   } = useWallet(user?.id);
 
   const [fundModalOpen, setFundModalOpen] =

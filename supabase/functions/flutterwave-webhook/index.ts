@@ -30,6 +30,7 @@ Deno.serve(async (req) => {
       }
     );
   }
+
   try {
     // ============================================================
     // 1. ENVIRONMENT
@@ -44,10 +45,6 @@ Deno.serve(async (req) => {
     const flutterwaveSecret =
       Deno.env.get("FLUTTERWAVE_SECRET_KEY") ?? "";
 
-    /*
-     * This must be the same secret/hash configured in
-     * Flutterwave Dashboard → Webhooks.
-     */
     const webhookSecret =
       Deno.env.get("FLW_SECRET_HASH") ?? "";
 
@@ -76,7 +73,7 @@ Deno.serve(async (req) => {
     }
 
     // ============================================================
-    // 2. VERIFY FLUTTERWAVE WEBHOOK SIGNATURE
+    // 2. VERIFY WEBHOOK SIGNATURE
     // ============================================================
 
     const receivedHash =
@@ -122,20 +119,19 @@ Deno.serve(async (req) => {
     // 3. ADMIN SUPABASE CLIENT
     // ============================================================
 
-    /*
-     * This function is server-to-server.
-     *
-     * Service role is required because the webhook must be able
-     * to safely read the user's virtual account and call the
-     * protected wallet credit RPC regardless of frontend RLS.
-     */
     const supabase = createClient(
       supabaseUrl,
-      serviceRoleKey
+      serviceRoleKey,
+      {
+        auth: {
+          autoRefreshToken: false,
+          persistSession: false,
+        },
+      }
     );
 
     // ============================================================
-    // 4. READ FLUTTERWAVE PAYLOAD
+    // 4. READ PAYLOAD
     // ============================================================
 
     const payload = await req.json();
@@ -145,17 +141,9 @@ Deno.serve(async (req) => {
       JSON.stringify(payload)
     );
 
-    const data = payload?.data ?? {};
+    const data =
+      payload?.data ?? {};
 
-    /*
-     * Support both the older Flutterwave webhook format:
-     *
-     *   event: "charge.completed"
-     *
-     * and newer payloads that may expose:
-     *
-     *   type: "charge.completed"
-     */
     const event =
       payload?.event ??
       payload?.type ??
@@ -192,38 +180,33 @@ Deno.serve(async (req) => {
     }
 
     // ============================================================
-    // 6. EXTRACT BASIC TRANSACTION DATA
+    // 6. BASIC TRANSACTION DATA
     // ============================================================
 
     const transactionId =
       data?.id;
 
     const transactionStatus =
-      data?.status;
+      String(
+        data?.status ?? ""
+      ).toLowerCase();
 
-    const amount =
-      Number(data?.amount ?? 0);
+    const webhookAmount =
+      Number(
+        data?.amount ?? 0
+      );
 
-    const currency =
+    const webhookCurrency =
       data?.currency
-        ? String(data.currency).toUpperCase()
+        ? String(
+            data.currency
+          ).toUpperCase()
         : null;
 
-    const txRef =
+    const webhookTxRef =
       data?.tx_ref ??
       data?.txRef ??
       null;
-
-    console.log(
-      "Webhook transaction:",
-      JSON.stringify({
-        transactionId,
-        transactionStatus,
-        amount,
-        currency,
-        txRef,
-      })
-    );
 
     if (!transactionId) {
       console.error(
@@ -242,10 +225,17 @@ Deno.serve(async (req) => {
       );
     }
 
-    /*
-     * Flutterwave has used both "successful" and "succeeded"
-     * in different API/webhook contexts.
-     */
+    console.log(
+      "Webhook transaction:",
+      JSON.stringify({
+        transactionId,
+        transactionStatus,
+        webhookAmount,
+        webhookCurrency,
+        webhookTxRef,
+      })
+    );
+
     if (
       transactionStatus !== "successful" &&
       transactionStatus !== "succeeded"
@@ -269,14 +259,11 @@ Deno.serve(async (req) => {
     }
 
     if (
-      !Number.isFinite(amount) ||
-      amount <= 0
+      !Number.isFinite(
+        webhookAmount
+      ) ||
+      webhookAmount <= 0
     ) {
-      console.error(
-        "Invalid transaction amount:",
-        amount
-      );
-
       return new Response(
         JSON.stringify({
           error:
@@ -290,13 +277,9 @@ Deno.serve(async (req) => {
     }
 
     if (
-      currency &&
-      currency !== "NGN"
+      webhookCurrency &&
+      webhookCurrency !== "NGN"
     ) {
-      console.error(
-        `Unsupported webhook currency: ${currency}`
-      );
-
       return new Response(
         JSON.stringify({
           error:
@@ -310,7 +293,7 @@ Deno.serve(async (req) => {
     }
 
     // ============================================================
-    // 7. VERIFY TRANSACTION DIRECTLY WITH FLUTTERWAVE
+    // 7. VERIFY WITH FLUTTERWAVE
     // ============================================================
 
     console.log(
@@ -334,15 +317,12 @@ Deno.serve(async (req) => {
     const verifyData =
       await verifyResponse.json();
 
-    console.log(
-      "Flutterwave verification response:",
-      JSON.stringify(verifyData)
-    );
-
     if (!verifyResponse.ok) {
       console.error(
-        "Flutterwave verification request failed:",
-        JSON.stringify(verifyData)
+        "Flutterwave verification failed:",
+        JSON.stringify(
+          verifyData
+        )
       );
 
       return new Response(
@@ -358,12 +338,9 @@ Deno.serve(async (req) => {
     }
 
     if (
-      verifyData?.status !== "success"
+      verifyData?.status !==
+      "success"
     ) {
-      console.error(
-        "Flutterwave verification returned unsuccessful status"
-      );
-
       return new Response(
         JSON.stringify({
           error:
@@ -397,16 +374,14 @@ Deno.serve(async (req) => {
     // ============================================================
 
     const verifiedStatus =
-      verified?.status;
+      String(
+        verified?.status ?? ""
+      ).toLowerCase();
 
     if (
       verifiedStatus !== "successful" &&
       verifiedStatus !== "succeeded"
     ) {
-      console.log(
-        `Verified transaction ${transactionId} is not successful: ${verifiedStatus}`
-      );
-
       return new Response(
         JSON.stringify({
           success: true,
@@ -438,13 +413,26 @@ Deno.serve(async (req) => {
       verified?.txRef ??
       null;
 
+    const verifiedFlwRef =
+      verified?.flw_ref ??
+      verified?.flwRef ??
+      null;
+
     console.log(
-      "Verified transaction values:",
+      "Verified transaction:",
       JSON.stringify({
-        status: verifiedStatus,
+        id: verified?.id,
         amount: verifiedAmount,
-        currency: verifiedCurrency,
-        txRef: verifiedTxRef,
+        currency:
+          verifiedCurrency,
+        status:
+          verifiedStatus,
+        tx_ref:
+          verifiedTxRef,
+        flw_ref:
+          verifiedFlwRef,
+        payment_type:
+          verified?.payment_type,
       })
     );
 
@@ -481,19 +469,14 @@ Deno.serve(async (req) => {
       );
     }
 
-    /*
-     * Only compare tx_ref when both sides actually provide it.
-     *
-     * Virtual-account transfers may not always expose a normal
-     * Checkout tx_ref.
-     */
     if (
       verifiedTxRef &&
-      txRef &&
-      verifiedTxRef !== txRef
+      webhookTxRef &&
+      verifiedTxRef !==
+        webhookTxRef
     ) {
       console.error(
-        `Reference mismatch: webhook=${txRef}, verified=${verifiedTxRef}`
+        `Reference mismatch: webhook=${webhookTxRef}, verified=${verifiedTxRef}`
       );
 
       return new Response(
@@ -508,16 +491,11 @@ Deno.serve(async (req) => {
       );
     }
 
-    /*
-     * Never credit more than Flutterwave actually verified.
-     */
+    // Never credit more than Flutterwave verified.
     if (
-      verifiedAmount < amount
+      verifiedAmount <
+      webhookAmount
     ) {
-      console.error(
-        `Verified amount ${verifiedAmount} is lower than webhook amount ${amount}`
-      );
-
       return new Response(
         JSON.stringify({
           error:
@@ -531,181 +509,253 @@ Deno.serve(async (req) => {
     }
 
     // ============================================================
-    // 9. FIND DESTINATION VIRTUAL ACCOUNT
+    // 9. DETERMINE TRANSACTION REFERENCE
     // ============================================================
 
-    /*
-     * Virtual-account webhook payloads can expose the destination
-     * account number in different locations.
-     *
-     * We collect all likely fields and then match them against
-     * our own virtual_accounts table.
-     */
-
-    const possibleAccountNumbers = [
-      // Webhook data
-      data?.account_number,
-      data?.accountNumber,
-      data?.virtual_account_number,
-      data?.virtualAccountNumber,
-      data?.destination_account_number,
-      data?.destinationAccountNumber,
-
-      // Webhook metadata
-      data?.meta?.account_number,
-      data?.meta?.accountNumber,
-      data?.meta?.virtual_account_number,
-      data?.meta?.virtualAccountNumber,
-      data?.meta?.destination_account_number,
-      data?.meta?.destinationAccountNumber,
-
-      // Verified transaction
-      verified?.account_number,
-      verified?.accountNumber,
-      verified?.virtual_account_number,
-      verified?.virtualAccountNumber,
-      verified?.destination_account_number,
-      verified?.destinationAccountNumber,
-
-      // Verified metadata
-      verified?.meta?.account_number,
-      verified?.meta?.accountNumber,
-      verified?.meta?.virtual_account_number,
-      verified?.meta?.virtualAccountNumber,
-      verified?.meta?.destination_account_number,
-      verified?.meta?.destinationAccountNumber,
-
-      // Additional common transfer structures
-      data?.bank_transfer?.account_number,
-      data?.bank_transfer?.accountNumber,
-      data?.bank_transfer?.destination_account_number,
-      data?.bank_transfer?.destinationAccountNumber,
-
-      verified?.bank_transfer?.account_number,
-      verified?.bank_transfer?.accountNumber,
-      verified?.bank_transfer?.destination_account_number,
-      verified?.bank_transfer?.destinationAccountNumber,
-    ]
-      .map((value) =>
-        value !== null &&
-        value !== undefined
-          ? String(value).trim()
-          : ""
-      )
-      .filter(Boolean);
-
-    const uniqueAccountNumbers = [
-      ...new Set(
-        possibleAccountNumbers
-      ),
-    ];
+    const finalTxRef =
+      String(
+        verifiedTxRef ??
+          webhookTxRef ??
+          ""
+      ).trim();
 
     console.log(
-      "Possible virtual account numbers:",
-      JSON.stringify(
-        uniqueAccountNumbers
-      )
+      "Final transaction reference:",
+      finalTxRef
     );
 
+    // ============================================================
+    // 10. PRIMARY MATCH:
+    //
+    // IyanjuPay virtual account creation generates:
+    //
+    // IYJ_VA_<USER_ID>_<UUID>
+    //
+    // Example:
+    //
+    // IYJ_VA_deebe49e-..._43140dae-...
+    //
+    // ============================================================
+
+    let virtualAccount: any = null;
+
     if (
-      uniqueAccountNumbers.length === 0
+      finalTxRef.startsWith(
+        "IYJ_VA_"
+      )
     ) {
-      console.error(
-        "Could not determine destination virtual account number"
-      );
+      const parts =
+        finalTxRef.split("_");
 
-      return new Response(
-        JSON.stringify({
-          error:
-            "Destination virtual account could not be identified",
-        }),
-        {
-          status: 400,
-          headers: corsHeaders,
-        }
-      );
-    }
+      /*
+       * UUID itself contains hyphens but no underscores,
+       * therefore:
+       *
+       * ["IYJ", "VA", userId, uuid]
+       *
+       * userId is index 2.
+       */
 
-    // ============================================================
-    // 10. MATCH VIRTUAL ACCOUNT
-    // ============================================================
+      const possibleUserId =
+        parts[2];
 
-    let virtualAccount:
-      | {
-          id: string;
-          user_id: string;
-          wallet_id: string;
-          provider: string;
-          bank_name: string;
-          account_number: string;
-          account_name: string;
-          provider_reference: string | null;
-          order_reference: string | null;
-          is_permanent: boolean;
-          status: string;
-        }
-      | null = null;
-
-    for (
-      const accountNumber
-      of uniqueAccountNumbers
-    ) {
-      const {
-        data: account,
-        error: accountError,
-      } = await supabase
-        .from("virtual_accounts")
-        .select(
-          `
-          id,
-          user_id,
-          wallet_id,
-          provider,
-          bank_name,
-          account_number,
-          account_name,
-          provider_reference,
-          order_reference,
-          is_permanent,
-          status
-          `
-        )
-        .eq(
-          "account_number",
-          accountNumber
-        )
-        .eq(
-          "provider",
-          "flutterwave"
-        )
-        .eq(
-          "is_permanent",
-          true
-        )
-        .eq(
-          "status",
-          "active"
-        )
-        .maybeSingle();
-
-      if (accountError) {
-        console.error(
-          "Virtual account lookup error:",
-          accountError
+      if (
+        possibleUserId
+      ) {
+        console.log(
+          "Detected IyanjuPay virtual-account transaction for user:",
+          possibleUserId
         );
 
-        throw accountError;
-      }
+        const {
+          data: account,
+          error: accountError,
+        } = await supabase
+          .from(
+            "virtual_accounts"
+          )
+          .select(
+            `
+              id,
+              user_id,
+              wallet_id,
+              provider,
+              bank_name,
+              account_number,
+              account_name,
+              provider_reference,
+              order_reference,
+              is_permanent,
+              status
+            `
+          )
+          .eq(
+            "user_id",
+            possibleUserId
+          )
+          .eq(
+            "provider",
+            "flutterwave"
+          )
+          .eq(
+            "is_permanent",
+            true
+          )
+          .eq(
+            "status",
+            "active"
+          )
+          .maybeSingle();
 
-      if (account) {
-        virtualAccount = account;
-        break;
+        if (accountError) {
+          console.error(
+            "Virtual account lookup by tx_ref failed:",
+            accountError
+          );
+
+          throw accountError;
+        }
+
+        if (account) {
+          virtualAccount =
+            account;
+        }
       }
     }
+
+    // ============================================================
+    // 11. FALLBACK MATCH:
+    // ACCOUNT NUMBER
+    // ============================================================
+
+    if (!virtualAccount) {
+      const possibleAccountNumbers = [
+        data?.account_number,
+        data?.accountNumber,
+        data?.virtual_account_number,
+        data?.virtualAccountNumber,
+        data?.destination_account_number,
+        data?.destinationAccountNumber,
+
+        data?.meta?.account_number,
+        data?.meta?.accountNumber,
+        data?.meta?.virtual_account_number,
+        data?.meta?.virtualAccountNumber,
+        data?.meta?.destination_account_number,
+        data?.meta?.destinationAccountNumber,
+
+        verified?.account_number,
+        verified?.accountNumber,
+        verified?.virtual_account_number,
+        verified?.virtualAccountNumber,
+        verified?.destination_account_number,
+        verified?.destinationAccountNumber,
+
+        verified?.meta?.account_number,
+        verified?.meta?.accountNumber,
+        verified?.meta?.virtual_account_number,
+        verified?.meta?.virtualAccountNumber,
+        verified?.meta?.destination_account_number,
+        verified?.meta?.destinationAccountNumber,
+
+        data?.bank_transfer?.account_number,
+        data?.bank_transfer?.accountNumber,
+        data?.bank_transfer?.destination_account_number,
+        data?.bank_transfer?.destinationAccountNumber,
+
+        verified?.bank_transfer?.account_number,
+        verified?.bank_transfer?.accountNumber,
+        verified?.bank_transfer?.destination_account_number,
+        verified?.bank_transfer?.destinationAccountNumber,
+      ]
+        .map((value) =>
+          value !== null &&
+          value !== undefined
+            ? String(value).trim()
+            : ""
+        )
+        .filter(Boolean);
+
+      const uniqueAccountNumbers = [
+        ...new Set(
+          possibleAccountNumbers
+        ),
+      ];
+
+      console.log(
+        "Fallback account numbers:",
+        JSON.stringify(
+          uniqueAccountNumbers
+        )
+      );
+
+      for (
+        const accountNumber of
+        uniqueAccountNumbers
+      ) {
+        const {
+          data: account,
+          error: accountError,
+        } = await supabase
+          .from(
+            "virtual_accounts"
+          )
+          .select(
+            `
+              id,
+              user_id,
+              wallet_id,
+              provider,
+              bank_name,
+              account_number,
+              account_name,
+              provider_reference,
+              order_reference,
+              is_permanent,
+              status
+            `
+          )
+          .eq(
+            "account_number",
+            accountNumber
+          )
+          .eq(
+            "provider",
+            "flutterwave"
+          )
+          .eq(
+            "is_permanent",
+            true
+          )
+          .eq(
+            "status",
+            "active"
+          )
+          .maybeSingle();
+
+        if (accountError) {
+          throw accountError;
+        }
+
+        if (account) {
+          virtualAccount =
+            account;
+          break;
+        }
+      }
+    }
+
+    // ============================================================
+    // 12. FINAL ACCOUNT VALIDATION
+    // ============================================================
 
     if (!virtualAccount) {
       console.error(
-        "No active permanent virtual account matched this transaction"
+        "No matching IyanjuPay virtual account found",
+        JSON.stringify({
+          transactionId,
+          txRef: finalTxRef,
+        })
       );
 
       return new Response(
@@ -735,16 +785,12 @@ Deno.serve(async (req) => {
     );
 
     // ============================================================
-    // 11. VALIDATE WALLET
+    // 13. VALIDATE WALLET
     // ============================================================
 
     if (
       !virtualAccount.wallet_id
     ) {
-      console.error(
-        "Virtual account has no wallet_id"
-      );
-
       return new Response(
         JSON.stringify({
           error:
@@ -757,17 +803,13 @@ Deno.serve(async (req) => {
       );
     }
 
-    // ============================================================
-    // 12. VERIFY WALLET BELONGS TO USER
-    // ============================================================
-
     const {
       data: wallet,
       error: walletError,
     } = await supabase
       .from("wallets")
       .select(
-        "id, user_id, currency, status"
+        "id, user_id, balance, currency, status"
       )
       .eq(
         "id",
@@ -776,19 +818,10 @@ Deno.serve(async (req) => {
       .maybeSingle();
 
     if (walletError) {
-      console.error(
-        "Wallet lookup error:",
-        walletError
-      );
-
       throw walletError;
     }
 
     if (!wallet) {
-      console.error(
-        "Wallet not found for virtual account"
-      );
-
       return new Response(
         JSON.stringify({
           error:
@@ -805,10 +838,6 @@ Deno.serve(async (req) => {
       wallet.user_id !==
       virtualAccount.user_id
     ) {
-      console.error(
-        "Virtual account / wallet ownership mismatch"
-      );
-
       return new Response(
         JSON.stringify({
           error:
@@ -822,12 +851,9 @@ Deno.serve(async (req) => {
     }
 
     if (
-      wallet.currency !== "NGN"
+      wallet.currency !==
+      "NGN"
     ) {
-      console.error(
-        `Wallet currency is ${wallet.currency}, expected NGN`
-      );
-
       return new Response(
         JSON.stringify({
           error:
@@ -841,12 +867,9 @@ Deno.serve(async (req) => {
     }
 
     if (
-      wallet.status !== "active"
+      wallet.status !==
+      "active"
     ) {
-      console.error(
-        `Wallet is not active: ${wallet.status}`
-      );
-
       return new Response(
         JSON.stringify({
           error:
@@ -860,40 +883,38 @@ Deno.serve(async (req) => {
     }
 
     // ============================================================
-    // 13. CREATE IDEMPOTENT FUNDING REFERENCE
+    // 14. IDEMPOTENT REFERENCE
     // ============================================================
-
-    /*
-     * Flutterwave transaction IDs are used as the provider-side
-     * unique identifier.
-     *
-     * Example:
-     *
-     *   FLW_123456789
-     *
-     * This is passed to credit_wallet(), whose reference_number
-     * is UNIQUE.
-     *
-     * Therefore repeated webhook deliveries cannot credit the
-     * wallet twice.
-     */
 
     const fundingReference =
       `FLW_${String(
         transactionId
       )}`;
 
+    console.log(
+      "Funding reference:",
+      fundingReference
+    );
+
     // ============================================================
-    // 14. OPTIONAL EARLY DUPLICATE CHECK
+    // 15. EARLY DUPLICATE CHECK
     // ============================================================
 
     const {
       data: existingFunding,
-      error: existingFundingError,
+      error:
+        existingFundingError,
     } = await supabase
       .from("transactions")
       .select(
-        "id, wallet_id, amount, status, reference_number, provider_reference"
+        `
+          id,
+          wallet_id,
+          amount,
+          status,
+          reference_number,
+          provider_reference
+        `
       )
       .eq(
         "reference_number",
@@ -902,20 +923,14 @@ Deno.serve(async (req) => {
       .maybeSingle();
 
     if (existingFundingError) {
-      console.error(
-        "Existing funding lookup error:",
-        existingFundingError
-      );
-
       throw existingFundingError;
     }
 
     if (
-      existingFunding?.status ===
-      "completed"
+      existingFunding
     ) {
       console.log(
-        `Flutterwave transaction ${transactionId} has already been processed`
+        `Flutterwave transaction ${transactionId} already processed`
       );
 
       return new Response(
@@ -939,11 +954,11 @@ Deno.serve(async (req) => {
     }
 
     // ============================================================
-    // 15. CREDIT WALLET
+    // 16. CREDIT WALLET
     // ============================================================
 
     console.log(
-      "Calling credit_wallet RPC:",
+      "Calling credit_wallet:",
       JSON.stringify({
         wallet_id:
           virtualAccount.wallet_id,
@@ -951,10 +966,6 @@ Deno.serve(async (req) => {
           verifiedAmount,
         reference:
           fundingReference,
-        provider:
-          "flutterwave",
-        provider_reference:
-          String(transactionId),
       })
     );
 
@@ -980,7 +991,10 @@ Deno.serve(async (req) => {
           "flutterwave",
 
         p_provider_reference:
-          String(transactionId),
+          String(
+            verifiedFlwRef ??
+              transactionId
+          ),
       }
     );
 
@@ -1001,13 +1015,12 @@ Deno.serve(async (req) => {
     );
 
     // ============================================================
-    // 16. RETURN SUCCESS
+    // 17. SUCCESS
     // ============================================================
 
     return new Response(
       JSON.stringify({
         success: true,
-
         event:
           event ??
           "charge.completed",

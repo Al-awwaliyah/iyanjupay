@@ -4,9 +4,11 @@ import { corsHeaders, json, adminClient, getUser, flw } from '../_shared/auth.ts
  * Reconciles bank deposits made into the user's permanent Flutterwave
  * virtual account and credits the wallet immediately.
  *
- * Reconciliation order:
- * 1. Flutterwave tx_ref / order_reference
- * 2. Flutterwave account number
+ * Reconciliation:
+ * 1. Virtual-account order_reference / tx_ref
+ * 2. Flutterwave provider_reference / flw_ref
+ * 3. Virtual account number
+ * 4. Full transaction JSON fallback
  *
  * Every credit is idempotent through FLW_<transaction_id>.
  */
@@ -16,51 +18,100 @@ Deno.serve(async (req) => {
   }
 
   if (req.method !== 'POST') {
-    return json({ success: false, error: 'Method not allowed' }, 405)
+    return json(
+      {
+        success: false,
+        error: 'Method not allowed',
+      },
+      405,
+    )
   }
 
   try {
+    // ==================================================
+    // 1. Authenticate user
+    // ==================================================
+
     const user = await getUser(req)
 
     if (!user) {
-      return json({ success: false, error: 'Unauthorized' }, 401)
+      return json(
+        {
+          success: false,
+          error: 'Unauthorized',
+        },
+        401,
+      )
     }
 
     const admin = adminClient()
 
-    // --------------------------------------------------
-    // 1. Get the user's active Flutterwave virtual accounts
-    // --------------------------------------------------
+    console.log(
+      `Starting Flutterwave deposit sync for user ${user.id}`,
+    )
 
-    const { data: accounts, error: accountsError } = await admin
+    // ==================================================
+    // 2. Get user's active Flutterwave virtual accounts
+    // ==================================================
+
+    const {
+      data: accounts,
+      error: accountsError,
+    } = await admin
       .from('virtual_accounts')
       .select(
-        'id, user_id, wallet_id, account_number, bank_name, provider_reference, order_reference, is_permanent',
+        `
+          id,
+          user_id,
+          wallet_id,
+          account_number,
+          bank_name,
+          provider_reference,
+          order_reference,
+          is_permanent,
+          status
+        `,
       )
       .eq('user_id', user.id)
       .eq('provider', 'flutterwave')
       .eq('status', 'active')
 
     if (accountsError) {
+      console.error(
+        'Virtual account lookup failed:',
+        accountsError,
+      )
+
       throw accountsError
     }
 
     if (!accounts || accounts.length === 0) {
+      console.log(
+        `No active Flutterwave virtual account found for ${user.id}`,
+      )
+
       return json({
         success: true,
         credited: 0,
         credited_amount: 0,
+        balance: 0,
         message: 'No dedicated account found yet',
       })
     }
 
-    // --------------------------------------------------
-    // 2. Find wallet
-    // --------------------------------------------------
+    // ==================================================
+    // 3. Find wallet
+    // ==================================================
 
-    const walletId = accounts.find((a) => a.wallet_id)?.wallet_id
+    const walletId = accounts.find(
+      (account) => account.wallet_id,
+    )?.wallet_id
 
     if (!walletId) {
+      console.error(
+        `No wallet_id found for user ${user.id}`,
+      )
+
       return json(
         {
           success: false,
@@ -70,40 +121,61 @@ Deno.serve(async (req) => {
       )
     }
 
-    // --------------------------------------------------
-    // 3. Build reconciliation identifiers
-    // --------------------------------------------------
+    // ==================================================
+    // 4. Prepare reconciliation identifiers
+    // ==================================================
 
     const accountNumbers = accounts
-      .map((a) => String(a.account_number ?? '').trim())
+      .map((account) =>
+        String(account.account_number ?? '').trim(),
+      )
       .filter(Boolean)
 
     const orderReferences = accounts
-      .map((a) => String(a.order_reference ?? '').trim())
+      .map((account) =>
+        String(account.order_reference ?? '').trim(),
+      )
       .filter(Boolean)
 
     const providerReferences = accounts
-      .map((a) => String(a.provider_reference ?? '').trim())
+      .map((account) =>
+        String(account.provider_reference ?? '').trim(),
+      )
       .filter(Boolean)
 
-    console.log('Flutterwave reconciliation data:', {
-      accountNumbers,
-      orderReferences,
-      providerReferences,
-    })
-
-    // --------------------------------------------------
-    // 4. Pull recent successful transactions
-    // --------------------------------------------------
-
-    const to = new Date()
-    const from = new Date(
-      to.getTime() - 14 * 24 * 60 * 60 * 1000,
+    console.log(
+      'Flutterwave reconciliation data:',
+      {
+        accountNumbers,
+        orderReferences,
+        providerReferences,
+      },
     )
 
-    const fmt = (d: Date) => d.toISOString().slice(0, 10)
+    // ==================================================
+    // 5. Pull recent successful Flutterwave transactions
+    // ==================================================
 
-    const { ok, body } = await flw(
+    const to = new Date()
+
+    // Search the last 14 days so the existing test transfer
+    // is definitely included.
+    const from = new Date(
+      to.getTime() -
+        14 * 24 * 60 * 60 * 1000,
+    )
+
+    const fmt = (date: Date) =>
+      date.toISOString().slice(0, 10)
+
+    console.log(
+      `Searching Flutterwave transactions from ${fmt(from)} to ${fmt(to)}`,
+    )
+
+    const {
+      ok,
+      body,
+    } = await flw(
       `/transactions?status=successful&from=${fmt(from)}&to=${fmt(to)}&page=1`,
     )
 
@@ -130,134 +202,221 @@ Deno.serve(async (req) => {
       `Flutterwave returned ${body.data.length} transaction(s)`,
     )
 
-    // --------------------------------------------------
-    // 5. Identify deposits belonging to this user
-    // --------------------------------------------------
+    // ==================================================
+    // 6. DEBUG: print raw transactions
+    // ==================================================
+    //
+    // This is intentionally included for debugging.
+    // It lets us see exactly where Flutterwave places
+    // the virtual-account information.
+    //
+    // IMPORTANT:
+    // Remove or reduce this logging after the issue
+    // has been resolved.
+    // ==================================================
 
-    const deposits = body.data.filter((txn: any) => {
-      const status = String(txn?.status ?? '').toLowerCase()
+    console.log(
+      'FLUTTERWAVE TRANSACTIONS RAW:',
+      JSON.stringify(body.data, null, 2),
+    )
 
-      if (
-        status !== 'successful' &&
-        status !== 'succeeded'
-      ) {
-        return false
-      }
+    // ==================================================
+    // 7. Identify deposits belonging to this user
+    // ==================================================
 
-      const currency = String(
-        txn?.currency ?? '',
-      ).toUpperCase()
+    const deposits = body.data.filter(
+      (txn: any) => {
+        const status = String(
+          txn?.status ?? '',
+        ).toLowerCase()
 
-      if (currency !== 'NGN') {
-        return false
-      }
+        if (
+          status !== 'successful' &&
+          status !== 'succeeded'
+        ) {
+          return false
+        }
 
-      const amount = Number(txn?.amount ?? 0)
+        const currency = String(
+          txn?.currency ?? '',
+        ).toUpperCase()
 
-      if (!Number.isFinite(amount) || amount <= 0) {
-        return false
-      }
+        if (currency !== 'NGN') {
+          return false
+        }
 
-      const txRef = String(
-        txn?.tx_ref ?? '',
-      ).trim()
-
-      const flwRef = String(
-        txn?.flw_ref ?? '',
-      ).trim()
-
-      const transactionAccountNumber = String(
-        txn?.account_number ??
-          txn?.meta_data?.account_number ??
-          '',
-      ).trim()
-
-      // Primary match: virtual-account tx_ref
-      const matchesOrderReference =
-        !!txRef &&
-        orderReferences.includes(txRef)
-
-      // Secondary match: provider/flw reference
-      const matchesProviderReference =
-        !!flwRef &&
-        providerReferences.includes(flwRef)
-
-      // Fallback: account number
-      const matchesAccountNumber =
-        !!transactionAccountNumber &&
-        accountNumbers.includes(
-          transactionAccountNumber,
+        const amount = Number(
+          txn?.amount ?? 0,
         )
 
-      // Last-resort compatibility check against the
-      // complete transaction object.
-      const haystack = JSON.stringify(txn)
+        if (
+          !Number.isFinite(amount) ||
+          amount <= 0
+        ) {
+          return false
+        }
 
-      const containsAccountNumber =
-        accountNumbers.length > 0 &&
-        accountNumbers.some((number) =>
-          haystack.includes(number),
-        )
+        // ----------------------------------------------
+        // Possible Flutterwave identifiers
+        // ----------------------------------------------
 
-      const matched =
-        matchesOrderReference ||
-        matchesProviderReference ||
-        matchesAccountNumber ||
-        containsAccountNumber
+        const txRef = String(
+          txn?.tx_ref ??
+            txn?.txRef ??
+            txn?.reference ??
+            '',
+        ).trim()
 
-      if (matched) {
+        const flwRef = String(
+          txn?.flw_ref ??
+            txn?.flwRef ??
+            '',
+        ).trim()
+
+        const accountNumber = String(
+          txn?.account_number ??
+            txn?.accountNumber ??
+            txn?.meta_data?.account_number ??
+            txn?.meta_data?.accountNumber ??
+            txn?.meta?.account_number ??
+            txn?.meta?.accountNumber ??
+            '',
+        ).trim()
+
+        // ----------------------------------------------
+        // Primary reference matching
+        // ----------------------------------------------
+
+        const matchesOrderReference =
+          !!txRef &&
+          orderReferences.includes(txRef)
+
+        const matchesProviderReference =
+          !!flwRef &&
+          providerReferences.includes(flwRef)
+
+        // ----------------------------------------------
+        // Account number matching
+        // ----------------------------------------------
+
+        const matchesAccountNumber =
+          !!accountNumber &&
+          accountNumbers.includes(
+            accountNumber,
+          )
+
+        // ----------------------------------------------
+        // Fallback: search complete transaction JSON
+        // ----------------------------------------------
+
+        const haystack =
+          JSON.stringify(txn)
+
+        const containsAccountNumber =
+          accountNumbers.length > 0 &&
+          accountNumbers.some(
+            (number) =>
+              haystack.includes(number),
+          )
+
+        const containsOrderReference =
+          orderReferences.length > 0 &&
+          orderReferences.some(
+            (reference) =>
+              haystack.includes(reference),
+          )
+
+        const containsProviderReference =
+          providerReferences.length > 0 &&
+          providerReferences.some(
+            (reference) =>
+              haystack.includes(reference),
+          )
+
+        const matched =
+          matchesOrderReference ||
+          matchesProviderReference ||
+          matchesAccountNumber ||
+          containsAccountNumber ||
+          containsOrderReference ||
+          containsProviderReference
+
+        // ----------------------------------------------
+        // Detailed matching debug
+        // ----------------------------------------------
+
         console.log(
-          'Matched Flutterwave deposit:',
-          JSON.stringify({
-            id: txn?.id,
-            tx_ref: txn?.tx_ref,
-            flw_ref: txn?.flw_ref,
-            amount: txn?.amount,
-            currency: txn?.currency,
-            account_number:
-              transactionAccountNumber || null,
-            matchedBy: {
-              orderReference: matchesOrderReference,
-              providerReference:
-                matchesProviderReference,
-              accountNumber:
-                matchesAccountNumber,
-              containsAccountNumber,
-            },
-          }),
-        )
-      }
+          'Transaction matching analysis:',
+          JSON.stringify(
+            {
+              id: txn?.id ?? null,
+              amount: txn?.amount ?? null,
+              currency: txn?.currency ?? null,
+              status: txn?.status ?? null,
+              tx_ref: txRef || null,
+              flw_ref: flwRef || null,
+              account_number:
+                accountNumber || null,
 
-      return matched
-    })
+              matchedBy: {
+                orderReference:
+                  matchesOrderReference,
+
+                providerReference:
+                  matchesProviderReference,
+
+                accountNumber:
+                  matchesAccountNumber,
+
+                containsAccountNumber,
+
+                containsOrderReference,
+
+                containsProviderReference,
+              },
+
+              finalMatch: matched,
+            },
+            null,
+            2,
+          ),
+        )
+
+        return matched
+      },
+    )
 
     console.log(
       `Sync deposits: ${deposits.length} candidate(s) for user ${user.id}`,
     )
 
+    // ==================================================
+    // 8. Process deposits
+    // ==================================================
+
     let credited = 0
     let creditedAmount = 0
 
-    // --------------------------------------------------
-    // 6. Process each candidate
-    // --------------------------------------------------
-
     for (const txn of deposits) {
-      const transactionId = String(txn?.id ?? '').trim()
+      const transactionId = String(
+        txn?.id ?? '',
+      ).trim()
 
       if (!transactionId) {
         console.error(
           'Skipping transaction without ID:',
           JSON.stringify(txn),
         )
+
         continue
       }
 
-      const reference = `FLW_${transactionId}`
+      const reference =
+        `FLW_${transactionId}`
 
-      // ------------------------------------------------
-      // Idempotency check
-      // ------------------------------------------------
+      // ==================================================
+      // 9. Idempotency check
+      // ==================================================
 
       const {
         data: existing,
@@ -265,7 +424,10 @@ Deno.serve(async (req) => {
       } = await admin
         .from('transactions')
         .select('id')
-        .eq('reference_number', reference)
+        .eq(
+          'reference_number',
+          reference,
+        )
         .maybeSingle()
 
       if (existingError) {
@@ -276,18 +438,24 @@ Deno.serve(async (req) => {
         console.log(
           `Transaction ${transactionId} already processed`,
         )
+
         continue
       }
 
-      // ------------------------------------------------
-      // Re-verify with Flutterwave
-      // ------------------------------------------------
+      // ==================================================
+      // 10. Re-verify transaction with Flutterwave
+      // ==================================================
+
+      console.log(
+        `Verifying Flutterwave transaction ${transactionId}`,
+      )
 
       const verify = await flw(
         `/transactions/${transactionId}/verify`,
       )
 
-      const verified = verify.body?.data
+      const verified =
+        verify.body?.data
 
       if (
         !verify.ok ||
@@ -300,17 +468,26 @@ Deno.serve(async (req) => {
       ) {
         console.error(
           `Verification failed for ${transactionId}:`,
-          JSON.stringify(verify.body),
+          JSON.stringify(
+            verify.body,
+          ),
         )
 
         continue
       }
 
+      // ==================================================
+      // 11. Validate verified amount
+      // ==================================================
+
       const amount = Number(
         verified.amount ?? 0,
       )
 
-      if (!Number.isFinite(amount) || amount <= 0) {
+      if (
+        !Number.isFinite(amount) ||
+        amount <= 0
+      ) {
         console.error(
           `Invalid verified amount for ${transactionId}:`,
           verified.amount,
@@ -319,15 +496,20 @@ Deno.serve(async (req) => {
         continue
       }
 
-      // ------------------------------------------------
-      // Final verification of currency
-      // ------------------------------------------------
+      // ==================================================
+      // 12. Validate verified currency
+      // ==================================================
 
-      const verifiedCurrency = String(
-        verified.currency ?? txn.currency ?? '',
-      ).toUpperCase()
+      const verifiedCurrency =
+        String(
+          verified.currency ??
+            txn.currency ??
+            '',
+        ).toUpperCase()
 
-      if (verifiedCurrency !== 'NGN') {
+      if (
+        verifiedCurrency !== 'NGN'
+      ) {
         console.error(
           `Skipping non-NGN transaction ${transactionId}`,
         )
@@ -335,9 +517,13 @@ Deno.serve(async (req) => {
         continue
       }
 
-      // ------------------------------------------------
-      // Credit wallet
-      // ------------------------------------------------
+      // ==================================================
+      // 13. Credit wallet
+      // ==================================================
+
+      console.log(
+        `Crediting wallet ${walletId} with ${amount} NGN`,
+      )
 
       const {
         data: result,
@@ -347,15 +533,18 @@ Deno.serve(async (req) => {
         {
           p_wallet_id: walletId,
           p_amount: amount,
-          p_reference_number: reference,
+          p_reference_number:
+            reference,
           p_description:
             'Wallet funding via bank transfer',
-          p_provider: 'flutterwave',
+          p_provider:
+            'flutterwave',
           p_provider_reference:
             String(
               verified.tx_ref ??
                 verified.flw_ref ??
                 txn.tx_ref ??
+                txn.flw_ref ??
                 txn.id,
             ),
         },
@@ -366,10 +555,18 @@ Deno.serve(async (req) => {
           'credit_wallet failed:',
           creditError,
         )
+
         continue
       }
 
-      if (result?.already_processed !== true) {
+      console.log(
+        'credit_wallet result:',
+        JSON.stringify(result),
+      )
+
+      if (
+        result?.already_processed !== true
+      ) {
         credited += 1
         creditedAmount += amount
 
@@ -379,9 +576,9 @@ Deno.serve(async (req) => {
       }
     }
 
-    // --------------------------------------------------
-    // 7. Return authoritative wallet balance
-    // --------------------------------------------------
+    // ==================================================
+    // 14. Get authoritative wallet balance
+    // ==================================================
 
     const {
       data: wallet,
@@ -398,11 +595,31 @@ Deno.serve(async (req) => {
       throw walletError
     }
 
+    // ==================================================
+    // 15. Return result
+    // ==================================================
+
+    console.log(
+      'Final sync result:',
+      JSON.stringify({
+        credited,
+        creditedAmount,
+        balance:
+          Number(
+            wallet?.balance ?? 0,
+          ),
+      }),
+    )
+
     return json({
       success: true,
       credited,
-      credited_amount: creditedAmount,
-      balance: Number(wallet?.balance ?? 0),
+      credited_amount:
+        creditedAmount,
+      balance:
+        Number(
+          wallet?.balance ?? 0,
+        ),
       wallet,
     })
   } catch (error: any) {

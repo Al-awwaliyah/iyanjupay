@@ -914,10 +914,7 @@ const Dashboard = () => {
                         : "****"}
 
                     </span>
-
-                    </Button>
-                <Button onClick={syncDeposits}> *
-                  </Button>
+                    
                     <Button
                       variant="ghost"
                       size="sm"

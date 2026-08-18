@@ -7,7 +7,16 @@ interface AppSplashProps {
 const AppSplash = ({ children }: AppSplashProps) => {
   const [showSplash, setShowSplash] = useState(true);
 
-  /* ================================================================
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setShowSplash(false);
+    }, 1200);
+
+    return () => clearTimeout(timer);
+  }, []);
+
+    /* ================================================================
    SPLASH SCREEN
    ================================================================ */
 
@@ -116,13 +125,6 @@ const DashboardSplashScreen = () => {
     </div>
   );
 };
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setShowSplash(false);
-    }, 1200);
-
-    return () => clearTimeout(timer);
-  }, []);
 
   if (showSplash) {
     return (

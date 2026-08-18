@@ -6,7 +6,27 @@ import {
   Card,
   CardContent,
 } from "@/components/ui/card";
-import { LogOut, User, History, Send, QrCode, Shield, Gift, Banknote, Car, Gamepad2, Plane, Home, Plus, Eye, EyeOff, Smartphone, Wifi, Zap, CreditCard, } from 'lucide-react';
+import {
+  LogOut,
+  User,
+  History,
+  Send,
+  QrCode,
+  Shield,
+  Gift,
+  Banknote,
+  Car,
+  Gamepad2,
+  Plane,
+  Home,
+  Plus,
+  Eye,
+  EyeOff,
+  Smartphone,
+  Wifi,
+  Zap,
+  CreditCard,
+} from 'lucide-react';
 
 import ServiceCard from './services/ServiceCard';
 import FundWalletModal from './modals/FundWalletModal';
@@ -70,9 +90,9 @@ const Dashboard = () => {
 
   const { toast } = useToast();
 
-  // ------------------------------------------------------------
-  // Wallet bootstrap
-  // ------------------------------------------------------------
+  // ============================================================
+  // WALLET BOOTSTRAP
+  // ============================================================
 
   useEffect(() => {
     if (!user) return;
@@ -100,20 +120,40 @@ const Dashboard = () => {
     bootstrapWallet();
   }, [user]);
 
+  // ============================================================
+  // OPTIONAL MANUAL DEPOSIT SYNC
+  // ============================================================
 
   const syncDeposits = async () => {
-  console.log("Starting Flutterwave deposit sync...");
+    console.log(
+      "Starting Flutterwave deposit sync..."
+    );
 
-  const { data, error } = await supabase.functions.invoke(
-    "flutterwave-sync-deposits"
-  );
+    const {
+      data,
+      error,
+    } = await supabase.functions.invoke(
+      "flutterwave-sync-deposits"
+    );
 
-  console.log("SYNC DATA:", data);
-  console.log("SYNC ERROR:", error);
-};
-  // ------------------------------------------------------------
-  // Services
-  // ------------------------------------------------------------
+    console.log(
+      "SYNC DATA:",
+      data
+    );
+
+    console.log(
+      "SYNC ERROR:",
+      error
+    );
+
+    if (!error) {
+      await refreshWallet();
+    }
+  };
+
+  // ============================================================
+  // SERVICES
+  // ============================================================
 
   const services = [
     {
@@ -202,28 +242,43 @@ const Dashboard = () => {
     },
   ];
 
-  // ------------------------------------------------------------
-  // Service click
-  // ------------------------------------------------------------
+  // ============================================================
+  // SERVICE CLICK
+  // ============================================================
 
   const handleServiceClick = (
     service: typeof services[0]
   ) => {
     if (service.type === 'transfer') {
       setTransferModalOpen(true);
-    } else {
-      setSelectedService({
-        title: service.title,
-        type: service.type,
-      });
-
-      setServiceModalOpen(true);
+      return;
     }
+
+    setSelectedService({
+      title: service.title,
+      type: service.type,
+    });
+
+    setServiceModalOpen(true);
   };
 
-  // ------------------------------------------------------------
-  // SERVICE PAYMENTS
-  // ------------------------------------------------------------
+  // ============================================================
+  // SERVICE / BILL PAYMENTS
+  //
+  // Dashboard
+  //      ↓
+  // flutterwave-bills
+  //      ↓
+  // authenticate user
+  //      ↓
+  // service → biller/item mapping
+  //      ↓
+  // debit wallet
+  //      ↓
+  // Flutterwave
+  //
+  // The browser NEVER directly updates the wallet.
+  // ============================================================
 
   const handlePurchase = async (
     amount: number,
@@ -251,7 +306,10 @@ const Dashboard = () => {
       return;
     }
 
-    if (!amount || amount <= 0) {
+    if (
+      !Number.isFinite(amount) ||
+      amount <= 0
+    ) {
       toast({
         title: "Invalid amount",
         description:
@@ -277,62 +335,190 @@ const Dashboard = () => {
     }
 
     try {
+      // ----------------------------------------------------------
+      // SERVICE-SPECIFIC VALIDATION
+      // ----------------------------------------------------------
+
+      if (
+        selectedService.type === "airtime" &&
+        !details?.phoneNumber
+      ) {
+        throw new Error(
+          "Phone number is required."
+        );
+      }
+
+      if (
+        selectedService.type === "airtime" &&
+        !details?.provider
+      ) {
+        throw new Error(
+          "Please select a network provider."
+        );
+      }
+
+      if (
+        selectedService.type === "cable" &&
+        !details?.provider
+      ) {
+        throw new Error(
+          "Please select a cable provider."
+        );
+      }
+
+      if (
+        selectedService.type === "cable" &&
+        !details?.smartCardNumber
+      ) {
+        throw new Error(
+          "Smart card number is required."
+        );
+      }
+
+      if (
+        selectedService.type === "electricity" &&
+        !details?.provider
+      ) {
+        throw new Error(
+          "Please select an electricity provider."
+        );
+      }
+
+      if (
+        selectedService.type === "electricity" &&
+        !details?.accountNumber
+      ) {
+        throw new Error(
+          "Meter/account number is required."
+        );
+      }
+
+      if (
+        selectedService.type === "internet" &&
+        !details?.provider
+      ) {
+        throw new Error(
+          "Please select an internet provider."
+        );
+      }
+
+      if (
+        selectedService.type === "internet" &&
+        !details?.accountNumber
+      ) {
+        throw new Error(
+          "Account number is required."
+        );
+      }
+
+      if (
+        selectedService.type === "betting" &&
+        !details?.provider
+      ) {
+        throw new Error(
+          "Please select a betting platform."
+        );
+      }
+
+      if (
+        selectedService.type === "betting" &&
+        !details?.accountNumber
+      ) {
+        throw new Error(
+          "Betting account number is required."
+        );
+      }
+
+      // ----------------------------------------------------------
+      // PROCESS PAYMENT
+      //
+      // IMPORTANT:
+      //
+      // We intentionally call flutterwave-bills here.
+      //
+      // We do NOT call:
+      //
+      // flutterwave-service-payment
+      //
+      // because that function does not exist.
+      //
+      // The flutterwave-bills Edge Function handles the mapping
+      // between the frontend service and Flutterwave biller/item.
+      // ----------------------------------------------------------
+
+      toast({
+        title: "Processing payment",
+        description:
+          `Processing ${selectedService.title.toLowerCase()}...`,
+      });
+
       const {
         data,
         error,
       } =
         await supabase.functions.invoke(
-          "flutterwave-service-payment",
+          "flutterwave-bills",
           {
             body: {
+              action: "pay",
+
               service:
                 selectedService.type,
+
               amount,
-              details,
+
+              details: {
+                ...details,
+
+                service:
+                  selectedService.type,
+
+                amount,
+              },
             },
           }
         );
 
+      // ----------------------------------------------------------
+      // EDGE FUNCTION INVOCATION ERROR
+      // ----------------------------------------------------------
+
       if (error) {
         console.error(
-          "Service payment error:",
+          "flutterwave-bills invocation error:",
           error
         );
 
         throw new Error(
           error.message ||
-            "Unable to process service payment."
+            "Unable to process bill payment."
         );
       }
 
       console.log(
-        "Flutterwave service response:",
+        "flutterwave-bills response:",
         data
       );
+
+      // ----------------------------------------------------------
+      // EDGE FUNCTION BUSINESS ERROR
+      // ----------------------------------------------------------
 
       if (!data?.success) {
         throw new Error(
           data?.error ||
-            "Service payment failed."
+            "Bill payment failed."
         );
       }
 
-      // --------------------------------------------------------
-      // IMPORTANT
-      //
-      // Do NOT update the wallets table from the browser.
-      //
-      // The Edge Function is responsible for the wallet debit.
-      // Direct UPDATE requests from the browser were causing:
-      //
-      // 403 Forbidden
-      // permission denied for table wallets
-      //
-      // The wallet hook remains responsible for displaying the
-      // current wallet state.
-      // --------------------------------------------------------
+      // ----------------------------------------------------------
+      // SUCCESS
+      // ----------------------------------------------------------
 
       setServiceModalOpen(false);
+
+      // Refresh wallet because the Edge Function debited it.
+      await refreshWallet();
 
       toast({
         title: "Payment Successful",
@@ -340,6 +526,26 @@ const Dashboard = () => {
           data?.message ||
           `${selectedService.title} payment completed successfully.`,
       });
+
+      console.log(
+        "Bill payment successfully completed:",
+        {
+          service:
+            selectedService.type,
+
+          amount,
+
+          reference:
+            data?.reference,
+
+          transaction_id:
+            data?.transaction_id,
+
+          provider:
+            details?.provider,
+        }
+      );
+
     } catch (error: any) {
       console.error(
         "Service payment failed:",
@@ -356,9 +562,9 @@ const Dashboard = () => {
     }
   };
 
-  // ------------------------------------------------------------
+  // ============================================================
   // BANK TRANSFER
-  // ------------------------------------------------------------
+  // ============================================================
 
   const handleTransfer = async (
     amount: number,
@@ -375,7 +581,10 @@ const Dashboard = () => {
       return;
     }
 
-    if (!amount || amount <= 0) {
+    if (
+      !Number.isFinite(amount) ||
+      amount <= 0
+    ) {
       toast({
         title: "Invalid amount",
         description:
@@ -434,13 +643,6 @@ const Dashboard = () => {
     }
 
     try {
-      // --------------------------------------------------------
-      // CREATE IDEMPOTENCY KEY
-      //
-      // Prevents accidental duplicate transfers if the request
-      // is retried by the frontend.
-      // --------------------------------------------------------
-
       const idempotencyKey =
         `transfer_${user.id}_${Date.now()}_${crypto.randomUUID()}`;
 
@@ -449,22 +651,6 @@ const Dashboard = () => {
         description:
           "Please wait while we send your money.",
       });
-
-      // --------------------------------------------------------
-      // CALL SECURE EDGE FUNCTION
-      //
-      // Dashboard NEVER calls Flutterwave directly.
-      //
-      // Dashboard
-      //    ↓
-      // flutterwave-transfer
-      //    ↓
-      // wallet_operation(DEBIT)
-      //    ↓
-      // SmarterASP proxy
-      //    ↓
-      // Flutterwave
-      // --------------------------------------------------------
 
       const {
         data,
@@ -512,10 +698,6 @@ const Dashboard = () => {
         data
       );
 
-      // --------------------------------------------------------
-      // EDGE FUNCTION ERROR
-      // --------------------------------------------------------
-
       if (!data?.success) {
         throw new Error(
           data?.error ||
@@ -523,40 +705,9 @@ const Dashboard = () => {
         );
       }
 
-      // --------------------------------------------------------
-      // IMPORTANT:
-      //
-      // DO NOT call:
-      //
-      // supabase.from("wallets").update(...)
-      //
-      // DO NOT call:
-      //
-      // updateBalance(...)
-      //
-      // The Edge Function has already performed the wallet
-      // debit using wallet_operation().
-      //
-      // The previous Dashboard code attempted to PATCH the
-      // wallets table directly and produced:
-      //
-      // 403 Forbidden
-      // permission denied for table wallets
-      //
-      // Worse, that error entered this try/catch and made a
-      // successfully queued Flutterwave transfer appear to the
-      // user as FAILED.
-      // --------------------------------------------------------
-
-      // --------------------------------------------------------
-      // CLOSE TRANSFER MODAL
-      // --------------------------------------------------------
-
       setTransferModalOpen(false);
 
-      // --------------------------------------------------------
-      // SUCCESS MESSAGE
-      // --------------------------------------------------------
+      await refreshWallet();
 
       toast({
         title: "Transfer Processing",
@@ -564,10 +715,6 @@ const Dashboard = () => {
           data?.message ||
           `₦${amount.toLocaleString()} sent to ${details.recipient}.`,
       });
-
-      // --------------------------------------------------------
-      // LOG SUCCESS INFORMATION
-      // --------------------------------------------------------
 
       console.log(
         "Bank transfer successfully initiated:",
@@ -604,9 +751,9 @@ const Dashboard = () => {
     }
   };
 
-  // ------------------------------------------------------------
-  // Page routing
-  // ------------------------------------------------------------
+  // ============================================================
+  // PAGE ROUTING
+  // ============================================================
 
   if (currentPage === 'profile') {
     return (
@@ -678,9 +825,9 @@ const Dashboard = () => {
     );
   }
 
-  // ------------------------------------------------------------
-  // Bottom navigation
-  // ------------------------------------------------------------
+  // ============================================================
+  // BOTTOM NAVIGATION
+  // ============================================================
 
   const renderBottomNav = (
     page: CurrentPage
@@ -786,9 +933,9 @@ const Dashboard = () => {
     </div>
   );
 
-  // ------------------------------------------------------------
+  // ============================================================
   // DASHBOARD
-  // ------------------------------------------------------------
+  // ============================================================
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-50">
@@ -914,7 +1061,7 @@ const Dashboard = () => {
                         : "****"}
 
                     </span>
-                    
+
                     <Button
                       variant="ghost"
                       size="sm"
@@ -1144,7 +1291,6 @@ const Dashboard = () => {
         onFunded={refreshWallet}
       />
 
-
       <ServiceModal
         isOpen={serviceModalOpen}
         onClose={() =>
@@ -1182,8 +1328,6 @@ const Dashboard = () => {
           user?.email || 'User'
         }
       />
-
-      {/* WhatsApp Float */}
 
       <WhatsAppFloat />
 

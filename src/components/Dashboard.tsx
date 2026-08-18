@@ -132,7 +132,7 @@ const DashboardSplashScreen = () => {
             className="h-full rounded-full bg-white"
             style={{
               animation:
-                "dashboardSplashProgress 10s linear forwards",
+                "dashboardSplashProgress 7s linear forwards",
             }}
           />
 

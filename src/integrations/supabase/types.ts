@@ -151,6 +151,10 @@ export type Database = {
         Row: {
           address: string | null
           bvn: string | null
+          bvn_first_name: string | null
+          bvn_last_name: string | null
+          bvn_verified: boolean
+          bvn_verified_at: string | null
           created_at: string | null
           date_of_birth: string | null
           email: string | null
@@ -158,6 +162,7 @@ export type Database = {
           gender: string | null
           id: string
           kyc_level: number | null
+          kyc_status: string
           nickname: string | null
           nin: string | null
           phone_number: string | null
@@ -166,6 +171,10 @@ export type Database = {
         Insert: {
           address?: string | null
           bvn?: string | null
+          bvn_first_name?: string | null
+          bvn_last_name?: string | null
+          bvn_verified?: boolean
+          bvn_verified_at?: string | null
           created_at?: string | null
           date_of_birth?: string | null
           email?: string | null
@@ -173,6 +182,7 @@ export type Database = {
           gender?: string | null
           id: string
           kyc_level?: number | null
+          kyc_status?: string
           nickname?: string | null
           nin?: string | null
           phone_number?: string | null
@@ -181,6 +191,10 @@ export type Database = {
         Update: {
           address?: string | null
           bvn?: string | null
+          bvn_first_name?: string | null
+          bvn_last_name?: string | null
+          bvn_verified?: boolean
+          bvn_verified_at?: string | null
           created_at?: string | null
           date_of_birth?: string | null
           email?: string | null
@@ -188,6 +202,7 @@ export type Database = {
           gender?: string | null
           id?: string
           kyc_level?: number | null
+          kyc_status?: string
           nickname?: string | null
           nin?: string | null
           phone_number?: string | null
@@ -376,6 +391,63 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      virtual_cards: {
+        Row: {
+          amount_funded: number
+          card_type: string | null
+          created_at: string
+          currency: string
+          expiry_month: string | null
+          expiry_year: string | null
+          id: string
+          last4: string | null
+          masked_pan: string | null
+          metadata: Json
+          name_on_card: string | null
+          provider: string
+          provider_card_id: string
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          amount_funded?: number
+          card_type?: string | null
+          created_at?: string
+          currency?: string
+          expiry_month?: string | null
+          expiry_year?: string | null
+          id?: string
+          last4?: string | null
+          masked_pan?: string | null
+          metadata?: Json
+          name_on_card?: string | null
+          provider?: string
+          provider_card_id: string
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          amount_funded?: number
+          card_type?: string | null
+          created_at?: string
+          currency?: string
+          expiry_month?: string | null
+          expiry_year?: string | null
+          id?: string
+          last4?: string | null
+          masked_pan?: string | null
+          metadata?: Json
+          name_on_card?: string | null
+          provider?: string
+          provider_card_id?: string
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
       }
       wallets: {
         Row: {

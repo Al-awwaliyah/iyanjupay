@@ -1,12 +1,26 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
+/*
+ * ============================================================
+ * CORS
+ * ============================================================
+ */
+
 export const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
+
   "Access-Control-Allow-Headers":
     "authorization, x-client-info, apikey, content-type, verif-hash",
+
   "Access-Control-Allow-Methods":
     "GET, POST, PUT, PATCH, DELETE, OPTIONS",
 };
+
+/*
+ * ============================================================
+ * JSON RESPONSE
+ * ============================================================
+ */
 
 export const json = (
   body: unknown,
@@ -16,60 +30,103 @@ export const json = (
     JSON.stringify(body),
     {
       status,
+
       headers: {
         ...corsHeaders,
+
         "Content-Type":
           "application/json",
       },
     },
   );
 
+/*
+ * ============================================================
+ * SUPABASE ADMIN CLIENT
+ * ============================================================
+ */
+
 export const adminClient = () =>
   createClient(
-    Deno.env.get("SUPABASE_URL") ?? "",
+    Deno.env.get(
+      "SUPABASE_URL",
+    ) ?? "",
+
     Deno.env.get(
       "SUPABASE_SERVICE_ROLE_KEY",
     ) ?? "",
+
     {
       auth: {
-        persistSession: false,
+        persistSession:
+          false,
       },
     },
   );
 
-/**
- * Validates the caller's Supabase JWT.
+/*
+ * ============================================================
+ * AUTHENTICATED USER
+ * ============================================================
  */
+
 export async function getUser(
   req: Request,
 ) {
   const authHeader =
-    req.headers.get("Authorization");
+    req.headers.get(
+      "Authorization",
+    );
 
   if (!authHeader) {
     return null;
   }
 
-  const client = createClient(
-    Deno.env.get("SUPABASE_URL") ?? "",
-    Deno.env.get("SUPABASE_ANON_KEY") ?? "",
-    {
-      global: {
-        headers: {
-          Authorization:
-            authHeader,
+  const supabaseUrl =
+    Deno.env.get(
+      "SUPABASE_URL",
+    ) ?? "";
+
+  const supabaseAnonKey =
+    Deno.env.get(
+      "SUPABASE_ANON_KEY",
+    ) ?? "";
+
+  if (
+    !supabaseUrl ||
+    !supabaseAnonKey
+  ) {
+    console.error(
+      "Supabase authentication environment variables are missing",
+    );
+
+    return null;
+  }
+
+  const client =
+    createClient(
+      supabaseUrl,
+      supabaseAnonKey,
+      {
+        global: {
+          headers: {
+            Authorization:
+              authHeader,
+          },
+        },
+
+        auth: {
+          persistSession:
+            false,
         },
       },
-      auth: {
-        persistSession: false,
-      },
-    },
-  );
+    );
 
   const {
     data,
     error,
-  } = await client.auth.getUser();
+  } =
+    await client.auth.getUser();
 
   if (error) {
     console.error(
@@ -83,47 +140,54 @@ export async function getUser(
   return data.user;
 }
 
+/*
+ * ============================================================
+ * FLUTTERWAVE
+ * ============================================================
+ */
+
 export const FLW_BASE =
   "https://api.flutterwave.com/v3";
 
-/**
- * Flutterwave API helper.
+/*
+ * ============================================================
+ * FLUTTERWAVE API HELPER
+ * ============================================================
  *
- * Supports:
- *   GET
- *   POST
- *   PUT
- *   PATCH
- *   DELETE
+ * Production routing:
  *
- * When FLUTTERWAVE_PROXY_URL is configured,
- * requests are first sent through the proxy.
+ * Supabase Edge Function
+ *          ↓
+ * FLUTTERWAVE_PROXY_URL
+ *          ↓
+ * Fixed-IP server
+ *          ↓
+ * Flutterwave
  *
  * IMPORTANT:
  *
- * GET requests do NOT send a body.
+ * When a proxy URL is configured, there is NO direct fallback.
  *
- * This prevents the proxy from incorrectly
- * interpreting catalogue requests such as:
- *
- * GET /bills/AIRTIME/billers?country=NG
- *
- * as bill-payment requests requiring an amount.
+ * This is intentional because Flutterwave services such as
+ * bill payments require requests to originate from a
+ * whitelisted server IP.
+ * ============================================================
  */
+
 export async function flw(
   path: string,
   init: RequestInit = {},
 ) {
+  /*
+   * ----------------------------------------------------------
+   * Environment
+   * ----------------------------------------------------------
+   */
+
   const secretKey =
     Deno.env.get(
       "FLUTTERWAVE_SECRET_KEY",
     );
-
-  if (!secretKey) {
-    throw new Error(
-      "Flutterwave is not configured",
-    );
-  }
 
   const proxyUrl =
     Deno.env.get(
@@ -135,14 +199,66 @@ export async function flw(
       "FLUTTERWAVE_PROXY_SECRET",
     );
 
-  const method = (
-    init.method ?? "GET"
+  if (!secretKey) {
+    throw new Error(
+      "Flutterwave is not configured: FLUTTERWAVE_SECRET_KEY is missing",
+    );
+  }
+
+  /*
+   * ----------------------------------------------------------
+   * Validate path
+   * ----------------------------------------------------------
+   */
+
+  if (
+    typeof path !==
+      "string" ||
+    !path.trim()
+  ) {
+    throw new Error(
+      "Flutterwave API path is required",
+    );
+  }
+
+  if (
+    !path.startsWith("/")
+  ) {
+    throw new Error(
+      "Invalid Flutterwave API path",
+    );
+  }
+
+  if (
+    path.includes("://")
+  ) {
+    throw new Error(
+      "External URLs are not allowed",
+    );
+  }
+
+  /*
+   * ----------------------------------------------------------
+   * HTTP method
+   * ----------------------------------------------------------
+   */
+
+  const method = String(
+    init.method ??
+      "GET",
   ).toUpperCase();
 
   /*
-   * ============================================================
-   * PREPARE REQUEST BODY
-   * ============================================================
+   * ----------------------------------------------------------
+   * Prepare request body
+   * ----------------------------------------------------------
+   *
+   * GET / HEAD:
+   *     absolutely no body.
+   *
+   * POST / PUT / PATCH / DELETE:
+   *     JSON body is allowed.
+   * ----------------------------------------------------------
    */
 
   let requestBody:
@@ -152,54 +268,79 @@ export async function flw(
     method !== "GET" &&
     method !== "HEAD"
   ) {
-    if (init.body) {
+    if (
+      init.body !==
+      undefined &&
+      init.body !== null
+    ) {
       try {
         requestBody =
           JSON.parse(
-            String(init.body),
+            String(
+              init.body,
+            ),
           );
       } catch {
         requestBody =
-          String(init.body);
+          String(
+            init.body,
+          );
       }
     }
   }
 
   /*
-   * ============================================================
-   * PROXY REQUEST
-   * ============================================================
+   * ==========================================================
+   * PROXY MODE
+   * ==========================================================
    */
 
   if (proxyUrl) {
-    try {
-      const proxyPayload: Record<
-        string,
-        unknown
-      > = {
+    /*
+     * --------------------------------------------------------
+     * Build proxy payload
+     * --------------------------------------------------------
+     */
+
+    const proxyPayload: Record<
+      string,
+      unknown
+    > = {
+      path,
+      method,
+    };
+
+    /*
+     * Never send a body for GET/HEAD.
+     */
+
+    if (
+      method !== "GET" &&
+      method !== "HEAD" &&
+      requestBody !==
+        undefined
+    ) {
+      proxyPayload.body =
+        requestBody;
+    }
+
+    console.log(
+      "Flutterwave proxy request:",
+      JSON.stringify({
         path,
         method,
-      };
+        has_body:
+          proxyPayload.body !==
+          undefined,
+      }),
+    );
 
+    try {
       /*
-       * Only attach body for methods
-       * that actually support a body.
+       * ------------------------------------------------------
+       * Call fixed-IP proxy
+       * ------------------------------------------------------
        */
-      if (
-        method !== "GET" &&
-        method !== "HEAD" &&
-        requestBody !== undefined
-      ) {
-        proxyPayload.body =
-          requestBody;
-      }
-
-      console.log(
-        "Flutterwave proxy request:",
-        JSON.stringify(
-          proxyPayload,
-        ),
-      );
 
       const proxyResponse =
         await fetch(
@@ -208,7 +349,8 @@ export async function flw(
             "",
           ),
           {
-            method: "POST",
+            method:
+              "POST",
 
             headers: {
               "Content-Type":
@@ -222,16 +364,45 @@ export async function flw(
                 : {}),
             },
 
-            body: JSON.stringify(
-              proxyPayload,
-            ),
+            body:
+              JSON.stringify(
+                proxyPayload,
+              ),
           },
         );
 
-      const proxyBody =
-        await proxyResponse
-          .json()
-          .catch(() => ({}));
+      /*
+       * ------------------------------------------------------
+       * Parse response
+       * ------------------------------------------------------
+       */
+
+      const responseText =
+        await proxyResponse.text();
+
+      let proxyBody:
+        any = {};
+
+      try {
+        proxyBody =
+          responseText
+            ? JSON.parse(
+                responseText,
+              )
+            : {};
+      } catch {
+        proxyBody = {
+          status:
+            "error",
+
+          message:
+            responseText ||
+            "Proxy returned a non-JSON response",
+
+          data:
+            null,
+        };
+      }
 
       console.log(
         "Flutterwave proxy response:",
@@ -253,100 +424,120 @@ export async function flw(
       );
 
       /*
-       * IMPORTANT:
+       * ------------------------------------------------------
+       * IMPORTANT
        *
-       * Return the proxy response whenever
-       * the proxy successfully reached
-       * Flutterwave.
+       * Return the proxy result regardless of whether
+       * Flutterwave returned 200, 400, 401, 403, etc.
        *
-       * We do not silently treat provider
-       * errors as proxy transport errors.
+       * A provider error is NOT a transport error.
+       *
+       * NEVER fall back to direct Flutterwave.
+       * ------------------------------------------------------
        */
-      if (
-        proxyResponse.ok
-      ) {
-        return {
-          ok: true,
-          status:
-            proxyResponse.status,
-          body:
-            proxyBody,
-        };
-      }
 
-      /*
-       * If the proxy itself returned a
-       * provider response such as 400,
-       * log it and fall back to direct
-       * Flutterwave.
-       *
-       * This is useful while your proxy
-       * configuration is being fixed.
-       */
-      console.error(
-        "Flutterwave proxy failed, falling back to direct call:",
-        JSON.stringify({
-          status:
-            proxyResponse.status,
-          body:
-            proxyBody,
-        }),
-      );
+      return {
+        ok:
+          proxyResponse.ok,
+
+        status:
+          proxyResponse.status,
+
+        body:
+          proxyBody,
+      };
     } catch (
       proxyError
     ) {
       console.error(
-        "Flutterwave proxy error, falling back to direct call:",
+        "Flutterwave proxy request failed:",
         proxyError,
+      );
+
+      /*
+       * Do NOT bypass the fixed-IP proxy.
+       */
+
+      throw new Error(
+        "Flutterwave proxy is unavailable. Please try again later.",
       );
     }
   }
 
   /*
-   * ============================================================
-   * DIRECT FLUTTERWAVE REQUEST
-   * ============================================================
+   * ==========================================================
+   * DIRECT MODE
+   * ==========================================================
+   *
+   * This is only used if FLUTTERWAVE_PROXY_URL is NOT configured.
+   *
+   * For production bill/transfer/BVN/card issuing operations,
+   * configure the proxy.
+   * ==========================================================
    */
 
   const url =
     `${FLW_BASE}${path}`;
 
-  const directInit: RequestInit = {
-    ...init,
+  const headers: Record<
+    string,
+    string
+  > = {
+    Authorization:
+      `Bearer ${secretKey}`,
 
+    Accept:
+      "application/json",
+  };
+
+  const directInit:
+    RequestInit = {
     method,
 
-    headers: {
-      Authorization:
-        `Bearer ${secretKey}`,
-
-      "Content-Type":
-        "application/json",
-
-      ...(init.headers ?? {}),
-    },
+    headers,
   };
 
   /*
-   * GET / HEAD must not have
-   * a request body.
+   * ----------------------------------------------------------
+   * Direct request body
+   * ----------------------------------------------------------
    */
+
   if (
-    method === "GET" ||
-    method === "HEAD"
+    method !== "GET" &&
+    method !== "HEAD"
   ) {
-    delete (
-      directInit as any
-    ).body;
+    headers[
+      "Content-Type"
+    ] =
+      "application/json";
+
+    if (
+      requestBody !==
+      undefined
+    ) {
+      directInit.body =
+        JSON.stringify(
+          requestBody,
+        );
+    }
   }
 
-  console.log(
+  console.warn(
     "Flutterwave direct request:",
     JSON.stringify({
       url,
       method,
+      warning:
+        "FLUTTERWAVE_PROXY_URL is not configured",
     }),
   );
+
+  /*
+   * ----------------------------------------------------------
+   * Call Flutterwave directly
+   * ----------------------------------------------------------
+   */
 
   const response =
     await fetch(
@@ -354,10 +545,32 @@ export async function flw(
       directInit,
     );
 
-  const body =
-    await response
-      .json()
-      .catch(() => ({}));
+  const responseText =
+    await response.text();
+
+  let body:
+    any = {};
+
+  try {
+    body =
+      responseText
+        ? JSON.parse(
+            responseText,
+          )
+        : {};
+  } catch {
+    body = {
+      status:
+        "error",
+
+      message:
+        responseText ||
+        "Flutterwave returned a non-JSON response",
+
+      data:
+        null,
+    };
+  }
 
   console.log(
     "Flutterwave direct response:",

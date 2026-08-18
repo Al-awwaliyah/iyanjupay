@@ -7,9 +7,7 @@ import {
   CardContent,
 } from "@/components/ui/card";
 
-import { LogOut, User, History, Send, QrCode, Shield, Gift, Banknote,
-  Car, Gamepad2, Plane, Home, Plus, Eye, EyeOff, Smartphone, Wifi, Zap, CreditCard, Loader2,
-} from "lucide-react";
+import { LogOut, User, History, Send, QrCode, Shield, Gift, Banknote, Car, Gamepad2, Plane, Home, Plus, Eye, EyeOff, Smartphone, Wifi, Zap, CreditCard, Loader2, } from "lucide-react";
 
 import ServiceCard from "./services/ServiceCard";
 import FundWalletModal from "./modals/FundWalletModal";
@@ -17,6 +15,7 @@ import ServiceModal from "./modals/ServiceModal";
 import TransferModal from "./modals/TransferModal";
 import QRCodeModal from "./modals/QRCodeModal";
 import WhatsAppFloat from "./WhatsAppFloat";
+
 import ProfilePage from "./profile/ProfilePage";
 import TransactionHistory from "./transactions/TransactionHistory";
 import RewardsPage from "./rewards/RewardsPage";
@@ -57,30 +56,6 @@ const SUPPORTED_BILL_SERVICES: BillService[] = [
 ];
 
 /* ================================================================
-   IYANJUPAY LOGO
-   ================================================================ */
-
-const IyanjuPayLogo = ({
-  size = "md",
-}: {
-  size?: "sm" | "md" | "lg";
-}) => {
-  const sizeClasses = {
-    sm: "h-8 w-8",
-    md: "h-16 w-16",
-    lg: "h-24 w-24",
-  };
-
-  return (
-    <img
-      src="/icon-180.png"
-      alt="IyanjuPay"
-      className={`${sizeClasses[size]} object-contain`}
-    />
-  );
-};
-
-/* ================================================================
    SPLASH SCREEN
    ================================================================ */
 
@@ -88,69 +63,104 @@ const DashboardSplashScreen = () => {
   return (
     <div className="fixed inset-0 z-[9999] flex min-h-screen items-center justify-center overflow-hidden bg-gradient-to-br from-purple-700 via-purple-600 to-blue-600">
 
-      {/* Background decoration */}
-      <div className="absolute -left-24 -top-24 h-72 w-72 rounded-full bg-white/10 blur-3xl" />
+      {/* Background decorations */}
 
-      <div className="absolute -bottom-24 -right-24 h-80 w-80 rounded-full bg-blue-300/10 blur-3xl" />
+      <div className="pointer-events-none absolute -left-24 -top-24 h-72 w-72 rounded-full bg-white/10 blur-3xl" />
 
-      <div className="absolute left-1/2 top-1/2 h-[500px] w-[500px] -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/10" />
+      <div className="pointer-events-none absolute -bottom-24 -right-24 h-80 w-80 rounded-full bg-blue-300/10 blur-3xl" />
 
-      <div className="absolute left-1/2 top-1/2 h-[360px] w-[360px] -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/10" />
+      <div className="pointer-events-none absolute left-1/2 top-1/2 h-96 w-96 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white/5 blur-3xl" />
 
       {/* Main content */}
-      <div className="relative z-10 flex flex-col items-center px-6 text-center">
 
-        {/* Logo container */}
-        <div className="mb-7 flex h-32 w-32 items-center justify-center rounded-[36px] bg-white shadow-2xl animate-pulse">
+      <div className="relative z-10 flex w-full flex-col items-center px-6 text-center">
 
-          <div className="flex h-24 w-24 items-center justify-center rounded-[28px] bg-white shadow-inner">
+        {/* Logo */}
 
-            <IyanjuPayLogo size="lg" />
+        <div className="relative mb-7 flex h-28 w-28 items-center justify-center rounded-[32px] bg-white shadow-2xl">
 
-          </div>
+          {/* Glow */}
+
+          <div className="absolute inset-0 animate-pulse rounded-[32px] bg-white/30 blur-xl" />
+
+          {/* Actual IyanjuPay icon */}
+
+          <img
+            src="/icon-180.png"
+            alt="IyanjuPay"
+            className="relative z-10 h-20 w-20 object-contain"
+          />
 
         </div>
 
         {/* Brand */}
+
         <h1 className="text-4xl font-extrabold tracking-tight text-white sm:text-5xl">
           IyanjuPay
         </h1>
 
-        <p className="mt-3 text-sm font-medium tracking-wide text-purple-100 sm:text-base">
+        <p className="mt-2 text-sm font-medium text-purple-100 sm:text-base">
           Simple. Secure. Seamless.
         </p>
 
         {/* Loading section */}
-        <div className="mt-12 flex flex-col items-center">
 
-          <div className="flex h-12 w-12 items-center justify-center rounded-full border border-white/20 bg-white/10 backdrop-blur-sm">
+        <div className="mt-10 flex flex-col items-center">
 
-            <Loader2 className="h-6 w-6 animate-spin text-white" />
+          <div className="relative flex h-9 w-9 items-center justify-center">
+
+            <Loader2 className="h-7 w-7 animate-spin text-white" />
 
           </div>
 
-          <p className="mt-4 text-sm text-white/85">
+          <p className="mt-4 text-sm font-medium text-white/90">
             Loading your wallet...
           </p>
 
-          <p className="mt-1 text-xs text-white/50">
+          <p className="mt-1 text-xs text-white/60">
             Please wait
           </p>
 
         </div>
 
-        {/* Security indicator */}
-        <div className="mt-12 flex items-center gap-2 rounded-full border border-white/10 bg-white/10 px-4 py-2 backdrop-blur-sm">
+        {/* Animated progress */}
 
-          <Shield className="h-3.5 w-3.5 text-white/70" />
+        <div className="mt-7 h-1.5 w-48 overflow-hidden rounded-full bg-white/20 sm:w-56">
 
-          <span className="text-xs text-white/70">
-            Secure payments powered by IyanjuPay
-          </span>
+          <div
+            className="h-full rounded-full bg-white"
+            style={{
+              animation:
+                "dashboardSplashProgress 10s linear forwards",
+            }}
+          />
 
         </div>
 
+        {/* Bottom text */}
+
+        <p className="mt-12 text-xs text-white/50">
+          Secure payments powered by IyanjuPay
+        </p>
+
       </div>
+
+      {/* Splash animation */}
+
+      <style>
+        {`
+          @keyframes dashboardSplashProgress {
+            from {
+              width: 0%;
+            }
+
+            to {
+              width: 100%;
+            }
+          }
+        `}
+      </style>
+
     </div>
   );
 };
@@ -167,6 +177,12 @@ const Dashboard = () => {
     loading,
     refreshWallet,
   } = useWallet(user?.id);
+
+  const { toast } = useToast();
+
+  /* ================================================================
+     STATE
+     ================================================================ */
 
   const [showSplash, setShowSplash] =
     useState(true);
@@ -192,24 +208,26 @@ const Dashboard = () => {
   const [currentPage, setCurrentPage] =
     useState<CurrentPage>("home");
 
-  const { toast } = useToast();
-
   /* ================================================================
-     SPLASH SCREEN — EXACTLY 20 SECONDS
+     SPLASH SCREEN
      ================================================================ */
 
   useEffect(() => {
-    const splashTimer = window.setTimeout(() => {
+    const timer = window.setTimeout(() => {
       setShowSplash(false);
-    }, 20000);
+    }, 10000);
 
     return () => {
-      window.clearTimeout(splashTimer);
+      window.clearTimeout(timer);
     };
   }, []);
 
   /* ================================================================
      WALLET BOOTSTRAP
+     
+     IMPORTANT:
+     This runs independently from the splash screen.
+     The splash itself does not depend on Supabase.
      ================================================================ */
 
   useEffect(() => {
@@ -325,6 +343,7 @@ const Dashboard = () => {
       color: "bg-blue-500",
       type: "airtime",
     },
+
     {
       title: "Buy Data",
       description: "Internet data bundles",
@@ -332,6 +351,7 @@ const Dashboard = () => {
       color: "bg-purple-500",
       type: "data",
     },
+
     {
       title: "Electricity",
       description: "Pay electricity bills",
@@ -339,6 +359,7 @@ const Dashboard = () => {
       color: "bg-yellow-500",
       type: "electricity",
     },
+
     {
       title: "Cable TV",
       description: "DSTV, GOTV, Startimes",
@@ -346,6 +367,7 @@ const Dashboard = () => {
       color: "bg-red-500",
       type: "cable",
     },
+
     {
       title: "Transfer Money",
       description: "Send money to others",
@@ -353,6 +375,7 @@ const Dashboard = () => {
       color: "bg-green-500",
       type: "transfer",
     },
+
     {
       title: "Internet Bills",
       description: "Pay internet bills",
@@ -360,6 +383,7 @@ const Dashboard = () => {
       color: "bg-indigo-500",
       type: "internet",
     },
+
     {
       title: "Insurance",
       description: "Pay insurance premiums",
@@ -367,6 +391,7 @@ const Dashboard = () => {
       color: "bg-teal-500",
       type: "insurance",
     },
+
     {
       title: "Gift Cards",
       description: "Buy digital gift cards",
@@ -374,6 +399,7 @@ const Dashboard = () => {
       color: "bg-pink-500",
       type: "giftcards",
     },
+
     {
       title: "Betting",
       description: "Fund betting accounts",
@@ -381,6 +407,7 @@ const Dashboard = () => {
       color: "bg-orange-500",
       type: "betting",
     },
+
     {
       title: "Flight Booking",
       description: "Book domestic flights",
@@ -388,6 +415,7 @@ const Dashboard = () => {
       color: "bg-sky-500",
       type: "flight",
     },
+
     {
       title: "Hotel Booking",
       description: "Book hotel rooms",
@@ -395,6 +423,7 @@ const Dashboard = () => {
       color: "bg-emerald-500",
       type: "hotel",
     },
+
     {
       title: "Transport",
       description: "Book bus tickets",
@@ -446,6 +475,7 @@ const Dashboard = () => {
     amount: number,
     details: Record<string, any>
   ): Promise<void> => {
+
     if (!user) {
       throw new Error(
         "Authentication required. Please log in again."
@@ -625,37 +655,56 @@ const Dashboard = () => {
 
     const paymentDetails = {
       ...details,
+
       service,
+
       amount,
+
       country,
+
       customer,
-      biller_code: billerCode,
-      item_code: itemCode,
+
+      biller_code:
+        billerCode,
+
+      item_code:
+        itemCode,
     };
 
     console.log(
       "Sending bill payment request:",
       {
         action: "pay",
+
         service,
+
         amount,
+
         country,
+
         biller_code:
           billerCode,
+
         item_code:
           itemCode,
+
         customer,
       }
     );
 
+    /* ============================================================
+       PROCESSING TOAST
+       ============================================================ */
+
     toast({
       title: "Processing payment",
+
       description:
         `Processing ${selectedService.title.toLowerCase()}...`,
     });
 
     /* ============================================================
-       PROCESS PAYMENT
+       FLUTTERWAVE BILL PAYMENT
        ============================================================ */
 
     const {
@@ -667,14 +716,21 @@ const Dashboard = () => {
         {
           body: {
             action: "pay",
+
             service,
+
             amount,
+
             biller_code:
               billerCode,
+
             item_code:
               itemCode,
+
             customer,
+
             country,
+
             details:
               paymentDetails,
           },
@@ -718,16 +774,22 @@ const Dashboard = () => {
     }
 
     /* ============================================================
-       SUCCESS
+       REFRESH WALLET
        ============================================================ */
 
     await refreshWallet();
 
-    const serviceTitle =
-      selectedService.title;
+    /* ============================================================
+       CLOSE MODAL
+       ============================================================ */
 
     setServiceModalOpen(false);
+
     setSelectedService(null);
+
+    /* ============================================================
+       REFERENCE
+       ============================================================ */
 
     const reference =
       data?.reference ??
@@ -738,32 +800,47 @@ const Dashboard = () => {
     const isPending =
       data?.status === "pending";
 
+    /* ============================================================
+       SUCCESS
+       ============================================================ */
+
     toast({
       title: isPending
         ? "Payment Processing"
         : "Payment Successful",
+
       description:
         data?.message ||
-        (isPending
-          ? `${serviceTitle} payment is being verified.`
-          : `${serviceTitle} payment was completed successfully.`),
+        (
+          isPending
+            ? `${selectedService.title} payment is being verified.`
+            : `${selectedService.title} payment was completed successfully.`
+        ),
     });
 
     console.log(
       "Bill payment processed:",
       {
         service,
+
         amount,
+
         reference,
+
         transaction_id:
           data?.transaction_id,
+
         provider_reference:
           data?.provider_reference,
+
         biller_code:
           billerCode,
+
         item_code:
           itemCode,
+
         customer,
+
         status:
           data?.status,
       }
@@ -778,16 +855,23 @@ const Dashboard = () => {
     amount: number,
     details: any
   ) => {
+
     if (!user) {
       toast({
         title: "Authentication required",
+
         description:
           "Please log in again.",
+
         variant: "destructive",
       });
 
       return;
     }
+
+    /* ============================================================
+       AMOUNT
+       ============================================================ */
 
     if (
       !Number.isFinite(amount) ||
@@ -795,13 +879,19 @@ const Dashboard = () => {
     ) {
       toast({
         title: "Invalid amount",
+
         description:
           "Please enter a valid transfer amount.",
+
         variant: "destructive",
       });
 
       return;
     }
+
+    /* ============================================================
+       BALANCE
+       ============================================================ */
 
     if (
       wallet &&
@@ -810,47 +900,67 @@ const Dashboard = () => {
     ) {
       toast({
         title: "Insufficient Balance",
+
         description:
           "Please fund your wallet to continue.",
+
         variant: "destructive",
       });
 
       return;
     }
+
+    /* ============================================================
+       ACCOUNT NUMBER
+       ============================================================ */
 
     if (
       !details?.accountNumber
     ) {
       toast({
         title: "Invalid recipient",
+
         description:
           "Recipient bank account is missing.",
+
         variant: "destructive",
       });
 
       return;
     }
+
+    /* ============================================================
+       BANK CODE
+       ============================================================ */
 
     if (
       !details?.bankCode
     ) {
       toast({
         title: "Invalid bank",
+
         description:
           "Recipient bank code is missing.",
+
         variant: "destructive",
       });
 
       return;
     }
 
+    /* ============================================================
+       RECIPIENT
+       ============================================================ */
+
     if (
       !details?.recipient
     ) {
       toast({
         title: "Invalid recipient",
+
         description:
           "Verified recipient name is missing.",
+
         variant: "destructive",
       });
 
@@ -858,14 +968,20 @@ const Dashboard = () => {
     }
 
     try {
+
       const idempotencyKey =
         `transfer_${user.id}_${Date.now()}_${crypto.randomUUID()}`;
 
       toast({
         title: "Processing transfer",
+
         description:
           "Please wait while we send your money.",
       });
+
+      /* ==========================================================
+         FLUTTERWAVE TRANSFER
+         ========================================================== */
 
       const {
         data,
@@ -875,6 +991,7 @@ const Dashboard = () => {
           "flutterwave-transfer",
           {
             body: {
+
               amount,
 
               account_number:
@@ -896,7 +1013,12 @@ const Dashboard = () => {
           }
         );
 
+      /* ==========================================================
+         FUNCTION ERROR
+         ========================================================== */
+
       if (error) {
+
         console.error(
           "Flutterwave transfer function error:",
           error
@@ -913,6 +1035,10 @@ const Dashboard = () => {
         data
       );
 
+      /* ==========================================================
+         BUSINESS ERROR
+         ========================================================== */
+
       if (
         !data ||
         data.success !== true
@@ -924,12 +1050,25 @@ const Dashboard = () => {
         );
       }
 
+      /* ==========================================================
+         CLOSE MODAL
+         ========================================================== */
+
       setTransferModalOpen(false);
+
+      /* ==========================================================
+         REFRESH WALLET
+         ========================================================== */
 
       await refreshWallet();
 
+      /* ==========================================================
+         SUCCESS
+         ========================================================== */
+
       toast({
         title: "Transfer Processing",
+
         description:
           data?.message ||
           `₦${amount.toLocaleString()} sent to ${details.recipient}.`,
@@ -953,7 +1092,9 @@ const Dashboard = () => {
             details.recipient,
         }
       );
+
     } catch (error: any) {
+
       console.error(
         "Bank transfer failed:",
         error
@@ -961,9 +1102,11 @@ const Dashboard = () => {
 
       toast({
         title: "Transfer Failed",
+
         description:
           error?.message ||
           "Unable to complete the bank transfer.",
+
         variant: "destructive",
       });
     }
@@ -971,10 +1114,15 @@ const Dashboard = () => {
 
   /* ================================================================
      SPLASH SCREEN
+     
+     This happens BEFORE all dashboard page rendering.
+     It does not require wallet data.
      ================================================================ */
 
   if (showSplash) {
-    return <DashboardSplashScreen />;
+    return (
+      <DashboardSplashScreen />
+    );
   }
 
   /* ================================================================
@@ -1037,9 +1185,11 @@ const Dashboard = () => {
         onBack={() =>
           setCurrentPage("home")
         }
+
         onProfileClick={() =>
           setCurrentPage("profile")
         }
+
         onHistoryClick={() =>
           setCurrentPage("history")
         }
@@ -1076,11 +1226,13 @@ const Dashboard = () => {
   const renderBottomNav = (
     page: CurrentPage
   ) => (
-    <div className="fixed bottom-0 left-0 right-0 z-40 bg-white border-t border-gray-200 px-4 py-2">
+    <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-gray-200 bg-white px-4 py-2">
 
-      <div className="max-w-7xl mx-auto">
+      <div className="mx-auto max-w-7xl">
 
         <div className="flex justify-around">
+
+          {/* HOME */}
 
           <Button
             variant={
@@ -1105,6 +1257,8 @@ const Dashboard = () => {
             </span>
           </Button>
 
+          {/* REWARD */}
+
           <Button
             variant={
               page === "rewards"
@@ -1128,6 +1282,8 @@ const Dashboard = () => {
             </span>
           </Button>
 
+          {/* CARD */}
+
           <Button
             variant={
               page === "cards"
@@ -1150,6 +1306,8 @@ const Dashboard = () => {
               Card
             </span>
           </Button>
+
+          {/* ME */}
 
           <Button
             variant={
@@ -1182,28 +1340,33 @@ const Dashboard = () => {
   );
 
   /* ================================================================
-     DASHBOARD
+     MAIN DASHBOARD
      ================================================================ */
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-50 pb-20">
+    <div className="min-h-screen bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-50 pb-24">
 
       {/* ============================================================
           HEADER
-      ============================================================ */}
+          ============================================================ */}
 
       <header className="bg-gradient-to-r from-purple-600 to-blue-600 text-white">
 
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
 
-          <div className="flex justify-between items-center h-16">
+          <div className="flex h-16 items-center justify-between">
 
-            {/* Brand */}
+            {/* BRAND */}
+
             <div className="flex items-center">
 
-              <div className="mr-3 flex h-9 w-9 items-center justify-center rounded-xl bg-white p-1 shadow-sm">
+              <div className="mr-3 flex h-9 w-9 items-center justify-center rounded-full bg-white shadow-sm">
 
-                <IyanjuPayLogo size="sm" />
+                <img
+                  src="/icon-180.png"
+                  alt="IyanjuPay"
+                  className="h-7 w-7 object-contain"
+                />
 
               </div>
 
@@ -1213,8 +1376,11 @@ const Dashboard = () => {
 
             </div>
 
-            {/* Header actions */}
+            {/* HEADER ACTIONS */}
+
             <div className="flex items-center gap-1 sm:gap-2">
+
+              {/* QR */}
 
               <Button
                 variant="ghost"
@@ -1223,9 +1389,12 @@ const Dashboard = () => {
                   setQrModalOpen(true)
                 }
                 className="text-white hover:bg-white/20"
+                aria-label="Open QR code"
               >
                 <QrCode className="h-4 w-4" />
               </Button>
+
+              {/* PROFILE */}
 
               <Button
                 variant="ghost"
@@ -1234,9 +1403,12 @@ const Dashboard = () => {
                   setCurrentPage("me")
                 }
                 className="text-white hover:bg-white/20"
+                aria-label="Open profile"
               >
                 <User className="h-4 w-4" />
               </Button>
+
+              {/* HISTORY */}
 
               <Button
                 variant="ghost"
@@ -1245,15 +1417,19 @@ const Dashboard = () => {
                   setCurrentPage("history")
                 }
                 className="text-white hover:bg-white/20"
+                aria-label="Open transaction history"
               >
                 <History className="h-4 w-4" />
               </Button>
+
+              {/* LOGOUT */}
 
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={signOut}
                 className="text-white hover:bg-white/20"
+                aria-label="Sign out"
               >
                 <LogOut className="h-4 w-4" />
               </Button>
@@ -1268,14 +1444,17 @@ const Dashboard = () => {
 
       {/* ============================================================
           MAIN
-      ============================================================ */}
+          ============================================================ */}
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+      <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
 
-        {/* Greeting */}
+        {/* ==========================================================
+            GREETING
+            ========================================================== */}
+
         <div className="mb-6">
 
-          <h2 className="text-2xl font-bold text-gray-900 mb-1">
+          <h2 className="mb-1 text-2xl font-bold text-gray-900">
             Good Morning! 👋
           </h2>
 
@@ -1287,19 +1466,21 @@ const Dashboard = () => {
 
         {/* ==========================================================
             WALLET
-        ========================================================== */}
+            ========================================================== */}
 
         <div className="mb-6">
 
-          <Card className="bg-gradient-to-r from-purple-600 to-blue-600 text-white border-0 shadow-lg">
+          <Card className="border-0 bg-gradient-to-r from-purple-600 to-blue-600 text-white shadow-lg">
 
             <CardContent className="p-6">
 
-              <div className="flex justify-between items-start mb-4">
+              <div className="mb-4 flex items-start justify-between">
+
+                {/* BALANCE */}
 
                 <div>
 
-                  <p className="text-purple-100 text-sm mb-1">
+                  <p className="mb-1 text-sm text-purple-100">
                     Total Balance
                   </p>
 
@@ -1325,7 +1506,12 @@ const Dashboard = () => {
                             !previous
                         )
                       }
-                      className="text-white hover:bg-white/20 p-1"
+                      className="p-1 text-white hover:bg-white/20"
+                      aria-label={
+                        showBalance
+                          ? "Hide balance"
+                          : "Show balance"
+                      }
                     >
                       {showBalance ? (
                         <EyeOff className="h-4 w-4" />
@@ -1338,9 +1524,11 @@ const Dashboard = () => {
 
                 </div>
 
+                {/* WALLET ID */}
+
                 <div className="text-right">
 
-                  <p className="text-purple-100 text-sm">
+                  <p className="text-sm text-purple-100">
                     Wallet ID
                   </p>
 
@@ -1355,15 +1543,17 @@ const Dashboard = () => {
 
               </div>
 
+              {/* WALLET ACTIONS */}
+
               <div className="flex gap-3">
 
                 <Button
                   onClick={() =>
                     setFundModalOpen(true)
                   }
-                  className="flex-1 bg-white text-purple-600 hover:bg-gray-100 font-semibold"
+                  className="flex-1 bg-white font-semibold text-purple-600 hover:bg-gray-100"
                 >
-                  <Plus className="h-4 w-4 mr-2" />
+                  <Plus className="mr-2 h-4 w-4" />
 
                   Add Money
                 </Button>
@@ -1373,9 +1563,9 @@ const Dashboard = () => {
                     setTransferModalOpen(true)
                   }
                   variant="outline"
-                  className="flex-1 bg-white text-purple-600 hover:bg-gray-100 font-semibold"
+                  className="flex-1 border-white/70 bg-white font-semibold text-purple-600 hover:bg-gray-100"
                 >
-                  <Send className="h-4 w-4 mr-2" />
+                  <Send className="mr-2 h-4 w-4" />
 
                   Send Money
                 </Button>
@@ -1390,15 +1580,15 @@ const Dashboard = () => {
 
         {/* ==========================================================
             SERVICES
-        ========================================================== */}
+            ========================================================== */}
 
         <div className="mb-6">
 
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">
+          <h3 className="mb-4 text-lg font-semibold text-gray-900">
             Services
           </h3>
 
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4">
 
             {services.map(
               (service, index) => (
@@ -1431,11 +1621,11 @@ const Dashboard = () => {
 
         {/* ==========================================================
             STATS
-        ========================================================== */}
+            ========================================================== */}
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
 
-          {/* Total Spent */}
+          {/* MONTHLY SPENDING */}
 
           <Card className="bg-white shadow-sm">
 
@@ -1459,7 +1649,7 @@ const Dashboard = () => {
 
                 </div>
 
-                <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center">
+                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-red-100">
 
                   <Banknote className="h-6 w-6 text-red-600" />
 
@@ -1471,7 +1661,7 @@ const Dashboard = () => {
 
           </Card>
 
-          {/* Transactions */}
+          {/* TRANSACTIONS */}
 
           <Card className="bg-white shadow-sm">
 
@@ -1495,7 +1685,7 @@ const Dashboard = () => {
 
                 </div>
 
-                <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
+                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-blue-100">
 
                   <History className="h-6 w-6 text-blue-600" />
 
@@ -1507,7 +1697,7 @@ const Dashboard = () => {
 
           </Card>
 
-          {/* Success Rate */}
+          {/* SUCCESS RATE */}
 
           <Card className="bg-white shadow-sm">
 
@@ -1531,7 +1721,7 @@ const Dashboard = () => {
 
                 </div>
 
-                <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center">
+                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-green-100">
 
                   <Shield className="h-6 w-6 text-green-600" />
 
@@ -1549,33 +1739,41 @@ const Dashboard = () => {
 
       {/* ============================================================
           BOTTOM NAVIGATION
-      ============================================================ */}
+          ============================================================ */}
 
       {renderBottomNav(
         currentPage
       )}
 
       {/* ============================================================
-          MODALS
-      ============================================================ */}
+          FUND WALLET MODAL
+          ============================================================ */}
 
       <FundWalletModal
         isOpen={
           fundModalOpen
         }
+
         onClose={() =>
           setFundModalOpen(false)
         }
+
         onFunded={
           refreshWallet
         }
       />
 
+      {/* ============================================================
+          SERVICE MODAL
+          ============================================================ */}
+
       <ServiceModal
         isOpen={
           serviceModalOpen
         }
+
         onClose={() => {
+
           setServiceModalOpen(
             false
           );
@@ -1583,47 +1781,70 @@ const Dashboard = () => {
           setSelectedService(
             null
           );
+
         }}
+
         service={
           selectedService
         }
+
         walletBalance={Number(
           wallet?.balance ?? 0
         )}
+
         onPurchase={
           handlePurchase
         }
       />
 
+      {/* ============================================================
+          TRANSFER MODAL
+          ============================================================ */}
+
       <TransferModal
         isOpen={
           transferModalOpen
         }
+
         onClose={() =>
           setTransferModalOpen(
             false
           )
         }
+
         walletBalance={Number(
           wallet?.balance ?? 0
         )}
+
         onTransfer={
           handleTransfer
         }
       />
 
+      {/* ============================================================
+          QR CODE MODAL
+          ============================================================ */}
+
       <QRCodeModal
         isOpen={
           qrModalOpen
         }
+
         onClose={() =>
           setQrModalOpen(false)
         }
+
         virtualAccountNumber=""
+
         userName={
-          user?.email || "User"
+          user?.email ||
+          "User"
         }
       />
+
+      {/* ============================================================
+          WHATSAPP FLOAT
+          ============================================================ */}
 
       <WhatsAppFloat />
 

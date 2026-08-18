@@ -1,37 +1,106 @@
 import React, { useEffect, useState } from "react";
 
-interface AppSplashProps {
-  children: React.ReactNode;
-}
+const SPLASH_DURATION = 10_000;
 
-const AppSplash = ({ children }: AppSplashProps) => {
-  const [showSplash, setShowSplash] = useState(true);
-
+const AppSplash = () => {
+  const [progress, setProgress] = useState(0);
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-      setShowSplash(false);
-    }, 1200);
+    const startTime = Date.now();
 
-    return () => clearTimeout(timer);
+    const interval = window.setInterval(() => {
+      const elapsed = Date.now() - startTime;
+      const percentage = Math.min(
+        (elapsed / SPLASH_DURATION) * 100,
+        100
+      );
+
+      setProgress(percentage);
+
+      if (percentage >= 100) {
+        window.clearInterval(interval);
+      }
+    }, 50);
+
+    return () => {
+      window.clearInterval(interval);
+    };
   }, []);
 
+  return (
+    <div className="fixed inset-0 z-[99999] flex min-h-screen items-center justify-center overflow-hidden bg-gradient-to-br from-purple-700 via-purple-600 to-blue-600">
+      {/* Background decoration */}
+      <div className="pointer-events-none absolute -left-24 -top-24 h-72 w-72 rounded-full bg-white/10 blur-3xl" />
 
-  if (showSplash) {
-    return (
-      <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-white">
-        <div className="flex flex-col items-center">
+      <div className="pointer-events-none absolute -bottom-24 -right-24 h-80 w-80 rounded-full bg-blue-300/10 blur-3xl" />
+
+      <div className="pointer-events-none absolute left-1/2 top-1/2 h-96 w-96 -translate-x-1/2 -translate-y-1/2 rounded-full bg-purple-400/10 blur-3xl" />
+
+      {/* Main content */}
+      <div className="relative z-10 flex w-full max-w-md flex-col items-center px-6 text-center">
+
+        {/* App Logo */}
+        <div className="mb-7 flex h-28 w-28 items-center justify-center rounded-[32px] bg-white shadow-2xl">
           <img
-            src="/og-image.jpg"
+            src="/icon-180.png"
             alt="IyanjuPay"
-            className="h-24 w-24 object-contain animate-pulse"
+            className="h-24 w-24 rounded-[26px] object-contain"
+            draggable={false}
           />
         </div>
-      </div>
-    );
-  }
 
-  return <>{children}</>;
+        {/* App Name */}
+        <h1 className="text-4xl font-extrabold tracking-tight text-white sm:text-5xl">
+          IyanjuPay
+        </h1>
+
+        {/* Tagline */}
+        <p className="mt-2 text-sm font-medium text-purple-100 sm:text-base">
+          Simple. Secure. Seamless.
+        </p>
+
+        {/* Loading section */}
+        <div className="mt-10 flex w-full flex-col items-center">
+
+          {/* Spinner */}
+          <div className="relative mb-5 h-9 w-9">
+            <div className="absolute inset-0 rounded-full border-4 border-white/20" />
+
+            <div className="absolute inset-0 animate-spin rounded-full border-4 border-transparent border-t-white" />
+          </div>
+
+          {/* Loading text */}
+          <p className="text-sm font-semibold text-white">
+            Loading IyanjuPay...
+          </p>
+
+          <p className="mt-1 text-xs text-white/70">
+            Please wait
+          </p>
+
+          {/* Progress bar */}
+          <div className="mt-6 h-1.5 w-48 overflow-hidden rounded-full bg-white/20">
+            <div
+              className="h-full rounded-full bg-white transition-[width] duration-75 ease-linear"
+              style={{
+                width: `${progress}%`,
+              }}
+            />
+          </div>
+
+          {/* Percentage */}
+          <p className="mt-3 text-xs font-medium text-white/60">
+            {Math.round(progress)}%
+          </p>
+        </div>
+
+        {/* Bottom text */}
+        <p className="mt-12 text-xs text-white/50">
+          Secure payments powered by IyanjuPay
+        </p>
+      </div>
+    </div>
+  );
 };
 
 export default AppSplash;

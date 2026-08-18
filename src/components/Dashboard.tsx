@@ -1,8 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState } from "react";
 
-import {
-  Button,
-} from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 
 import {
   Card,
@@ -29,51 +27,51 @@ import {
   Wifi,
   Zap,
   CreditCard,
-} from 'lucide-react';
+} from "lucide-react";
 
-import ServiceCard from './services/ServiceCard';
-import FundWalletModal from './modals/FundWalletModal';
-import ServiceModal from './modals/ServiceModal';
-import TransferModal from './modals/TransferModal';
-import QRCodeModal from './modals/QRCodeModal';
-import WhatsAppFloat from './WhatsAppFloat';
-import ProfilePage from './profile/ProfilePage';
-import TransactionHistory from './transactions/TransactionHistory';
-import RewardsPage from './rewards/RewardsPage';
-import CardsPage from './cards/CardsPage';
-import MePage from './me/MePage';
+import ServiceCard from "./services/ServiceCard";
+import FundWalletModal from "./modals/FundWalletModal";
+import ServiceModal from "./modals/ServiceModal";
+import TransferModal from "./modals/TransferModal";
+import QRCodeModal from "./modals/QRCodeModal";
+import WhatsAppFloat from "./WhatsAppFloat";
+import ProfilePage from "./profile/ProfilePage";
+import TransactionHistory from "./transactions/TransactionHistory";
+import RewardsPage from "./rewards/RewardsPage";
+import CardsPage from "./cards/CardsPage";
+import MePage from "./me/MePage";
 
-import { useAuth } from '@/hooks/useAuth';
-import { useWallet } from '@/hooks/useWallet';
-import { supabase } from '@/integrations/supabase/client';
-import { useToast } from '@/hooks/use-toast';
+import { useAuth } from "@/hooks/useAuth";
+import { useWallet } from "@/hooks/useWallet";
+import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
 
 type BillService =
-  | 'airtime'
-  | 'data'
-  | 'electricity'
-  | 'cable'
-  | 'internet';
+  | "airtime"
+  | "data"
+  | "electricity"
+  | "cable"
+  | "internet";
 
 type CurrentPage =
-  | 'home'
-  | 'rewards'
-  | 'cards'
-  | 'me'
-  | 'profile'
-  | 'history';
+  | "home"
+  | "rewards"
+  | "cards"
+  | "me"
+  | "profile"
+  | "history";
 
 type SelectedService = {
   title: string;
-  type: string;
+  type: BillService;
 };
 
 const SUPPORTED_BILL_SERVICES: BillService[] = [
-  'airtime',
-  'data',
-  'electricity',
-  'cable',
-  'internet',
+  "airtime",
+  "data",
+  "electricity",
+  "cable",
+  "internet",
 ];
 
 const Dashboard = () => {
@@ -97,16 +95,14 @@ const Dashboard = () => {
   const [qrModalOpen, setQrModalOpen] =
     useState(false);
 
-  const [
-    selectedService,
-    setSelectedService,
-  ] = useState<SelectedService | null>(null);
+  const [selectedService, setSelectedService] =
+    useState<SelectedService | null>(null);
 
   const [showBalance, setShowBalance] =
     useState(true);
 
   const [currentPage, setCurrentPage] =
-    useState<CurrentPage>('home');
+    useState<CurrentPage>("home");
 
   const { toast } = useToast();
 
@@ -117,30 +113,52 @@ const Dashboard = () => {
   useEffect(() => {
     if (!user) return;
 
+    let cancelled = false;
+
     const bootstrapWallet = async () => {
-      const { data, error } =
-        await supabase.functions.invoke(
-          "wallet-bootstrap"
+      try {
+        const {
+          data,
+          error,
+        } = await supabase.functions.invoke(
+          "wallet-bootstrap",
+          {
+            body: {},
+          }
         );
 
-      if (error) {
+        if (cancelled) return;
+
+        if (error) {
+          console.error(
+            "Wallet bootstrap error:",
+            error
+          );
+
+          return;
+        }
+
+        console.log(
+          "Wallet bootstrap:",
+          data
+        );
+
+        await refreshWallet();
+      } catch (error) {
+        if (cancelled) return;
+
         console.error(
-          "Wallet bootstrap error:",
+          "Wallet bootstrap failed:",
           error
         );
-
-        return;
       }
-
-      console.log(
-        "Wallet bootstrap:",
-        data
-      );
-
-      await refreshWallet();
     };
 
     bootstrapWallet();
+
+    return () => {
+      cancelled = true;
+    };
   }, [user, refreshWallet]);
 
   // ============================================================
@@ -148,6 +166,8 @@ const Dashboard = () => {
   // ============================================================
 
   const syncDeposits = async () => {
+    if (!user) return;
+
     try {
       console.log(
         "Starting Flutterwave deposit sync..."
@@ -157,7 +177,10 @@ const Dashboard = () => {
         data,
         error,
       } = await supabase.functions.invoke(
-        "flutterwave-sync-deposits"
+        "flutterwave-sync-deposits",
+        {
+          body: {},
+        }
       );
 
       console.log(
@@ -235,12 +258,6 @@ const Dashboard = () => {
       color: "bg-indigo-500",
       type: "internet",
     },
-
-    // ----------------------------------------------------------
-    // These services are displayed but are NOT sent through
-    // flutterwave-bills yet.
-    // ----------------------------------------------------------
-
     {
       title: "Insurance",
       description: "Pay insurance premiums",
@@ -292,14 +309,11 @@ const Dashboard = () => {
   const handleServiceClick = (
     service: typeof services[number]
   ) => {
-    // Bank transfer has its own Edge Function.
-    if (service.type === 'transfer') {
+    if (service.type === "transfer") {
       setTransferModalOpen(true);
       return;
     }
 
-    // Only these services are currently supported by
-    // flutterwave-bills.
     if (
       !SUPPORTED_BILL_SERVICES.includes(
         service.type as BillService
@@ -316,7 +330,7 @@ const Dashboard = () => {
 
     setSelectedService({
       title: service.title,
-      type: service.type,
+      type: service.type as BillService,
     });
 
     setServiceModalOpen(true);
@@ -328,120 +342,113 @@ const Dashboard = () => {
 
   const handlePurchase = async (
     amount: number,
-    details: any
-  ) => {
+    details: Record<string, any>
+  ): Promise<void> => {
     if (!user) {
-      toast({
-        title: "Authentication required",
-        description:
-          "Please log in again.",
-        variant: "destructive",
-      });
-
-      return;
+      throw new Error(
+        "Authentication required. Please log in again."
+      );
     }
 
     if (!selectedService) {
-      toast({
-        title: "Service error",
-        description:
-          "Please select a service.",
-        variant: "destructive",
-      });
-
-      return;
+      throw new Error(
+        "Please select a service."
+      );
     }
-
-    // ----------------------------------------------------------
-    // SERVICE SUPPORT CHECK
-    // ----------------------------------------------------------
 
     const service =
-      selectedService.type as BillService;
+      selectedService.type;
 
     if (
-      !SUPPORTED_BILL_SERVICES.includes(service)
+      !SUPPORTED_BILL_SERVICES.includes(
+        service
+      )
     ) {
-      toast({
-        title: "Service unavailable",
-        description:
-          `${selectedService.title} is not currently supported.`,
-        variant: "destructive",
-      });
-
-      return;
+      throw new Error(
+        `${selectedService.title} is not currently supported.`
+      );
     }
 
-    // ----------------------------------------------------------
+    // ==========================================================
     // AMOUNT VALIDATION
-    // ----------------------------------------------------------
+    // ==========================================================
 
     if (
       !Number.isFinite(amount) ||
       amount <= 0
     ) {
-      toast({
-        title: "Invalid amount",
-        description:
-          "Please enter a valid amount.",
-        variant: "destructive",
-      });
-
-      return;
+      throw new Error(
+        "Please enter a valid payment amount."
+      );
     }
 
-    // ----------------------------------------------------------
+    // ==========================================================
     // WALLET VALIDATION
-    // ----------------------------------------------------------
+    // ==========================================================
+
+    const currentBalance =
+      Number(wallet?.balance ?? 0);
 
     if (
-      wallet &&
-      amount > Number(wallet.balance)
+      amount > currentBalance
     ) {
-      toast({
-        title: "Insufficient Balance",
-        description:
-          "Please fund your wallet to continue.",
-        variant: "destructive",
-      });
-
-      return;
+      throw new Error(
+        "Insufficient wallet balance. Please fund your wallet."
+      );
     }
 
-    try {
-      // ========================================================
-      // NORMALISE DETAILS
-      // ========================================================
+    // ==========================================================
+    // NORMALISE BILLER
+    // ==========================================================
 
-      const billerCode =
-        String(
-          details?.biller_code ??
+    const billerCode =
+      String(
+        details?.biller_code ??
           details?.billerCode ??
           ""
-        ).trim();
+      ).trim();
 
-      const itemCode =
-        String(
-          details?.item_code ??
+    if (!billerCode) {
+      throw new Error(
+        "Please select a valid bill provider."
+      );
+    }
+
+    // ==========================================================
+    // NORMALISE ITEM
+    // ==========================================================
+
+    const itemCode =
+      String(
+        details?.item_code ??
           details?.itemCode ??
           ""
-        ).trim();
+      ).trim();
 
-      const country =
-        String(
-          details?.country ??
-          "NG"
-        )
-          .trim()
-          .toUpperCase();
+    if (!itemCode) {
+      throw new Error(
+        "Please select a valid bill package."
+      );
+    }
 
-      // ========================================================
-      // CUSTOMER IDENTIFIER
-      // ========================================================
+    // ==========================================================
+    // NORMALISE COUNTRY
+    // ==========================================================
 
-      let customer =
-        String(
-          details?.customer ??
+    const country =
+      String(
+        details?.country ?? "NG"
+      )
+        .trim()
+        .toUpperCase();
+
+    // ==========================================================
+    // NORMALISE CUSTOMER
+    // ==========================================================
+
+    let customer =
+      String(
+        details?.customer ??
           details?.phoneNumber ??
           details?.phone ??
           details?.meterNumber ??
@@ -452,112 +459,220 @@ const Dashboard = () => {
           details?.accountNumber ??
           details?.account_number ??
           ""
-        ).trim();
+      ).trim();
 
-      // Remove spaces from phone numbers.
+    if (
+      service === "airtime" ||
+      service === "data"
+    ) {
+      customer =
+        customer.replace(
+          /\s+/g,
+          ""
+        );
+    }
+
+    if (!customer) {
+      throw new Error(
+        "Customer information is required."
+      );
+    }
+
+    // ==========================================================
+    // SERVICE-SPECIFIC VALIDATION
+    // ==========================================================
+
+    if (
+      service === "airtime" ||
+      service === "data"
+    ) {
       if (
-        service === "airtime" ||
-        service === "data"
+        !details?.provider
       ) {
-        customer =
-          customer.replace(
-            /\s+/g,
-            ""
-          );
-      }
-
-      // ========================================================
-      // PROVIDER VALIDATION
-      // ========================================================
-
-      if (
-        service === "airtime" ||
-        service === "data"
-      ) {
-        if (!details?.provider) {
-          throw new Error(
-            "Please select a network provider."
-          );
-        }
-
-        if (!customer) {
-          throw new Error(
-            "Phone number is required."
-          );
-        }
-      }
-
-      if (service === "electricity") {
-        if (!details?.provider) {
-          throw new Error(
-            "Please select an electricity provider."
-          );
-        }
-
-        if (!customer) {
-          throw new Error(
-            "Meter/account number is required."
-          );
-        }
-      }
-
-      if (service === "cable") {
-        if (!details?.provider) {
-          throw new Error(
-            "Please select a cable provider."
-          );
-        }
-
-        if (!customer) {
-          throw new Error(
-            "Smart card number is required."
-          );
-        }
-      }
-
-      if (service === "internet") {
-        if (!details?.provider) {
-          throw new Error(
-            "Please select an internet provider."
-          );
-        }
-
-        if (!customer) {
-          throw new Error(
-            "Internet account number is required."
-          );
-        }
-      }
-
-      // ========================================================
-      // IMPORTANT:
-      // flutterwave-bills REQUIRES these values.
-      // ========================================================
-
-      if (!billerCode) {
         throw new Error(
-          "Please select a valid bill provider."
+          "Please select a network provider."
         );
       }
+    }
 
-      if (!itemCode) {
+    if (service === "electricity") {
+      if (
+        !details?.provider
+      ) {
         throw new Error(
-          "Please select a valid bill package."
+          "Please select an electricity provider."
         );
       }
+    }
 
-      // ========================================================
-      // FINAL REQUEST DETAILS
-      // ========================================================
+    if (service === "cable") {
+      if (
+        !details?.provider
+      ) {
+        throw new Error(
+          "Please select a cable provider."
+        );
+      }
+    }
 
-      const paymentDetails = {
-        ...details,
+    if (service === "internet") {
+      if (
+        !details?.provider
+      ) {
+        throw new Error(
+          "Please select an internet provider."
+        );
+      }
+    }
 
+    // ==========================================================
+    // FINAL PAYMENT DETAILS
+    // ==========================================================
+
+    const paymentDetails = {
+      ...details,
+
+      service,
+
+      amount,
+
+      country,
+
+      customer,
+
+      biller_code:
+        billerCode,
+
+      item_code:
+        itemCode,
+    };
+
+    console.log(
+      "Sending bill payment request:",
+      {
+        action: "pay",
+        service,
+        amount,
+        country,
+        biller_code:
+          billerCode,
+        item_code:
+          itemCode,
+        customer,
+      }
+    );
+
+    // ==========================================================
+    // PROCESS PAYMENT
+    // ==========================================================
+
+    toast({
+      title: "Processing payment",
+      description:
+        `Processing ${selectedService.title.toLowerCase()}...`,
+    });
+
+    const {
+      data,
+      error,
+    } =
+      await supabase.functions.invoke(
+        "flutterwave-bills",
+        {
+          body: {
+            action: "pay",
+
+            service,
+
+            amount,
+
+            biller_code:
+              billerCode,
+
+            item_code:
+              itemCode,
+
+            customer,
+
+            country,
+
+            details:
+              paymentDetails,
+          },
+        }
+      );
+
+    // ==========================================================
+    // INVOCATION ERROR
+    // ==========================================================
+
+    if (error) {
+      console.error(
+        "flutterwave-bills invocation error:",
+        error
+      );
+
+      throw new Error(
+        error.message ||
+          "Unable to process bill payment."
+      );
+    }
+
+    console.log(
+      "flutterwave-bills response:",
+      data
+    );
+
+    // ==========================================================
+    // BUSINESS ERROR
+    // ==========================================================
+
+    if (
+      !data ||
+      data.success !== true
+    ) {
+      throw new Error(
+        data?.error ||
+          data?.message ||
+          "Bill payment failed."
+      );
+    }
+
+    // ==========================================================
+    // SUCCESS
+    // ==========================================================
+
+    await refreshWallet();
+
+    setServiceModalOpen(false);
+
+    const reference =
+      data?.reference ??
+      data?.transaction_reference ??
+      data?.transaction_id ??
+      null;
+
+    toast({
+      title: "Payment Successful",
+      description:
+        data?.message ||
+        `${selectedService.title} payment was initiated successfully.`,
+    });
+
+    console.log(
+      "Bill payment successfully processed:",
+      {
         service,
 
         amount,
 
-        country,
+        reference,
+
+        transaction_id:
+          data?.transaction_id,
+
+        provider_reference:
+          data?.provider_reference,
 
         biller_code:
           billerCode,
@@ -566,150 +681,8 @@ const Dashboard = () => {
           itemCode,
 
         customer,
-      };
-
-      console.log(
-        "Sending bill payment request:",
-        {
-          action: "pay",
-          service,
-          amount,
-          country,
-          biller_code:
-            billerCode,
-          item_code:
-            itemCode,
-          customer,
-        }
-      );
-
-      // ========================================================
-      // PROCESS PAYMENT
-      // ========================================================
-
-      toast({
-        title: "Processing payment",
-        description:
-          `Processing ${selectedService.title.toLowerCase()}...`,
-      });
-
-      const {
-        data,
-        error,
-      } =
-        await supabase.functions.invoke(
-          "flutterwave-bills",
-          {
-            body: {
-              action: "pay",
-
-              service,
-
-              amount,
-
-              biller_code:
-                billerCode,
-
-              item_code:
-                itemCode,
-
-              customer,
-
-              country,
-
-              details:
-                paymentDetails,
-            },
-          }
-        );
-
-      // ========================================================
-      // EDGE FUNCTION INVOCATION ERROR
-      // ========================================================
-
-      if (error) {
-        console.error(
-          "flutterwave-bills invocation error:",
-          error
-        );
-
-        throw new Error(
-          error.message ||
-            "Unable to process bill payment."
-        );
       }
-
-      console.log(
-        "flutterwave-bills response:",
-        data
-      );
-
-      // ========================================================
-      // EDGE FUNCTION BUSINESS ERROR
-      // ========================================================
-
-      if (!data?.success) {
-        throw new Error(
-          data?.error ||
-            "Bill payment failed."
-        );
-      }
-
-      // ========================================================
-      // SUCCESS
-      // ========================================================
-
-      setServiceModalOpen(false);
-
-      await refreshWallet();
-
-      toast({
-        title: "Payment Successful",
-        description:
-          data?.message ||
-          `${selectedService.title} payment was initiated successfully.`,
-      });
-
-      console.log(
-        "Bill payment successfully initiated:",
-        {
-          service,
-
-          amount,
-
-          reference:
-            data?.reference,
-
-          transaction_id:
-            data?.transaction_id,
-
-          provider_reference:
-            data?.provider_reference,
-
-          biller_code:
-            billerCode,
-
-          item_code:
-            itemCode,
-
-          customer,
-        }
-      );
-
-    } catch (error: any) {
-      console.error(
-        "Service payment failed:",
-        error
-      );
-
-      toast({
-        title: "Payment Failed",
-        description:
-          error?.message ||
-          "Unable to complete this payment. Your wallet was not charged.",
-        variant: "destructive",
-      });
-    }
+    );
   };
 
   // ============================================================
@@ -747,7 +720,8 @@ const Dashboard = () => {
 
     if (
       wallet &&
-      amount > Number(wallet.balance)
+      amount >
+        Number(wallet.balance)
     ) {
       toast({
         title: "Insufficient Balance",
@@ -759,7 +733,9 @@ const Dashboard = () => {
       return;
     }
 
-    if (!details?.accountNumber) {
+    if (
+      !details?.accountNumber
+    ) {
       toast({
         title: "Invalid recipient",
         description:
@@ -770,7 +746,9 @@ const Dashboard = () => {
       return;
     }
 
-    if (!details?.bankCode) {
+    if (
+      !details?.bankCode
+    ) {
       toast({
         title: "Invalid bank",
         description:
@@ -781,7 +759,9 @@ const Dashboard = () => {
       return;
     }
 
-    if (!details?.recipient) {
+    if (
+      !details?.recipient
+    ) {
       toast({
         title: "Invalid recipient",
         description:
@@ -848,9 +828,13 @@ const Dashboard = () => {
         data
       );
 
-      if (!data?.success) {
+      if (
+        !data ||
+        data.success !== true
+      ) {
         throw new Error(
           data?.error ||
+            data?.message ||
             "Bank transfer failed."
         );
       }
@@ -884,7 +868,6 @@ const Dashboard = () => {
             details.recipient,
         }
       );
-
     } catch (error: any) {
       console.error(
         "Bank transfer failed:",
@@ -905,57 +888,67 @@ const Dashboard = () => {
   // PAGE ROUTING
   // ============================================================
 
-  if (currentPage === 'profile') {
+  if (
+    currentPage === "profile"
+  ) {
     return (
       <ProfilePage
         onBack={() =>
-          setCurrentPage('me')
+          setCurrentPage("me")
         }
       />
     );
   }
 
-  if (currentPage === 'history') {
+  if (
+    currentPage === "history"
+  ) {
     return (
       <TransactionHistory
         onBack={() =>
-          setCurrentPage('me')
+          setCurrentPage("me")
         }
       />
     );
   }
 
-  if (currentPage === 'rewards') {
+  if (
+    currentPage === "rewards"
+  ) {
     return (
       <RewardsPage
         onBack={() =>
-          setCurrentPage('home')
+          setCurrentPage("home")
         }
       />
     );
   }
 
-  if (currentPage === 'cards') {
+  if (
+    currentPage === "cards"
+  ) {
     return (
       <CardsPage
         onBack={() =>
-          setCurrentPage('home')
+          setCurrentPage("home")
         }
       />
     );
   }
 
-  if (currentPage === 'me') {
+  if (
+    currentPage === "me"
+  ) {
     return (
       <MePage
         onBack={() =>
-          setCurrentPage('home')
+          setCurrentPage("home")
         }
         onProfileClick={() =>
-          setCurrentPage('profile')
+          setCurrentPage("profile")
         }
         onHistoryClick={() =>
-          setCurrentPage('history')
+          setCurrentPage("history")
         }
       />
     );
@@ -965,13 +958,11 @@ const Dashboard = () => {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-purple-50 to-blue-50">
         <div className="text-center">
-
           <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-purple-600 mx-auto" />
 
           <p className="mt-4 text-gray-600">
             Loading...
           </p>
-
         </div>
       </div>
     );
@@ -986,23 +977,22 @@ const Dashboard = () => {
   ) => (
     <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-4 py-2">
       <div className="max-w-7xl mx-auto">
-
         <div className="flex justify-around">
 
           <Button
             variant={
-              page === 'home'
-                ? 'default'
-                : 'ghost'
+              page === "home"
+                ? "default"
+                : "ghost"
             }
             size="sm"
             onClick={() =>
-              setCurrentPage('home')
+              setCurrentPage("home")
             }
             className={`flex flex-col items-center gap-1 px-6 py-3 ${
-              page === 'home'
-                ? 'bg-purple-600 text-white'
-                : 'text-gray-600'
+              page === "home"
+                ? "bg-purple-600 text-white"
+                : "text-gray-600"
             }`}
           >
             <Home className="h-4 w-4" />
@@ -1014,18 +1004,18 @@ const Dashboard = () => {
 
           <Button
             variant={
-              page === 'rewards'
-                ? 'default'
-                : 'ghost'
+              page === "rewards"
+                ? "default"
+                : "ghost"
             }
             size="sm"
             onClick={() =>
-              setCurrentPage('rewards')
+              setCurrentPage("rewards")
             }
             className={`flex flex-col items-center gap-1 px-6 py-3 ${
-              page === 'rewards'
-                ? 'bg-purple-600 text-white'
-                : 'text-gray-600'
+              page === "rewards"
+                ? "bg-purple-600 text-white"
+                : "text-gray-600"
             }`}
           >
             <Gift className="h-4 w-4" />
@@ -1037,18 +1027,18 @@ const Dashboard = () => {
 
           <Button
             variant={
-              page === 'cards'
-                ? 'default'
-                : 'ghost'
+              page === "cards"
+                ? "default"
+                : "ghost"
             }
             size="sm"
             onClick={() =>
-              setCurrentPage('cards')
+              setCurrentPage("cards")
             }
             className={`flex flex-col items-center gap-1 px-6 py-3 ${
-              page === 'cards'
-                ? 'bg-purple-600 text-white'
-                : 'text-gray-600'
+              page === "cards"
+                ? "bg-purple-600 text-white"
+                : "text-gray-600"
             }`}
           >
             <CreditCard className="h-4 w-4" />
@@ -1060,18 +1050,18 @@ const Dashboard = () => {
 
           <Button
             variant={
-              page === 'me'
-                ? 'default'
-                : 'ghost'
+              page === "me"
+                ? "default"
+                : "ghost"
             }
             size="sm"
             onClick={() =>
-              setCurrentPage('me')
+              setCurrentPage("me")
             }
             className={`flex flex-col items-center gap-1 px-6 py-3 ${
-              page === 'me'
-                ? 'bg-purple-600 text-white'
-                : 'text-gray-600'
+              page === "me"
+                ? "bg-purple-600 text-white"
+                : "text-gray-600"
             }`}
           >
             <User className="h-4 w-4" />
@@ -1082,7 +1072,6 @@ const Dashboard = () => {
           </Button>
 
         </div>
-
       </div>
     </div>
   );
@@ -1099,7 +1088,6 @@ const Dashboard = () => {
       ======================================================== */}
 
       <header className="bg-gradient-to-r from-purple-600 to-blue-600 text-white">
-
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
 
           <div className="flex justify-between items-center h-16">
@@ -1107,11 +1095,9 @@ const Dashboard = () => {
             <div className="flex items-center">
 
               <div className="w-8 h-8 bg-white rounded-full flex items-center justify-center mr-3">
-
                 <span className="text-purple-600 font-bold text-sm">
                   AL
                 </span>
-
               </div>
 
               <h1 className="text-xl font-bold">
@@ -1137,7 +1123,7 @@ const Dashboard = () => {
                 variant="ghost"
                 size="sm"
                 onClick={() =>
-                  setCurrentPage('me')
+                  setCurrentPage("me")
                 }
                 className="text-white hover:bg-white/20"
               >
@@ -1148,7 +1134,7 @@ const Dashboard = () => {
                 variant="ghost"
                 size="sm"
                 onClick={() =>
-                  setCurrentPage('history')
+                  setCurrentPage("history")
                 }
                 className="text-white hover:bg-white/20"
               >
@@ -1167,9 +1153,7 @@ const Dashboard = () => {
             </div>
 
           </div>
-
         </div>
-
       </header>
 
       {/* ========================================================
@@ -1228,7 +1212,8 @@ const Dashboard = () => {
                       size="sm"
                       onClick={() =>
                         setShowBalance(
-                          !showBalance
+                          (previous) =>
+                            !previous
                         )
                       }
                       className="text-white hover:bg-white/20 p-1"
@@ -1251,7 +1236,10 @@ const Dashboard = () => {
                   </p>
 
                   <p className="font-mono text-sm">
-                    {wallet?.id?.slice(0, 8) || "—"}
+                    {wallet?.id?.slice(
+                      0,
+                      8
+                    ) || "—"}
                   </p>
 
                 </div>
@@ -1305,22 +1293,26 @@ const Dashboard = () => {
 
             {services.map(
               (service, index) => (
-
                 <ServiceCard
-                  key={index}
-                  title={service.title}
+                  key={`${service.type}-${index}`}
+                  title={
+                    service.title
+                  }
                   description={
                     service.description
                   }
-                  icon={service.icon}
-                  color={service.color}
+                  icon={
+                    service.icon
+                  }
+                  color={
+                    service.color
+                  }
                   onClick={() =>
                     handleServiceClick(
                       service
                     )
                   }
                 />
-
               )
             )}
 
@@ -1457,44 +1449,61 @@ const Dashboard = () => {
         onClose={() =>
           setFundModalOpen(false)
         }
-        onFunded={refreshWallet}
+        onFunded={
+          refreshWallet
+        }
       />
 
       <ServiceModal
-        isOpen={serviceModalOpen}
-        onClose={() =>
-          setServiceModalOpen(false)
+        isOpen={
+          serviceModalOpen
         }
-        service={selectedService}
-        walletBalance={
-          Number(wallet?.balance ?? 0)
+        onClose={() => {
+          setServiceModalOpen(
+            false
+          );
+          setSelectedService(
+            null
+          );
+        }}
+        service={
+          selectedService
         }
+        walletBalance={Number(
+          wallet?.balance ?? 0
+        )}
         onPurchase={
           handlePurchase
         }
       />
 
       <TransferModal
-        isOpen={transferModalOpen}
+        isOpen={
+          transferModalOpen
+        }
         onClose={() =>
-          setTransferModalOpen(false)
+          setTransferModalOpen(
+            false
+          )
         }
-        walletBalance={
-          Number(wallet?.balance ?? 0)
-        }
+        walletBalance={Number(
+          wallet?.balance ?? 0
+        )}
         onTransfer={
           handleTransfer
         }
       />
 
       <QRCodeModal
-        isOpen={qrModalOpen}
+        isOpen={
+          qrModalOpen
+        }
         onClose={() =>
           setQrModalOpen(false)
         }
         virtualAccountNumber=""
         userName={
-          user?.email || 'User'
+          user?.email || "User"
         }
       />
 

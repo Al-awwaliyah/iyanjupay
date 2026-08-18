@@ -7,7 +7,8 @@ import {
   CardContent,
 } from "@/components/ui/card";
 
-import { LogOut, User, History, Send, QrCode, Shield, Gift, Banknote, Car, Gamepad2, Plane, Home, Plus, Eye, EyeOff, Smartphone, Wifi, Zap, CreditCard, Loader2,
+import { LogOut, User, History, Send, QrCode, Shield, Gift, Banknote,
+  Car, Gamepad2, Plane, Home, Plus, Eye, EyeOff, Smartphone, Wifi, Zap, CreditCard, Loader2,
 } from "lucide-react";
 
 import ServiceCard from "./services/ServiceCard";
@@ -56,25 +57,58 @@ const SUPPORTED_BILL_SERVICES: BillService[] = [
 ];
 
 /* ================================================================
+   IYANJUPAY LOGO
+   ================================================================ */
+
+const IyanjuPayLogo = ({
+  size = "md",
+}: {
+  size?: "sm" | "md" | "lg";
+}) => {
+  const sizeClasses = {
+    sm: "h-8 w-8",
+    md: "h-16 w-16",
+    lg: "h-24 w-24",
+  };
+
+  return (
+    <img
+      src="/og-image.jpg"
+      alt="IyanjuPay"
+      className={`${sizeClasses[size]} object-contain`}
+    />
+  );
+};
+
+/* ================================================================
    SPLASH SCREEN
    ================================================================ */
 
 const DashboardSplashScreen = () => {
   return (
     <div className="fixed inset-0 z-[9999] flex min-h-screen items-center justify-center overflow-hidden bg-gradient-to-br from-purple-700 via-purple-600 to-blue-600">
+
       {/* Background decoration */}
-      <div className="absolute -left-20 -top-20 h-64 w-64 rounded-full bg-white/10 blur-3xl" />
+      <div className="absolute -left-24 -top-24 h-72 w-72 rounded-full bg-white/10 blur-3xl" />
 
-      <div className="absolute -bottom-20 -right-20 h-72 w-72 rounded-full bg-blue-300/10 blur-3xl" />
+      <div className="absolute -bottom-24 -right-24 h-80 w-80 rounded-full bg-blue-300/10 blur-3xl" />
 
+      <div className="absolute left-1/2 top-1/2 h-[500px] w-[500px] -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/10" />
+
+      <div className="absolute left-1/2 top-1/2 h-[360px] w-[360px] -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/10" />
+
+      {/* Main content */}
       <div className="relative z-10 flex flex-col items-center px-6 text-center">
-        {/* Logo */}
-        <div className="mb-6 flex h-24 w-24 items-center justify-center rounded-[28px] bg-white shadow-2xl">
-          <div className="flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br from-purple-600 to-blue-600">
-            <span className="text-2xl font-extrabold tracking-tight text-white">
-              IP
-            </span>
+
+        {/* Logo container */}
+        <div className="mb-7 flex h-32 w-32 items-center justify-center rounded-[36px] bg-white shadow-2xl animate-pulse">
+
+          <div className="flex h-24 w-24 items-center justify-center rounded-[28px] bg-white shadow-inner">
+
+            <IyanjuPayLogo size="lg" />
+
           </div>
+
         </div>
 
         {/* Brand */}
@@ -82,27 +116,48 @@ const DashboardSplashScreen = () => {
           IyanjuPay
         </h1>
 
-        <p className="mt-2 text-sm font-medium text-purple-100 sm:text-base">
+        <p className="mt-3 text-sm font-medium tracking-wide text-purple-100 sm:text-base">
           Simple. Secure. Seamless.
         </p>
 
-        {/* Loading */}
-        <div className="mt-10 flex flex-col items-center">
-          <Loader2 className="h-7 w-7 animate-spin text-white" />
+        {/* Loading section */}
+        <div className="mt-12 flex flex-col items-center">
 
-          <p className="mt-3 text-sm text-white/80">
+          <div className="flex h-12 w-12 items-center justify-center rounded-full border border-white/20 bg-white/10 backdrop-blur-sm">
+
+            <Loader2 className="h-6 w-6 animate-spin text-white" />
+
+          </div>
+
+          <p className="mt-4 text-sm text-white/85">
             Loading your wallet...
           </p>
+
+          <p className="mt-1 text-xs text-white/50">
+            Please wait
+          </p>
+
         </div>
 
-        {/* Bottom text */}
-        <p className="mt-12 text-xs text-white/50">
-          Secure payments powered by IyanjuPay
-        </p>
+        {/* Security indicator */}
+        <div className="mt-12 flex items-center gap-2 rounded-full border border-white/10 bg-white/10 px-4 py-2 backdrop-blur-sm">
+
+          <Shield className="h-3.5 w-3.5 text-white/70" />
+
+          <span className="text-xs text-white/70">
+            Secure payments powered by IyanjuPay
+          </span>
+
+        </div>
+
       </div>
     </div>
   );
 };
+
+/* ================================================================
+   DASHBOARD
+   ================================================================ */
 
 const Dashboard = () => {
   const { user, signOut } = useAuth();
@@ -140,16 +195,16 @@ const Dashboard = () => {
   const { toast } = useToast();
 
   /* ================================================================
-     SPLASH SCREEN TIMER
+     SPLASH SCREEN — EXACTLY 20 SECONDS
      ================================================================ */
 
   useEffect(() => {
-    const timer = window.setTimeout(() => {
+    const splashTimer = window.setTimeout(() => {
       setShowSplash(false);
-    }, 1800);
+    }, 20000);
 
     return () => {
-      window.clearTimeout(timer);
+      window.clearTimeout(splashTimer);
     };
   }, []);
 
@@ -416,7 +471,10 @@ const Dashboard = () => {
       );
     }
 
-    /* Amount validation */
+    /* ============================================================
+       AMOUNT VALIDATION
+       ============================================================ */
+
     if (
       !Number.isFinite(amount) ||
       amount <= 0
@@ -426,7 +484,10 @@ const Dashboard = () => {
       );
     }
 
-    /* Wallet validation */
+    /* ============================================================
+       WALLET VALIDATION
+       ============================================================ */
+
     const currentBalance =
       Number(wallet?.balance ?? 0);
 
@@ -438,7 +499,10 @@ const Dashboard = () => {
       );
     }
 
-    /* Biller */
+    /* ============================================================
+       BILLER
+       ============================================================ */
+
     const billerCode =
       String(
         details?.biller_code ??
@@ -452,7 +516,10 @@ const Dashboard = () => {
       );
     }
 
-    /* Item */
+    /* ============================================================
+       ITEM
+       ============================================================ */
+
     const itemCode =
       String(
         details?.item_code ??
@@ -466,7 +533,10 @@ const Dashboard = () => {
       );
     }
 
-    /* Country */
+    /* ============================================================
+       COUNTRY
+       ============================================================ */
+
     const country =
       String(
         details?.country ?? "NG"
@@ -474,7 +544,10 @@ const Dashboard = () => {
         .trim()
         .toUpperCase();
 
-    /* Customer */
+    /* ============================================================
+       CUSTOMER
+       ============================================================ */
+
     let customer =
       String(
         details?.customer ??
@@ -507,7 +580,10 @@ const Dashboard = () => {
       );
     }
 
-    /* Service-specific validation */
+    /* ============================================================
+       SERVICE-SPECIFIC VALIDATION
+       ============================================================ */
+
     if (
       service === "airtime" ||
       service === "data"
@@ -543,7 +619,10 @@ const Dashboard = () => {
       }
     }
 
-    /* Final details */
+    /* ============================================================
+       FINAL PAYMENT DETAILS
+       ============================================================ */
+
     const paymentDetails = {
       ...details,
       service,
@@ -561,8 +640,10 @@ const Dashboard = () => {
         service,
         amount,
         country,
-        biller_code: billerCode,
-        item_code: itemCode,
+        biller_code:
+          billerCode,
+        item_code:
+          itemCode,
         customer,
       }
     );
@@ -573,7 +654,10 @@ const Dashboard = () => {
         `Processing ${selectedService.title.toLowerCase()}...`,
     });
 
-    /* Process payment */
+    /* ============================================================
+       PROCESS PAYMENT
+       ============================================================ */
+
     const {
       data,
       error,
@@ -585,14 +669,21 @@ const Dashboard = () => {
             action: "pay",
             service,
             amount,
-            biller_code: billerCode,
-            item_code: itemCode,
+            biller_code:
+              billerCode,
+            item_code:
+              itemCode,
             customer,
             country,
-            details: paymentDetails,
+            details:
+              paymentDetails,
           },
         }
       );
+
+    /* ============================================================
+       INVOCATION ERROR
+       ============================================================ */
 
     if (error) {
       console.error(
@@ -611,6 +702,10 @@ const Dashboard = () => {
       data
     );
 
+    /* ============================================================
+       BUSINESS ERROR
+       ============================================================ */
+
     if (
       !data ||
       data.success !== true
@@ -622,7 +717,14 @@ const Dashboard = () => {
       );
     }
 
+    /* ============================================================
+       SUCCESS
+       ============================================================ */
+
     await refreshWallet();
+
+    const serviceTitle =
+      selectedService.title;
 
     setServiceModalOpen(false);
     setSelectedService(null);
@@ -643,8 +745,8 @@ const Dashboard = () => {
       description:
         data?.message ||
         (isPending
-          ? `${selectedService.title} payment is being verified.`
-          : `${selectedService.title} payment was completed successfully.`),
+          ? `${serviceTitle} payment is being verified.`
+          : `${serviceTitle} payment was completed successfully.`),
     });
 
     console.log(
@@ -657,10 +759,13 @@ const Dashboard = () => {
           data?.transaction_id,
         provider_reference:
           data?.provider_reference,
-        biller_code: billerCode,
-        item_code: itemCode,
+        biller_code:
+          billerCode,
+        item_code:
+          itemCode,
         customer,
-        status: data?.status,
+        status:
+          data?.status,
       }
     );
   };
@@ -771,15 +876,20 @@ const Dashboard = () => {
           {
             body: {
               amount,
+
               account_number:
                 details.accountNumber,
+
               account_bank:
                 details.bankCode,
+
               beneficiary_name:
                 details.recipient,
+
               narration:
                 details.narration ||
                 "IyanjuPay bank transfer",
+
               idempotency_key:
                 idempotencyKey,
             },
@@ -830,11 +940,15 @@ const Dashboard = () => {
         {
           transaction_id:
             data?.transaction_id,
+
           flutterwave_transfer_id:
             data?.flutterwave_transfer_id,
+
           reference:
             data?.reference,
+
           amount,
+
           beneficiary:
             details.recipient,
         }
@@ -856,7 +970,7 @@ const Dashboard = () => {
   };
 
   /* ================================================================
-     SPLASH
+     SPLASH SCREEN
      ================================================================ */
 
   if (showSplash) {
@@ -940,13 +1054,17 @@ const Dashboard = () => {
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-purple-50 to-blue-50">
+
         <div className="text-center">
+
           <Loader2 className="h-12 w-12 animate-spin text-purple-600 mx-auto" />
 
           <p className="mt-4 text-gray-600">
             Loading your wallet...
           </p>
+
         </div>
+
       </div>
     );
   }
@@ -959,7 +1077,9 @@ const Dashboard = () => {
     page: CurrentPage
   ) => (
     <div className="fixed bottom-0 left-0 right-0 z-40 bg-white border-t border-gray-200 px-4 py-2">
+
       <div className="max-w-7xl mx-auto">
+
         <div className="flex justify-around">
 
           <Button
@@ -1055,7 +1175,9 @@ const Dashboard = () => {
           </Button>
 
         </div>
+
       </div>
+
     </div>
   );
 
@@ -1071,16 +1193,18 @@ const Dashboard = () => {
       ============================================================ */}
 
       <header className="bg-gradient-to-r from-purple-600 to-blue-600 text-white">
+
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
 
           <div className="flex justify-between items-center h-16">
 
+            {/* Brand */}
             <div className="flex items-center">
 
-              <div className="w-8 h-8 bg-white rounded-full flex items-center justify-center mr-3">
-                <span className="text-purple-600 font-bold text-sm">
-                  IP
-                </span>
+              <div className="mr-3 flex h-9 w-9 items-center justify-center rounded-xl bg-white p-1 shadow-sm">
+
+                <IyanjuPayLogo size="sm" />
+
               </div>
 
               <h1 className="text-xl font-bold">
@@ -1089,7 +1213,8 @@ const Dashboard = () => {
 
             </div>
 
-            <div className="flex items-center gap-2">
+            {/* Header actions */}
+            <div className="flex items-center gap-1 sm:gap-2">
 
               <Button
                 variant="ghost"
@@ -1136,7 +1261,9 @@ const Dashboard = () => {
             </div>
 
           </div>
+
         </div>
+
       </header>
 
       {/* ============================================================
@@ -1146,7 +1273,6 @@ const Dashboard = () => {
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
 
         {/* Greeting */}
-
         <div className="mb-6">
 
           <h2 className="text-2xl font-bold text-gray-900 mb-1">
@@ -1309,6 +1435,8 @@ const Dashboard = () => {
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
 
+          {/* Total Spent */}
+
           <Card className="bg-white shadow-sm">
 
             <CardContent className="p-4">
@@ -1343,6 +1471,8 @@ const Dashboard = () => {
 
           </Card>
 
+          {/* Transactions */}
+
           <Card className="bg-white shadow-sm">
 
             <CardContent className="p-4">
@@ -1376,6 +1506,8 @@ const Dashboard = () => {
             </CardContent>
 
           </Card>
+
+          {/* Success Rate */}
 
           <Card className="bg-white shadow-sm">
 
@@ -1428,7 +1560,9 @@ const Dashboard = () => {
       ============================================================ */}
 
       <FundWalletModal
-        isOpen={fundModalOpen}
+        isOpen={
+          fundModalOpen
+        }
         onClose={() =>
           setFundModalOpen(false)
         }

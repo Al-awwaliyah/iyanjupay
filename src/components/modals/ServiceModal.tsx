@@ -1,13 +1,20 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, {
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+
 import {
   Select,
   SelectContent,
@@ -15,20 +22,37 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Loader2, RefreshCw } from "lucide-react";
+
+import {
+  Loader2,
+  RefreshCw,
+} from "lucide-react";
+
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import DataPlansModal from "../data/DataPlansModal";
 
 interface ServiceModalProps {
   isOpen: boolean;
   onClose: () => void;
+
   service: {
     title: string;
     type: string;
   } | null;
+
   walletBalance: number;
-  onPurchase: (amount: number, details: any) => void;
+
+  /**
+   * The parent handles the actual payment.
+   *
+   * IMPORTANT:
+   * This is Promise<void> so the modal waits for the
+   * Flutterwave/Supabase payment process before closing.
+   */
+  onPurchase: (
+    amount: number,
+    details: any,
+  ) => Promise<void>;
 }
 
 interface Biller {
@@ -37,24 +61,49 @@ interface Biller {
   biller_code?: string;
   category?: string;
   country?: string;
+  country_code?: string;
+  logo?: string | null;
+  description?: string;
+  short_name?: string;
   [key: string]: any;
 }
 
 interface BillItem {
   id?: number | string;
+
   biller_code?: string;
+
   item_code?: string;
+
   name?: string;
+
+  short_name?: string;
+
+  biller_name?: string;
+
   amount?: number | string;
+
   minimum?: number | string;
+
   maximum?: number | string;
+
+  fee?: number | string;
+
   label_name?: string;
+
   label_name_2?: string;
+
   is_airtime?: boolean;
+
+  country?: string;
+
   [key: string]: any;
 }
 
-const SERVICE_CATEGORY_MAP: Record<string, string> = {
+const SERVICE_CATEGORY_MAP: Record<
+  string,
+  string
+> = {
   airtime: "AIRTIME",
   data: "MOBILEDATA",
   electricity: "UTILITYBILLS",
@@ -69,92 +118,194 @@ const ServiceModal = ({
   walletBalance,
   onPurchase,
 }: ServiceModalProps) => {
+  // ============================================================
+  // FORM STATE
+  // ============================================================
+
   const [amount, setAmount] = useState("");
-  const [customer, setCustomer] = useState("");
 
-  const [billers, setBillers] = useState<Biller[]>([]);
-  const [items, setItems] = useState<BillItem[]>([]);
+  const [customer, setCustomer] =
+    useState("");
 
-  const [selectedBillerCode, setSelectedBillerCode] = useState("");
-  const [selectedItemCode, setSelectedItemCode] = useState("");
+  // ============================================================
+  // FLUTTERWAVE CATALOGUE
+  // ============================================================
 
-  const [loadingBillers, setLoadingBillers] = useState(false);
-  const [loadingItems, setLoadingItems] = useState(false);
+  const [billers, setBillers] =
+    useState<Biller[]>([]);
 
-  const [error, setError] = useState("");
+  const [items, setItems] =
+    useState<BillItem[]>([]);
 
-  const { toast } = useToast();
+  const [
+    selectedBillerCode,
+    setSelectedBillerCode,
+  ] = useState("");
 
-  const serviceType = service?.type ?? "";
+  const [
+    selectedItemCode,
+    setSelectedItemCode,
+  ] = useState("");
+
+  // ============================================================
+  // LOADING
+  // ============================================================
+
+  const [
+    loadingBillers,
+    setLoadingBillers,
+  ] = useState(false);
+
+  const [
+    loadingItems,
+    setLoadingItems,
+  ] = useState(false);
+
+  const [
+    processingPayment,
+    setProcessingPayment,
+  ] = useState(false);
+
+  const [error, setError] =
+    useState("");
+
+  const { toast } =
+    useToast();
+
+  // ============================================================
+  // SERVICE
+  // ============================================================
+
+  const serviceType =
+    service?.type ?? "";
 
   const category = useMemo(
-    () => SERVICE_CATEGORY_MAP[serviceType] ?? "",
+    () =>
+      SERVICE_CATEGORY_MAP[
+        serviceType
+      ] ?? "",
     [serviceType],
   );
 
-  const selectedBiller = useMemo(
-    () =>
-      billers.find(
-        (biller) =>
-          String(biller.biller_code ?? "") ===
-          selectedBillerCode,
-      ) ?? null,
-    [billers, selectedBillerCode],
-  );
+  // ============================================================
+  // SELECTED BILLER
+  // ============================================================
 
-  const selectedItem = useMemo(
-    () =>
-      items.find(
-        (item) =>
-          String(item.item_code ?? "") ===
-          selectedItemCode,
-      ) ?? null,
-    [items, selectedItemCode],
-  );
+  const selectedBiller =
+    useMemo(
+      () =>
+        billers.find(
+          (biller) =>
+            String(
+              biller.biller_code ?? "",
+            ) ===
+            selectedBillerCode,
+        ) ?? null,
+      [
+        billers,
+        selectedBillerCode,
+      ],
+    );
 
-  const customerLabel = useMemo(() => {
-    if (selectedItem?.label_name) {
-      return selectedItem.label_name;
-    }
+  // ============================================================
+  // SELECTED ITEM
+  // ============================================================
 
-    switch (serviceType) {
-      case "airtime":
-      case "data":
-        return "Phone Number";
+  const selectedItem =
+    useMemo(
+      () =>
+        items.find(
+          (item) =>
+            String(
+              item.item_code ?? "",
+            ) ===
+            selectedItemCode,
+        ) ?? null,
+      [
+        items,
+        selectedItemCode,
+      ],
+    );
 
-      case "electricity":
-        return "Meter Number";
+  // ============================================================
+  // CUSTOMER LABEL
+  // ============================================================
 
-      case "cable":
-        return "Smart Card / Decoder Number";
+  const customerLabel =
+    useMemo(() => {
+      if (
+        selectedItem?.label_name
+      ) {
+        return selectedItem.label_name;
+      }
 
-      case "internet":
-        return "Account Number";
+      switch (serviceType) {
+        case "airtime":
+        case "data":
+          return "Phone Number";
 
-      default:
-        return "Customer ID";
-    }
-  }, [selectedItem, serviceType]);
+        case "electricity":
+          return "Meter Number";
 
-  const customerPlaceholder = useMemo(() => {
-    switch (serviceType) {
-      case "airtime":
-      case "data":
-        return "e.g. 08012345678";
+        case "cable":
+          return "Smart Card / Decoder Number";
 
-      case "electricity":
-        return "Enter meter number";
+        case "internet":
+          return "Account Number";
 
-      case "cable":
-        return "Enter smart card number";
+        default:
+          return "Customer ID";
+      }
+    }, [
+      selectedItem,
+      serviceType,
+    ]);
 
-      case "internet":
-        return "Enter account number";
+  // ============================================================
+  // CUSTOMER PLACEHOLDER
+  // ============================================================
 
-      default:
-        return "Enter customer identifier";
-    }
-  }, [serviceType]);
+  const customerPlaceholder =
+    useMemo(() => {
+      switch (serviceType) {
+        case "airtime":
+        case "data":
+          return "e.g. 08012345678";
+
+        case "electricity":
+          return "Enter meter number";
+
+        case "cable":
+          return "Enter smart card number";
+
+        case "internet":
+          return "Enter account number";
+
+        default:
+          return "Enter customer identifier";
+      }
+    }, [serviceType]);
+
+  // ============================================================
+  // RESET FORM
+  // ============================================================
+
+  const resetForm = () => {
+    setAmount("");
+    setCustomer("");
+
+    setBillers([]);
+    setItems([]);
+
+    setSelectedBillerCode("");
+    setSelectedItemCode("");
+
+    setError("");
+
+    setLoadingBillers(false);
+    setLoadingItems(false);
+    setProcessingPayment(false);
+  };
 
   // ============================================================
   // RESET WHEN SERVICE CHANGES
@@ -163,11 +314,16 @@ const ServiceModal = ({
   useEffect(() => {
     setAmount("");
     setCustomer("");
+
     setBillers([]);
     setItems([]);
+
     setSelectedBillerCode("");
     setSelectedItemCode("");
+
     setError("");
+
+    setProcessingPayment(false);
   }, [serviceType]);
 
   // ============================================================
@@ -175,13 +331,18 @@ const ServiceModal = ({
   // ============================================================
 
   const loadBillers = async () => {
-    if (!category) return;
+    if (!category) {
+      return;
+    }
 
     setLoadingBillers(true);
     setError("");
 
     try {
-      const { data, error: functionError } =
+      const {
+        data,
+        error: functionError,
+      } =
         await supabase.functions.invoke(
           "flutterwave-bills",
           {
@@ -211,15 +372,21 @@ const ServiceModal = ({
         );
       }
 
-      const loadedBillers = Array.isArray(
-        data?.billers,
-      )
-        ? data.billers
-        : [];
+      const loadedBillers =
+        Array.isArray(
+          data?.billers,
+        )
+          ? data.billers
+          : [];
 
-      setBillers(loadedBillers);
+      setBillers(
+        loadedBillers,
+      );
 
-      if (loadedBillers.length === 0) {
+      if (
+        loadedBillers.length ===
+        0
+      ) {
         setError(
           "No providers are currently available for this service.",
         );
@@ -230,17 +397,19 @@ const ServiceModal = ({
         err,
       );
 
-      setError(
+      const message =
         err?.message ||
-          "Unable to load bill providers.",
-      );
+        "Unable to load bill providers.";
+
+      setError(message);
 
       toast({
-        title: "Unable to load providers",
+        title:
+          "Unable to load providers",
         description:
-          err?.message ||
-          "Please try again.",
-        variant: "destructive",
+          message,
+        variant:
+          "destructive",
       });
     } finally {
       setLoadingBillers(false);
@@ -252,19 +421,29 @@ const ServiceModal = ({
   // ============================================================
 
   useEffect(() => {
-    if (!isOpen || !category) return;
+    if (
+      !isOpen ||
+      !category
+    ) {
+      return;
+    }
 
     loadBillers();
-  }, [isOpen, category]);
+  }, [
+    isOpen,
+    category,
+  ]);
 
   // ============================================================
-  // LOAD ITEMS
+  // LOAD BILL ITEMS
   // ============================================================
 
   const loadItems = async (
     billerCode: string,
   ) => {
-    if (!billerCode) return;
+    if (!billerCode) {
+      return;
+    }
 
     setLoadingItems(true);
     setError("");
@@ -274,13 +453,17 @@ const ServiceModal = ({
     setAmount("");
 
     try {
-      const { data, error: functionError } =
+      const {
+        data,
+        error: functionError,
+      } =
         await supabase.functions.invoke(
           "flutterwave-bills",
           {
             body: {
               action: "items",
-              biller_code: billerCode,
+              biller_code:
+                billerCode,
             },
           },
         );
@@ -304,15 +487,21 @@ const ServiceModal = ({
         );
       }
 
-      const loadedItems = Array.isArray(
-        data?.items,
-      )
-        ? data.items
-        : [];
+      const loadedItems =
+        Array.isArray(
+          data?.items,
+        )
+          ? data.items
+          : [];
 
-      setItems(loadedItems);
+      setItems(
+        loadedItems,
+      );
 
-      if (loadedItems.length === 0) {
+      if (
+        loadedItems.length ===
+        0
+      ) {
         setError(
           "No packages are currently available for this provider.",
         );
@@ -323,17 +512,19 @@ const ServiceModal = ({
         err,
       );
 
-      setError(
+      const message =
         err?.message ||
-          "Unable to load bill packages.",
-      );
+        "Unable to load bill packages.";
+
+      setError(message);
 
       toast({
-        title: "Unable to load packages",
+        title:
+          "Unable to load packages",
         description:
-          err?.message ||
-          "Please try again.",
-        variant: "destructive",
+          message,
+        variant:
+          "destructive",
       });
     } finally {
       setLoadingItems(false);
@@ -344,12 +535,16 @@ const ServiceModal = ({
   // BILLER CHANGE
   // ============================================================
 
-  const handleBillerChange = (
-    value: string,
-  ) => {
-    setSelectedBillerCode(value);
-    loadItems(value);
-  };
+  const handleBillerChange =
+    async (
+      value: string,
+    ) => {
+      setSelectedBillerCode(
+        value,
+      );
+
+      await loadItems(value);
+    };
 
   // ============================================================
   // ITEM CHANGE
@@ -358,32 +553,42 @@ const ServiceModal = ({
   const handleItemChange = (
     value: string,
   ) => {
-    setSelectedItemCode(value);
-
-    const item = items.find(
-      (entry) =>
-        String(entry.item_code ?? "") ===
-        value,
+    setSelectedItemCode(
+      value,
     );
 
-    if (!item) return;
+    const item =
+      items.find(
+        (entry) =>
+          String(
+            entry.item_code ?? "",
+          ) === value,
+      );
 
-    const itemAmount = Number(
-      item.amount ?? 0,
-    );
+    if (!item) {
+      return;
+    }
+
+    const itemAmount =
+      Number(
+        item.amount ?? 0,
+      );
 
     /*
-     * For fixed-price bill items, automatically
-     * populate the amount.
-     *
-     * Airtime and some variable services may not
-     * have an amount, so the user can still enter it.
+     * Fixed-price packages automatically
+     * populate their amount.
      */
     if (
-      Number.isFinite(itemAmount) &&
+      Number.isFinite(
+        itemAmount,
+      ) &&
       itemAmount > 0
     ) {
-      setAmount(String(itemAmount));
+      setAmount(
+        String(itemAmount),
+      );
+    } else {
+      setAmount("");
     }
   };
 
@@ -391,322 +596,483 @@ const ServiceModal = ({
   // AMOUNT RULES
   // ============================================================
 
-  const amountNumber = Number(amount);
+  const amountNumber =
+    Number(amount);
 
-  const itemMinimum = Number(
-    selectedItem?.minimum ?? 0,
-  );
+  const itemMinimum =
+    Number(
+      selectedItem?.minimum ??
+        0,
+    );
 
-  const itemMaximum = Number(
-    selectedItem?.maximum ?? 0,
-  );
+  const itemMaximum =
+    Number(
+      selectedItem?.maximum ??
+        0,
+    );
 
-  const fixedItemAmount = Number(
-    selectedItem?.amount ?? 0,
-  );
+  const fixedItemAmount =
+    Number(
+      selectedItem?.amount ??
+        0,
+    );
 
   const isFixedAmount =
-    Number.isFinite(fixedItemAmount) &&
+    Number.isFinite(
+      fixedItemAmount,
+    ) &&
     fixedItemAmount > 0;
 
   // ============================================================
   // CUSTOMER NORMALISATION
   // ============================================================
 
-  const normalisedCustomer = () => {
-    let value = customer.trim();
-
-    if (
-      serviceType === "airtime" ||
-      serviceType === "data"
-    ) {
-      value = value.replace(/\s+/g, "");
+  const normalisedCustomer =
+    () => {
+      let value =
+        customer.trim();
 
       if (
-        /^0\d{10}$/.test(value)
+        serviceType ===
+          "airtime" ||
+        serviceType ===
+          "data"
       ) {
-        return `+234${value.substring(1)}`;
+        value =
+          value.replace(
+            /\s+/g,
+            "",
+          );
+
+        // 08012345678
+        if (
+          /^0\d{10}$/.test(
+            value,
+          )
+        ) {
+          return `+234${value.substring(
+            1,
+          )}`;
+        }
+
+        // 8012345678
+        if (
+          /^\d{10}$/.test(
+            value,
+          )
+        ) {
+          return `+234${value}`;
+        }
+
+        // 2348012345678
+        if (
+          /^234\d{10}$/.test(
+            value,
+          )
+        ) {
+          return `+${value}`;
+        }
+
+        // +2348012345678
+        if (
+          /^\+234\d{10}$/.test(
+            value,
+          )
+        ) {
+          return value;
+        }
       }
 
-      if (
-        /^\d{10}$/.test(value)
-      ) {
-        return `+234${value}`;
-      }
-
-      if (
-        /^234\d{10}$/.test(value)
-      ) {
-        return `+${value}`;
-      }
-    }
-
-    return value;
-  };
+      return value;
+    };
 
   // ============================================================
   // VALIDATE FORM
   // ============================================================
 
-  const validateForm = () => {
-    if (!selectedBillerCode) {
-      toast({
-        title: "Select a provider",
-        description:
-          "Please select a bill provider.",
-        variant: "destructive",
-      });
+  const validateForm =
+    () => {
+      if (
+        !selectedBillerCode
+      ) {
+        toast({
+          title:
+            "Select a provider",
+          description:
+            "Please select a bill provider.",
+          variant:
+            "destructive",
+        });
 
-      return false;
-    }
+        return false;
+      }
 
-    if (!selectedItemCode) {
-      toast({
-        title: "Select a package",
-        description:
-          "Please select a bill package.",
-        variant: "destructive",
-      });
+      if (
+        !selectedItemCode
+      ) {
+        toast({
+          title:
+            "Select a package",
+          description:
+            "Please select a bill package.",
+          variant:
+            "destructive",
+        });
 
-      return false;
-    }
+        return false;
+      }
 
-    const finalCustomer =
-      normalisedCustomer();
+      const finalCustomer =
+        normalisedCustomer();
 
-    if (!finalCustomer) {
-      toast({
-        title: "Customer information required",
-        description:
-          `Please enter the ${customerLabel.toLowerCase()}.`,
-        variant: "destructive",
-      });
+      if (!finalCustomer) {
+        toast({
+          title:
+            "Customer information required",
+          description:
+            `Please enter the ${customerLabel.toLowerCase()}.`,
+          variant:
+            "destructive",
+        });
 
-      return false;
-    }
+        return false;
+      }
 
-    if (
-      (serviceType === "airtime" ||
-        serviceType === "data") &&
-      !/^\+234\d{10}$/.test(
-        finalCustomer,
-      )
-    ) {
-      toast({
-        title: "Invalid phone number",
-        description:
-          "Enter a valid Nigerian phone number.",
-        variant: "destructive",
-      });
+      // ========================================================
+      // PHONE VALIDATION
+      // ========================================================
 
-      return false;
-    }
+      if (
+        serviceType ===
+          "airtime" ||
+        serviceType ===
+          "data"
+      ) {
+        if (
+          !/^\+234\d{10}$/.test(
+            finalCustomer,
+          )
+        ) {
+          toast({
+            title:
+              "Invalid phone number",
+            description:
+              "Enter a valid Nigerian phone number.",
+            variant:
+              "destructive",
+          });
 
-    if (
-      !Number.isFinite(amountNumber) ||
-      amountNumber <= 0
-    ) {
-      toast({
-        title: "Invalid amount",
-        description:
-          "Please enter a valid amount.",
-        variant: "destructive",
-      });
+          return false;
+        }
+      }
 
-      return false;
-    }
+      // ========================================================
+      // AMOUNT
+      // ========================================================
 
-    if (
-      isFixedAmount &&
-      Math.abs(
-        amountNumber -
-          fixedItemAmount,
-      ) > 0.01
-    ) {
-      toast({
-        title: "Invalid amount",
-        description: `This package costs ₦${fixedItemAmount.toLocaleString()}.`,
-        variant: "destructive",
-      });
+      if (
+        !Number.isFinite(
+          amountNumber,
+        ) ||
+        amountNumber <= 0
+      ) {
+        toast({
+          title:
+            "Invalid amount",
+          description:
+            "Please enter a valid amount.",
+          variant:
+            "destructive",
+        });
 
-      return false;
-    }
+        return false;
+      }
 
-    if (
-      itemMinimum > 0 &&
-      amountNumber < itemMinimum
-    ) {
-      toast({
-        title: "Amount too low",
-        description: `Minimum amount is ₦${itemMinimum.toLocaleString()}.`,
-        variant: "destructive",
-      });
+      // ========================================================
+      // FIXED AMOUNT
+      // ========================================================
 
-      return false;
-    }
+      if (
+        isFixedAmount &&
+        Math.abs(
+          amountNumber -
+            fixedItemAmount,
+        ) > 0.01
+      ) {
+        toast({
+          title:
+            "Invalid amount",
+          description:
+            `This package costs ₦${fixedItemAmount.toLocaleString()}.`,
+          variant:
+            "destructive",
+        });
 
-    if (
-      itemMaximum > 0 &&
-      amountNumber > itemMaximum
-    ) {
-      toast({
-        title: "Amount too high",
-        description: `Maximum amount is ₦${itemMaximum.toLocaleString()}.`,
-        variant: "destructive",
-      });
+        return false;
+      }
 
-      return false;
-    }
+      // ========================================================
+      // MINIMUM
+      // ========================================================
 
-    if (
-      amountNumber >
-      Number(walletBalance)
-    ) {
-      toast({
-        title: "Insufficient Balance",
-        description:
-          "Please fund your wallet to continue.",
-        variant: "destructive",
-      });
+      if (
+        itemMinimum > 0 &&
+        amountNumber <
+          itemMinimum
+      ) {
+        toast({
+          title:
+            "Amount too low",
+          description:
+            `Minimum amount is ₦${itemMinimum.toLocaleString()}.`,
+          variant:
+            "destructive",
+        });
 
-      return false;
-    }
+        return false;
+      }
 
-    return true;
-  };
+      // ========================================================
+      // MAXIMUM
+      // ========================================================
+
+      if (
+        itemMaximum > 0 &&
+        amountNumber >
+          itemMaximum
+      ) {
+        toast({
+          title:
+            "Amount too high",
+          description:
+            `Maximum amount is ₦${itemMaximum.toLocaleString()}.`,
+          variant:
+            "destructive",
+        });
+
+        return false;
+      }
+
+      // ========================================================
+      // WALLET
+      // ========================================================
+
+      if (
+        amountNumber >
+        Number(
+          walletBalance,
+        )
+      ) {
+        toast({
+          title:
+            "Insufficient Balance",
+          description:
+            "Please fund your wallet to continue.",
+          variant:
+            "destructive",
+        });
+
+        return false;
+      }
+
+      return true;
+    };
 
   // ============================================================
   // PURCHASE
   // ============================================================
 
-  const handlePurchase = () => {
-    if (!service) return;
+  const handlePurchase =
+    async () => {
+      if (!service) {
+        return;
+      }
 
-    if (!validateForm()) return;
+      if (
+        processingPayment
+      ) {
+        return;
+      }
 
-    const finalCustomer =
-      normalisedCustomer();
+      if (!validateForm()) {
+        return;
+      }
 
-    const details = {
-      customer:
-        finalCustomer,
+      const finalCustomer =
+        normalisedCustomer();
 
-      biller_code:
-        selectedBillerCode,
+      /*
+       * Keep both snake_case and camelCase
+       * values because the parent/Edge Function
+       * accepts the snake_case values while the
+       * existing dashboard may use camelCase.
+       */
+      const details = {
+        customer:
+          finalCustomer,
 
-      item_code:
-        selectedItemCode,
+        biller_code:
+          selectedBillerCode,
 
-      billerCode:
-        selectedBillerCode,
+        item_code:
+          selectedItemCode,
 
-      itemCode:
-        selectedItemCode,
+        billerCode:
+          selectedBillerCode,
 
-      phoneNumber:
-        serviceType === "airtime" ||
-        serviceType === "data"
-          ? finalCustomer
-          : "",
+        itemCode:
+          selectedItemCode,
 
-      provider:
-        selectedBiller?.name ??
-        "",
+        phoneNumber:
+          serviceType ===
+            "airtime" ||
+          serviceType ===
+            "data"
+            ? finalCustomer
+            : "",
 
-      meterNumber:
-        serviceType === "electricity"
-          ? finalCustomer
-          : "",
+        provider:
+          selectedBiller?.name ??
+          "",
 
-      smartCardNumber:
-        serviceType === "cable"
-          ? finalCustomer
-          : "",
+        meterNumber:
+          serviceType ===
+          "electricity"
+            ? finalCustomer
+            : "",
 
-      accountNumber:
-        serviceType === "internet"
-          ? finalCustomer
-          : "",
+        meter_number:
+          serviceType ===
+          "electricity"
+            ? finalCustomer
+            : "",
 
-      type:
-        serviceType,
+        smartCardNumber:
+          serviceType ===
+          "cable"
+            ? finalCustomer
+            : "",
 
-      country: "NG",
+        smartcardNumber:
+          serviceType ===
+          "cable"
+            ? finalCustomer
+            : "",
 
-      customerLabel,
+        smartcard_number:
+          serviceType ===
+          "cable"
+            ? finalCustomer
+            : "",
 
-      item:
-        selectedItem,
+        accountNumber:
+          serviceType ===
+          "internet"
+            ? finalCustomer
+            : "",
 
-      biller:
-        selectedBiller,
+        account_number:
+          serviceType ===
+          "internet"
+            ? finalCustomer
+            : "",
+
+        type:
+          serviceType,
+
+        country:
+          "NG",
+
+        customerLabel,
+
+        item:
+          selectedItem,
+
+        biller:
+          selectedBiller,
+      };
+
+      try {
+        setProcessingPayment(
+          true,
+        );
+
+        setError("");
+
+        /*
+         * IMPORTANT:
+         *
+         * Wait for Dashboard.handlePurchase()
+         * to finish.
+         *
+         * Dashboard.handlePurchase() calls:
+         *
+         * flutterwave-bills
+         *
+         * The Edge Function:
+         *
+         * 1. authenticates user
+         * 2. validates bill
+         * 3. debits wallet
+         * 4. calls Flutterwave
+         * 5. refunds if provider rejects
+         */
+        await onPurchase(
+          amountNumber,
+          details,
+        );
+
+        /*
+         * Only reset/close after the parent
+         * confirms that the operation completed.
+         */
+        resetForm();
+        onClose();
+      } catch (err: any) {
+        /*
+         * The parent normally handles the error
+         * toast, but we keep this guard so that
+         * the modal never closes accidentally.
+         */
+        console.error(
+          "Service purchase failed:",
+          err,
+        );
+
+        setError(
+          err?.message ||
+            "Unable to complete this payment.",
+        );
+      } finally {
+        setProcessingPayment(
+          false,
+        );
+      }
     };
-
-    /*
-     * Dashboard.handlePurchase() will call:
-     *
-     * flutterwave-bills
-     *
-     * with:
-     *
-     * service
-     * amount
-     * details
-     *
-     * The Edge Function then extracts:
-     *
-     * biller_code
-     * item_code
-     * customer
-     */
-    onPurchase(
-      amountNumber,
-      details,
-    );
-
-    resetForm();
-    onClose();
-  };
-
-  // ============================================================
-  // RESET
-  // ============================================================
-
-  const resetForm = () => {
-    setAmount("");
-    setCustomer("");
-    setBillers([]);
-    setItems([]);
-    setSelectedBillerCode("");
-    setSelectedItemCode("");
-    setError("");
-  };
 
   // ============================================================
   // CLOSE
   // ============================================================
 
-  const handleClose = () => {
-    resetForm();
-    onClose();
-  };
+  const handleClose =
+    () => {
+      if (
+        processingPayment
+      ) {
+        return;
+      }
+
+      resetForm();
+      onClose();
+    };
 
   // ============================================================
-  // DATA SERVICE
+  // NO SERVICE
   // ============================================================
 
-  if (serviceType === "data") {
-    return (
-      <DataPlansModal
-        isOpen={isOpen}
-        onClose={onClose}
-        walletBalance={walletBalance}
-        onPurchase={onPurchase}
-      />
-    );
+  if (!service) {
+    return null;
   }
-
-  if (!service) return null;
 
   // ============================================================
   // UI
@@ -715,13 +1081,20 @@ const ServiceModal = ({
   return (
     <Dialog
       open={isOpen}
-      onOpenChange={(open) => {
-        if (!open) {
+      onOpenChange={(
+        open,
+      ) => {
+        if (
+          !open &&
+          !processingPayment
+        ) {
           handleClose();
         }
       }}
     >
-      <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
+      <DialogContent
+        className="sm:max-w-md max-h-[90vh] overflow-y-auto"
+      >
         <DialogHeader>
           <DialogTitle className="text-center text-green-700">
             {service.title}
@@ -729,7 +1102,9 @@ const ServiceModal = ({
         </DialogHeader>
 
         <div className="space-y-4">
-          {/* Wallet */}
+          {/* ================================================== */}
+          {/* WALLET */}
+          {/* ================================================== */}
 
           <div className="bg-green-50 p-3 rounded-lg">
             <p className="text-sm text-green-700">
@@ -740,16 +1115,21 @@ const ServiceModal = ({
             </p>
           </div>
 
-          {/* Loading */}
+          {/* ================================================== */}
+          {/* LOADING BILLERS */}
+          {/* ================================================== */}
 
           {loadingBillers && (
             <div className="flex items-center justify-center gap-2 py-3 text-sm text-gray-500">
               <Loader2 className="h-4 w-4 animate-spin" />
+
               Loading providers...
             </div>
           )}
 
-          {/* Provider */}
+          {/* ================================================== */}
+          {/* PROVIDER */}
+          {/* ================================================== */}
 
           <div className="space-y-2">
             <div className="flex items-center justify-between">
@@ -757,28 +1137,36 @@ const ServiceModal = ({
                 Provider
               </Label>
 
-              {!loadingBillers && (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={loadBillers}
-                  className="h-7 px-2"
-                >
-                  <RefreshCw className="h-3.5 w-3.5 mr-1" />
-                  Refresh
-                </Button>
-              )}
+              {!loadingBillers &&
+                !processingPayment && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={
+                      loadBillers
+                    }
+                    className="h-7 px-2"
+                  >
+                    <RefreshCw className="h-3.5 w-3.5 mr-1" />
+
+                    Refresh
+                  </Button>
+                )}
             </div>
 
             <Select
-              value={selectedBillerCode}
+              value={
+                selectedBillerCode
+              }
               onValueChange={
                 handleBillerChange
               }
               disabled={
                 loadingBillers ||
-                billers.length === 0
+                processingPayment ||
+                billers.length ===
+                  0
               }
             >
               <SelectTrigger>
@@ -793,14 +1181,19 @@ const ServiceModal = ({
 
               <SelectContent>
                 {billers.map(
-                  (biller, index) => {
+                  (
+                    biller,
+                    index,
+                  ) => {
                     const code =
                       String(
                         biller.biller_code ??
                           "",
                       );
 
-                    if (!code) return null;
+                    if (!code) {
+                      return null;
+                    }
 
                     return (
                       <SelectItem
@@ -808,6 +1201,7 @@ const ServiceModal = ({
                         value={code}
                       >
                         {biller.name ??
+                          biller.short_name ??
                           code}
                       </SelectItem>
                     );
@@ -817,24 +1211,31 @@ const ServiceModal = ({
             </Select>
           </div>
 
-          {/* Package */}
+          {/* ================================================== */}
+          {/* PACKAGE */}
+          {/* ================================================== */}
 
           <div className="space-y-2">
             <Label>
-              {serviceType === "airtime"
+              {serviceType ===
+              "airtime"
                 ? "Airtime Type"
-                : serviceType === "data"
+                : serviceType ===
+                    "data"
                   ? "Data Package"
                   : "Bill Package"}
             </Label>
 
             <Select
-              value={selectedItemCode}
+              value={
+                selectedItemCode
+              }
               onValueChange={
                 handleItemChange
               }
               disabled={
                 loadingItems ||
+                processingPayment ||
                 !selectedBillerCode ||
                 items.length === 0
               }
@@ -853,14 +1254,19 @@ const ServiceModal = ({
 
               <SelectContent>
                 {items.map(
-                  (item, index) => {
+                  (
+                    item,
+                    index,
+                  ) => {
                     const code =
                       String(
                         item.item_code ??
                           "",
                       );
 
-                    if (!code) return null;
+                    if (!code) {
+                      return null;
+                    }
 
                     const itemAmount =
                       Number(
@@ -880,6 +1286,7 @@ const ServiceModal = ({
                         value={code}
                       >
                         {item.name ??
+                          item.short_name ??
                           code}
 
                         {hasAmount
@@ -893,7 +1300,9 @@ const ServiceModal = ({
             </Select>
           </div>
 
-          {/* Customer */}
+          {/* ================================================== */}
+          {/* CUSTOMER */}
+          {/* ================================================== */}
 
           <div className="space-y-2">
             <Label htmlFor="billCustomer">
@@ -903,7 +1312,9 @@ const ServiceModal = ({
             <Input
               id="billCustomer"
               value={customer}
-              onChange={(e) =>
+              onChange={(
+                e,
+              ) =>
                 setCustomer(
                   e.target.value,
                 )
@@ -911,19 +1322,27 @@ const ServiceModal = ({
               placeholder={
                 customerPlaceholder
               }
+              disabled={
+                processingPayment
+              }
               inputMode={
-                serviceType === "airtime" ||
-                serviceType === "data" ||
                 serviceType ===
-                  "electricity" ||
-                serviceType === "cable"
+                    "airtime" ||
+                serviceType ===
+                    "data" ||
+                serviceType ===
+                    "electricity" ||
+                serviceType ===
+                    "cable"
                   ? "numeric"
                   : "text"
               }
             />
           </div>
 
-          {/* Amount */}
+          {/* ================================================== */}
+          {/* AMOUNT */}
+          {/* ================================================== */}
 
           <div className="space-y-2">
             <Label htmlFor="billAmount">
@@ -936,7 +1355,9 @@ const ServiceModal = ({
               min="0"
               step="0.01"
               value={amount}
-              onChange={(e) =>
+              onChange={(
+                e,
+              ) =>
                 setAmount(
                   e.target.value,
                 )
@@ -948,27 +1369,47 @@ const ServiceModal = ({
                     )
                   : "Enter amount"
               }
-              disabled={isFixedAmount}
+              disabled={
+                isFixedAmount ||
+                processingPayment
+              }
             />
 
-            {itemMinimum > 0 ||
-            itemMaximum > 0 ? (
+            {(itemMinimum >
+              0 ||
+              itemMaximum >
+                0) && (
               <p className="text-xs text-gray-500">
-                {itemMinimum > 0
+                {itemMinimum >
+                0
                   ? `Minimum: ₦${itemMinimum.toLocaleString()}`
                   : ""}
-                {itemMinimum > 0 &&
-                itemMaximum > 0
+
+                {itemMinimum >
+                  0 &&
+                itemMaximum >
+                  0
                   ? " • "
                   : ""}
-                {itemMaximum > 0
+
+                {itemMaximum >
+                0
                   ? `Maximum: ₦${itemMaximum.toLocaleString()}`
                   : ""}
               </p>
-            ) : null}
+            )}
+
+            {isFixedAmount && (
+              <p className="text-xs text-gray-500">
+                Fixed package price: ₦
+                {fixedItemAmount.toLocaleString()}
+              </p>
+            )}
           </div>
 
-          {/* Error */}
+          {/* ================================================== */}
+          {/* ERROR */}
+          {/* ================================================== */}
 
           {error && (
             <div className="rounded-lg bg-red-50 border border-red-200 p-3">
@@ -978,13 +1419,18 @@ const ServiceModal = ({
             </div>
           )}
 
-          {/* Purchase */}
+          {/* ================================================== */}
+          {/* PURCHASE */}
+          {/* ================================================== */}
 
           <Button
-            onClick={handlePurchase}
+            onClick={
+              handlePurchase
+            }
             disabled={
               loadingBillers ||
               loadingItems ||
+              processingPayment ||
               !selectedBillerCode ||
               !selectedItemCode ||
               !customer.trim() ||
@@ -992,8 +1438,27 @@ const ServiceModal = ({
             }
             className="w-full bg-green-600 hover:bg-green-700"
           >
-            Purchase {service.title}
+            {processingPayment ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+
+                Processing...
+              </>
+            ) : (
+              <>
+                Purchase{" "}
+                {service.title}
+              </>
+            )}
           </Button>
+
+          {processingPayment && (
+            <p className="text-xs text-center text-gray-500">
+              Please do not close this window
+              while your payment is being
+              processed.
+            </p>
+          )}
         </div>
       </DialogContent>
     </Dialog>

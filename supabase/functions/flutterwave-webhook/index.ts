@@ -3,14 +3,112 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type, verif-hash",
+    "authorization, x-client-info, apikey, content-type, flutterwave-signature, verif-hash",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
   "Content-Type": "application/json",
 };
 
+// ============================================================
+// HELPERS
+// ============================================================
+
+function jsonResponse(
+  body: Record<string, unknown>,
+  status = 200
+) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: corsHeaders,
+  });
+}
+
+// Convert ArrayBuffer to Base64
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
+
+  let binary = "";
+
+  const chunkSize = 0x8000;
+
+  for (
+    let i = 0;
+    i < bytes.length;
+    i += chunkSize
+  ) {
+    binary += String.fromCharCode(
+      ...bytes.subarray(
+        i,
+        Math.min(i + chunkSize, bytes.length)
+      )
+    );
+  }
+
+  return btoa(binary);
+}
+
+// Generate Flutterwave HMAC-SHA256 signature
+async function generateFlutterwaveSignature(
+  rawBody: string,
+  secretHash: string
+): Promise<string> {
+  const encoder = new TextEncoder();
+
+  const keyData = encoder.encode(secretHash);
+
+  const bodyData = encoder.encode(rawBody);
+
+  const cryptoKey =
+    await crypto.subtle.importKey(
+      "raw",
+      keyData,
+      {
+        name: "HMAC",
+        hash: "SHA-256",
+      },
+      false,
+      ["sign"]
+    );
+
+  const signature =
+    await crypto.subtle.sign(
+      "HMAC",
+      cryptoKey,
+      bodyData
+    );
+
+  return arrayBufferToBase64(signature);
+}
+
+// Timing-safe comparison
+function safeEqual(
+  a: string,
+  b: string
+): boolean {
+  if (a.length !== b.length) {
+    return false;
+  }
+
+  const encoder = new TextEncoder();
+
+  const aBytes = encoder.encode(a);
+  const bBytes = encoder.encode(b);
+
+  let result = 0;
+
+  for (let i = 0; i < aBytes.length; i++) {
+    result |= aBytes[i] ^ bBytes[i];
+  }
+
+  return result === 0;
+}
+
+// ============================================================
+// WEBHOOK
+// ============================================================
+
 Deno.serve(async (req) => {
   // ============================================================
-  // 0. CORS / METHOD
+  // 0. CORS
   // ============================================================
 
   if (req.method === "OPTIONS") {
@@ -19,34 +117,41 @@ Deno.serve(async (req) => {
     });
   }
 
+  // ============================================================
+  // 1. METHOD
+  // ============================================================
+
   if (req.method !== "POST") {
-    return new Response(
-      JSON.stringify({
-        error: "Method not allowed",
-      }),
+    return jsonResponse(
       {
-        status: 405,
-        headers: corsHeaders,
-      }
+        error: "Method not allowed",
+      },
+      405
     );
   }
 
   try {
-    // ============================================================
-    // 1. ENVIRONMENT
-    // ============================================================
+    // ==========================================================
+    // 2. ENVIRONMENT
+    // ==========================================================
 
     const supabaseUrl =
       Deno.env.get("SUPABASE_URL") ?? "";
 
     const serviceRoleKey =
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+      Deno.env.get(
+        "SUPABASE_SERVICE_ROLE_KEY"
+      ) ?? "";
 
     const flutterwaveSecret =
-      Deno.env.get("FLUTTERWAVE_SECRET_KEY") ?? "";
+      Deno.env.get(
+        "FLUTTERWAVE_SECRET_KEY"
+      ) ?? "";
 
     const webhookSecret =
-      Deno.env.get("FLW_SECRET_HASH") ?? "";
+      Deno.env.get(
+        "FLW_SECRET_HASH"
+      ) ?? "";
 
     if (!supabaseUrl) {
       throw new Error(
@@ -72,81 +177,185 @@ Deno.serve(async (req) => {
       );
     }
 
-    // ============================================================
-    // 2. VERIFY WEBHOOK SIGNATURE
-    // ============================================================
+    // ==========================================================
+    // 3. READ RAW BODY
+    //
+    // IMPORTANT:
+    //
+    // Flutterwave's current webhook signature is calculated
+    // from the RAW request body.
+    //
+    // Therefore we MUST read req.text() BEFORE JSON.parse().
+    // ==========================================================
 
-    const receivedHash =
-      req.headers.get("verif-hash");
+    const rawBody = await req.text();
 
-    if (!receivedHash) {
+    if (!rawBody) {
       console.error(
-        "Missing Flutterwave verif-hash header"
+        "Flutterwave webhook received empty body"
       );
 
-      return new Response(
-        JSON.stringify({
-          error: "Missing webhook signature",
-        }),
+      return jsonResponse(
         {
-          status: 401,
-          headers: corsHeaders,
-        }
-      );
-    }
-
-    if (receivedHash !== webhookSecret) {
-      console.error(
-        "Invalid Flutterwave webhook signature"
-      );
-
-      return new Response(
-        JSON.stringify({
-          error: "Invalid signature",
-        }),
-        {
-          status: 401,
-          headers: corsHeaders,
-        }
+          error: "Empty webhook body",
+        },
+        400
       );
     }
 
     console.log(
-      "Flutterwave webhook signature verified"
+      "Flutterwave webhook request received"
     );
 
-    // ============================================================
-    // 3. ADMIN SUPABASE CLIENT
-    // ============================================================
+    // ==========================================================
+    // 4. VERIFY FLUTTERWAVE SIGNATURE
+    //
+    // Current Flutterwave:
+    //
+    // flutterwave-signature =
+    // Base64(HMAC-SHA256(rawBody, FLW_SECRET_HASH))
+    // ==========================================================
 
-    const supabase = createClient(
-      supabaseUrl,
-      serviceRoleKey,
-      {
-        auth: {
-          autoRefreshToken: false,
-          persistSession: false,
-        },
+    const flutterwaveSignature =
+      req.headers.get(
+        "flutterwave-signature"
+      );
+
+    // Keep support for the older Flutterwave
+    // verif-hash header, but DO NOT treat the absence
+    // of flutterwave-signature as an error if the legacy
+    // header is correctly configured.
+    const legacyVerifHash =
+      req.headers.get("verif-hash");
+
+    console.log(
+      "Webhook signature headers:",
+      JSON.stringify({
+        has_flutterwave_signature:
+          !!flutterwaveSignature,
+        has_verif_hash:
+          !!legacyVerifHash,
+      })
+    );
+
+    // ----------------------------------------------------------
+    // CURRENT SIGNATURE
+    // ----------------------------------------------------------
+
+    if (flutterwaveSignature) {
+      const expectedSignature =
+        await generateFlutterwaveSignature(
+          rawBody,
+          webhookSecret
+        );
+
+      if (
+        !safeEqual(
+          expectedSignature,
+          flutterwaveSignature
+        )
+      ) {
+        console.error(
+          "Invalid Flutterwave webhook signature"
+        );
+
+        return jsonResponse(
+          {
+            error: "Invalid webhook signature",
+          },
+          401
+        );
       }
-    );
 
-    // ============================================================
-    // 4. READ PAYLOAD
-    // ============================================================
+      console.log(
+        "Flutterwave webhook signature verified"
+      );
+    }
 
-    const payload = await req.json();
+    // ----------------------------------------------------------
+    // LEGACY SIGNATURE
+    //
+    // Flutterwave's older webhook system sends the secret
+    // directly in verif-hash.
+    // ----------------------------------------------------------
+
+    else if (legacyVerifHash) {
+      if (
+        !safeEqual(
+          legacyVerifHash,
+          webhookSecret
+        )
+      ) {
+        console.error(
+          "Invalid Flutterwave verif-hash"
+        );
+
+        return jsonResponse(
+          {
+            error: "Invalid webhook signature",
+          },
+          401
+        );
+      }
+
+      console.log(
+        "Flutterwave legacy verif-hash verified"
+      );
+    }
+
+    // ----------------------------------------------------------
+    // NO SIGNATURE
+    // ----------------------------------------------------------
+
+    else {
+      console.error(
+        "Missing Flutterwave webhook signature"
+      );
+
+      return jsonResponse(
+        {
+          error:
+            "Missing Flutterwave webhook signature",
+        },
+        401
+      );
+    }
+
+    // ==========================================================
+    // 5. PARSE PAYLOAD
+    // ==========================================================
+
+    let payload: any;
+
+    try {
+      payload = JSON.parse(rawBody);
+    } catch (error) {
+      console.error(
+        "Invalid JSON webhook payload:",
+        error
+      );
+
+      return jsonResponse(
+        {
+          error:
+            "Invalid webhook JSON payload",
+        },
+        400
+      );
+    }
 
     console.log(
       "Flutterwave webhook received:",
       JSON.stringify(payload)
     );
 
-    const data =
-      payload?.data ?? {};
+    // ==========================================================
+    // 6. EVENT
+    // ==========================================================
 
     const event =
-      payload?.event ??
       payload?.type ??
+      payload?.event ??
       null;
 
     console.log(
@@ -154,9 +363,9 @@ Deno.serve(async (req) => {
       event
     );
 
-    // ============================================================
-    // 5. ONLY PROCESS CHARGE COMPLETED
-    // ============================================================
+    // ==========================================================
+    // 7. ONLY PROCESS CHARGE COMPLETED
+    // ==========================================================
 
     if (
       event &&
@@ -166,22 +375,19 @@ Deno.serve(async (req) => {
         `Ignoring Flutterwave event: ${event}`
       );
 
-      return new Response(
-        JSON.stringify({
-          success: true,
-          ignored: true,
-          event,
-        }),
-        {
-          status: 200,
-          headers: corsHeaders,
-        }
-      );
+      return jsonResponse({
+        success: true,
+        ignored: true,
+        event,
+      });
     }
 
-    // ============================================================
-    // 6. BASIC TRANSACTION DATA
-    // ============================================================
+    // ==========================================================
+    // 8. PAYLOAD DATA
+    // ==========================================================
+
+    const data =
+      payload?.data ?? {};
 
     const transactionId =
       data?.id;
@@ -206,24 +412,8 @@ Deno.serve(async (req) => {
     const webhookTxRef =
       data?.tx_ref ??
       data?.txRef ??
+      data?.reference ??
       null;
-
-    if (!transactionId) {
-      console.error(
-        "Missing Flutterwave transaction ID"
-      );
-
-      return new Response(
-        JSON.stringify({
-          error:
-            "Missing Flutterwave transaction ID",
-        }),
-        {
-          status: 400,
-          headers: corsHeaders,
-        }
-      );
-    }
 
     console.log(
       "Webhook transaction:",
@@ -236,6 +426,28 @@ Deno.serve(async (req) => {
       })
     );
 
+    // ==========================================================
+    // 9. VALIDATE TRANSACTION ID
+    // ==========================================================
+
+    if (!transactionId) {
+      console.error(
+        "Missing Flutterwave transaction ID"
+      );
+
+      return jsonResponse(
+        {
+          error:
+            "Missing Flutterwave transaction ID",
+        },
+        400
+      );
+    }
+
+    // ==========================================================
+    // 10. VALIDATE WEBHOOK STATUS
+    // ==========================================================
+
     if (
       transactionStatus !== "successful" &&
       transactionStatus !== "succeeded"
@@ -244,19 +456,17 @@ Deno.serve(async (req) => {
         `Ignoring unsuccessful transaction ${transactionId}: ${transactionStatus}`
       );
 
-      return new Response(
-        JSON.stringify({
-          success: true,
-          ignored: true,
-          reason:
-            "Transaction not successful",
-        }),
-        {
-          status: 200,
-          headers: corsHeaders,
-        }
-      );
+      return jsonResponse({
+        success: true,
+        ignored: true,
+        reason:
+          "Transaction not successful",
+      });
     }
+
+    // ==========================================================
+    // 11. VALIDATE WEBHOOK AMOUNT
+    // ==========================================================
 
     if (
       !Number.isFinite(
@@ -264,37 +474,51 @@ Deno.serve(async (req) => {
       ) ||
       webhookAmount <= 0
     ) {
-      return new Response(
-        JSON.stringify({
+      return jsonResponse(
+        {
           error:
             "Invalid transaction amount",
-        }),
-        {
-          status: 400,
-          headers: corsHeaders,
-        }
+        },
+        400
       );
     }
+
+    // ==========================================================
+    // 12. VALIDATE WEBHOOK CURRENCY
+    // ==========================================================
 
     if (
       webhookCurrency &&
       webhookCurrency !== "NGN"
     ) {
-      return new Response(
-        JSON.stringify({
+      return jsonResponse(
+        {
           error:
             "Unsupported currency",
-        }),
-        {
-          status: 400,
-          headers: corsHeaders,
-        }
+        },
+        400
       );
     }
 
-    // ============================================================
-    // 7. VERIFY WITH FLUTTERWAVE
-    // ============================================================
+    // ==========================================================
+    // 13. CREATE ADMIN SUPABASE CLIENT
+    // ==========================================================
+
+    const supabase =
+      createClient(
+        supabaseUrl,
+        serviceRoleKey,
+        {
+          auth: {
+            autoRefreshToken: false,
+            persistSession: false,
+          },
+        }
+      );
+
+    // ==========================================================
+    // 14. VERIFY TRANSACTION DIRECTLY WITH FLUTTERWAVE
+    // ==========================================================
 
     console.log(
       `Verifying Flutterwave transaction ${transactionId}`
@@ -317,6 +541,13 @@ Deno.serve(async (req) => {
     const verifyData =
       await verifyResponse.json();
 
+    console.log(
+      "Flutterwave verification response:",
+      JSON.stringify(
+        verifyData
+      )
+    );
+
     if (!verifyResponse.ok) {
       console.error(
         "Flutterwave verification failed:",
@@ -325,15 +556,12 @@ Deno.serve(async (req) => {
         )
       );
 
-      return new Response(
-        JSON.stringify({
+      return jsonResponse(
+        {
           error:
             "Flutterwave verification failed",
-        }),
-        {
-          status: 502,
-          headers: corsHeaders,
-        }
+        },
+        502
       );
     }
 
@@ -341,15 +569,12 @@ Deno.serve(async (req) => {
       verifyData?.status !==
       "success"
     ) {
-      return new Response(
-        JSON.stringify({
+      return jsonResponse(
+        {
           error:
             "Transaction could not be verified",
-        }),
-        {
-          status: 400,
-          headers: corsHeaders,
-        }
+        },
+        400
       );
     }
 
@@ -357,44 +582,23 @@ Deno.serve(async (req) => {
       verifyData?.data;
 
     if (!verified) {
-      return new Response(
-        JSON.stringify({
+      return jsonResponse(
+        {
           error:
             "Missing verified transaction data",
-        }),
-        {
-          status: 400,
-          headers: corsHeaders,
-        }
+        },
+        400
       );
     }
 
-    // ============================================================
-    // 8. VALIDATE VERIFIED TRANSACTION
-    // ============================================================
+    // ==========================================================
+    // 15. VERIFIED TRANSACTION VALUES
+    // ==========================================================
 
     const verifiedStatus =
       String(
         verified?.status ?? ""
       ).toLowerCase();
-
-    if (
-      verifiedStatus !== "successful" &&
-      verifiedStatus !== "succeeded"
-    ) {
-      return new Response(
-        JSON.stringify({
-          success: true,
-          ignored: true,
-          reason:
-            "Verified transaction is not successful",
-        }),
-        {
-          status: 200,
-          headers: corsHeaders,
-        }
-      );
-    }
 
     const verifiedAmount =
       Number(
@@ -411,6 +615,7 @@ Deno.serve(async (req) => {
     const verifiedTxRef =
       verified?.tx_ref ??
       verified?.txRef ??
+      verified?.reference ??
       null;
 
     const verifiedFlwRef =
@@ -419,22 +624,40 @@ Deno.serve(async (req) => {
       null;
 
     console.log(
-      "Verified transaction:",
+      "Verified transaction values:",
       JSON.stringify({
-        id: verified?.id,
-        amount: verifiedAmount,
-        currency:
-          verifiedCurrency,
         status:
           verifiedStatus,
-        tx_ref:
+        amount:
+          verifiedAmount,
+        currency:
+          verifiedCurrency,
+        txRef:
           verifiedTxRef,
-        flw_ref:
+        flwRef:
           verifiedFlwRef,
-        payment_type:
-          verified?.payment_type,
       })
     );
+
+    // ==========================================================
+    // 16. VERIFIED STATUS
+    // ==========================================================
+
+    if (
+      verifiedStatus !== "successful" &&
+      verifiedStatus !== "succeeded"
+    ) {
+      return jsonResponse({
+        success: true,
+        ignored: true,
+        reason:
+          "Verified transaction is not successful",
+      });
+    }
+
+    // ==========================================================
+    // 17. VERIFIED AMOUNT
+    // ==========================================================
 
     if (
       !Number.isFinite(
@@ -442,75 +665,78 @@ Deno.serve(async (req) => {
       ) ||
       verifiedAmount <= 0
     ) {
-      return new Response(
-        JSON.stringify({
+      return jsonResponse(
+        {
           error:
             "Invalid verified amount",
-        }),
-        {
-          status: 400,
-          headers: corsHeaders,
-        }
+        },
+        400
       );
     }
+
+    // ==========================================================
+    // 18. VERIFIED CURRENCY
+    // ==========================================================
 
     if (
       verifiedCurrency !== "NGN"
     ) {
-      return new Response(
-        JSON.stringify({
+      return jsonResponse(
+        {
           error:
             "Verified transaction is not NGN",
-        }),
-        {
-          status: 400,
-          headers: corsHeaders,
-        }
+        },
+        400
       );
     }
+
+    // ==========================================================
+    // 19. VERIFY REFERENCE MATCH
+    // ==========================================================
 
     if (
       verifiedTxRef &&
       webhookTxRef &&
-      verifiedTxRef !==
-        webhookTxRef
+      String(verifiedTxRef) !==
+        String(webhookTxRef)
     ) {
       console.error(
         `Reference mismatch: webhook=${webhookTxRef}, verified=${verifiedTxRef}`
       );
 
-      return new Response(
-        JSON.stringify({
+      return jsonResponse(
+        {
           error:
             "Transaction reference mismatch",
-        }),
-        {
-          status: 400,
-          headers: corsHeaders,
-        }
+        },
+        400
       );
     }
 
-    // Never credit more than Flutterwave verified.
+    // ==========================================================
+    // 20. NEVER CREDIT MORE THAN VERIFIED AMOUNT
+    // ==========================================================
+
     if (
       verifiedAmount <
       webhookAmount
     ) {
-      return new Response(
-        JSON.stringify({
+      console.error(
+        `Verified amount ${verifiedAmount} is lower than webhook amount ${webhookAmount}`
+      );
+
+      return jsonResponse(
+        {
           error:
             "Verified amount mismatch",
-        }),
-        {
-          status: 400,
-          headers: corsHeaders,
-        }
+        },
+        400
       );
     }
 
-    // ============================================================
-    // 9. DETERMINE TRANSACTION REFERENCE
-    // ============================================================
+    // ==========================================================
+    // 21. FINAL TX REF
+    // ==========================================================
 
     const finalTxRef =
       String(
@@ -524,20 +750,30 @@ Deno.serve(async (req) => {
       finalTxRef
     );
 
-    // ============================================================
-    // 10. PRIMARY MATCH:
+    if (!finalTxRef) {
+      return jsonResponse(
+        {
+          error:
+            "Transaction reference missing",
+        },
+        400
+      );
+    }
+
+    // ==========================================================
+    // 22. FIND VIRTUAL ACCOUNT
     //
-    // IyanjuPay virtual account creation generates:
+    // PRIMARY METHOD:
     //
     // IYJ_VA_<USER_ID>_<UUID>
     //
     // Example:
     //
-    // IYJ_VA_deebe49e-..._43140dae-...
-    //
-    // ============================================================
+    // IYJ_VA_deebe49e-00d2-4609-9cc6-3ccf0eb0fa19_43140...
+    // ==========================================================
 
-    let virtualAccount: any = null;
+    let virtualAccount: any =
+      null;
 
     if (
       finalTxRef.startsWith(
@@ -547,26 +783,20 @@ Deno.serve(async (req) => {
       const parts =
         finalTxRef.split("_");
 
-      /*
-       * UUID itself contains hyphens but no underscores,
-       * therefore:
-       *
-       * ["IYJ", "VA", userId, uuid]
-       *
-       * userId is index 2.
-       */
-
       const possibleUserId =
         parts[2];
+
+      console.log(
+        "IyanjuPay VA reference detected:",
+        JSON.stringify({
+          parts,
+          possibleUserId,
+        })
+      );
 
       if (
         possibleUserId
       ) {
-        console.log(
-          "Detected IyanjuPay virtual-account transaction for user:",
-          possibleUserId
-        );
-
         const {
           data: account,
           error: accountError,
@@ -609,7 +839,7 @@ Deno.serve(async (req) => {
 
         if (accountError) {
           console.error(
-            "Virtual account lookup by tx_ref failed:",
+            "Virtual account lookup by user_id failed:",
             accountError
           );
 
@@ -619,14 +849,28 @@ Deno.serve(async (req) => {
         if (account) {
           virtualAccount =
             account;
+
+          console.log(
+            "Virtual account matched by tx_ref user_id:",
+            JSON.stringify({
+              id:
+                account.id,
+              user_id:
+                account.user_id,
+              wallet_id:
+                account.wallet_id,
+              account_number:
+                account.account_number,
+            })
+          );
         }
       }
     }
 
-    // ============================================================
-    // 11. FALLBACK MATCH:
-    // ACCOUNT NUMBER
-    // ============================================================
+    // ==========================================================
+    // 23. FALLBACK:
+    // SEARCH ACCOUNT NUMBER
+    // ==========================================================
 
     if (!virtualAccount) {
       const possibleAccountNumbers = [
@@ -683,7 +927,7 @@ Deno.serve(async (req) => {
       ];
 
       console.log(
-        "Fallback account numbers:",
+        "Possible virtual account numbers:",
         JSON.stringify(
           uniqueAccountNumbers
         )
@@ -740,33 +984,50 @@ Deno.serve(async (req) => {
         if (account) {
           virtualAccount =
             account;
+
+          console.log(
+            "Virtual account matched by account number:",
+            JSON.stringify({
+              id:
+                account.id,
+              user_id:
+                account.user_id,
+              wallet_id:
+                account.wallet_id,
+              account_number:
+                account.account_number,
+            })
+          );
+
           break;
         }
       }
     }
 
-    // ============================================================
-    // 12. FINAL ACCOUNT VALIDATION
-    // ============================================================
+    // ==========================================================
+    // 24. FINAL VIRTUAL ACCOUNT VALIDATION
+    // ==========================================================
 
     if (!virtualAccount) {
       console.error(
-        "No matching IyanjuPay virtual account found",
+        "Could not determine destination virtual account number",
         JSON.stringify({
           transactionId,
-          txRef: finalTxRef,
+          txRef:
+            finalTxRef,
+          amount:
+            verifiedAmount,
+          currency:
+            verifiedCurrency,
         })
       );
 
-      return new Response(
-        JSON.stringify({
+      return jsonResponse(
+        {
           error:
             "Virtual account not found",
-        }),
-        {
-          status: 404,
-          headers: corsHeaders,
-        }
+        },
+        404
       );
     }
 
@@ -784,24 +1045,25 @@ Deno.serve(async (req) => {
       })
     );
 
-    // ============================================================
-    // 13. VALIDATE WALLET
-    // ============================================================
+    // ==========================================================
+    // 25. VALIDATE WALLET ID
+    // ==========================================================
 
     if (
       !virtualAccount.wallet_id
     ) {
-      return new Response(
-        JSON.stringify({
+      return jsonResponse(
+        {
           error:
             "Virtual account has no wallet",
-        }),
-        {
-          status: 400,
-          headers: corsHeaders,
-        }
+        },
+        400
       );
     }
+
+    // ==========================================================
+    // 26. GET WALLET
+    // ==========================================================
 
     const {
       data: wallet,
@@ -822,69 +1084,79 @@ Deno.serve(async (req) => {
     }
 
     if (!wallet) {
-      return new Response(
-        JSON.stringify({
+      return jsonResponse(
+        {
           error:
             "Wallet not found",
-        }),
-        {
-          status: 404,
-          headers: corsHeaders,
-        }
+        },
+        404
       );
     }
+
+    // ==========================================================
+    // 27. WALLET OWNERSHIP
+    // ==========================================================
 
     if (
       wallet.user_id !==
       virtualAccount.user_id
     ) {
-      return new Response(
+      console.error(
+        "Wallet ownership mismatch:",
         JSON.stringify({
+          wallet_user_id:
+            wallet.user_id,
+          account_user_id:
+            virtualAccount.user_id,
+        })
+      );
+
+      return jsonResponse(
+        {
           error:
             "Virtual account ownership mismatch",
-        }),
-        {
-          status: 409,
-          headers: corsHeaders,
-        }
+        },
+        409
       );
     }
 
+    // ==========================================================
+    // 28. WALLET CURRENCY
+    // ==========================================================
+
     if (
-      wallet.currency !==
+      String(wallet.currency).toUpperCase() !==
       "NGN"
     ) {
-      return new Response(
-        JSON.stringify({
+      return jsonResponse(
+        {
           error:
             "Wallet currency mismatch",
-        }),
-        {
-          status: 400,
-          headers: corsHeaders,
-        }
+        },
+        400
       );
     }
+
+    // ==========================================================
+    // 29. WALLET STATUS
+    // ==========================================================
 
     if (
       wallet.status !==
       "active"
     ) {
-      return new Response(
-        JSON.stringify({
+      return jsonResponse(
+        {
           error:
             "Wallet is not active",
-        }),
-        {
-          status: 403,
-          headers: corsHeaders,
-        }
+        },
+        403
       );
     }
 
-    // ============================================================
-    // 14. IDEMPOTENT REFERENCE
-    // ============================================================
+    // ==========================================================
+    // 30. IDEMPOTENCY REFERENCE
+    // ==========================================================
 
     const fundingReference =
       `FLW_${String(
@@ -896,9 +1168,9 @@ Deno.serve(async (req) => {
       fundingReference
     );
 
-    // ============================================================
-    // 15. EARLY DUPLICATE CHECK
-    // ============================================================
+    // ==========================================================
+    // 31. DUPLICATE CHECK
+    // ==========================================================
 
     const {
       data: existingFunding,
@@ -933,29 +1205,23 @@ Deno.serve(async (req) => {
         `Flutterwave transaction ${transactionId} already processed`
       );
 
-      return new Response(
-        JSON.stringify({
-          success: true,
-          already_processed: true,
-          reference:
-            fundingReference,
-          transaction_id:
-            existingFunding.id,
-          amount:
-            existingFunding.amount,
-          wallet_id:
-            existingFunding.wallet_id,
-        }),
-        {
-          status: 200,
-          headers: corsHeaders,
-        }
-      );
+      return jsonResponse({
+        success: true,
+        already_processed: true,
+        reference:
+          fundingReference,
+        transaction_id:
+          existingFunding.id,
+        amount:
+          existingFunding.amount,
+        wallet_id:
+          existingFunding.wallet_id,
+      });
     }
 
-    // ============================================================
-    // 16. CREDIT WALLET
-    // ============================================================
+    // ==========================================================
+    // 32. CREDIT WALLET
+    // ==========================================================
 
     console.log(
       "Calling credit_wallet:",
@@ -1013,64 +1279,78 @@ Deno.serve(async (req) => {
         creditResult
       )
     );
-    // ============================================================
-    // 17. SUCCESS
-    // ============================================================
 
-    return new Response(
+    // ==========================================================
+    // 33. SUCCESS
+    // ==========================================================
+
+    console.log(
+      "Flutterwave virtual account funding completed successfully:",
       JSON.stringify({
-        success: true,
-        event:
-          event ??
-          "charge.completed",
-
-        flutterwave_transaction_id:
-          transactionId,
-
-        reference:
-          fundingReference,
-
+        transactionId,
+        fundingReference,
         amount:
           verifiedAmount,
-
-        currency:
-          verifiedCurrency,
-
-        virtual_account:
-          virtualAccount.account_number,
-
-        wallet_id:
+        walletId:
           virtualAccount.wallet_id,
-
-        user_id:
+        userId:
           virtualAccount.user_id,
-
-        credit:
-          creditResult,
-      }),
-      {
-        status: 200,
-        headers: corsHeaders,
-      }
+        accountNumber:
+          virtualAccount.account_number,
+      })
     );
 
+    return jsonResponse({
+      success: true,
+
+      event:
+        event ??
+        "charge.completed",
+
+      flutterwave_transaction_id:
+        transactionId,
+
+      flutterwave_reference:
+        verifiedFlwRef,
+
+      transaction_reference:
+        finalTxRef,
+
+      reference:
+        fundingReference,
+
+      amount:
+        verifiedAmount,
+
+      currency:
+        verifiedCurrency,
+
+      virtual_account:
+        virtualAccount.account_number,
+
+      wallet_id:
+        virtualAccount.wallet_id,
+
+      user_id:
+        virtualAccount.user_id,
+
+      credit:
+        creditResult,
+    });
   } catch (error) {
     console.error(
       "Flutterwave webhook error:",
       error
     );
 
-    return new Response(
-      JSON.stringify({
+    return jsonResponse(
+      {
         error:
           error instanceof Error
             ? error.message
             : "Internal server error",
-      }),
-      {
-        status: 500,
-        headers: corsHeaders,
-      }
+      },
+      500
     );
   }
 });

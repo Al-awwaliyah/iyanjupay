@@ -46,9 +46,6 @@ const App = () => {
     return <AppSplash />;
   }
 
-  return (
-    // YOUR EXISTING APP CODE
-  );
 };
 
 export default App;

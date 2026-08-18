@@ -73,7 +73,7 @@ const IyanjuPayLogo = ({
 
   return (
     <img
-      src="/og-image.jpg"
+      src="/icon-180.png"
       alt="IyanjuPay"
       className={`${sizeClasses[size]} object-contain`}
     />

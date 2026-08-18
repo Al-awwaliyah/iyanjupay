@@ -9,53 +9,28 @@ import {
 /**
  * IyanjuPay — Flutterwave Bills
  *
- * Supported Dashboard services:
+ * Supported services:
  *   airtime
  *   data
  *   electricity
  *   cable
  *   internet
  *
- * Actions:
+ * Flow:
  *
- *   { action: "categories" }
- *
- *   { action: "billers", category }
- *
- *   { action: "items", biller_code }
- *
- *   {
- *     action: "validate",
- *     item_code,
- *     customer
- *   }
- *
- *   {
- *     action: "pay",
- *     biller_code,
- *     item_code,
- *     customer,
- *     amount,
- *     country?
- *   }
- *
- *   {
- *     action: "service",
- *     service,
- *     amount,
- *     details
- *   }
- *
- *   {
- *     action: "status",
- *     reference
- *   }
- *
- * IMPORTANT:
- * - Flutterwave secret key stays server-side.
- * - Wallet debit happens before provider payment.
- * - Wallet is refunded when provider rejects the payment.
- * - Every payment receives an idempotency reference.
+ * categories
+ *     ↓
+ * billers
+ *     ↓
+ * items
+ *     ↓
+ * validate customer
+ *     ↓
+ * debit wallet
+ *     ↓
+ * Flutterwave payment
+ *     ↓
+ * success / refund
  */
 
 type ServiceType =
@@ -85,8 +60,11 @@ function cleanString(value: unknown): string {
   return String(value ?? "").trim();
 }
 
-function normaliseService(value: unknown): ServiceType | null {
-  const service = cleanString(value).toLowerCase();
+function normaliseService(
+  value: unknown,
+): ServiceType | null {
+  const service =
+    cleanString(value).toLowerCase();
 
   if (
     service === "airtime" ||
@@ -101,7 +79,9 @@ function normaliseService(value: unknown): ServiceType | null {
   return null;
 }
 
-function unsupportedServiceResponse(service: string) {
+function unsupportedServiceResponse(
+  service: string,
+) {
   return json(
     {
       success: false,
@@ -151,12 +131,16 @@ Deno.serve(async (req) => {
     }
 
     // ============================================================
-    // 2. READ BODY
+    // 2. BODY
     // ============================================================
 
-    const body = await req.json().catch(() => ({}));
+    const body = await req
+      .json()
+      .catch(() => ({}));
 
-    const action = cleanString(body?.action || "service").toLowerCase();
+    const action = cleanString(
+      body?.action || "service",
+    ).toLowerCase();
 
     // ============================================================
     // 3. ADMIN CLIENT
@@ -166,6 +150,10 @@ Deno.serve(async (req) => {
 
     // ============================================================
     // 4. CATEGORIES
+    //
+    // Flutterwave:
+    // GET /bill-categories?country=NG
+    //
     // ============================================================
 
     if (action === "categories") {
@@ -173,19 +161,27 @@ Deno.serve(async (req) => {
         "/bill-categories?country=NG",
       );
 
+      console.log(
+        "Flutterwave categories response:",
+        JSON.stringify({
+          ok: result.ok,
+          status: result.status,
+          body: result.body,
+        }),
+      );
+
       if (
         !result.ok ||
         result.body?.status !== "success"
       ) {
-        console.error(
-          "Flutterwave categories failed:",
-          JSON.stringify(result.body),
-        );
-
         return json(
           {
             success: false,
-            error: "Unable to load bill categories",
+            error:
+              result.body?.message ??
+              "Unable to load bill categories",
+            provider_status:
+              result.status,
           },
           502,
         );
@@ -193,17 +189,20 @@ Deno.serve(async (req) => {
 
       return json({
         success: true,
-        categories: result.body?.data ?? [],
+        categories:
+          result.body?.data ?? [],
       });
     }
 
     // ============================================================
     // 5. BILLERS
     //
-    // Example:
-    // /billers/AIRTIME?country=NG
+    // IMPORTANT:
     //
-    // Flutterwave documents this as the biller lookup flow.
+    // Correct Flutterwave endpoint:
+    //
+    // GET /bills/{category}/billers?country=NG
+    //
     // ============================================================
 
     if (action === "billers") {
@@ -222,24 +221,34 @@ Deno.serve(async (req) => {
       }
 
       const result = await flw(
-        `/bill-categories/${encodeURIComponent(
+        `/bills/${encodeURIComponent(
           category,
         )}/billers?country=NG`,
+      );
+
+      console.log(
+        "Flutterwave billers response:",
+        JSON.stringify({
+          category,
+          ok: result.ok,
+          status: result.status,
+          body: result.body,
+        }),
       );
 
       if (
         !result.ok ||
         result.body?.status !== "success"
       ) {
-        console.error(
-          "Flutterwave billers failed:",
-          JSON.stringify(result.body),
-        );
-
         return json(
           {
             success: false,
-            error: "Unable to load billers",
+            error:
+              result.body?.message ??
+              "Unable to load bill providers",
+            category,
+            provider_status:
+              result.status,
           },
           502,
         );
@@ -248,15 +257,23 @@ Deno.serve(async (req) => {
       return json({
         success: true,
         category,
-        billers: result.body?.data ?? [],
+        billers:
+          Array.isArray(
+            result.body?.data,
+          )
+            ? result.body.data
+            : [],
       });
     }
 
     // ============================================================
     // 6. BILL ITEMS
     //
-    // This endpoint is useful for obtaining the actual
-    // biller/item combinations before payment.
+    // Flutterwave's bill catalogue returns item_code
+    // information. We retrieve the catalogue and filter
+    // by biller_code.
+    //
+    // This is useful for Airtime/Data and fixed packages.
     // ============================================================
 
     if (action === "items") {
@@ -268,52 +285,71 @@ Deno.serve(async (req) => {
         return json(
           {
             success: false,
-            error: "biller_code is required",
+            error:
+              "biller_code is required",
           },
           400,
         );
       }
 
-      /*
-       * Flutterwave's bill category endpoint exposes
-       * item_code information. We retrieve the category
-       * catalogue and filter it by biller_code.
-       *
-       * This avoids inventing hard-coded item codes.
-       */
+      const categoriesResult =
+        await flw(
+          "/bill-categories?country=NG",
+        );
 
-      const categoriesResult = await flw(
-        "/bill-categories?country=NG",
+      console.log(
+        "Flutterwave bill catalogue response:",
+        JSON.stringify({
+          ok:
+            categoriesResult.ok,
+          status:
+            categoriesResult.status,
+        }),
       );
 
       if (
         !categoriesResult.ok ||
-        categoriesResult.body?.status !== "success"
+        categoriesResult.body?.status !==
+          "success"
       ) {
+        console.error(
+          "Flutterwave bill catalogue failed:",
+          JSON.stringify(
+            categoriesResult.body,
+          ),
+        );
+
         return json(
           {
             success: false,
-            error: "Unable to load bill items",
+            error:
+              categoriesResult.body?.message ??
+              "Unable to load bill packages",
+            provider_status:
+              categoriesResult.status,
           },
           502,
         );
       }
 
-      const allItems = Array.isArray(
-        categoriesResult.body?.data,
-      )
-        ? categoriesResult.body.data
-        : [];
+      const allItems =
+        Array.isArray(
+          categoriesResult.body?.data,
+        )
+          ? categoriesResult.body.data
+          : [];
 
       const items = allItems.filter(
         (item: any) =>
-          cleanString(item?.biller_code) ===
-          billerCode,
+          cleanString(
+            item?.biller_code,
+          ) === billerCode,
       );
 
       return json({
         success: true,
-        biller_code: billerCode,
+        biller_code:
+          billerCode,
         items,
       });
     }
@@ -331,13 +367,17 @@ Deno.serve(async (req) => {
         return json(
           {
             success: false,
-            error: "reference is required",
+            error:
+              "reference is required",
           },
           400,
         );
       }
 
-      const { data: txn, error } = await admin
+      const {
+        data: txn,
+        error,
+      } = await admin
         .from("transactions")
         .select(
           `
@@ -354,8 +394,14 @@ Deno.serve(async (req) => {
             created_at
           `,
         )
-        .eq("user_id", user.id)
-        .eq("reference_number", reference)
+        .eq(
+          "user_id",
+          user.id,
+        )
+        .eq(
+          "reference_number",
+          reference,
+        )
         .maybeSingle();
 
       if (error) {
@@ -367,7 +413,8 @@ Deno.serve(async (req) => {
         return json(
           {
             success: false,
-            error: "Unable to retrieve transaction",
+            error:
+              "Unable to retrieve transaction",
           },
           500,
         );
@@ -375,40 +422,28 @@ Deno.serve(async (req) => {
 
       return json({
         success: true,
-        transaction: txn ?? null,
+        transaction:
+          txn ?? null,
       });
     }
 
     // ============================================================
-    // 8. NORMALISE DASHBOARD SERVICE REQUEST
-    //
-    // Dashboard sends:
-    //
-    // {
-    //   service: "airtime",
-    //   amount: 500,
-    //   details: {...}
-    // }
-    //
-    // We translate that into:
-    //
-    // biller_code
-    // item_code
-    // customer
-    // amount
-    //
-    // If the Dashboard already provides biller_code/item_code,
-    // those values are respected.
+    // 8. NORMALISE SERVICE REQUEST
     // ============================================================
 
-    let service: ServiceType | null =
-      normaliseService(body?.service);
+    let service =
+      normaliseService(
+        body?.service,
+      );
 
-    let amount = Number(body?.amount ?? 0);
+    let amount = Number(
+      body?.amount ?? 0,
+    );
 
-    let details =
+    const details =
       body?.details &&
-      typeof body.details === "object"
+      typeof body.details ===
+        "object"
         ? body.details
         : {};
 
@@ -416,7 +451,7 @@ Deno.serve(async (req) => {
       body?.biller_code ??
         details?.biller_code ??
         details?.billerCode,
-  );
+    );
 
     let itemCode = cleanString(
       body?.item_code ??
@@ -437,62 +472,56 @@ Deno.serve(async (req) => {
         details?.account_number,
     );
 
-    const country =
-      cleanString(
-        body?.country ??
-          details?.country ??
-          "NG",
-      ).toUpperCase();
+    const country = cleanString(
+      body?.country ??
+        details?.country ??
+        "NG",
+    ).toUpperCase();
 
     // ============================================================
-    // 9. EXPLICIT PAY ACTION
-    // ============================================================
-
-    if (action === "pay") {
-      service =
-        service ??
-        normaliseService(
-          body?.service,
-        );
-    }
-
-    // ============================================================
-    // 10. SERVICE VALIDATION
+    // 9. SERVICE VALIDATION
     // ============================================================
 
     if (!service) {
       return unsupportedServiceResponse(
-        cleanString(body?.service) ||
-          "unknown",
+        cleanString(
+          body?.service,
+        ) || "unknown",
       );
     }
 
     if (
-      !SUPPORTED_SERVICES.includes(service)
+      !SUPPORTED_SERVICES.includes(
+        service,
+      )
     ) {
       return unsupportedServiceResponse(
         service,
       );
     }
 
-    // ============================================================
-    // 11. SERVICE CATEGORY
-    // ============================================================
-
     const expectedCategory =
-      SERVICE_CATEGORY_MAP[service];
+      SERVICE_CATEGORY_MAP[
+        service
+      ];
 
     console.log(
-      "IyanjuPay bill service:",
+      "IyanjuPay bill request:",
       JSON.stringify({
         user_id: user.id,
         service,
-        category: expectedCategory,
+        category:
+          expectedCategory,
+        amount,
+        biller_code:
+          billerCode,
+        item_code:
+          itemCode,
       }),
     );
 
     // ============================================================
-    // 12. AMOUNT VALIDATION
+    // 10. AMOUNT
     // ============================================================
 
     if (
@@ -502,17 +531,19 @@ Deno.serve(async (req) => {
       return json(
         {
           success: false,
-          error: "Invalid amount",
+          error:
+            "Invalid amount",
         },
         400,
       );
     }
 
-    // Prevent absurd numeric values / malformed decimals.
-    amount = Number(amount.toFixed(2));
+    amount = Number(
+      amount.toFixed(2),
+    );
 
     // ============================================================
-    // 13. COUNTRY VALIDATION
+    // 11. COUNTRY
     // ============================================================
 
     if (country !== "NG") {
@@ -527,22 +558,8 @@ Deno.serve(async (req) => {
     }
 
     // ============================================================
-    // 14. REQUIRED BILLER / ITEM
+    // 12. BILLER
     // ============================================================
-
-    /*
-     * We deliberately DO NOT invent biller/item codes.
-     *
-     * Flutterwave returns these dynamically from its bill
-     * catalogue.
-     *
-     * Therefore the frontend should eventually send:
-     *
-     * biller_code
-     * item_code
-     *
-     * after the user selects the provider/package.
-     */
 
     if (!billerCode) {
       return json(
@@ -551,11 +568,16 @@ Deno.serve(async (req) => {
           error:
             "Please select a valid bill provider.",
           service,
-          category: expectedCategory,
+          category:
+            expectedCategory,
         },
         400,
       );
     }
+
+    // ============================================================
+    // 13. ITEM
+    // ============================================================
 
     if (!itemCode) {
       return json(
@@ -564,14 +586,15 @@ Deno.serve(async (req) => {
           error:
             "Please select a valid bill package.",
           service,
-          category: expectedCategory,
+          category:
+            expectedCategory,
         },
         400,
       );
     }
 
     // ============================================================
-    // 15. CUSTOMER VALIDATION
+    // 14. CUSTOMER
     // ============================================================
 
     if (!customer) {
@@ -586,17 +609,18 @@ Deno.serve(async (req) => {
     }
 
     // ============================================================
-    // 16. BASIC SERVICE-SPECIFIC CUSTOMER VALIDATION
+    // 15. SERVICE-SPECIFIC CUSTOMER VALIDATION
     // ============================================================
 
     if (
       service === "airtime" ||
       service === "data"
     ) {
-      const phone = customer.replace(
-        /\s+/g,
-        "",
-      );
+      const phone =
+        customer.replace(
+          /\s+/g,
+          "",
+        );
 
       if (
         !/^\+?[0-9]{10,15}$/.test(
@@ -659,12 +683,13 @@ Deno.serve(async (req) => {
     }
 
     // ============================================================
-    // 17. OPTIONAL CUSTOMER VALIDATION WITH FLUTTERWAVE
+    // 16. CUSTOMER VALIDATION
     //
-    // Flutterwave recommends validating customer details for
-    // electricity, cable, internet, etc.
+    // Airtime/Data:
+    // no separate validation request.
     //
-    // Airtime/data do not require this validation.
+    // Electricity/Cable/Internet:
+    // validate customer with Flutterwave.
     // ============================================================
 
     if (
@@ -680,41 +705,52 @@ Deno.serve(async (req) => {
 
       try {
         const validation =
-          await flw(validationUrl);
+          await flw(
+            validationUrl,
+          );
+
+        console.log(
+          "Flutterwave customer validation:",
+          JSON.stringify({
+            ok:
+              validation.ok,
+            status:
+              validation.status,
+            body:
+              validation.body,
+          }),
+        );
 
         if (
           !validation.ok ||
           validation.body?.status !==
             "success"
         ) {
-          console.error(
-            "Bill customer validation failed:",
-            JSON.stringify(
-              validation.body,
-            ),
-          );
-
           return json(
             {
               success: false,
               error:
                 validation.body?.message ??
                 "Unable to validate customer details.",
+              provider_status:
+                validation.status,
             },
             400,
           );
         }
 
         console.log(
-          "Bill customer validated:",
+          "Customer successfully validated:",
           JSON.stringify(
             validation.body?.data ??
               null,
           ),
         );
-      } catch (validationError) {
+      } catch (
+        validationError
+      ) {
         console.error(
-          "Bill validation request failed:",
+          "Bill customer validation error:",
           validationError,
         );
 
@@ -730,14 +766,16 @@ Deno.serve(async (req) => {
     }
 
     // ============================================================
-    // 18. CREATE UNIQUE REFERENCE
+    // 17. UNIQUE REFERENCE
     // ============================================================
 
     const reference =
-      `BILL_${crypto.randomUUID().replace(
-        /-/g,
-        "",
-      )}`;
+      `BILL_${crypto
+        .randomUUID()
+        .replace(
+          /-/g,
+          "",
+        )}`;
 
     console.log(
       "Bill payment reference:",
@@ -745,38 +783,46 @@ Deno.serve(async (req) => {
     );
 
     // ============================================================
-    // 19. DEBIT WALLET
-    //
-    // Ledger remains the source of truth.
+    // 18. DEBIT WALLET
     // ============================================================
 
-    const { data: debit, error: debitError } =
-      await admin.rpc(
-        "debit_wallet",
-        {
-          _user_id: user.id,
-          _amount: amount,
-          _description:
-            `Bill payment (${service})`,
-          _idempotency_key:
-            reference,
-          _reference:
-            reference,
-          _category:
-            "bill_payment",
-          _metadata: {
-            service,
-            category:
-              expectedCategory,
-            biller_code:
-              billerCode,
-            item_code:
-              itemCode,
-            customer,
-            country,
-          },
+    const {
+      data: debit,
+      error: debitError,
+    } = await admin.rpc(
+      "debit_wallet",
+      {
+        _user_id:
+          user.id,
+
+        _amount:
+          amount,
+
+        _description:
+          `Bill payment (${service})`,
+
+        _idempotency_key:
+          reference,
+
+        _reference:
+          reference,
+
+        _category:
+          "bill_payment",
+
+        _metadata: {
+          service,
+          category:
+            expectedCategory,
+          biller_code:
+            billerCode,
+          item_code:
+            itemCode,
+          customer,
+          country,
         },
-      );
+      },
+    );
 
     if (debitError) {
       console.error(
@@ -807,32 +853,31 @@ Deno.serve(async (req) => {
     }
 
     console.log(
-      "Wallet debited successfully:",
+      "Wallet debited:",
       JSON.stringify({
         transaction_id:
-          debit?.id ?? null,
+          debit?.id ??
+          null,
         amount,
         reference,
       }),
     );
 
     // ============================================================
-    // 20. CALL FLUTTERWAVE
+    // 19. FLUTTERWAVE BILL PAYMENT
     //
-    // Current Flutterwave documented endpoint:
+    // Correct endpoint:
     //
     // POST
     // /billers/{biller_code}/items/{item_code}/payment
     //
-    // Body:
-    // country
-    // customer_id
-    // amount
-    // reference
     // ============================================================
 
-    let providerOk = false;
-    let providerBody: any = null;
+    let providerOk =
+      false;
+
+    let providerBody:
+      any = null;
 
     try {
       const providerPath =
@@ -848,16 +893,25 @@ Deno.serve(async (req) => {
       );
 
       const result =
-        await flw(providerPath, {
-          method: "POST",
-          body: JSON.stringify({
-            country,
-            customer_id:
-              customer,
-            amount,
-            reference,
-          }),
-        });
+        await flw(
+          providerPath,
+          {
+            method:
+              "POST",
+
+            body:
+              JSON.stringify({
+                country,
+
+                customer_id:
+                  customer,
+
+                amount,
+
+                reference,
+              }),
+          },
+        );
 
       providerBody =
         result.body;
@@ -868,18 +922,22 @@ Deno.serve(async (req) => {
           "success";
 
       console.log(
-        "Flutterwave bill response:",
+        "Flutterwave bill payment response:",
         JSON.stringify({
           ok:
             result.ok,
           status:
+            result.status,
+          provider_status:
             result.body?.status,
           message:
             result.body?.message,
           reference,
         }),
       );
-    } catch (providerError) {
+    } catch (
+      providerError
+    ) {
       console.error(
         "Flutterwave bill request failed:",
         providerError,
@@ -887,12 +945,12 @@ Deno.serve(async (req) => {
     }
 
     // ============================================================
-    // 21. PROVIDER FAILURE → REFUND
+    // 20. PROVIDER FAILURE → REFUND
     // ============================================================
 
     if (!providerOk) {
       console.error(
-        "Bill payment was not accepted by Flutterwave:",
+        "Flutterwave bill payment failed:",
         JSON.stringify(
           providerBody,
         ),
@@ -902,26 +960,38 @@ Deno.serve(async (req) => {
         `REFUND_${reference}`;
 
       const {
-        error: refundError,
+        error:
+          refundError,
       } = await admin.rpc(
         "refund_wallet",
         {
-          _user_id: user.id,
-          _amount: amount,
+          _user_id:
+            user.id,
+
+          _amount:
+            amount,
+
           _description:
             "Bill payment reversal",
+
           _idempotency_key:
             refundReference,
+
           _reference:
             refundReference,
+
           _metadata: {
             original_reference:
               reference,
+
             service,
+
             biller_code:
               billerCode,
+
             item_code:
               itemCode,
+
             reason:
               "flutterwave_bill_failed",
           },
@@ -948,7 +1018,7 @@ Deno.serve(async (req) => {
       }
 
       console.log(
-        "Wallet refunded successfully:",
+        "Wallet refunded:",
         JSON.stringify({
           reference,
           amount,
@@ -970,7 +1040,7 @@ Deno.serve(async (req) => {
     }
 
     // ============================================================
-    // 22. SUCCESS
+    // 21. SUCCESS
     // ============================================================
 
     const providerData =
@@ -997,33 +1067,50 @@ Deno.serve(async (req) => {
     );
 
     // ============================================================
-    // 23. SUCCESS RESPONSE
+    // 22. SUCCESS RESPONSE
     // ============================================================
 
     return json({
       success: true,
+
       message:
         providerBody?.message ??
         "Bill payment initiated successfully.",
+
       reference,
+
       transaction_id:
-        debit?.id ?? null,
+        debit?.id ??
+        null,
+
       provider_reference:
         providerReference,
+
       amount,
-      currency: "NGN",
+
+      currency:
+        "NGN",
+
       service,
+
       biller_code:
         billerCode,
+
       item_code:
         itemCode,
+
       customer,
+
       status:
         providerData?.status ??
         "pending",
-      data: providerData,
+
+      data:
+        providerData,
     });
-  } catch (error: any) {
+  } catch (
+    error: any
+  ) {
     console.error(
       "Bill payment error:",
       error,

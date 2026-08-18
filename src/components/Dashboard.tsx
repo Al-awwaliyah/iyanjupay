@@ -147,20 +147,7 @@ const DashboardSplashScreen = () => {
 
       {/* Splash animation */}
 
-      <style>
-        {`
-          @keyframes dashboardSplashProgress {
-            from {
-              width: 0%;
-            }
-
-            to {
-              width: 100%;
-            }
-          }
-        `}
-      </style>
-
+     
     </div>
   );
 };

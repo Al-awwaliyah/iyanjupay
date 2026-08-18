@@ -34,9 +34,42 @@ export async function getUser(req: Request) {
 
 export const FLW_BASE = 'https://api.flutterwave.com/v3'
 
+/**
+ * Calls the Flutterwave v3 API.
+ *
+ * When FLUTTERWAVE_PROXY_URL is configured the request is tunnelled through
+ * the fixed-IP proxy so that IP-whitelisted endpoints (transfers, BVN,
+ * card issuing, bills) are accepted by Flutterwave.
+ */
 export async function flw(path: string, init: RequestInit = {}) {
   const secretKey = Deno.env.get('FLUTTERWAVE_SECRET_KEY')
   if (!secretKey) throw new Error('Flutterwave is not configured')
+
+  const proxyUrl = Deno.env.get('FLUTTERWAVE_PROXY_URL')
+  const proxySecret = Deno.env.get('FLUTTERWAVE_PROXY_SECRET')
+
+  if (proxyUrl) {
+    try {
+      const res = await fetch(proxyUrl.replace(/\/$/, ''), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(proxySecret ? { 'x-proxy-secret': proxySecret } : {}),
+        },
+        body: JSON.stringify({
+          path,
+          method: init.method ?? 'GET',
+          body: init.body ? JSON.parse(String(init.body)) : undefined,
+        }),
+      })
+      const body = await res.json().catch(() => ({}))
+      if (res.ok) return { ok: res.ok, status: res.status, body }
+      console.error('Flutterwave proxy failed, falling back to direct call', res.status)
+    } catch (error) {
+      console.error('Flutterwave proxy error, falling back to direct call', error)
+    }
+  }
+
   const res = await fetch(`${FLW_BASE}${path}`, {
     ...init,
     headers: {

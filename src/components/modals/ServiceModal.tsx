@@ -1,38 +1,25 @@
-import React, {
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
+import React, { useEffect, useMemo, useState, } from "react";
 
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, } from "@/components/ui/dialog";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, } from "@/components/ui/select";
 
-import {
-  Loader2,
-  RefreshCw,
-} from "lucide-react";
+import { Loader2, RefreshCw, } from "lucide-react";
 
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 
+// ============================================================
+// TYPES
+// ============================================================
+
 interface ServiceModalProps {
   isOpen: boolean;
+
   onClose: () => void;
 
   service: {
@@ -42,21 +29,15 @@ interface ServiceModalProps {
 
   walletBalance: number;
 
-  /**
-   * The parent handles the actual payment.
-   *
-   * IMPORTANT:
-   * This is Promise<void> so the modal waits for the
-   * Flutterwave/Supabase payment process before closing.
-   */
   onPurchase: (
     amount: number,
-    details: any,
+    details: Record<string, any>
   ) => Promise<void>;
 }
 
 interface Biller {
   id?: number | string;
+
   name?: string;
   biller_code?: string;
   category?: string;
@@ -65,40 +46,32 @@ interface Biller {
   logo?: string | null;
   description?: string;
   short_name?: string;
+
   [key: string]: any;
 }
 
 interface BillItem {
   id?: number | string;
-
   biller_code?: string;
-
   item_code?: string;
-
   name?: string;
-
   short_name?: string;
-
   biller_name?: string;
-
   amount?: number | string;
-
   minimum?: number | string;
-
   maximum?: number | string;
-
   fee?: number | string;
-
   label_name?: string;
-
   label_name_2?: string;
-
   is_airtime?: boolean;
-
   country?: string;
 
   [key: string]: any;
 }
+
+// ============================================================
+// SERVICE → FLUTTERWAVE CATEGORY
+// ============================================================
 
 const SERVICE_CATEGORY_MAP: Record<
   string,
@@ -111,6 +84,10 @@ const SERVICE_CATEGORY_MAP: Record<
   internet: "INTSERVICE",
 };
 
+// ============================================================
+// COMPONENT
+// ============================================================
+
 const ServiceModal = ({
   isOpen,
   onClose,
@@ -118,18 +95,19 @@ const ServiceModal = ({
   walletBalance,
   onPurchase,
 }: ServiceModalProps) => {
-  // ============================================================
+  // ==========================================================
   // FORM STATE
-  // ============================================================
+  // ==========================================================
 
-  const [amount, setAmount] = useState("");
+  const [amount, setAmount] =
+    useState("");
 
   const [customer, setCustomer] =
     useState("");
 
-  // ============================================================
+  // ==========================================================
   // FLUTTERWAVE CATALOGUE
-  // ============================================================
+  // ==========================================================
 
   const [billers, setBillers] =
     useState<Biller[]>([]);
@@ -147,9 +125,9 @@ const ServiceModal = ({
     setSelectedItemCode,
   ] = useState("");
 
-  // ============================================================
+  // ==========================================================
   // LOADING
-  // ============================================================
+  // ==========================================================
 
   const [
     loadingBillers,
@@ -172,24 +150,25 @@ const ServiceModal = ({
   const { toast } =
     useToast();
 
-  // ============================================================
+  // ==========================================================
   // SERVICE
-  // ============================================================
+  // ==========================================================
 
   const serviceType =
     service?.type ?? "";
 
-  const category = useMemo(
-    () =>
-      SERVICE_CATEGORY_MAP[
-        serviceType
-      ] ?? "",
-    [serviceType],
-  );
+  const category =
+    useMemo(
+      () =>
+        SERVICE_CATEGORY_MAP[
+          serviceType
+        ] ?? "",
+      [serviceType]
+    );
 
-  // ============================================================
+  // ==========================================================
   // SELECTED BILLER
-  // ============================================================
+  // ==========================================================
 
   const selectedBiller =
     useMemo(
@@ -197,19 +176,20 @@ const ServiceModal = ({
         billers.find(
           (biller) =>
             String(
-              biller.biller_code ?? "",
+              biller.biller_code ??
+                ""
             ) ===
-            selectedBillerCode,
+            selectedBillerCode
         ) ?? null,
       [
         billers,
         selectedBillerCode,
-      ],
+      ]
     );
 
-  // ============================================================
+  // ==========================================================
   // SELECTED ITEM
-  // ============================================================
+  // ==========================================================
 
   const selectedItem =
     useMemo(
@@ -217,19 +197,20 @@ const ServiceModal = ({
         items.find(
           (item) =>
             String(
-              item.item_code ?? "",
+              item.item_code ??
+                ""
             ) ===
-            selectedItemCode,
+            selectedItemCode
         ) ?? null,
       [
         items,
         selectedItemCode,
-      ],
+      ]
     );
 
-  // ============================================================
+  // ==========================================================
   // CUSTOMER LABEL
-  // ============================================================
+  // ==========================================================
 
   const customerLabel =
     useMemo(() => {
@@ -261,9 +242,9 @@ const ServiceModal = ({
       serviceType,
     ]);
 
-  // ============================================================
+  // ==========================================================
   // CUSTOMER PLACEHOLDER
-  // ============================================================
+  // ==========================================================
 
   const customerPlaceholder =
     useMemo(() => {
@@ -286,115 +267,144 @@ const ServiceModal = ({
       }
     }, [serviceType]);
 
-  // ============================================================
+  // ==========================================================
   // RESET FORM
-  // ============================================================
+  // ==========================================================
 
   const resetForm = () => {
     setAmount("");
+
     setCustomer("");
 
     setBillers([]);
+
     setItems([]);
 
     setSelectedBillerCode("");
+
     setSelectedItemCode("");
 
     setError("");
 
     setLoadingBillers(false);
+
     setLoadingItems(false);
+
     setProcessingPayment(false);
   };
 
-  // ============================================================
+  // ==========================================================
   // RESET WHEN SERVICE CHANGES
-  // ============================================================
+  // ==========================================================
 
   useEffect(() => {
     setAmount("");
+
     setCustomer("");
 
     setBillers([]);
+
     setItems([]);
 
     setSelectedBillerCode("");
+
     setSelectedItemCode("");
 
     setError("");
 
+    setLoadingBillers(false);
+
+    setLoadingItems(false);
+
     setProcessingPayment(false);
   }, [serviceType]);
 
-  // ============================================================
+  // ==========================================================
   // LOAD BILLERS
-  // ============================================================
+  // ==========================================================
 
   const loadBillers = async () => {
     if (!category) {
+      setBillers([]);
       return;
     }
 
     setLoadingBillers(true);
+
     setError("");
+
+    setSelectedBillerCode("");
+
+    setSelectedItemCode("");
+
+    setItems([]);
+
+    setAmount("");
 
     try {
       const {
         data,
-        error: functionError,
+        error:
+          functionError,
       } =
         await supabase.functions.invoke(
           "flutterwave-bills",
           {
             body: {
               action: "billers",
+
               category,
+
+              country: "NG",
             },
-          },
+          }
         );
 
       if (functionError) {
         console.error(
           "Billers function error:",
-          functionError,
+          functionError
         );
 
         throw new Error(
           functionError.message ||
-            "Unable to load bill providers.",
+            "Unable to load bill providers."
         );
       }
 
-      if (!data?.success) {
+      if (
+        !data ||
+        data.success !== true
+      ) {
         throw new Error(
           data?.error ||
-            "Unable to load bill providers.",
+            data?.message ||
+            "Unable to load bill providers."
         );
       }
 
       const loadedBillers =
         Array.isArray(
-          data?.billers,
+          data?.billers
         )
           ? data.billers
           : [];
 
       setBillers(
-        loadedBillers,
+        loadedBillers
       );
 
       if (
-        loadedBillers.length ===
-        0
+        loadedBillers.length === 0
       ) {
         setError(
-          "No providers are currently available for this service.",
+          "No providers are currently available for this service."
         );
       }
     } catch (err: any) {
       console.error(
         "Failed to load billers:",
-        err,
+        err
       );
 
       const message =
@@ -412,13 +422,15 @@ const ServiceModal = ({
           "destructive",
       });
     } finally {
-      setLoadingBillers(false);
+      setLoadingBillers(
+        false
+      );
     }
   };
 
-  // ============================================================
+  // ==========================================================
   // LOAD BILLERS WHEN MODAL OPENS
-  // ============================================================
+  // ==========================================================
 
   useEffect(() => {
     if (
@@ -434,82 +446,101 @@ const ServiceModal = ({
     category,
   ]);
 
-  // ============================================================
-  // LOAD BILL ITEMS
-  // ============================================================
+  // ==========================================================
+  // LOAD ITEMS
+  // ==========================================================
 
   const loadItems = async (
-    billerCode: string,
+    billerCode: string
   ) => {
-    if (!billerCode) {
+    const cleanBillerCode =
+      String(
+        billerCode ?? ""
+      ).trim();
+
+    if (
+      !cleanBillerCode
+    ) {
+      setItems([]);
+
       return;
     }
 
     setLoadingItems(true);
+
     setError("");
 
     setItems([]);
+
     setSelectedItemCode("");
+
     setAmount("");
 
     try {
       const {
         data,
-        error: functionError,
+        error:
+          functionError,
       } =
         await supabase.functions.invoke(
           "flutterwave-bills",
           {
             body: {
               action: "items",
+
               biller_code:
-                billerCode,
+                cleanBillerCode,
+
+              country: "NG",
             },
-          },
+          }
         );
 
       if (functionError) {
         console.error(
           "Bill items function error:",
-          functionError,
+          functionError
         );
 
         throw new Error(
           functionError.message ||
-            "Unable to load bill packages.",
+            "Unable to load bill packages."
         );
       }
 
-      if (!data?.success) {
+      if (
+        !data ||
+        data.success !== true
+      ) {
         throw new Error(
           data?.error ||
-            "Unable to load bill packages.",
+            data?.message ||
+            "Unable to load bill packages."
         );
       }
 
       const loadedItems =
         Array.isArray(
-          data?.items,
+          data?.items
         )
           ? data.items
           : [];
 
       setItems(
-        loadedItems,
+        loadedItems
       );
 
       if (
-        loadedItems.length ===
-        0
+        loadedItems.length === 0
       ) {
         setError(
-          "No packages are currently available for this provider.",
+          "No packages are currently available for this provider."
         );
       }
     } catch (err: any) {
       console.error(
         "Failed to load bill items:",
-        err,
+        err
       );
 
       const message =
@@ -527,74 +558,88 @@ const ServiceModal = ({
           "destructive",
       });
     } finally {
-      setLoadingItems(false);
+      setLoadingItems(
+        false
+      );
     }
   };
 
-  // ============================================================
+  // ==========================================================
   // BILLER CHANGE
-  // ============================================================
+  // ==========================================================
 
   const handleBillerChange =
     async (
-      value: string,
+      value: string
     ) => {
+      if (
+        processingPayment
+      ) {
+        return;
+      }
+
       setSelectedBillerCode(
-        value,
+        value
       );
 
-      await loadItems(value);
+      await loadItems(
+        value
+      );
     };
 
-  // ============================================================
+  // ==========================================================
   // ITEM CHANGE
-  // ============================================================
+  // ==========================================================
 
   const handleItemChange = (
-    value: string,
+    value: string
   ) => {
+    if (
+      processingPayment
+    ) {
+      return;
+    }
+
     setSelectedItemCode(
-      value,
+      value
     );
 
     const item =
       items.find(
         (entry) =>
           String(
-            entry.item_code ?? "",
-          ) === value,
+            entry.item_code ??
+              ""
+          ) === value
       );
 
     if (!item) {
+      setAmount("");
       return;
     }
 
     const itemAmount =
       Number(
-        item.amount ?? 0,
+        item.amount ?? 0
       );
 
-    /*
-     * Fixed-price packages automatically
-     * populate their amount.
-     */
     if (
       Number.isFinite(
-        itemAmount,
+        itemAmount
       ) &&
       itemAmount > 0
     ) {
       setAmount(
-        String(itemAmount),
+        String(itemAmount)
       );
     } else {
       setAmount("");
     }
   };
 
-  // ============================================================
+  // ==========================================================
   // AMOUNT RULES
-  // ============================================================
+  // ==========================================================
 
   const amountNumber =
     Number(amount);
@@ -602,33 +647,33 @@ const ServiceModal = ({
   const itemMinimum =
     Number(
       selectedItem?.minimum ??
-        0,
+        0
     );
 
   const itemMaximum =
     Number(
       selectedItem?.maximum ??
-        0,
+        0
     );
 
   const fixedItemAmount =
     Number(
       selectedItem?.amount ??
-        0,
+        0
     );
 
   const isFixedAmount =
     Number.isFinite(
-      fixedItemAmount,
+      fixedItemAmount
     ) &&
     fixedItemAmount > 0;
 
-  // ============================================================
+  // ==========================================================
   // CUSTOMER NORMALISATION
-  // ============================================================
+  // ==========================================================
 
-  const normalisedCustomer =
-    () => {
+  const normaliseCustomer =
+    (): string => {
       let value =
         customer.trim();
 
@@ -641,24 +686,24 @@ const ServiceModal = ({
         value =
           value.replace(
             /\s+/g,
-            "",
+            ""
           );
 
         // 08012345678
         if (
           /^0\d{10}$/.test(
-            value,
+            value
           )
         ) {
           return `+234${value.substring(
-            1,
+            1
           )}`;
         }
 
         // 8012345678
         if (
           /^\d{10}$/.test(
-            value,
+            value
           )
         ) {
           return `+234${value}`;
@@ -667,7 +712,7 @@ const ServiceModal = ({
         // 2348012345678
         if (
           /^234\d{10}$/.test(
-            value,
+            value
           )
         ) {
           return `+${value}`;
@@ -676,7 +721,7 @@ const ServiceModal = ({
         // +2348012345678
         if (
           /^\+234\d{10}$/.test(
-            value,
+            value
           )
         ) {
           return value;
@@ -686,12 +731,12 @@ const ServiceModal = ({
       return value;
     };
 
-  // ============================================================
+  // ==========================================================
   // VALIDATE FORM
-  // ============================================================
+  // ==========================================================
 
   const validateForm =
-    () => {
+    (): boolean => {
       if (
         !selectedBillerCode
       ) {
@@ -723,7 +768,7 @@ const ServiceModal = ({
       }
 
       const finalCustomer =
-        normalisedCustomer();
+        normaliseCustomer();
 
       if (!finalCustomer) {
         toast({
@@ -750,7 +795,7 @@ const ServiceModal = ({
       ) {
         if (
           !/^\+234\d{10}$/.test(
-            finalCustomer,
+            finalCustomer
           )
         ) {
           toast({
@@ -772,7 +817,7 @@ const ServiceModal = ({
 
       if (
         !Number.isFinite(
-          amountNumber,
+          amountNumber
         ) ||
         amountNumber <= 0
       ) {
@@ -796,7 +841,7 @@ const ServiceModal = ({
         isFixedAmount &&
         Math.abs(
           amountNumber -
-            fixedItemAmount,
+            fixedItemAmount
         ) > 0.01
       ) {
         toast({
@@ -860,7 +905,7 @@ const ServiceModal = ({
       if (
         amountNumber >
         Number(
-          walletBalance,
+          walletBalance
         )
       ) {
         toast({
@@ -878,9 +923,9 @@ const ServiceModal = ({
       return true;
     };
 
-  // ============================================================
+  // ==========================================================
   // PURCHASE
-  // ============================================================
+  // ==========================================================
 
   const handlePurchase =
     async () => {
@@ -899,14 +944,12 @@ const ServiceModal = ({
       }
 
       const finalCustomer =
-        normalisedCustomer();
+        normaliseCustomer();
 
-      /*
-       * Keep both snake_case and camelCase
-       * values because the parent/Edge Function
-       * accepts the snake_case values while the
-       * existing dashboard may use camelCase.
-       */
+      // ========================================================
+      // BUILD DETAILS
+      // ========================================================
+
       const details = {
         customer:
           finalCustomer,
@@ -917,23 +960,26 @@ const ServiceModal = ({
         item_code:
           selectedItemCode,
 
-        billerCode:
-          selectedBillerCode,
-
-        itemCode:
-          selectedItemCode,
+        provider:
+          selectedBiller?.name ??
+          selectedBiller?.short_name ??
+          "",
 
         phoneNumber:
           serviceType ===
-            "airtime" ||
+              "airtime" ||
           serviceType ===
-            "data"
+              "data"
             ? finalCustomer
             : "",
 
-        provider:
-          selectedBiller?.name ??
-          "",
+        phone:
+          serviceType ===
+              "airtime" ||
+          serviceType ===
+              "data"
+            ? finalCustomer
+            : "",
 
         meterNumber:
           serviceType ===
@@ -994,65 +1040,69 @@ const ServiceModal = ({
 
       try {
         setProcessingPayment(
-          true,
+          true
         );
 
         setError("");
 
         /*
-         * IMPORTANT:
-         *
-         * Wait for Dashboard.handlePurchase()
-         * to finish.
-         *
-         * Dashboard.handlePurchase() calls:
+         * Dashboard.handlePurchase()
+         * is responsible for invoking:
          *
          * flutterwave-bills
          *
-         * The Edge Function:
+         * with:
          *
-         * 1. authenticates user
-         * 2. validates bill
-         * 3. debits wallet
-         * 4. calls Flutterwave
-         * 5. refunds if provider rejects
+         * action: "pay"
          */
+
         await onPurchase(
           amountNumber,
-          details,
+          details
         );
 
         /*
-         * Only reset/close after the parent
-         * confirms that the operation completed.
+         * IMPORTANT:
+         *
+         * If onPurchase() succeeds,
+         * the Dashboard closes the modal.
+         *
+         * Therefore we do NOT close the
+         * modal here.
          */
+
         resetForm();
-        onClose();
       } catch (err: any) {
-        /*
-         * The parent normally handles the error
-         * toast, but we keep this guard so that
-         * the modal never closes accidentally.
-         */
         console.error(
           "Service purchase failed:",
-          err,
+          err
         );
 
-        setError(
+        const message =
           err?.message ||
-            "Unable to complete this payment.",
+          "Unable to complete this payment.";
+
+        setError(
+          message
         );
+
+        /*
+         * Dashboard normally displays
+         * the main payment error toast.
+         *
+         * We intentionally do not create
+         * another duplicate toast here.
+         */
       } finally {
         setProcessingPayment(
-          false,
+          false
         );
       }
     };
 
-  // ============================================================
+  // ==========================================================
   // CLOSE
-  // ============================================================
+  // ==========================================================
 
   const handleClose =
     () => {
@@ -1063,26 +1113,27 @@ const ServiceModal = ({
       }
 
       resetForm();
+
       onClose();
     };
 
-  // ============================================================
+  // ==========================================================
   // NO SERVICE
-  // ============================================================
+  // ==========================================================
 
   if (!service) {
     return null;
   }
 
-  // ============================================================
+  // ==========================================================
   // UI
-  // ============================================================
+  // ==========================================================
 
   return (
     <Dialog
       open={isOpen}
       onOpenChange={(
-        open,
+        open
       ) => {
         if (
           !open &&
@@ -1092,47 +1143,57 @@ const ServiceModal = ({
         }
       }}
     >
-      <DialogContent
-        className="sm:max-w-md max-h-[90vh] overflow-y-auto"
-      >
+      <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
+
         <DialogHeader>
+
           <DialogTitle className="text-center text-green-700">
             {service.title}
           </DialogTitle>
+
         </DialogHeader>
 
         <div className="space-y-4">
-          {/* ================================================== */}
-          {/* WALLET */}
-          {/* ================================================== */}
+
+          {/* ====================================================
+              WALLET
+          ==================================================== */}
 
           <div className="bg-green-50 p-3 rounded-lg">
+
             <p className="text-sm text-green-700">
+
               Wallet Balance: ₦
               {Number(
-                walletBalance,
+                walletBalance
               ).toLocaleString()}
+
             </p>
+
           </div>
 
-          {/* ================================================== */}
-          {/* LOADING BILLERS */}
-          {/* ================================================== */}
+          {/* ====================================================
+              LOADING BILLERS
+          ==================================================== */}
 
           {loadingBillers && (
             <div className="flex items-center justify-center gap-2 py-3 text-sm text-gray-500">
+
               <Loader2 className="h-4 w-4 animate-spin" />
 
               Loading providers...
+
             </div>
           )}
 
-          {/* ================================================== */}
-          {/* PROVIDER */}
-          {/* ================================================== */}
+          {/* ====================================================
+              PROVIDER
+          ==================================================== */}
 
           <div className="space-y-2">
+
             <div className="flex items-center justify-between">
+
               <Label>
                 Provider
               </Label>
@@ -1153,6 +1214,7 @@ const ServiceModal = ({
                     Refresh
                   </Button>
                 )}
+
             </div>
 
             <Select
@@ -1169,7 +1231,9 @@ const ServiceModal = ({
                   0
               }
             >
+
               <SelectTrigger>
+
                 <SelectValue
                   placeholder={
                     loadingBillers
@@ -1177,18 +1241,20 @@ const ServiceModal = ({
                       : "Select provider"
                   }
                 />
+
               </SelectTrigger>
 
               <SelectContent>
+
                 {billers.map(
                   (
                     biller,
-                    index,
+                    index
                   ) => {
                     const code =
                       String(
                         biller.biller_code ??
-                          "",
+                          ""
                       );
 
                     if (!code) {
@@ -1205,18 +1271,23 @@ const ServiceModal = ({
                           code}
                       </SelectItem>
                     );
-                  },
+                  }
                 )}
+
               </SelectContent>
+
             </Select>
+
           </div>
 
-          {/* ================================================== */}
-          {/* PACKAGE */}
-          {/* ================================================== */}
+          {/* ====================================================
+              PACKAGE
+          ==================================================== */}
 
           <div className="space-y-2">
+
             <Label>
+
               {serviceType ===
               "airtime"
                 ? "Airtime Type"
@@ -1224,6 +1295,7 @@ const ServiceModal = ({
                     "data"
                   ? "Data Package"
                   : "Bill Package"}
+
             </Label>
 
             <Select
@@ -1240,7 +1312,9 @@ const ServiceModal = ({
                 items.length === 0
               }
             >
+
               <SelectTrigger>
+
                 <SelectValue
                   placeholder={
                     loadingItems
@@ -1250,18 +1324,20 @@ const ServiceModal = ({
                         : "Select package"
                   }
                 />
+
               </SelectTrigger>
 
               <SelectContent>
+
                 {items.map(
                   (
                     item,
-                    index,
+                    index
                   ) => {
                     const code =
                       String(
                         item.item_code ??
-                          "",
+                          ""
                       );
 
                     if (!code) {
@@ -1271,12 +1347,12 @@ const ServiceModal = ({
                     const itemAmount =
                       Number(
                         item.amount ??
-                          0,
+                          0
                       );
 
                     const hasAmount =
                       Number.isFinite(
-                        itemAmount,
+                        itemAmount
                       ) &&
                       itemAmount > 0;
 
@@ -1294,17 +1370,21 @@ const ServiceModal = ({
                           : ""}
                       </SelectItem>
                     );
-                  },
+                  }
                 )}
+
               </SelectContent>
+
             </Select>
+
           </div>
 
-          {/* ================================================== */}
-          {/* CUSTOMER */}
-          {/* ================================================== */}
+          {/* ====================================================
+              CUSTOMER
+          ==================================================== */}
 
           <div className="space-y-2">
+
             <Label htmlFor="billCustomer">
               {customerLabel}
             </Label>
@@ -1313,10 +1393,10 @@ const ServiceModal = ({
               id="billCustomer"
               value={customer}
               onChange={(
-                e,
+                event
               ) =>
                 setCustomer(
-                  e.target.value,
+                  event.target.value
                 )
               }
               placeholder={
@@ -1338,13 +1418,15 @@ const ServiceModal = ({
                   : "text"
               }
             />
+
           </div>
 
-          {/* ================================================== */}
-          {/* AMOUNT */}
-          {/* ================================================== */}
+          {/* ====================================================
+              AMOUNT
+          ==================================================== */}
 
           <div className="space-y-2">
+
             <Label htmlFor="billAmount">
               Amount (₦)
             </Label>
@@ -1356,16 +1438,16 @@ const ServiceModal = ({
               step="0.01"
               value={amount}
               onChange={(
-                e,
+                event
               ) =>
                 setAmount(
-                  e.target.value,
+                  event.target.value
                 )
               }
               placeholder={
                 isFixedAmount
                   ? String(
-                      fixedItemAmount,
+                      fixedItemAmount
                     )
                   : "Enter amount"
               }
@@ -1380,6 +1462,7 @@ const ServiceModal = ({
               itemMaximum >
                 0) && (
               <p className="text-xs text-gray-500">
+
                 {itemMinimum >
                 0
                   ? `Minimum: ₦${itemMinimum.toLocaleString()}`
@@ -1396,32 +1479,38 @@ const ServiceModal = ({
                 0
                   ? `Maximum: ₦${itemMaximum.toLocaleString()}`
                   : ""}
+
               </p>
             )}
 
             {isFixedAmount && (
               <p className="text-xs text-gray-500">
+
                 Fixed package price: ₦
                 {fixedItemAmount.toLocaleString()}
+
               </p>
             )}
+
           </div>
 
-          {/* ================================================== */}
-          {/* ERROR */}
-          {/* ================================================== */}
+          {/* ====================================================
+              ERROR
+          ==================================================== */}
 
           {error && (
             <div className="rounded-lg bg-red-50 border border-red-200 p-3">
+
               <p className="text-sm text-red-700">
                 {error}
               </p>
+
             </div>
           )}
 
-          {/* ================================================== */}
-          {/* PURCHASE */}
-          {/* ================================================== */}
+          {/* ====================================================
+              PURCHASE
+          ==================================================== */}
 
           <Button
             onClick={
@@ -1438,6 +1527,7 @@ const ServiceModal = ({
             }
             className="w-full bg-green-600 hover:bg-green-700"
           >
+
             {processingPayment ? (
               <>
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -1450,16 +1540,21 @@ const ServiceModal = ({
                 {service.title}
               </>
             )}
+
           </Button>
 
           {processingPayment && (
             <p className="text-xs text-center text-gray-500">
+
               Please do not close this window
               while your payment is being
               processed.
+
             </p>
           )}
+
         </div>
+
       </DialogContent>
     </Dialog>
   );

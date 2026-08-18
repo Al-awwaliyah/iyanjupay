@@ -9,5 +9,14 @@ verify_jwt = true
 [functions.resolve-bank-account]
 verify_jwt = true
 
+[functions.flutterwave-sync-deposits]
+verify_jwt = true
+
 [functions.flutterwave-bills]
+verify_jwt = true
+
+[functions.flutterwave-card]
+verify_jwt = true
+
+[functions.flutterwave-bvn]
 verify_jwt = true

@@ -16,10 +16,7 @@ const App = () => (
       <Toaster />
       <Sonner />
 
-          /* ================================================================
-   SPLASH SCREEN
-   ================================================================ */
-
+         
 const DashboardSplashScreen = () => {
   return (
     <div className="fixed inset-0 z-[9999] flex min-h-screen items-center justify-center overflow-hidden bg-gradient-to-br from-purple-700 via-purple-600 to-blue-600">

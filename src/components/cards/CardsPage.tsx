@@ -7,6 +7,7 @@ import { ArrowLeft, CreditCard, Lock, Unlock, Trash2, Loader2, RefreshCw } from 
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useWallet } from '@/hooks/useWallet';
+import { useAuth } from '@/hooks/useAuth';
 
 interface CardsPageProps {
   onBack: () => void;
@@ -29,7 +30,8 @@ const MIN_ISSUE_AMOUNT = 1000;
 
 const CardsPage = ({ onBack }: CardsPageProps) => {
   const { toast } = useToast();
-  const { refreshWallet } = useWallet();
+  const { user } = useAuth();
+  const { refreshWallet } = useWallet(user?.id);
 
   const [cards, setCards] = useState<VirtualCard[]>([]);
   const [loadingCards, setLoadingCards] = useState(true);

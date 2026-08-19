@@ -1,12 +1,11 @@
-
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowLeft, Shield, CheckCircle } from 'lucide-react';
+import { ArrowLeft, Shield, CheckCircle, Loader2 } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
@@ -20,9 +19,15 @@ interface ProfileData {
   date_of_birth: string;
   email: string;
   address: string;
-  bvn: string;
   nin: string;
+}
+
+interface KycState {
+  verified: boolean;
   kyc_level: number;
+  kyc_status: string;
+  bvn_masked: string | null;
+  fee: number;
 }
 
 interface ProfilePageProps {
@@ -33,7 +38,11 @@ const ProfilePage = ({ onBack }: ProfilePageProps) => {
   const { user } = useAuth();
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
-  
+  const [kyc, setKyc] = useState<KycState | null>(null);
+  const [kycLoading, setKycLoading] = useState(true);
+  const [bvn, setBvn] = useState('');
+  const [verifying, setVerifying] = useState(false);
+
   const form = useForm<ProfileData>({
     defaultValues: {
       full_name: '',
@@ -43,58 +52,107 @@ const ProfilePage = ({ onBack }: ProfilePageProps) => {
       date_of_birth: '',
       email: user?.email || '',
       address: '',
-      bvn: '',
       nin: '',
-      kyc_level: 1
     }
   });
+
+  const invokeBvn = useCallback(async (payload: Record<string, unknown>) => {
+    const { data, error } = await supabase.functions.invoke('flutterwave-bvn', {
+      body: payload,
+    });
+
+    if (error) {
+      let message = error.message ?? 'BVN request failed';
+      const context = (error as any)?.context;
+      if (context && typeof context.json === 'function') {
+        try {
+          const body = await context.json();
+          if (body?.error) message = body.error;
+        } catch {
+          // keep original message
+        }
+      }
+      throw new Error(message);
+    }
+
+    if (data && data.success === false) {
+      throw new Error(data.error ?? 'BVN verification failed');
+    }
+
+    return data;
+  }, []);
+
+  const fetchKyc = useCallback(async () => {
+    setKycLoading(true);
+    try {
+      const data = await invokeBvn({ action: 'status' });
+      setKyc({
+        verified: Boolean(data?.verified),
+        kyc_level: Number(data?.kyc_level ?? 1),
+        kyc_status: String(data?.kyc_status ?? 'unverified'),
+        bvn_masked: data?.bvn_masked ?? null,
+        fee: Number(data?.fee ?? 0),
+      });
+    } catch (error: any) {
+      console.error('Unable to load KYC status:', error);
+    } finally {
+      setKycLoading(false);
+    }
+  }, [invokeBvn]);
+
+  const fetchProfile = useCallback(async () => {
+    if (!user?.id) return;
+
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', user.id)
+      .maybeSingle();
+
+    if (error) {
+      console.error('Error fetching profile:', error);
+      return;
+    }
+
+    if (data) {
+      form.reset({
+        full_name: data.full_name || '',
+        phone_number: data.phone_number || '+234',
+        nickname: data.nickname || '',
+        gender: data.gender || '',
+        date_of_birth: data.date_of_birth || '',
+        email: user.email || '',
+        address: data.address || '',
+        nin: data.nin || '',
+      });
+    }
+  }, [form, user?.id, user?.email]);
 
   useEffect(() => {
     if (user) {
       fetchProfile();
+      fetchKyc();
     }
-  }, [user]);
-
-  const fetchProfile = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', user?.id)
-        .single();
-
-      if (error && error.code !== 'PGRST116') {
-        throw error;
-      }
-
-      if (data) {
-        form.reset({
-          full_name: data.full_name || '',
-          phone_number: data.phone_number || '+234',
-          nickname: data.nickname || '',
-          gender: data.gender || '',
-          date_of_birth: data.date_of_birth || '',
-          email: user?.email || '',
-          address: data.address || '',
-          bvn: data.bvn || '',
-          nin: data.nin || '',
-          kyc_level: data.kyc_level || 1
-        });
-      }
-    } catch (error: any) {
-      console.error('Error fetching profile:', error);
-    }
-  };
+  }, [user, fetchProfile, fetchKyc]);
 
   const onSubmit = async (data: ProfileData) => {
+    if (!user?.id) return;
+
     setLoading(true);
     try {
       const { error } = await supabase
         .from('profiles')
         .upsert({
-          id: user?.id,
-          ...data,
-          updated_at: new Date().toISOString()
+          id: user.id,
+          full_name: data.full_name,
+          phone_number: data.phone_number,
+          nickname: data.nickname,
+          gender: data.gender || null,
+          date_of_birth: data.date_of_birth || null,
+          email: user.email,
+          address: data.address,
+          nin: data.nin || null,
+          updated_at: new Date().toISOString(),
         });
 
       if (error) throw error;
@@ -107,7 +165,7 @@ const ProfilePage = ({ onBack }: ProfilePageProps) => {
       console.error('Error updating profile:', error);
       toast({
         title: "Error",
-        description: "Failed to update profile",
+        description: error.message ?? "Failed to update profile",
         variant: "destructive",
       });
     } finally {
@@ -115,23 +173,63 @@ const ProfilePage = ({ onBack }: ProfilePageProps) => {
     }
   };
 
-  const getKYCLevelInfo = (level: number) => {
-    switch (level) {
-      case 1:
-        return { text: "Basic (₦50,000 limit)", color: "text-yellow-600" };
-      case 2:
-        return { text: "Verified (₦200,000 limit)", color: "text-blue-600" };
-      case 3:
-        return { text: "Premium (₦1,000,000 limit)", color: "text-green-600" };
-      default:
-        return { text: "Basic", color: "text-gray-600" };
+  const handleVerifyBvn = async () => {
+    const digits = bvn.replace(/\D/g, '');
+
+    if (digits.length !== 11) {
+      toast({
+        title: 'Invalid BVN',
+        description: 'Your BVN must be exactly 11 digits.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    const fullName = form.getValues('full_name').trim();
+    if (!fullName || fullName.split(/\s+/).length < 2) {
+      toast({
+        title: 'Full name required',
+        description: 'Enter your first and last name (as on your BVN) and save your profile first.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setVerifying(true);
+    try {
+      await invokeBvn({ action: 'verify', bvn: digits, full_name: fullName });
+      toast({
+        title: 'BVN verified',
+        description: 'Your account has been upgraded to KYC Tier 2.',
+      });
+      setBvn('');
+      await fetchKyc();
+    } catch (error: any) {
+      toast({
+        title: 'Verification failed',
+        description: error.message,
+        variant: 'destructive',
+      });
+    } finally {
+      setVerifying(false);
     }
   };
 
-  const kycInfo = getKYCLevelInfo(form.watch('kyc_level'));
+  const getKYCLevelInfo = (level: number) => {
+    switch (level) {
+      case 2:
+        return { text: "Verified (₦200,000 limit)", color: "text-blue-100" };
+      case 3:
+        return { text: "Premium (₦1,000,000 limit)", color: "text-blue-100" };
+      default:
+        return { text: "Basic (₦50,000 limit)", color: "text-blue-100" };
+    }
+  };
+
+  const kycInfo = getKYCLevelInfo(kyc?.kyc_level ?? 1);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-50">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-sky-50 to-indigo-50">
       <div className="max-w-4xl mx-auto px-4 py-6">
         {/* Header */}
         <div className="flex items-center gap-4 mb-6">
@@ -139,7 +237,7 @@ const ProfilePage = ({ onBack }: ProfilePageProps) => {
             variant="ghost"
             size="sm"
             onClick={onBack}
-            className="text-purple-600"
+            className="text-blue-600"
           >
             <ArrowLeft className="h-4 w-4 mr-2" />
             Back
@@ -148,15 +246,73 @@ const ProfilePage = ({ onBack }: ProfilePageProps) => {
         </div>
 
         {/* KYC Level Card */}
-        <Card className="mb-6 bg-gradient-to-r from-purple-600 to-blue-600 text-white">
+        <Card className="mb-6 bg-gradient-to-r from-blue-600 to-indigo-600 text-primary-foreground">
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="text-lg font-semibold mb-1">Account Level</h3>
                 <p className={`text-sm ${kycInfo.color}`}>{kycInfo.text}</p>
+                <p className="text-xs mt-1 opacity-90">
+                  {kycLoading
+                    ? 'Checking verification status...'
+                    : kyc?.verified
+                      ? `BVN verified ${kyc.bvn_masked ? `(${kyc.bvn_masked})` : ''}`
+                      : `BVN status: ${kyc?.kyc_status ?? 'unverified'}`}
+                </p>
               </div>
-              <Shield className="h-8 w-8" />
+              {kyc?.verified ? (
+                <CheckCircle className="h-8 w-8" />
+              ) : (
+                <Shield className="h-8 w-8" />
+              )}
             </div>
+          </CardContent>
+        </Card>
+
+        {/* BVN Verification */}
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle>BVN Verification (KYC Tier 1)</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {kyc?.verified ? (
+              <div className="flex items-center gap-2 text-sm text-green-600">
+                <CheckCircle className="h-4 w-4" />
+                Your BVN is verified. You can issue cards and transact at higher limits.
+              </div>
+            ) : (
+              <>
+                <p className="text-sm text-gray-500">
+                  Verify your BVN to unlock transfers at higher limits and virtual cards.
+                  {kyc?.fee ? ` A ₦${kyc.fee} verification fee applies.` : ''}
+                </p>
+                <div className="space-y-2">
+                  <Label htmlFor="bvnInput">BVN</Label>
+                  <Input
+                    id="bvnInput"
+                    inputMode="numeric"
+                    maxLength={11}
+                    placeholder="Enter your 11-digit BVN"
+                    value={bvn}
+                    onChange={(e) => setBvn(e.target.value.replace(/\D/g, ''))}
+                  />
+                </div>
+                <Button
+                  className="bg-blue-600 hover:bg-blue-700"
+                  onClick={handleVerifyBvn}
+                  disabled={verifying || kycLoading}
+                >
+                  {verifying ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Verifying...
+                    </>
+                  ) : (
+                    'Verify BVN'
+                  )}
+                </Button>
+              </>
+            )}
           </CardContent>
         </Card>
 
@@ -203,7 +359,7 @@ const ProfilePage = ({ onBack }: ProfilePageProps) => {
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Gender</FormLabel>
-                        <Select onValueChange={field.onChange} defaultValue={field.value}>
+                        <Select onValueChange={field.onChange} value={field.value}>
                           <FormControl>
                             <SelectTrigger>
                               <SelectValue placeholder="Select gender" />
@@ -283,28 +439,6 @@ const ProfilePage = ({ onBack }: ProfilePageProps) => {
                       </FormItem>
                     )}
                   />
-                </CardContent>
-              </Card>
-
-              {/* Verification Information */}
-              <Card className="md:col-span-2">
-                <CardHeader>
-                  <CardTitle>Verification Information</CardTitle>
-                </CardHeader>
-                <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <FormField
-                    control={form.control}
-                    name="bvn"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>BVN (Bank Verification Number)</FormLabel>
-                        <FormControl>
-                          <Input placeholder="Enter your BVN" maxLength={11} {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
 
                   <FormField
                     control={form.control}
@@ -325,7 +459,7 @@ const ProfilePage = ({ onBack }: ProfilePageProps) => {
 
             <Button
               type="submit"
-              className="w-full bg-purple-600 hover:bg-purple-700"
+              className="w-full bg-blue-600 hover:bg-blue-700"
               disabled={loading}
             >
               {loading ? 'Updating...' : 'Update Profile'}

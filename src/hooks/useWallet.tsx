@@ -11,20 +11,19 @@ interface Wallet {
 export const useWallet = (userId: string | undefined) => {
   const [wallet, setWallet] = useState<Wallet | null>(null);
   const [loading, setLoading] = useState(true);
+
   const { toast } = useToast();
 
   /**
-   * ------------------------------------------------------------
+   * ============================================================
    * FETCH WALLET
-   * ------------------------------------------------------------
+   * ============================================================
    *
-   * The browser is allowed to READ the user's wallet.
+   * The browser only READS the wallet.
    *
-   * It must NOT directly UPDATE the wallet balance.
-   * All balance changes must happen through secure
-   * server-side wallet operations.
+   * Wallet balance changes must happen through secure
+   * server-side Edge Functions.
    */
-
   const fetchWallet = useCallback(async () => {
     if (!userId) {
       setWallet(null);
@@ -33,7 +32,12 @@ export const useWallet = (userId: string | undefined) => {
     }
 
     try {
-      const { data, error } = await supabase
+      setLoading(true);
+
+      const {
+        data,
+        error,
+      } = await supabase
         .from("wallets")
         .select(
           "id, balance, virtual_account_number"
@@ -45,6 +49,11 @@ export const useWallet = (userId: string | undefined) => {
         throw error;
       }
 
+      /**
+       * --------------------------------------------------------
+       * Wallet exists
+       * --------------------------------------------------------
+       */
       if (data) {
         setWallet({
           id: data.id,
@@ -58,18 +67,19 @@ export const useWallet = (userId: string | undefined) => {
 
       /**
        * --------------------------------------------------------
-       * No wallet found.
+       * Wallet does not exist.
        *
-       * Wallet creation is delegated to the secure
-       * wallet-bootstrap Edge Function.
+       * Let the secure Edge Function create it.
        * --------------------------------------------------------
        */
-
       const {
         data: bootstrapData,
         error: bootstrapError,
       } = await supabase.functions.invoke(
-        "wallet-bootstrap"
+        "wallet-bootstrap",
+        {
+          body: {},
+        }
       );
 
       if (bootstrapError) {
@@ -77,9 +87,10 @@ export const useWallet = (userId: string | undefined) => {
       }
 
       /**
-       * wallet-bootstrap may return the wallet directly.
+       * --------------------------------------------------------
+       * wallet-bootstrap returned wallet directly
+       * --------------------------------------------------------
        */
-
       if (bootstrapData?.wallet) {
         setWallet({
           id: bootstrapData.wallet.id,
@@ -96,9 +107,10 @@ export const useWallet = (userId: string | undefined) => {
       }
 
       /**
-       * Otherwise fetch it again after bootstrap.
+       * --------------------------------------------------------
+       * Fetch wallet again after bootstrap
+       * --------------------------------------------------------
        */
-
       const {
         data: refreshedWallet,
         error: refreshedError,
@@ -118,10 +130,12 @@ export const useWallet = (userId: string | undefined) => {
         setWallet({
           id: refreshedWallet.id,
           balance:
-            Number(refreshedWallet.balance) || 0,
+            Number(
+              refreshedWallet.balance
+            ) || 0,
           virtual_account_number:
-            refreshedWallet.virtual_account_number ||
-            "",
+            refreshedWallet
+              .virtual_account_number || "",
         });
       } else {
         setWallet(null);
@@ -144,30 +158,27 @@ export const useWallet = (userId: string | undefined) => {
   }, [userId, toast]);
 
   /**
-   * ------------------------------------------------------------
+   * ============================================================
    * INITIAL LOAD
-   * ------------------------------------------------------------
+   * ============================================================
    */
-
   useEffect(() => {
     fetchWallet();
   }, [fetchWallet]);
 
   /**
-   * ------------------------------------------------------------
-   * REFRESH BALANCE
-   * ------------------------------------------------------------
+   * ============================================================
+   * REFRESH WALLET
+   * ============================================================
    *
-   * This replaces the old updateBalance() function.
+   * This ONLY reads the latest wallet information.
    *
-   * IMPORTANT:
-   *
-   * It does NOT write to wallets.
-   * It only reads the latest balance from Supabase.
+   * It never directly updates the wallet balance.
    */
-
   const refreshWallet = useCallback(async () => {
-    if (!userId) return null;
+    if (!userId) {
+      return null;
+    }
 
     try {
       const {
@@ -185,21 +196,21 @@ export const useWallet = (userId: string | undefined) => {
         throw error;
       }
 
-      if (data) {
-        const updatedWallet: Wallet = {
-          id: data.id,
-          balance:
-            Number(data.balance) || 0,
-          virtual_account_number:
-            data.virtual_account_number || "",
-        };
-
-        setWallet(updatedWallet);
-
-        return updatedWallet;
+      if (!data) {
+        return null;
       }
 
-      return null;
+      const updatedWallet: Wallet = {
+        id: data.id,
+        balance:
+          Number(data.balance) || 0,
+        virtual_account_number:
+          data.virtual_account_number || "",
+      };
+
+      setWallet(updatedWallet);
+
+      return updatedWallet;
     } catch (error) {
       console.error(
         "Error refreshing wallet:",
@@ -211,29 +222,52 @@ export const useWallet = (userId: string | undefined) => {
   }, [userId]);
 
   /**
-   * ------------------------------------------------------------
+   * ============================================================
    * REALTIME WALLET BALANCE
-   * ------------------------------------------------------------
+   * ============================================================
    *
-   * When a secure Edge Function credits/debits the wallet,
-   * Supabase Realtime can notify the dashboard.
+   * IMPORTANT:
    *
-   * This means the displayed balance can update without
-   * directly modifying wallets from the browser.
+   * We use a UNIQUE channel name for every hook instance.
+   *
+   * This prevents multiple components/hooks from accidentally
+   * sharing the same Supabase Realtime channel.
+   *
+   * It also prevents:
+   *
+   * "cannot add postgres_changes callbacks ... after subscribe()"
+   *
+   * errors.
    */
-
   useEffect(() => {
-    if (!userId) return;
+    if (!userId) {
+      return;
+    }
 
-    const channelId =
-  typeof crypto !== "undefined" && "randomUUID" in crypto
-    ? crypto.randomUUID()
-    : Math.random().toString(36).slice(2);
-    
+    /**
+     * Create a genuinely unique channel name.
+     */
+    const uniqueId =
+      typeof crypto !== "undefined" &&
+      typeof crypto.randomUUID === "function"
+        ? crypto.randomUUID()
+        : Math.random()
+            .toString(36)
+            .substring(2);
+
+    const channelName =
+      `wallet-${userId}-${uniqueId}`;
+
+    let isMounted = true;
+
+    /**
+     * Create channel.
+     *
+     * The postgres_changes callback MUST be registered
+     * BEFORE subscribe().
+     */
     const channel = supabase
-      .channel(
-        `wallet-${userId}`
-      )
+      .channel(channelName)
       .on(
         "postgres_changes",
         {
@@ -243,10 +277,18 @@ export const useWallet = (userId: string | undefined) => {
           filter: `user_id=eq.${userId}`,
         },
         (payload) => {
+          if (!isMounted) {
+            return;
+          }
+
           const updated =
             payload.new as Partial<Wallet>;
 
           setWallet((current) => {
+            /**
+             * If the wallet has not loaded yet,
+             * do not create an incomplete wallet.
+             */
             if (!current) {
               return current;
             }
@@ -255,67 +297,113 @@ export const useWallet = (userId: string | undefined) => {
               ...current,
 
               id:
-                updated.id ||
+                updated.id ??
                 current.id,
 
               balance:
-                updated.balance !==
-                undefined
+                updated.balance !== undefined
                   ? Number(
                       updated.balance
                     ) || 0
                   : current.balance,
 
               virtual_account_number:
-                updated.virtual_account_number ||
+                updated.virtual_account_number ??
                 current.virtual_account_number,
             };
           });
         }
-      )
-      .subscribe();
+      );
 
+    /**
+     * Subscribe AFTER .on()
+     */
+    channel.subscribe((status) => {
+      if (status === "SUBSCRIBED") {
+        console.log(
+          "Wallet realtime subscribed:",
+          channelName
+        );
+      }
+
+      if (status === "CHANNEL_ERROR") {
+        console.error(
+          "Wallet realtime channel error:",
+          channelName
+        );
+      }
+
+      if (status === "TIMED_OUT") {
+        console.error(
+          "Wallet realtime subscription timed out:",
+          channelName
+        );
+      }
+    });
+
+    /**
+     * ----------------------------------------------------------
+     * CLEANUP
+     * ----------------------------------------------------------
+     */
     return () => {
-      supabase.removeChannel(channel);
+      isMounted = false;
+
+      /**
+       * Remove THIS exact channel instance.
+       */
+      supabase
+        .removeChannel(channel)
+        .then(() => {
+          console.log(
+            "Wallet realtime channel removed:",
+            channelName
+          );
+        })
+        .catch((error) => {
+          console.error(
+            "Failed to remove wallet realtime channel:",
+            error
+          );
+        });
     };
   }, [userId]);
 
   /**
-   * ------------------------------------------------------------
+   * ============================================================
    * BACKWARD COMPATIBILITY
-   * ------------------------------------------------------------
+   * ============================================================
    *
-   * Existing Dashboard code currently calls:
+   * Existing code may still call:
    *
    * updateBalance(...)
    *
-   * We keep the function name so the rest of the application
-   * does not immediately break.
+   * We keep it so existing components don't break.
    *
-   * BUT it no longer writes the supplied value into the
-   * database.
-   *
-   * It simply refreshes the wallet securely.
+   * It DOES NOT directly modify the database.
    */
-
   const updateBalance = async (
     _newBalance?: number
   ) => {
     return refreshWallet();
   };
 
+  /**
+   * ============================================================
+   * RETURN
+   * ============================================================
+   */
   return {
     wallet,
     loading,
 
     /**
      * Legacy compatibility.
-     * Use refreshWallet() in new code.
      */
     updateBalance,
 
     /**
-     * Preferred method.
+     * Preferred wallet refresh method.
      */
     refreshWallet,
 

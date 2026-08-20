@@ -225,6 +225,11 @@ export const useWallet = (userId: string | undefined) => {
   useEffect(() => {
     if (!userId) return;
 
+    const channelId =
+  typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID()
+    : Math.random().toString(36).slice(2);
+    
     const channel = supabase
       .channel(
         `wallet-${userId}`

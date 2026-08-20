@@ -1,14 +1,32 @@
-import React, { useEffect, useMemo, useState, } from "react";
+import React, {
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 
-import { Dialog, DialogContent, DialogHeader, DialogTitle, } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
-import { Loader2, RefreshCw, } from "lucide-react";
+import {
+  Loader2,
+  RefreshCw,
+} from "lucide-react";
 
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
@@ -52,17 +70,22 @@ interface Biller {
 
 interface BillItem {
   id?: number | string;
+
   biller_code?: string;
   item_code?: string;
+
   name?: string;
   short_name?: string;
   biller_name?: string;
+
   amount?: number | string;
   minimum?: number | string;
   maximum?: number | string;
   fee?: number | string;
+
   label_name?: string;
   label_name_2?: string;
+
   is_airtime?: boolean;
   country?: string;
 
@@ -176,8 +199,7 @@ const ServiceModal = ({
         billers.find(
           (biller) =>
             String(
-              biller.biller_code ??
-                ""
+              biller.biller_code ?? ""
             ) ===
             selectedBillerCode
         ) ?? null,
@@ -197,8 +219,7 @@ const ServiceModal = ({
         items.find(
           (item) =>
             String(
-              item.item_code ??
-                ""
+              item.item_code ?? ""
             ) ===
             selectedItemCode
         ) ?? null,
@@ -344,8 +365,7 @@ const ServiceModal = ({
     try {
       const {
         data,
-        error:
-          functionError,
+        error: functionError,
       } =
         await supabase.functions.invoke(
           "flutterwave-bills",
@@ -462,7 +482,6 @@ const ServiceModal = ({
       !cleanBillerCode
     ) {
       setItems([]);
-
       return;
     }
 
@@ -479,8 +498,7 @@ const ServiceModal = ({
     try {
       const {
         data,
-        error:
-          functionError,
+        error: functionError,
       } =
         await supabase.functions.invoke(
           "flutterwave-bills",
@@ -608,8 +626,7 @@ const ServiceModal = ({
       items.find(
         (entry) =>
           String(
-            entry.item_code ??
-              ""
+            entry.item_code ?? ""
           ) === value
       );
 
@@ -646,20 +663,17 @@ const ServiceModal = ({
 
   const itemMinimum =
     Number(
-      selectedItem?.minimum ??
-        0
+      selectedItem?.minimum ?? 0
     );
 
   const itemMaximum =
     Number(
-      selectedItem?.maximum ??
-        0
+      selectedItem?.maximum ?? 0
     );
 
   const fixedItemAmount =
     Number(
-      selectedItem?.amount ??
-        0
+      selectedItem?.amount ?? 0
     );
 
   const isFixedAmount =
@@ -1038,6 +1052,40 @@ const ServiceModal = ({
           selectedBiller,
       };
 
+      // ========================================================
+      // IMPORTANT DEBUG LOG
+      // ========================================================
+
+      console.log(
+        "Sending bill purchase details:",
+        {
+          service:
+            serviceType,
+
+          amount:
+            amountNumber,
+
+          country:
+            "NG",
+
+          biller_code:
+            selectedBillerCode,
+
+          item_code:
+            selectedItemCode,
+
+          customer:
+            finalCustomer,
+
+          provider:
+            selectedBiller?.name ??
+            selectedBiller?.short_name ??
+            "",
+
+          details,
+        }
+      );
+
       try {
         setProcessingPayment(
           true
@@ -1045,31 +1093,10 @@ const ServiceModal = ({
 
         setError("");
 
-        /*
-         * Dashboard.handlePurchase()
-         * is responsible for invoking:
-         *
-         * flutterwave-bills
-         *
-         * with:
-         *
-         * action: "pay"
-         */
-
         await onPurchase(
           amountNumber,
           details
         );
-
-        /*
-         * IMPORTANT:
-         *
-         * If onPurchase() succeeds,
-         * the Dashboard closes the modal.
-         *
-         * Therefore we do NOT close the
-         * modal here.
-         */
 
         resetForm();
       } catch (err: any) {
@@ -1085,14 +1112,6 @@ const ServiceModal = ({
         setError(
           message
         );
-
-        /*
-         * Dashboard normally displays
-         * the main payment error toast.
-         *
-         * We intentionally do not create
-         * another duplicate toast here.
-         */
       } finally {
         setProcessingPayment(
           false
@@ -1146,49 +1165,34 @@ const ServiceModal = ({
       <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
 
         <DialogHeader>
-
           <DialogTitle className="text-center text-green-700">
             {service.title}
           </DialogTitle>
-
         </DialogHeader>
 
         <div className="space-y-4">
 
-          {/* ====================================================
-              WALLET
-          ==================================================== */}
+          {/* WALLET */}
 
           <div className="bg-green-50 p-3 rounded-lg">
-
             <p className="text-sm text-green-700">
-
               Wallet Balance: ₦
               {Number(
                 walletBalance
               ).toLocaleString()}
-
             </p>
-
           </div>
 
-          {/* ====================================================
-              LOADING BILLERS
-          ==================================================== */}
+          {/* LOADING BILLERS */}
 
           {loadingBillers && (
             <div className="flex items-center justify-center gap-2 py-3 text-sm text-gray-500">
-
               <Loader2 className="h-4 w-4 animate-spin" />
-
               Loading providers...
-
             </div>
           )}
 
-          {/* ====================================================
-              PROVIDER
-          ==================================================== */}
+          {/* PROVIDER */}
 
           <div className="space-y-2">
 
@@ -1210,7 +1214,6 @@ const ServiceModal = ({
                     className="h-7 px-2"
                   >
                     <RefreshCw className="h-3.5 w-3.5 mr-1" />
-
                     Refresh
                   </Button>
                 )}
@@ -1231,9 +1234,7 @@ const ServiceModal = ({
                   0
               }
             >
-
               <SelectTrigger>
-
                 <SelectValue
                   placeholder={
                     loadingBillers
@@ -1241,7 +1242,6 @@ const ServiceModal = ({
                       : "Select provider"
                   }
                 />
-
               </SelectTrigger>
 
               <SelectContent>
@@ -1275,19 +1275,15 @@ const ServiceModal = ({
                 )}
 
               </SelectContent>
-
             </Select>
 
           </div>
 
-          {/* ====================================================
-              PACKAGE
-          ==================================================== */}
+          {/* PACKAGE */}
 
           <div className="space-y-2">
 
             <Label>
-
               {serviceType ===
               "airtime"
                 ? "Airtime Type"
@@ -1295,7 +1291,6 @@ const ServiceModal = ({
                     "data"
                   ? "Data Package"
                   : "Bill Package"}
-
             </Label>
 
             <Select
@@ -1314,7 +1309,6 @@ const ServiceModal = ({
             >
 
               <SelectTrigger>
-
                 <SelectValue
                   placeholder={
                     loadingItems
@@ -1324,7 +1318,6 @@ const ServiceModal = ({
                         : "Select package"
                   }
                 />
-
               </SelectTrigger>
 
               <SelectContent>
@@ -1379,9 +1372,7 @@ const ServiceModal = ({
 
           </div>
 
-          {/* ====================================================
-              CUSTOMER
-          ==================================================== */}
+          {/* CUSTOMER */}
 
           <div className="space-y-2">
 
@@ -1421,9 +1412,7 @@ const ServiceModal = ({
 
           </div>
 
-          {/* ====================================================
-              AMOUNT
-          ==================================================== */}
+          {/* AMOUNT */}
 
           <div className="space-y-2">
 
@@ -1485,32 +1474,24 @@ const ServiceModal = ({
 
             {isFixedAmount && (
               <p className="text-xs text-gray-500">
-
                 Fixed package price: ₦
                 {fixedItemAmount.toLocaleString()}
-
               </p>
             )}
 
           </div>
 
-          {/* ====================================================
-              ERROR
-          ==================================================== */}
+          {/* ERROR */}
 
           {error && (
             <div className="rounded-lg bg-red-50 border border-red-200 p-3">
-
               <p className="text-sm text-red-700">
                 {error}
               </p>
-
             </div>
           )}
 
-          {/* ====================================================
-              PURCHASE
-          ==================================================== */}
+          {/* PURCHASE */}
 
           <Button
             onClick={
@@ -1531,7 +1512,6 @@ const ServiceModal = ({
             {processingPayment ? (
               <>
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-
                 Processing...
               </>
             ) : (
@@ -1545,11 +1525,9 @@ const ServiceModal = ({
 
           {processingPayment && (
             <p className="text-xs text-center text-gray-500">
-
               Please do not close this window
               while your payment is being
               processed.
-
             </p>
           )}
 

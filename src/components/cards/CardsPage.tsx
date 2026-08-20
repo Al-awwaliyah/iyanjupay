@@ -195,17 +195,18 @@ return (
 Back
 </Button>
 <h1 className="text-2xl font-bold text-gray-900">Virtual Cards</h1>
+  
 <Button
-         variant="ghost"
-         size="sm"
-         className="ml-auto text-blue-600"
-         onClick={loadCards}
-         disabled={loadingCards}
-       >
-<RefreshCw className={h-4 w-4 ${loadingCards ? 'animate-spin' : ''}} />
+  variant="ghost"
+  size="sm"
+  className="ml-auto text-blue-600"
+  onClick={loadCards}
+  disabled={loadingCards}
+>
+  <RefreshCw className={`h-4 w-4 ${ loadingCards ? "animate-spin" : ""  }`}
+  />
 </Button>
-</div>
-
+  
     <Card className="mb-6">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">

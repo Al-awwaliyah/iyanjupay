@@ -10,42 +10,35 @@ import {
  * IYANJUPAY - FLUTTERWAVE BANK TRANSFER
  * ============================================================
  *
- * FLOW:
+ * TRANSFER FEE:
  *
- * Frontend
- *    ↓
- * Supabase Edge Function
- *    ↓
- * Check Flutterwave NGN available balance
- *    ↓
- * Debit IyanjuPay wallet
- *    ↓
- * SmartASP fixed-IP proxy
- *    ↓
- * Flutterwave
- *    ↓
- * Transfer status = NEW / PENDING
- *    ↓
- * flutterwave-webhook
- *    ↓
- * SUCCESSFUL → transaction successful
- * FAILED     → automatic wallet refund
+ * Requested transfer       ₦100
+ * IyanjuPay fee              ₦10
+ * --------------------------------
+ * Wallet charged           ₦110
+ *
+ * Flutterwave receives      ₦100
  *
  * IMPORTANT:
  *
- * A successful response from POST /transfers does NOT mean
- * the beneficiary has received the money.
- *
- * Flutterwave's transfer lifecycle can be:
- *
- * NEW
- * PENDING
- * SUCCESSFUL
- * FAILED
- *
- * The final status is handled by the webhook.
+ * - Flutterwave balance check uses transfer amount only.
+ * - Wallet debit uses transfer amount + IyanjuPay fee.
+ * - Flutterwave receives only the requested transfer amount.
+ * - Failed provider requests refund the complete wallet charge.
+ * - Accepted transfers remain PENDING until webhook/status confirms
+ *   the final provider result.
  * ============================================================
  */
+
+/*
+ * ============================================================
+ * IYANJUPAY TRANSFER FEE
+ * ============================================================
+ *
+ * This is the fixed IyanjuPay charge for bank transfers.
+ */
+
+const IYANJUPAY_TRANSFER_FEE = 10;
 
 Deno.serve(async (req) => {
   /*
@@ -183,9 +176,6 @@ Deno.serve(async (req) => {
 
     /*
      * Prevent floating-point monetary values.
-     *
-     * NGN transfer amounts should be represented as naira
-     * amounts with at most two decimal places.
      */
 
     if (
@@ -245,6 +235,49 @@ Deno.serve(async (req) => {
 
     /*
      * ========================================================
+     * CALCULATE TRANSFER FEE
+     * ========================================================
+     *
+     * amount       = amount Flutterwave sends
+     * fee          = IyanjuPay charge
+     * totalCharged = amount actually removed from user's wallet
+     */
+
+    const fee = IYANJUPAY_TRANSFER_FEE;
+
+    const totalCharged =
+      amount + fee;
+
+    /*
+     * Monetary sanity check.
+     */
+
+    if (
+      !Number.isFinite(totalCharged) ||
+      totalCharged <= 0
+    ) {
+      return json(
+        {
+          success: false,
+          error:
+            "Unable to calculate transfer charge",
+        },
+        400,
+      );
+    }
+
+    console.log(
+      "IyanjuPay transfer pricing:",
+      JSON.stringify({
+        transfer_amount: amount,
+        iyanjupay_fee: fee,
+        total_charged: totalCharged,
+        currency: "NGN",
+      }),
+    );
+
+    /*
+     * ========================================================
      * REFERENCE
      * ========================================================
      */
@@ -263,12 +296,29 @@ Deno.serve(async (req) => {
       "IyanjuPay transfer request:",
       JSON.stringify({
         user_id: user.id,
-        amount,
-        account_number: accountNumber,
-        account_bank: accountBank,
-        beneficiary_name: beneficiaryName,
+
+        transfer_amount:
+          amount,
+
+        iyanjupay_fee:
+          fee,
+
+        total_charged:
+          totalCharged,
+
+        account_number:
+          accountNumber,
+
+        account_bank:
+          accountBank,
+
+        beneficiary_name:
+          beneficiaryName,
+
         reference,
-        idempotency_key: transferKey,
+
+        idempotency_key:
+          transferKey,
       }),
     );
 
@@ -279,15 +329,20 @@ Deno.serve(async (req) => {
      * CHECK FLUTTERWAVE AVAILABLE NGN BALANCE
      * ========================================================
      *
-     * This goes through:
+     * IMPORTANT:
      *
-     * Supabase
-     *   ↓
-     * SmartASP
-     *   ↓
-     * Flutterwave
+     * Flutterwave only needs enough money to execute the
+     * provider transfer.
      *
-     * when FLUTTERWAVE_PROXY_URL is configured.
+     * The IyanjuPay ₦10 fee is NOT sent to Flutterwave.
+     *
+     * Therefore:
+     *
+     * Flutterwave balance requirement = amount
+     *
+     * NOT:
+     *
+     * amount + fee
      */
 
     console.log(
@@ -406,6 +461,15 @@ Deno.serve(async (req) => {
 
         ledger_balance:
           flutterwaveLedgerBalance,
+
+        required_for_transfer:
+          amount,
+
+        iyanjupay_fee:
+          fee,
+
+        user_total_charge:
+          totalCharged,
       }),
     );
 
@@ -432,8 +496,6 @@ Deno.serve(async (req) => {
      * INSUFFICIENT FLUTTERWAVE BALANCE
      * ========================================================
      *
-     * IMPORTANT:
-     *
      * User wallet is NOT debited.
      */
 
@@ -444,10 +506,17 @@ Deno.serve(async (req) => {
       console.warn(
         "Insufficient Flutterwave balance:",
         JSON.stringify({
-          required: amount,
+          required:
+            amount,
+
           available:
             flutterwaveAvailableBalance,
-          currency: "NGN",
+
+          user_total_charge:
+            totalCharged,
+
+          currency:
+            "NGN",
         }),
       );
 
@@ -460,6 +529,14 @@ Deno.serve(async (req) => {
 
           error:
             "Insufficient Flutterwave balance. Please fund your Flutterwave account.",
+
+          transfer_amount:
+            amount,
+
+          fee,
+
+          total_charged:
+            totalCharged,
 
           required:
             amount,
@@ -481,11 +558,29 @@ Deno.serve(async (req) => {
      * DEBIT USER WALLET
      * ========================================================
      *
-     * wallet_operation must perform this atomically.
+     * Wallet is charged:
+     *
+     * transfer amount + IyanjuPay fee
+     *
+     * Example:
+     *
+     * transfer = ₦100
+     * fee      = ₦10
+     * debit    = ₦110
      */
 
     console.log(
-      "Flutterwave balance sufficient. Debiting user wallet...",
+      "Flutterwave balance sufficient. Debiting user wallet:",
+      JSON.stringify({
+        transfer_amount:
+          amount,
+
+        iyanjupay_fee:
+          fee,
+
+        total_charged:
+          totalCharged,
+      }),
     );
 
     const {
@@ -501,10 +596,10 @@ Deno.serve(async (req) => {
           "DEBIT",
 
         _amount:
-          amount,
+          totalCharged,
 
         _description:
-          `Transfer to ${beneficiaryName}`,
+          `Transfer to ${beneficiaryName} - ₦${amount} + ₦${fee} IyanjuPay fee`,
 
         _idempotency_key:
           transferKey,
@@ -532,6 +627,32 @@ Deno.serve(async (req) => {
 
           status:
             "pending",
+
+          /*
+           * Transfer pricing breakdown
+           */
+
+          transfer_amount:
+            amount,
+
+          iyanjupay_fee:
+            fee,
+
+          total_charged:
+            totalCharged,
+
+          fee_type:
+            "iyanjupay_transfer_fee",
+
+          fee_currency:
+            "NGN",
+
+          /*
+           * Provider requirement
+           */
+
+          flutterwave_transfer_amount:
+            amount,
 
           flutterwave_available_balance:
             flutterwaveAvailableBalance,
@@ -580,7 +701,18 @@ Deno.serve(async (req) => {
 
     console.log(
       "Wallet debit successful:",
-      transactionId,
+      JSON.stringify({
+        transaction_id:
+          transactionId,
+
+        transfer_amount:
+          amount,
+
+        fee,
+
+        total_charged:
+          totalCharged,
+      }),
     );
 
     /*
@@ -589,11 +721,28 @@ Deno.serve(async (req) => {
      *
      * INITIATE FLUTTERWAVE TRANSFER
      * ========================================================
+     *
+     * IMPORTANT:
+     *
+     * Flutterwave receives ONLY the transfer amount.
+     *
+     * It does NOT receive the IyanjuPay ₦10 fee.
      */
 
     console.log(
       "Initiating Flutterwave transfer:",
-      reference,
+      JSON.stringify({
+        reference,
+
+        flutterwave_amount:
+          amount,
+
+        iyanjupay_fee:
+          fee,
+
+        wallet_total:
+          totalCharged,
+      }),
     );
 
     let flutterwaveResponse;
@@ -613,6 +762,9 @@ Deno.serve(async (req) => {
                 account_number:
                   accountNumber,
 
+                /*
+                 * ONLY THE BENEFICIARY TRANSFER AMOUNT
+                 */
                 amount,
 
                 currency:
@@ -652,6 +804,30 @@ Deno.serve(async (req) => {
                     value:
                       reference,
                   },
+
+                  {
+                    key:
+                      "iyanjupay_transfer_amount",
+
+                    value:
+                      String(amount),
+                  },
+
+                  {
+                    key:
+                      "iyanjupay_fee",
+
+                    value:
+                      String(fee),
+                  },
+
+                  {
+                    key:
+                      "iyanjupay_total_charged",
+
+                    value:
+                      String(totalCharged),
+                  },
                 ],
               }),
           },
@@ -662,7 +838,12 @@ Deno.serve(async (req) => {
        * NETWORK / PROXY FAILURE
        *
        * Flutterwave was NOT confirmed to have received the
-       * request, so refund the user.
+       * request, so refund the COMPLETE wallet charge.
+       *
+       * Example:
+       *
+       * wallet debit = ₦110
+       * refund       = ₦110
        * ======================================================
        */
 
@@ -686,10 +867,10 @@ Deno.serve(async (req) => {
             "REFUND",
 
           _amount:
-            amount,
+            totalCharged,
 
           _description:
-            `Refund for failed transfer to ${beneficiaryName}`,
+            `Refund for failed transfer to ${beneficiaryName} including IyanjuPay fee`,
 
           _idempotency_key:
             refundKey,
@@ -710,11 +891,23 @@ Deno.serve(async (req) => {
             original_reference:
               reference,
 
+            original_transfer_amount:
+              amount,
+
+            original_fee:
+              fee,
+
+            original_total_charged:
+              totalCharged,
+
             reason:
               "Flutterwave proxy/network request failed",
 
             refunded:
               true,
+
+            refunded_amount:
+              totalCharged,
           },
         },
       );
@@ -740,8 +933,20 @@ Deno.serve(async (req) => {
 
               narration,
 
+              transfer_amount:
+                amount,
+
+              iyanjupay_fee:
+                fee,
+
+              total_charged:
+                totalCharged,
+
               refund_pending:
                 true,
+
+              refund_amount:
+                totalCharged,
 
               refund_error:
                 refundError.message,
@@ -758,13 +963,25 @@ Deno.serve(async (req) => {
         return json(
           {
             success: false,
+
             stage:
               "refund_pending",
+
             error:
               "Transfer could not be completed and automatic refund requires retry.",
+
             reference,
+
             transaction_id:
               transactionId,
+
+            transfer_amount:
+              amount,
+
+            fee,
+
+            total_charged:
+              totalCharged,
           },
           503,
         );
@@ -788,8 +1005,20 @@ Deno.serve(async (req) => {
 
             narration,
 
+            transfer_amount:
+              amount,
+
+            iyanjupay_fee:
+              fee,
+
+            total_charged:
+              totalCharged,
+
             refunded:
               true,
+
+            refund_amount:
+              totalCharged,
 
             refund_reason:
               "Flutterwave proxy/network request failed",
@@ -817,6 +1046,14 @@ Deno.serve(async (req) => {
 
           transaction_id:
             transactionId,
+
+          transfer_amount:
+            amount,
+
+          fee,
+
+          total_charged:
+            totalCharged,
         },
         200,
       );
@@ -868,10 +1105,9 @@ Deno.serve(async (req) => {
       );
 
       /*
-       * IMPORTANT:
-       *
-       * Since Flutterwave returned an actual provider response
-       * saying the transfer was rejected, refund immediately.
+       * ======================================================
+       * DETECT INSUFFICIENT PROVIDER BALANCE
+       * ======================================================
        */
 
       const lowerError =
@@ -895,6 +1131,12 @@ Deno.serve(async (req) => {
           )
         );
 
+      /*
+       * ======================================================
+       * REFUND COMPLETE WALLET CHARGE
+       * ======================================================
+       */
+
       const refundKey =
         `REFUND_${transactionId}`;
 
@@ -910,10 +1152,10 @@ Deno.serve(async (req) => {
             "REFUND",
 
           _amount:
-            amount,
+            totalCharged,
 
           _description:
-            `Refund for rejected transfer to ${beneficiaryName}`,
+            `Refund for rejected transfer to ${beneficiaryName} including IyanjuPay fee`,
 
           _idempotency_key:
             refundKey,
@@ -934,6 +1176,15 @@ Deno.serve(async (req) => {
             original_reference:
               reference,
 
+            original_transfer_amount:
+              amount,
+
+            original_fee:
+              fee,
+
+            original_total_charged:
+              totalCharged,
+
             reason:
               providerError,
 
@@ -945,6 +1196,9 @@ Deno.serve(async (req) => {
 
             refunded:
               true,
+
+            refunded_amount:
+              totalCharged,
           },
         },
       );
@@ -970,8 +1224,20 @@ Deno.serve(async (req) => {
 
               narration,
 
+              transfer_amount:
+                amount,
+
+              iyanjupay_fee:
+                fee,
+
+              total_charged:
+                totalCharged,
+
               refund_pending:
                 true,
+
+              refund_amount:
+                totalCharged,
 
               refund_error:
                 refundError.message,
@@ -999,6 +1265,14 @@ Deno.serve(async (req) => {
 
             transaction_id:
               transactionId,
+
+            transfer_amount:
+              amount,
+
+            fee,
+
+            total_charged:
+              totalCharged,
           },
           503,
         );
@@ -1025,6 +1299,15 @@ Deno.serve(async (req) => {
 
             narration,
 
+            transfer_amount:
+              amount,
+
+            iyanjupay_fee:
+              fee,
+
+            total_charged:
+              totalCharged,
+
             flutterwave_response:
               flutterwaveData,
 
@@ -1033,6 +1316,9 @@ Deno.serve(async (req) => {
 
             refunded:
               true,
+
+            refund_amount:
+              totalCharged,
           },
         })
         .eq(
@@ -1061,6 +1347,14 @@ Deno.serve(async (req) => {
 
           transaction_id:
             transactionId,
+
+          transfer_amount:
+            amount,
+
+          fee,
+
+          total_charged:
+            totalCharged,
         },
         200,
       );
@@ -1071,12 +1365,11 @@ Deno.serve(async (req) => {
      * TRANSFER ACCEPTED
      * ========================================================
      *
-     * Flutterwave documentation says a newly initiated
-     * transfer can have status NEW.
+     * DO NOT mark as successful here.
      *
-     * DO NOT mark it successful here.
+     * Flutterwave may return NEW/PENDING.
      *
-     * Wait for transfer.disburse webhook.
+     * Final state is handled by webhook/status reconciliation.
      */
 
     const flutterwaveTransferId =
@@ -1099,8 +1392,9 @@ Deno.serve(async (req) => {
       ).toUpperCase();
 
     /*
-     * If Flutterwave somehow returns no transfer ID, we cannot
-     * safely track the transfer.
+     * ========================================================
+     * NO FLUTTERWAVE TRANSFER ID
+     * ========================================================
      */
 
     if (!flutterwaveTransferId) {
@@ -1109,11 +1403,10 @@ Deno.serve(async (req) => {
       );
 
       /*
-       * We cannot safely assume the provider did not receive
-       * the transfer. Therefore DO NOT automatically refund.
+       * DO NOT refund.
        *
-       * The transaction remains pending for manual/reconciliation
-       * handling.
+       * Flutterwave may already have received the transfer.
+       * Reconciliation is required.
        */
 
       await supabase
@@ -1136,6 +1429,15 @@ Deno.serve(async (req) => {
               beneficiaryName,
 
             narration,
+
+            transfer_amount:
+              amount,
+
+            iyanjupay_fee:
+              fee,
+
+            total_charged:
+              totalCharged,
 
             flutterwave_status:
               transferStatus,
@@ -1169,6 +1471,14 @@ Deno.serve(async (req) => {
 
           transaction_id:
             transactionId,
+
+          transfer_amount:
+            amount,
+
+          fee,
+
+          total_charged:
+            totalCharged,
         },
         503,
       );
@@ -1207,6 +1517,23 @@ Deno.serve(async (req) => {
 
           narration,
 
+          /*
+           * Transfer pricing
+           */
+
+          transfer_amount:
+            amount,
+
+          iyanjupay_fee:
+            fee,
+
+          total_charged:
+            totalCharged,
+
+          /*
+           * Provider transfer
+           */
+
           flutterwave_status:
             transferStatus,
 
@@ -1243,7 +1570,7 @@ Deno.serve(async (req) => {
 
     /*
      * ========================================================
-     * SUCCESS
+     * RETURN PENDING
      * ========================================================
      */
 
@@ -1279,7 +1606,23 @@ Deno.serve(async (req) => {
             accountBank,
         },
 
-        amount,
+        /*
+         * IMPORTANT:
+         *
+         * These values allow the frontend to display:
+         *
+         * Transfer: ₦100
+         * Fee:       ₦10
+         * Total:    ₦110
+         */
+
+        transfer_amount:
+          amount,
+
+        fee,
+
+        total_charged:
+          totalCharged,
 
         currency:
           "NGN",

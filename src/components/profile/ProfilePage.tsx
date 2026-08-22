@@ -1,15 +1,44 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, {
+  useCallback,
+  useEffect,
+  useState,
+} from "react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowLeft, Shield, CheckCircle, Loader2 } from 'lucide-react';
-import { useForm } from 'react-hook-form';
-import { useAuth } from '@/hooks/useAuth';
-import { supabase } from '@/integrations/supabase/client';
-import { useToast } from '@/hooks/use-toast';
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  ArrowLeft,
+  Shield,
+  CheckCircle,
+  Loader2,
+  Mail,
+  Lock,
+} from "lucide-react";
+import { useForm } from "react-hook-form";
+import { useAuth } from "@/hooks/useAuth";
+import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
 
 interface ProfileData {
   full_name: string;
@@ -34,138 +63,303 @@ interface ProfilePageProps {
   onBack: () => void;
 }
 
-const ProfilePage = ({ onBack }: ProfilePageProps) => {
+const ProfilePage = ({
+  onBack,
+}: ProfilePageProps) => {
   const { user } = useAuth();
   const { toast } = useToast();
-  const [loading, setLoading] = useState(false);
-  const [kyc, setKyc] = useState<KycState | null>(null);
-  const [kycLoading, setKycLoading] = useState(true);
-  const [bvn, setBvn] = useState('');
-  const [verifying, setVerifying] = useState(false);
+
+  const [loading, setLoading] =
+    useState(false);
+
+  const [kyc, setKyc] =
+    useState<KycState | null>(null);
+
+  const [kycLoading, setKycLoading] =
+    useState(true);
+
+  const [bvn, setBvn] =
+    useState("");
+
+  const [verifying, setVerifying] =
+    useState(false);
+
+  // --------------------------------------------------
+  // EMAIL CHANGE STATE
+  // --------------------------------------------------
+
+  const [emailChangeDialogOpen, setEmailChangeDialogOpen] =
+    useState(false);
+
+  const [newEmail, setNewEmail] =
+    useState("");
+
+  const [emailChangeOtp, setEmailChangeOtp] =
+    useState("");
+
+  const [emailChangeLoading, setEmailChangeLoading] =
+    useState(false);
+
+  const [emailChangeRequested, setEmailChangeRequested] =
+    useState(false);
+
+  // --------------------------------------------------
+  // FORM
+  // --------------------------------------------------
 
   const form = useForm<ProfileData>({
     defaultValues: {
-      full_name: '',
-      phone_number: '+234',
-      nickname: '',
-      gender: '',
-      date_of_birth: '',
-      email: user?.email || '',
-      address: '',
-      nin: '',
-    }
+      full_name: "",
+      phone_number: "+234",
+      nickname: "",
+      gender: "",
+      date_of_birth: "",
+      email: user?.email || "",
+      address: "",
+      nin: "",
+    },
   });
 
-  const invokeBvn = useCallback(async (payload: Record<string, unknown>) => {
-    const { data, error } = await supabase.functions.invoke('flutterwave-bvn', {
-      body: payload,
-    });
+  // --------------------------------------------------
+  // BVN EDGE FUNCTION
+  // --------------------------------------------------
 
-    if (error) {
-      let message = error.message ?? 'BVN request failed';
-      const context = (error as any)?.context;
-      if (context && typeof context.json === 'function') {
-        try {
-          const body = await context.json();
-          if (body?.error) message = body.error;
-        } catch {
-          // keep original message
+  const invokeBvn = useCallback(
+    async (
+      payload: Record<string, unknown>,
+    ) => {
+      const {
+        data,
+        error,
+      } = await supabase.functions.invoke(
+        "flutterwave-bvn",
+        {
+          body: payload,
+        },
+      );
+
+      if (error) {
+        let message =
+          error.message ??
+          "BVN request failed";
+
+        const context = (error as any)
+          ?.context;
+
+        if (
+          context &&
+          typeof context.json ===
+            "function"
+        ) {
+          try {
+            const body =
+              await context.json();
+
+            if (body?.error) {
+              message = body.error;
+            }
+          } catch {
+            // Keep original error.
+          }
         }
+
+        throw new Error(message);
       }
-      throw new Error(message);
-    }
 
-    if (data && data.success === false) {
-      throw new Error(data.error ?? 'BVN verification failed');
-    }
+      if (
+        data &&
+        data.success === false
+      ) {
+        throw new Error(
+          data.error ??
+            "BVN verification failed",
+        );
+      }
 
-    return data;
-  }, []);
+      return data;
+    },
+    [],
+  );
 
-  const fetchKyc = useCallback(async () => {
-    setKycLoading(true);
-    try {
-      const data = await invokeBvn({ action: 'status' });
-      setKyc({
-        verified: Boolean(data?.verified),
-        kyc_level: Number(data?.kyc_level ?? 1),
-        kyc_status: String(data?.kyc_status ?? 'unverified'),
-        bvn_masked: data?.bvn_masked ?? null,
-        fee: Number(data?.fee ?? 0),
-      });
-    } catch (error: any) {
-      console.error('Unable to load KYC status:', error);
-    } finally {
-      setKycLoading(false);
-    }
-  }, [invokeBvn]);
+  // --------------------------------------------------
+  // FETCH KYC
+  // --------------------------------------------------
 
-  const fetchProfile = useCallback(async () => {
-    if (!user?.id) return;
+  const fetchKyc = useCallback(
+    async () => {
+      setKycLoading(true);
 
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', user.id)
-      .maybeSingle();
+      try {
+        const data =
+          await invokeBvn({
+            action: "status",
+          });
 
-    if (error) {
-      console.error('Error fetching profile:', error);
-      return;
-    }
+        setKyc({
+          verified: Boolean(
+            data?.verified,
+          ),
+          kyc_level: Number(
+            data?.kyc_level ?? 1,
+          ),
+          kyc_status: String(
+            data?.kyc_status ??
+              "unverified",
+          ),
+          bvn_masked:
+            data?.bvn_masked ??
+            null,
+          fee: Number(
+            data?.fee ?? 0,
+          ),
+        });
+      } catch (error: any) {
+        console.error(
+          "Unable to load KYC status:",
+          error,
+        );
+      } finally {
+        setKycLoading(false);
+      }
+    },
+    [invokeBvn],
+  );
 
-    if (data) {
-      form.reset({
-        full_name: data.full_name || '',
-        phone_number: data.phone_number || '+234',
-        nickname: data.nickname || '',
-        gender: data.gender || '',
-        date_of_birth: data.date_of_birth || '',
-        email: user.email || '',
-        address: data.address || '',
-        nin: data.nin || '',
-      });
-    }
-  }, [form, user?.id, user?.email]);
+  // --------------------------------------------------
+  // FETCH PROFILE
+  // --------------------------------------------------
+
+  const fetchProfile = useCallback(
+    async () => {
+      if (!user?.id) return;
+
+      const {
+        data,
+        error,
+      } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("id", user.id)
+        .maybeSingle();
+
+      if (error) {
+        console.error(
+          "Error fetching profile:",
+          error,
+        );
+        return;
+      }
+
+      if (data) {
+        form.reset({
+          full_name:
+            data.full_name || "",
+
+          phone_number:
+            data.phone_number ||
+            "+234",
+
+          nickname:
+            data.nickname || "",
+
+          gender:
+            data.gender || "",
+
+          date_of_birth:
+            data.date_of_birth || "",
+
+          email:
+            user.email || "",
+
+          address:
+            data.address || "",
+
+          nin:
+            data.nin || "",
+        });
+      }
+    },
+    [
+      form,
+      user?.id,
+      user?.email,
+    ],
+  );
+
+  // --------------------------------------------------
+  // INITIAL LOAD
+  // --------------------------------------------------
 
   useEffect(() => {
     if (user) {
       fetchProfile();
       fetchKyc();
     }
-  }, [user, fetchProfile, fetchKyc]);
+  }, [
+    user,
+    fetchProfile,
+    fetchKyc,
+  ]);
 
-  const onSubmit = async (data: ProfileData) => {
+  // --------------------------------------------------
+  // SAVE PROFILE
+  // --------------------------------------------------
+
+  const onSubmit = async (
+    data: ProfileData,
+  ) => {
     if (!user?.id) return;
 
     setLoading(true);
+
     try {
-      const { error } = await supabase
-        .from('profiles')
+      const {
+        error,
+      } = await supabase
+        .from("profiles")
         .upsert({
           id: user.id,
-          full_name: data.full_name,
-          phone_number: data.phone_number,
-          nickname: data.nickname,
-          gender: data.gender || null,
-          date_of_birth: data.date_of_birth || null,
-          email: user.email,
-          address: data.address,
-          nin: data.nin || null,
-          updated_at: new Date().toISOString(),
+          full_name:
+            data.full_name,
+          phone_number:
+            data.phone_number,
+          nickname:
+            data.nickname,
+          gender:
+            data.gender || null,
+          date_of_birth:
+            data.date_of_birth ||
+            null,
+          email:
+            user.email,
+          address:
+            data.address,
+          nin:
+            data.nin || null,
+          updated_at:
+            new Date().toISOString(),
         });
 
-      if (error) throw error;
+      if (error) {
+        throw error;
+      }
 
       toast({
         title: "Profile Updated",
-        description: "Your profile has been successfully updated.",
+        description:
+          "Your profile has been successfully updated.",
       });
     } catch (error: any) {
-      console.error('Error updating profile:', error);
+      console.error(
+        "Error updating profile:",
+        error,
+      );
+
       toast({
         title: "Error",
-        description: error.message ?? "Failed to update profile",
+        description:
+          error.message ??
+          "Failed to update profile",
         variant: "destructive",
       });
     } finally {
@@ -173,301 +367,1027 @@ const ProfilePage = ({ onBack }: ProfilePageProps) => {
     }
   };
 
-  const handleVerifyBvn = async () => {
-    const digits = bvn.replace(/\D/g, '');
+  // --------------------------------------------------
+  // START EMAIL CHANGE
+  // --------------------------------------------------
 
-    if (digits.length !== 11) {
-      toast({
-        title: 'Invalid BVN',
-        description: 'Your BVN must be exactly 11 digits.',
-        variant: 'destructive',
-      });
-      return;
-    }
+  const handleStartEmailChange = () => {
+    const currentEmail =
+      user?.email ||
+      form.getValues("email");
 
-    const fullName = form.getValues('full_name').trim();
-    if (!fullName || fullName.split(/\s+/).length < 2) {
-      toast({
-        title: 'Full name required',
-        description: 'Enter your first and last name (as on your BVN) and save your profile first.',
-        variant: 'destructive',
-      });
-      return;
-    }
+    setNewEmail(
+      currentEmail || "",
+    );
 
-    setVerifying(true);
-    try {
-      await invokeBvn({ action: 'verify', bvn: digits, full_name: fullName });
-      toast({
-        title: 'BVN verified',
-        description: 'Your account has been upgraded to KYC Tier 2.',
-      });
-      setBvn('');
-      await fetchKyc();
-    } catch (error: any) {
-      toast({
-        title: 'Verification failed',
-        description: error.message,
-        variant: 'destructive',
-      });
-    } finally {
-      setVerifying(false);
-    }
+    setEmailChangeOtp("");
+    setEmailChangeRequested(false);
+    setEmailChangeDialogOpen(true);
   };
 
-  const getKYCLevelInfo = (level: number) => {
-    switch (level) {
-      case 2:
-        return { text: "Verified (₦200,000 limit)", color: "text-blue-100" };
-      case 3:
-        return { text: "Premium (₦1,000,000 limit)", color: "text-blue-100" };
-      default:
-        return { text: "Basic (₦50,000 limit)", color: "text-blue-100" };
-    }
-  };
+  // --------------------------------------------------
+  // SEND EMAIL CHANGE OTP
+  // --------------------------------------------------
 
-  const kycInfo = getKYCLevelInfo(kyc?.kyc_level ?? 1);
+  const handleSendEmailChangeOtp =
+    async () => {
+      const normalizedNewEmail =
+        newEmail
+          .trim()
+          .toLowerCase();
+
+      const currentEmail =
+        user?.email
+          ?.trim()
+          .toLowerCase();
+
+      if (
+        !normalizedNewEmail
+      ) {
+        toast({
+          title: "Email required",
+          description:
+            "Enter the new email address.",
+          variant:
+            "destructive",
+        });
+        return;
+      }
+
+      if (
+        !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
+          normalizedNewEmail,
+        )
+      ) {
+        toast({
+          title: "Invalid email",
+          description:
+            "Enter a valid email address.",
+          variant:
+            "destructive",
+        });
+        return;
+      }
+
+      if (
+        currentEmail &&
+        normalizedNewEmail ===
+          currentEmail
+      ) {
+        toast({
+          title:
+            "Same email address",
+          description:
+            "Enter a different email address.",
+          variant:
+            "destructive",
+        });
+        return;
+      }
+
+      setEmailChangeLoading(
+        true,
+      );
+
+      try {
+        /*
+         * Supabase generates the email-change
+         * verification OTP using the
+         * "Change email address" template.
+         *
+         * The template must use:
+         * {{ .Token }}
+         *
+         * rather than {{ .ConfirmationURL }}.
+         */
+
+        const {
+          error,
+        } =
+          await supabase.auth.updateUser(
+            {
+              email:
+                normalizedNewEmail,
+            },
+          );
+
+        if (error) {
+          throw error;
+        }
+
+        setNewEmail(
+          normalizedNewEmail,
+        );
+
+        setEmailChangeRequested(
+          true,
+        );
+
+        setEmailChangeOtp("");
+
+        toast({
+          title:
+            "Verification code sent",
+          description:
+            "Check the new email address for your verification code.",
+        });
+      } catch (error: any) {
+        console.error(
+          "Email change request error:",
+          error,
+        );
+
+        toast({
+          title:
+            "Unable to change email",
+          description:
+            error.message ||
+            "Unable to send the verification code.",
+          variant:
+            "destructive",
+        });
+      } finally {
+        setEmailChangeLoading(
+          false,
+        );
+      }
+    };
+
+  // --------------------------------------------------
+  // VERIFY EMAIL CHANGE OTP
+  // --------------------------------------------------
+
+  const handleVerifyEmailChange =
+    async () => {
+      const normalizedNewEmail =
+        newEmail
+          .trim()
+          .toLowerCase();
+
+      const code =
+        emailChangeOtp.trim();
+
+      if (
+        !/^\d{6}$/.test(code)
+      ) {
+        toast({
+          title:
+            "Invalid verification code",
+          description:
+            "Enter the 6-digit code sent to your new email address.",
+          variant:
+            "destructive",
+        });
+        return;
+      }
+
+      setEmailChangeLoading(
+        true,
+      );
+
+      try {
+        const {
+          data,
+          error,
+        } =
+          await supabase.auth.verifyOtp(
+            {
+              email:
+                normalizedNewEmail,
+              token: code,
+              type:
+                "email_change",
+            },
+          );
+
+        if (error) {
+          throw error;
+        }
+
+        /*
+         * Depending on the project's Secure Email Change
+         * setting, Supabase may require verification of
+         * both the current and new email addresses.
+         *
+         * This screen handles the OTP for the new email.
+         */
+
+        const updatedEmail =
+          data?.user?.email ||
+          normalizedNewEmail;
+
+        form.setValue(
+          "email",
+          updatedEmail,
+        );
+
+        setEmailChangeDialogOpen(
+          false,
+        );
+
+        setEmailChangeRequested(
+          false,
+        );
+
+        setEmailChangeOtp(
+          "",
+        );
+
+        toast({
+          title:
+            "Email changed successfully",
+          description:
+            "Your email address has been updated successfully.",
+        });
+
+        await fetchProfile();
+      } catch (error: any) {
+        console.error(
+          "Email change verification error:",
+          error,
+        );
+
+        toast({
+          title:
+            "Verification failed",
+          description:
+            error.message ||
+            "The email verification code is incorrect or expired.",
+          variant:
+            "destructive",
+        });
+      } finally {
+        setEmailChangeLoading(
+          false,
+        );
+      }
+    };
+
+  // --------------------------------------------------
+  // RESEND EMAIL CHANGE OTP
+  // --------------------------------------------------
+
+  const handleResendEmailChangeOtp =
+    async () => {
+      /*
+       * Re-run updateUser with the same pending new
+       * email address so Supabase generates a fresh
+       * email-change OTP.
+       */
+
+      await handleSendEmailChangeOtp();
+    };
+
+  // --------------------------------------------------
+  // CANCEL EMAIL CHANGE
+  // --------------------------------------------------
+
+  const handleCancelEmailChange =
+    () => {
+      setEmailChangeDialogOpen(
+        false,
+      );
+
+      setEmailChangeRequested(
+        false,
+      );
+
+      setEmailChangeOtp("");
+    };
+
+  // --------------------------------------------------
+  // BVN VERIFICATION
+  // --------------------------------------------------
+
+  const handleVerifyBvn =
+    async () => {
+      const digits =
+        bvn.replace(/\D/g, "");
+
+      if (digits.length !== 11) {
+        toast({
+          title: "Invalid BVN",
+          description:
+            "Your BVN must be exactly 11 digits.",
+          variant:
+            "destructive",
+        });
+        return;
+      }
+
+      const fullName =
+        form
+          .getValues("full_name")
+          .trim();
+
+      if (
+        !fullName ||
+        fullName.split(
+          /\s+/,
+        ).length < 2
+      ) {
+        toast({
+          title:
+            "Full name required",
+          description:
+            "Enter your first and last name (as on your BVN) and save your profile first.",
+          variant:
+            "destructive",
+        });
+        return;
+      }
+
+      setVerifying(true);
+
+      try {
+        await invokeBvn({
+          action: "verify",
+          bvn: digits,
+          full_name:
+            fullName,
+        });
+
+        toast({
+          title:
+            "BVN verified",
+          description:
+            "Your account has been upgraded to KYC Tier 2.",
+        });
+
+        setBvn("");
+
+        await fetchKyc();
+      } catch (error: any) {
+        toast({
+          title:
+            "Verification failed",
+          description:
+            error.message,
+          variant:
+            "destructive",
+        });
+      } finally {
+        setVerifying(false);
+      }
+    };
+
+  // --------------------------------------------------
+  // KYC LEVEL
+  // --------------------------------------------------
+
+  const getKYCLevelInfo =
+    (level: number) => {
+      switch (level) {
+        case 2:
+          return {
+            text:
+              "Verified (₦200,000 limit)",
+            color:
+              "text-blue-100",
+          };
+
+        case 3:
+          return {
+            text:
+              "Premium (₦1,000,000 limit)",
+            color:
+              "text-blue-100",
+          };
+
+        default:
+          return {
+            text:
+              "Basic (₦50,000 limit)",
+            color:
+              "text-blue-100",
+          };
+      }
+    };
+
+  const kycInfo =
+    getKYCLevelInfo(
+      kyc?.kyc_level ?? 1,
+    );
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-sky-50 to-indigo-50">
-      <div className="max-w-4xl mx-auto px-4 py-6">
-        {/* Header */}
-        <div className="flex items-center gap-4 mb-6">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={onBack}
-            className="text-blue-600"
-          >
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Back
-          </Button>
-          <h1 className="text-2xl font-bold text-gray-900">Personal Information</h1>
-        </div>
+    <>
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-sky-50 to-indigo-50">
+        <div className="max-w-4xl mx-auto px-4 py-6">
 
-        {/* KYC Level Card */}
-        <Card className="mb-6 bg-gradient-to-r from-blue-600 to-indigo-600 text-primary-foreground">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-lg font-semibold mb-1">Account Level</h3>
-                <p className={`text-sm ${kycInfo.color}`}>{kycInfo.text}</p>
-                <p className="text-xs mt-1 opacity-90">
-                  {kycLoading
-                    ? 'Checking verification status...'
-                    : kyc?.verified
-                      ? `BVN verified ${kyc.bvn_masked ? `(${kyc.bvn_masked})` : ''}`
-                      : `BVN status: ${kyc?.kyc_status ?? 'unverified'}`}
-                </p>
+          {/* ==========================================
+              HEADER
+          ========================================== */}
+
+          <div className="flex items-center gap-4 mb-6">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onBack}
+              className="text-blue-600"
+            >
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              Back
+            </Button>
+
+            <h1 className="text-2xl font-bold text-gray-900">
+              Personal Information
+            </h1>
+          </div>
+
+          {/* ==========================================
+              KYC LEVEL CARD
+          ========================================== */}
+
+          <Card className="mb-6 bg-gradient-to-r from-blue-600 to-indigo-600 text-primary-foreground">
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-lg font-semibold mb-1">
+                    Account Level
+                  </h3>
+
+                  <p
+                    className={`text-sm ${kycInfo.color}`}
+                  >
+                    {kycInfo.text}
+                  </p>
+
+                  <p className="text-xs mt-1 opacity-90">
+                    {kycLoading
+                      ? "Checking verification status..."
+                      : kyc?.verified
+                        ? `BVN verified ${
+                            kyc.bvn_masked
+                              ? `(${kyc.bvn_masked})`
+                              : ""
+                          }`
+                        : `BVN status: ${
+                            kyc?.kyc_status ??
+                            "unverified"
+                          }`}
+                  </p>
+                </div>
+
+                {kyc?.verified ? (
+                  <CheckCircle className="h-8 w-8" />
+                ) : (
+                  <Shield className="h-8 w-8" />
+                )}
               </div>
+            </CardContent>
+          </Card>
+
+          {/* ==========================================
+              BVN VERIFICATION
+          ========================================== */}
+
+          <Card className="mb-6">
+            <CardHeader>
+              <CardTitle>
+                BVN Verification (KYC Tier 1)
+              </CardTitle>
+            </CardHeader>
+
+            <CardContent className="space-y-4">
               {kyc?.verified ? (
-                <CheckCircle className="h-8 w-8" />
-              ) : (
-                <Shield className="h-8 w-8" />
-              )}
-            </div>
-          </CardContent>
-        </Card>
+                <div className="flex items-center gap-2 text-sm text-green-600">
+                  <CheckCircle className="h-4 w-4" />
 
-        {/* BVN Verification */}
-        <Card className="mb-6">
-          <CardHeader>
-            <CardTitle>BVN Verification (KYC Tier 1)</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {kyc?.verified ? (
-              <div className="flex items-center gap-2 text-sm text-green-600">
-                <CheckCircle className="h-4 w-4" />
-                Your BVN is verified. You can issue cards and transact at higher limits.
+                  Your BVN is verified. You can issue cards and transact at higher limits.
+                </div>
+              ) : (
+                <>
+                  <p className="text-sm text-gray-500">
+                    Verify your BVN to unlock transfers at higher limits and virtual cards.
+                    {kyc?.fee
+                      ? ` A ₦${kyc.fee} verification fee applies.`
+                      : ""}
+                  </p>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="bvnInput">
+                      BVN
+                    </Label>
+
+                    <Input
+                      id="bvnInput"
+                      inputMode="numeric"
+                      maxLength={11}
+                      placeholder="Enter your 11-digit BVN"
+                      value={bvn}
+                      onChange={(e) =>
+                        setBvn(
+                          e.target.value.replace(
+                            /\D/g,
+                            "",
+                          ),
+                        )
+                      }
+                    />
+                  </div>
+
+                  <Button
+                    className="bg-blue-600 hover:bg-blue-700"
+                    onClick={handleVerifyBvn}
+                    disabled={
+                      verifying ||
+                      kycLoading
+                    }
+                  >
+                    {verifying ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Verifying...
+                      </>
+                    ) : (
+                      "Verify BVN"
+                    )}
+                  </Button>
+                </>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* ==========================================
+              PROFILE FORM
+          ========================================== */}
+
+          <Form {...form}>
+            <form
+              onSubmit={form.handleSubmit(
+                onSubmit,
+              )}
+              className="space-y-6"
+            >
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+
+                {/* BASIC INFORMATION */}
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle>
+                      Basic Information
+                    </CardTitle>
+                  </CardHeader>
+
+                  <CardContent className="space-y-4">
+                    <FormField
+                      control={
+                        form.control
+                      }
+                      name="full_name"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>
+                            Full Name
+                          </FormLabel>
+
+                          <FormControl>
+                            <Input
+                              placeholder="Enter your full name"
+                              {...field}
+                            />
+                          </FormControl>
+
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={
+                        form.control
+                      }
+                      name="nickname"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>
+                            Nickname
+                          </FormLabel>
+
+                          <FormControl>
+                            <Input
+                              placeholder="Enter your nickname"
+                              {...field}
+                            />
+                          </FormControl>
+
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={
+                        form.control
+                      }
+                      name="gender"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>
+                            Gender
+                          </FormLabel>
+
+                          <Select
+                            onValueChange={
+                              field.onChange
+                            }
+                            value={
+                              field.value
+                            }
+                          >
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue placeholder="Select gender" />
+                              </SelectTrigger>
+                            </FormControl>
+
+                            <SelectContent>
+                              <SelectItem value="male">
+                                Male
+                              </SelectItem>
+
+                              <SelectItem value="female">
+                                Female
+                              </SelectItem>
+
+                              <SelectItem value="other">
+                                Other
+                              </SelectItem>
+                            </SelectContent>
+                          </Select>
+
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={
+                        form.control
+                      }
+                      name="date_of_birth"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>
+                            Date of Birth
+                          </FormLabel>
+
+                          <FormControl>
+                            <Input
+                              type="date"
+                              {...field}
+                            />
+                          </FormControl>
+
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </CardContent>
+                </Card>
+
+                {/* CONTACT INFORMATION */}
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle>
+                      Contact Information
+                    </CardTitle>
+                  </CardHeader>
+
+                  <CardContent className="space-y-4">
+
+                    {/* PHONE */}
+
+                    <FormField
+                      control={
+                        form.control
+                      }
+                      name="phone_number"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>
+                            Mobile Number
+                          </FormLabel>
+
+                          <FormControl>
+                            <Input
+                              placeholder="+234XXXXXXXXXX"
+                              {...field}
+                              disabled
+                            />
+                          </FormControl>
+
+                          <p className="text-xs text-muted-foreground">
+                            Your verified phone number is managed through OTP verification.
+                          </p>
+
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    {/* EMAIL */}
+
+                    <div className="space-y-2">
+                      <Label>
+                        Email Address
+                      </Label>
+
+                      <div className="flex gap-2">
+                        <Input
+                          type="email"
+                          value={
+                            user?.email ||
+                            form.watch(
+                              "email",
+                            )
+                          }
+                          disabled
+                          className="flex-1"
+                        />
+
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={
+                            handleStartEmailChange
+                          }
+                        >
+                          <Mail className="h-4 w-4 mr-2" />
+                          Change
+                        </Button>
+                      </div>
+
+                      <p className="text-xs text-muted-foreground">
+                        Changing your email requires OTP verification.
+                      </p>
+                    </div>
+
+                    {/* ADDRESS */}
+
+                    <FormField
+                      control={
+                        form.control
+                      }
+                      name="address"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>
+                            Address
+                          </FormLabel>
+
+                          <FormControl>
+                            <Input
+                              placeholder="Enter your address"
+                              {...field}
+                            />
+                          </FormControl>
+
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    {/* NIN */}
+
+                    <FormField
+                      control={
+                        form.control
+                      }
+                      name="nin"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>
+                            NIN (National Identification Number)
+                          </FormLabel>
+
+                          <FormControl>
+                            <Input
+                              placeholder="Enter your NIN"
+                              maxLength={11}
+                              {...field}
+                            />
+                          </FormControl>
+
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                  </CardContent>
+                </Card>
               </div>
+
+              {/* UPDATE PROFILE */}
+
+              <Button
+                type="submit"
+                className="w-full bg-blue-600 hover:bg-blue-700"
+                disabled={loading}
+              >
+                {loading
+                  ? "Updating..."
+                  : "Update Profile"}
+              </Button>
+            </form>
+          </Form>
+        </div>
+      </div>
+
+      {/* ==========================================
+          CHANGE EMAIL DIALOG
+      ========================================== */}
+
+      <Dialog
+        open={
+          emailChangeDialogOpen
+        }
+        onOpenChange={(open) => {
+          if (!emailChangeLoading) {
+            if (!open) {
+              handleCancelEmailChange();
+            } else {
+              setEmailChangeDialogOpen(
+                true,
+              );
+            }
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <div className="space-y-5">
+
+            {/* HEADER */}
+
+            <div>
+              <div className="flex items-center gap-2 mb-2">
+                <div className="rounded-full bg-blue-100 p-2">
+                  <Lock className="h-5 w-5 text-blue-700" />
+                </div>
+
+                <h2 className="text-xl font-semibold text-[#082A63]">
+                  Change Email Address
+                </h2>
+              </div>
+
+              <p className="text-sm text-muted-foreground">
+                Enter your new email address. IyanjuPay will send a verification code to confirm the change.
+              </p>
+            </div>
+
+            {/* EMAIL INPUT */}
+
+            <div className="space-y-2">
+              <Label htmlFor="new-email">
+                New Email Address
+              </Label>
+
+              <Input
+                id="new-email"
+                type="email"
+                value={newEmail}
+                onChange={(e) =>
+                  setNewEmail(
+                    e.target.value,
+                  )
+                }
+                placeholder="new@email.com"
+                disabled={
+                  emailChangeRequested
+                }
+              />
+            </div>
+
+            {/* SEND OTP */}
+
+            {!emailChangeRequested ? (
+              <Button
+                type="button"
+                className="w-full bg-[#082A63] hover:bg-[#061F49]"
+                onClick={
+                  handleSendEmailChangeOtp
+                }
+                disabled={
+                  emailChangeLoading
+                }
+              >
+                {emailChangeLoading ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Sending Code...
+                  </>
+                ) : (
+                  "Send Verification Code"
+                )}
+              </Button>
             ) : (
               <>
-                <p className="text-sm text-gray-500">
-                  Verify your BVN to unlock transfers at higher limits and virtual cards.
-                  {kyc?.fee ? ` A ₦${kyc.fee} verification fee applies.` : ''}
-                </p>
+                {/* OTP INFO */}
+
+                <div className="rounded-lg bg-blue-50 p-4">
+                  <p className="text-sm text-gray-700">
+                    We sent a verification code to:
+                  </p>
+
+                  <p className="mt-1 font-semibold text-[#082A63] break-all">
+                    {newEmail}
+                  </p>
+                </div>
+
+                {/* OTP */}
+
                 <div className="space-y-2">
-                  <Label htmlFor="bvnInput">BVN</Label>
+                  <Label htmlFor="email-change-otp">
+                    Verification Code
+                  </Label>
+
                   <Input
-                    id="bvnInput"
+                    id="email-change-otp"
+                    type="text"
                     inputMode="numeric"
-                    maxLength={11}
-                    placeholder="Enter your 11-digit BVN"
-                    value={bvn}
-                    onChange={(e) => setBvn(e.target.value.replace(/\D/g, ''))}
+                    autoComplete="one-time-code"
+                    maxLength={6}
+                    value={
+                      emailChangeOtp
+                    }
+                    onChange={(e) =>
+                      setEmailChangeOtp(
+                        e.target.value
+                          .replace(
+                            /\D/g,
+                            "",
+                          )
+                          .slice(
+                            0,
+                            6,
+                          ),
+                      )
+                    }
+                    placeholder="Enter 6-digit code"
+                    className="text-center text-xl tracking-[0.35em]"
                   />
                 </div>
+
                 <Button
-                  className="bg-blue-600 hover:bg-blue-700"
-                  onClick={handleVerifyBvn}
-                  disabled={verifying || kycLoading}
+                  type="button"
+                  className="w-full bg-[#082A63] hover:bg-[#061F49]"
+                  onClick={
+                    handleVerifyEmailChange
+                  }
+                  disabled={
+                    emailChangeLoading ||
+                    !/^\d{6}$/.test(
+                      emailChangeOtp,
+                    )
+                  }
                 >
-                  {verifying ? (
+                  {emailChangeLoading ? (
                     <>
                       <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                       Verifying...
                     </>
                   ) : (
-                    'Verify BVN'
+                    "Verify Email Change"
                   )}
+                </Button>
+
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="w-full"
+                  onClick={
+                    handleResendEmailChangeOtp
+                  }
+                  disabled={
+                    emailChangeLoading
+                  }
+                >
+                  Resend Code
                 </Button>
               </>
             )}
-          </CardContent>
-        </Card>
 
-        <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Basic Information */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>Basic Information</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <FormField
-                    control={form.control}
-                    name="full_name"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Full Name</FormLabel>
-                        <FormControl>
-                          <Input placeholder="Enter your full name" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="nickname"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Nickname</FormLabel>
-                        <FormControl>
-                          <Input placeholder="Enter your nickname" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="gender"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Gender</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value}>
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Select gender" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            <SelectItem value="male">Male</SelectItem>
-                            <SelectItem value="female">Female</SelectItem>
-                            <SelectItem value="other">Other</SelectItem>
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="date_of_birth"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Date of Birth</FormLabel>
-                        <FormControl>
-                          <Input type="date" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </CardContent>
-              </Card>
-
-              {/* Contact Information */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>Contact Information</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <FormField
-                    control={form.control}
-                    name="phone_number"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Mobile Number</FormLabel>
-                        <FormControl>
-                          <Input placeholder="+234XXXXXXXXXX" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="email"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Email Address</FormLabel>
-                        <FormControl>
-                          <Input type="email" disabled {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="address"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Address</FormLabel>
-                        <FormControl>
-                          <Input placeholder="Enter your address" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="nin"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>NIN (National Identification Number)</FormLabel>
-                        <FormControl>
-                          <Input placeholder="Enter your NIN" maxLength={11} {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </CardContent>
-              </Card>
-            </div>
+            {/* CANCEL */}
 
             <Button
-              type="submit"
-              className="w-full bg-blue-600 hover:bg-blue-700"
-              disabled={loading}
+              type="button"
+              variant="ghost"
+              className="w-full"
+              onClick={
+                handleCancelEmailChange
+              }
+              disabled={
+                emailChangeLoading
+              }
             >
-              {loading ? 'Updating...' : 'Update Profile'}
+              Cancel
             </Button>
-          </form>
-        </Form>
-      </div>
-    </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 };
 

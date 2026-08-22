@@ -8,6 +8,7 @@ const corsHeaders = {
     "POST, OPTIONS",
 };
 
+
 Deno.serve(async (req) => {
   // ============================================================
   // CORS

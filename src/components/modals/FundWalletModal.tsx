@@ -1,12 +1,7 @@
 import React, { useEffect, useState } from "react";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Copy, Loader2, Building2, ShieldCheck } from "lucide-react";
+import { Copy, Loader2, Building2, ShieldCheck, RefreshCw, } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -32,76 +27,101 @@ const FundWalletModal = ({
 }: FundWalletModalProps) => {
   const { toast } = useToast();
 
-  const [account, setAccount] = useState<VirtualAccount | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [kycRequired, setKycRequired] = useState(false);
-  const [checking, setChecking] = useState(false);
+  const [account, setAccount] =
+    useState<VirtualAccount | null>(null);
 
-  const syncDeposits = async (announce: boolean) => {
+  const [loading, setLoading] =
+    useState(false);
+
+  const [kycRequired, setKycRequired] =
+    useState(false);
+
+  const [checking, setChecking] =
+    useState(false);
+
+  // --------------------------------------------------
+  // AUTOMATIC DEPOSIT SYNC
+  // --------------------------------------------------
+
+  const syncDeposits = async () => {
+    if (checking) return;
+
     setChecking(true);
 
     try {
-      const { data, error } = await supabase.functions.invoke(
-        "flutterwave-sync-deposits"
-      );
-
-      if (error) throw error;
-
-      if (!data?.success) {
-        throw new Error(data?.error || "Unable to check for payments");
-      }
-
-      await onFunded?.();
-
-      if (data.credited > 0) {
-        toast({
-          title: "Wallet funded",
-          description: `₦${Number(
-            data.credited_amount || 0
-          ).toLocaleString()} has been added to your wallet.`,
-        });
-      } else if (announce) {
-        toast({
-          title: "No new payment found yet",
-          description:
-            "Bank transfers usually arrive in seconds. Try again shortly.",
-        });
-      }
-    } catch (error: any) {
-      if (announce) {
-        toast({
-          title: "Unable to check payment",
-          description: error?.message || "Please try again.",
-          variant: "destructive",
-        });
-      }
-    } finally {
-      setChecking(false);
-    }
-  };
-
-
-  const loadVirtualAccount = async () => {
-    setLoading(true);
-    setKycRequired(false);
-
-    try {
-      const { data, error } = await supabase.functions.invoke(
-        "flutterwave-virtual-account"
-      );
+      const { data, error } =
+        await supabase.functions.invoke(
+          "flutterwave-sync-deposits",
+        );
 
       if (error) {
         throw error;
       }
 
       if (!data?.success) {
-        if (data?.code === "KYC_REQUIRED") {
+        throw new Error(
+          data?.error ||
+            "Unable to check for payments",
+        );
+      }
+
+      // Refresh wallet balance every time
+      // reconciliation completes.
+      await onFunded?.();
+
+      // Only announce when a new payment was actually credited.
+      if (
+        Number(data?.credited || 0) > 0
+      ) {
+        toast({
+          title: "Wallet funded",
+          description: `₦${Number(
+            data.credited_amount || 0,
+          ).toLocaleString()} has been added to your wallet.`,
+        });
+      }
+    } catch (error: any) {
+      // Background checks should stay silent.
+      // We don't want a toast every 10 seconds
+      // when the provider is temporarily unavailable.
+      console.error(
+        "Automatic deposit sync error:",
+        error,
+      );
+    } finally {
+      setChecking(false);
+    }
+  };
+
+  // --------------------------------------------------
+  // LOAD VIRTUAL ACCOUNT
+  // --------------------------------------------------
+
+  const loadVirtualAccount = async () => {
+    setLoading(true);
+    setKycRequired(false);
+
+    try {
+      const { data, error } =
+        await supabase.functions.invoke(
+          "flutterwave-virtual-account",
+        );
+
+      if (error) {
+        throw error;
+      }
+
+      if (!data?.success) {
+        if (
+          data?.code === "KYC_REQUIRED"
+        ) {
           setKycRequired(true);
           return;
         }
 
         throw new Error(
-          data?.error || "Unable to get your dedicated bank account"
+          data?.error ||
+            "Unable to get your dedicated bank account",
         );
       }
 
@@ -109,7 +129,10 @@ const FundWalletModal = ({
         setAccount(data.account);
       }
     } catch (error: any) {
-      console.error("Virtual account error:", error);
+      console.error(
+        "Virtual account error:",
+        error,
+      );
 
       toast({
         title: "Unable to load account",
@@ -123,6 +146,10 @@ const FundWalletModal = ({
     }
   };
 
+  // --------------------------------------------------
+  // OPEN / CLOSE MODAL
+  // --------------------------------------------------
+
   useEffect(() => {
     if (isOpen) {
       loadVirtualAccount();
@@ -133,28 +160,52 @@ const FundWalletModal = ({
     }
   }, [isOpen]);
 
-  // While the modal is open, keep reconciling incoming bank deposits so
-  // the wallet is credited as soon as the money lands.
+  // --------------------------------------------------
+  // AUTOMATIC 10-SECOND DEPOSIT CHECK
+  // --------------------------------------------------
+
   useEffect(() => {
-    if (!isOpen || !account) return;
+    if (
+      !isOpen ||
+      !account?.account_number
+    ) {
+      return;
+    }
 
-    syncDeposits(false);
+    // Check immediately when the account becomes available.
+    syncDeposits();
 
-    const interval = window.setInterval(() => {
-      syncDeposits(false);
-    }, 10000);
+    // Continue checking every 10 seconds while
+    // the funding modal remains open.
+    const interval =
+      window.setInterval(() => {
+        syncDeposits();
+      }, 10_000);
 
-    return () => window.clearInterval(interval);
+    return () => {
+      window.clearInterval(interval);
+    };
+
+    // We intentionally only restart the timer when
+    // the modal/account changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, account?.account_number]);
+  }, [
+    isOpen,
+    account?.account_number,
+  ]);
 
+  // --------------------------------------------------
+  // COPY TO CLIPBOARD
+  // --------------------------------------------------
 
   const copyToClipboard = async (
     text: string,
-    label: string
+    label: string,
   ) => {
     try {
-      await navigator.clipboard.writeText(text);
+      await navigator.clipboard.writeText(
+        text,
+      );
 
       toast({
         title: "Copied!",
@@ -169,8 +220,15 @@ const FundWalletModal = ({
     }
   };
 
+  // --------------------------------------------------
+  // UI
+  // --------------------------------------------------
+
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
+    <Dialog
+      open={isOpen}
+      onOpenChange={onClose}
+    >
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="text-center">
@@ -178,14 +236,23 @@ const FundWalletModal = ({
           </DialogTitle>
         </DialogHeader>
 
+        {/* -------------------------------------------- */}
+        {/* LOADING ACCOUNT                              */}
+        {/* -------------------------------------------- */}
+
         {loading ? (
           <div className="py-10 flex flex-col items-center justify-center gap-3">
             <Loader2 className="h-8 w-8 animate-spin" />
+
             <p className="text-sm text-gray-500">
               Getting your dedicated bank account...
             </p>
           </div>
         ) : kycRequired ? (
+          /* -------------------------------------------- */
+          /* KYC REQUIRED                                 */
+          /* -------------------------------------------- */
+
           <div className="py-6 space-y-4 text-center">
             <ShieldCheck className="h-12 w-12 mx-auto" />
 
@@ -208,7 +275,14 @@ const FundWalletModal = ({
             </Button>
           </div>
         ) : account ? (
+          /* -------------------------------------------- */
+          /* DEDICATED ACCOUNT                            */
+          /* -------------------------------------------- */
+
           <div className="space-y-5">
+
+            {/* ACCOUNT CARD */}
+
             <div className="rounded-lg border p-4">
               <div className="flex items-center gap-3 mb-4">
                 <div className="h-10 w-10 rounded-full flex items-center justify-center bg-blue-50">
@@ -227,6 +301,9 @@ const FundWalletModal = ({
               </div>
 
               <div className="space-y-4">
+
+                {/* BANK */}
+
                 <div>
                   <p className="text-xs text-gray-500 mb-1">
                     Bank
@@ -236,6 +313,8 @@ const FundWalletModal = ({
                     {account.bank_name}
                   </p>
                 </div>
+
+                {/* ACCOUNT NAME */}
 
                 <div>
                   <p className="text-xs text-gray-500 mb-1">
@@ -253,7 +332,7 @@ const FundWalletModal = ({
                       onClick={() =>
                         copyToClipboard(
                           account.account_name,
-                          "Account name"
+                          "Account name",
                         )
                       }
                     >
@@ -261,6 +340,8 @@ const FundWalletModal = ({
                     </Button>
                   </div>
                 </div>
+
+                {/* ACCOUNT NUMBER */}
 
                 <div>
                   <p className="text-xs text-gray-500 mb-1">
@@ -278,7 +359,7 @@ const FundWalletModal = ({
                       onClick={() =>
                         copyToClipboard(
                           account.account_number,
-                          "Account number"
+                          "Account number",
                         )
                       }
                     >
@@ -289,28 +370,45 @@ const FundWalletModal = ({
               </div>
             </div>
 
+            {/* INSTRUCTIONS */}
+
             <div className="rounded-lg bg-blue-50 p-4">
               <p className="text-sm text-blue-700">
-                Transfer money from any Nigerian bank to this
-                dedicated account. Once the transfer is confirmed,
-                your wallet will be credited automatically.
+                Transfer money from any Nigerian bank to
+                this dedicated account. Once the transfer is
+                confirmed, your wallet will be credited automatically.
               </p>
             </div>
 
-            <Button
-              className="w-full"
-              onClick={() => syncDeposits(true)}
-              disabled={checking}
-            >
-              {checking ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Checking for your payment...
-                </>
-              ) : (
-                "I have made the transfer"
-              )}
-            </Button>
+            {/* AUTOMATIC STATUS */}
+
+            <div className="rounded-lg border bg-white p-4">
+              <div className="flex items-center gap-3">
+
+                {checking ? (
+                  <RefreshCw className="h-5 w-5 animate-spin text-blue-600" />
+                ) : (
+                  <div className="h-5 w-5 rounded-full bg-green-100 flex items-center justify-center">
+                    <div className="h-2 w-2 rounded-full bg-green-600" />
+                  </div>
+                )}
+
+                <div>
+                  <p className="text-sm font-medium text-gray-900">
+                    {checking
+                      ? "Checking for your transfer..."
+                      : "Automatic payment monitoring is active"}
+                  </p>
+
+                  <p className="text-xs text-gray-500 mt-1">
+                    Your wallet is checked automatically every
+                    10 seconds after a bank transfer.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* DONE */}
 
             <Button
               variant="outline"
@@ -319,9 +417,12 @@ const FundWalletModal = ({
             >
               Done
             </Button>
-
           </div>
         ) : (
+          /* -------------------------------------------- */
+          /* ACCOUNT LOAD FAILED                          */
+          /* -------------------------------------------- */
+
           <div className="py-8 text-center">
             <p className="text-sm text-gray-500">
               Your dedicated bank account could not be loaded.

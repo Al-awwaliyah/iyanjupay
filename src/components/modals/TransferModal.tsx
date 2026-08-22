@@ -16,7 +16,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Send, CheckCircle2, Loader2 } from "lucide-react";
+import {
+  Send,
+  CheckCircle2,
+  Loader2,
+} from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 
 interface TransferModalProps {
@@ -37,6 +41,8 @@ interface ResolvedAccount {
   bank_code: string;
 }
 
+const IYANJUPAY_TRANSFER_FEE = 10;
+
 const TransferModal = ({
   isOpen,
   onClose,
@@ -56,11 +62,27 @@ const TransferModal = ({
 
   const [resolving, setResolving] = useState(false);
 
-  // Used to prevent an older Flutterwave response from
-  // overwriting a newer bank/account selection.
   const resolveRequestRef = useRef(0);
 
   const { toast } = useToast();
+
+  // ------------------------------------------------------------
+  // Transfer pricing
+  // ------------------------------------------------------------
+
+  const transferAmount = Number(amount) || 0;
+
+  const transferFee =
+    transferAmount > 0
+      ? IYANJUPAY_TRANSFER_FEE
+      : 0;
+
+  const totalCharged =
+    transferAmount + transferFee;
+
+  const hasInsufficientBalance =
+    transferAmount > 0 &&
+    totalCharged > walletBalance;
 
   // ------------------------------------------------------------
   // Load banks
@@ -74,21 +96,30 @@ const TransferModal = ({
 
       try {
         const { data, error } =
-          await supabase.functions.invoke("flutterwave-banks");
+          await supabase.functions.invoke(
+            "flutterwave-banks"
+          );
 
         if (error) {
           throw error;
         }
 
-        if (!data?.success || !Array.isArray(data?.banks)) {
+        if (
+          !data?.success ||
+          !Array.isArray(data?.banks)
+        ) {
           throw new Error(
-            data?.error || "Unable to load banks"
+            data?.error ||
+              "Unable to load banks"
           );
         }
 
         setBanks(data.banks);
       } catch (error: any) {
-        console.error("Bank loading error:", error);
+        console.error(
+          "Bank loading error:",
+          error
+        );
 
         toast({
           title: "Unable to load banks",
@@ -115,8 +146,6 @@ const TransferModal = ({
     const cleanAccountNumber =
       accountNumber.replace(/\D/g, "");
 
-    // Do not resolve until both bank and account number
-    // are ready.
     if (
       !bank ||
       !/^\d{10}$/.test(cleanAccountNumber)
@@ -126,103 +155,132 @@ const TransferModal = ({
       return;
     }
 
-    const requestId = ++resolveRequestRef.current;
+    const requestId =
+      ++resolveRequestRef.current;
 
-    // Small debounce so Flutterwave is not called
-    // immediately on every input update.
-    const timeout = window.setTimeout(async () => {
-      setResolving(true);
-      setResolvedAccount(null);
+    const timeout = window.setTimeout(
+      async () => {
+        setResolving(true);
+        setResolvedAccount(null);
 
-      try {
-        const { data, error } =
-          await supabase.functions.invoke(
-            "resolve-bank-account",
-            {
-              body: {
-                account_number: cleanAccountNumber,
-                account_bank: bank,
-              },
-            }
-          );
+        try {
+          const { data, error } =
+            await supabase.functions.invoke(
+              "resolve-bank-account",
+              {
+                body: {
+                  account_number:
+                    cleanAccountNumber,
 
-        // Ignore response if a newer request has started.
-        if (requestId !== resolveRequestRef.current) {
-          return;
-        }
+                  account_bank:
+                    bank,
+                },
+              }
+            );
 
-        if (error) {
+          if (
+            requestId !==
+            resolveRequestRef.current
+          ) {
+            return;
+          }
+
+          if (error) {
+            console.error(
+              "Resolve account function error:",
+              error
+            );
+
+            throw new Error(
+              error.message ||
+                "Unable to verify bank account"
+            );
+          }
+
+          if (
+            !data?.success ||
+            !data?.account
+          ) {
+            throw new Error(
+              data?.error ||
+                "Bank account could not be verified"
+            );
+          }
+
+          setResolvedAccount({
+            account_number:
+              data.account.account_number,
+
+            account_name:
+              data.account.account_name,
+
+            bank_code:
+              data.account.bank_code,
+          });
+
+          toast({
+            title: "Account verified",
+            description:
+              data.account.account_name,
+          });
+        } catch (error: any) {
+          if (
+            requestId !==
+            resolveRequestRef.current
+          ) {
+            return;
+          }
+
           console.error(
-            "Resolve account function error:",
+            "Account resolution failed:",
             error
           );
 
-          throw new Error(
-            error.message ||
-              "Unable to verify bank account"
-          );
+          toast({
+            title:
+              "Account verification failed",
+
+            description:
+              error?.message ||
+              "We could not verify this bank account.",
+
+            variant:
+              "destructive",
+          });
+        } finally {
+          if (
+            requestId ===
+            resolveRequestRef.current
+          ) {
+            setResolving(false);
+          }
         }
-
-        if (!data?.success || !data?.account) {
-          throw new Error(
-            data?.error ||
-              "Bank account could not be verified"
-          );
-        }
-
-        setResolvedAccount({
-          account_number:
-            data.account.account_number,
-          account_name:
-            data.account.account_name,
-          bank_code:
-            data.account.bank_code,
-        });
-
-        toast({
-          title: "Account verified",
-          description:
-            data.account.account_name,
-        });
-      } catch (error: any) {
-        // Ignore errors from stale requests.
-        if (requestId !== resolveRequestRef.current) {
-          return;
-        }
-
-        console.error(
-          "Account resolution failed:",
-          error
-        );
-
-        toast({
-          title: "Account verification failed",
-          description:
-            error?.message ||
-            "We could not verify this bank account.",
-          variant: "destructive",
-        });
-      } finally {
-        if (requestId === resolveRequestRef.current) {
-          setResolving(false);
-        }
-      }
-    }, 600);
+      },
+      600
+    );
 
     return () => {
       window.clearTimeout(timeout);
     };
-  }, [accountNumber, bank, isOpen, toast]);
+  }, [
+    accountNumber,
+    bank,
+    isOpen,
+    toast,
+  ]);
 
   // ------------------------------------------------------------
   // Transfer
   // ------------------------------------------------------------
 
   const handleTransfer = () => {
-    const transferAmount = Number(amount);
+    const transferAmount =
+      Number(amount);
 
     if (
-      !Number.isFinite(transferAmount) ||
+      !Number.isFinite(
+        transferAmount
+      ) ||
       transferAmount <= 0
     ) {
       toast({
@@ -231,33 +289,60 @@ const TransferModal = ({
           "Please enter a valid transfer amount.",
         variant: "destructive",
       });
+
       return;
     }
 
-    if (transferAmount > walletBalance) {
+    const fee =
+      IYANJUPAY_TRANSFER_FEE;
+
+    const total =
+      transferAmount + fee;
+
+    /*
+     * IMPORTANT:
+     *
+     * Check the TOTAL amount that will leave
+     * the user's wallet, not just the transfer
+     * amount.
+     */
+
+    if (total > walletBalance) {
       toast({
-        title: "Insufficient Balance",
+        title:
+          "Insufficient Balance",
+
         description:
-          "Please fund your wallet to continue.",
-        variant: "destructive",
+          `You need ₦${total.toLocaleString()} including the ₦${fee} IyanjuPay transfer fee.`,
+
+        variant:
+          "destructive",
       });
+
       return;
     }
 
     if (!resolvedAccount) {
       toast({
-        title: "Account not verified",
+        title:
+          "Account not verified",
+
         description:
           "Please enter a valid 10-digit account number and wait for verification.",
-        variant: "destructive",
+
+        variant:
+          "destructive",
       });
+
       return;
     }
 
-    const selectedBank = banks.find(
-      (item) =>
-        item.code === resolvedAccount.bank_code
-    );
+    const selectedBank =
+      banks.find(
+        (item) =>
+          item.code ===
+          resolvedAccount.bank_code
+      );
 
     const details = {
       recipient:
@@ -275,10 +360,25 @@ const TransferModal = ({
 
       narration,
 
-      type: "transfer",
+      type:
+        "transfer",
+
+      /*
+       * Transfer pricing information
+       */
+
+      transferAmount,
+
+      fee,
+
+      totalCharged:
+        total,
     };
 
-    onTransfer(transferAmount, details);
+    onTransfer(
+      transferAmount,
+      details
+    );
 
     handleClose();
   };
@@ -288,7 +388,6 @@ const TransferModal = ({
   // ------------------------------------------------------------
 
   const handleClose = () => {
-    // Invalidate any request currently in flight.
     resolveRequestRef.current++;
 
     setAmount('');
@@ -324,7 +423,13 @@ const TransferModal = ({
           <div className="bg-green-50 p-3 rounded-lg">
             <p className="text-sm text-green-700">
               Wallet Balance: ₦
-              {walletBalance.toLocaleString()}
+              {walletBalance.toLocaleString(
+                undefined,
+                {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                }
+              )}
             </p>
           </div>
 
@@ -337,7 +442,6 @@ const TransferModal = ({
             <Select
               value={bank}
               onValueChange={(value) => {
-                // Invalidate previous resolution.
                 resolveRequestRef.current++;
 
                 setBank(value);
@@ -357,14 +461,20 @@ const TransferModal = ({
               </SelectTrigger>
 
               <SelectContent>
-                {banks.map((bankItem) => (
-                  <SelectItem
-                    key={bankItem.code}
-                    value={bankItem.code}
-                  >
-                    {bankItem.name}
-                  </SelectItem>
-                ))}
+                {banks.map(
+                  (bankItem) => (
+                    <SelectItem
+                      key={
+                        bankItem.code
+                      }
+                      value={
+                        bankItem.code
+                      }
+                    >
+                      {bankItem.name}
+                    </SelectItem>
+                  )
+                )}
               </SelectContent>
             </Select>
           </div>
@@ -380,15 +490,17 @@ const TransferModal = ({
               value={accountNumber}
               onChange={(e) => {
                 const value =
-                  e.target.value.replace(/\D/g, "");
+                  e.target.value.replace(
+                    /\D/g,
+                    ""
+                  );
 
-                // Invalidate previous resolution whenever
-                // account number changes.
                 resolveRequestRef.current++;
 
                 setAccountNumber(
                   value.slice(0, 10)
                 );
+
                 setResolvedAccount(null);
                 setResolving(false);
               }}
@@ -397,10 +509,10 @@ const TransferModal = ({
               inputMode="numeric"
             />
 
-            {/* Automatic verification status */}
             {resolving && (
               <div className="flex items-center gap-2 text-sm text-blue-600">
                 <Loader2 className="h-4 w-4 animate-spin" />
+
                 <span>
                   Verifying account...
                 </span>
@@ -429,11 +541,15 @@ const TransferModal = ({
                   </p>
 
                   <p className="font-semibold text-gray-900 mt-1 break-words">
-                    {resolvedAccount.account_name}
+                    {
+                      resolvedAccount.account_name
+                    }
                   </p>
 
                   <p className="text-sm text-gray-600">
-                    {resolvedAccount.account_number}
+                    {
+                      resolvedAccount.account_number
+                    }
                   </p>
                 </div>
               </div>
@@ -451,12 +567,98 @@ const TransferModal = ({
               type="number"
               value={amount}
               onChange={(e) =>
-                setAmount(e.target.value)
+                setAmount(
+                  e.target.value
+                )
               }
               placeholder="Enter amount"
               min="1"
             />
           </div>
+
+          {/* Transfer Fee Breakdown */}
+          {transferAmount > 0 && (
+            <div className="rounded-lg border bg-gray-50 p-4 space-y-3">
+
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-600">
+                  Transfer amount
+                </span>
+
+                <span className="font-medium text-gray-900">
+                  ₦
+                  {transferAmount.toLocaleString(
+                    undefined,
+                    {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    }
+                  )}
+                </span>
+              </div>
+
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-600">
+                  IyanjuPay transfer fee
+                </span>
+
+                <span className="font-medium text-gray-900">
+                  ₦
+                  {transferFee.toLocaleString(
+                    undefined,
+                    {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    }
+                  )}
+                </span>
+              </div>
+
+              <div className="border-t pt-3 flex justify-between">
+                <span className="font-semibold text-gray-900">
+                  Total to be deducted
+                </span>
+
+                <span className="font-bold text-green-700">
+                  ₦
+                  {totalCharged.toLocaleString(
+                    undefined,
+                    {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    }
+                  )}
+                </span>
+              </div>
+
+              <div className="rounded-md bg-yellow-50 border border-yellow-200 p-3">
+                <p className="text-xs text-yellow-800">
+                  A ₦10 IyanjuPay transfer fee will
+                  be deducted from your wallet in
+                  addition to the transfer amount.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Insufficient Balance Warning */}
+          {hasInsufficientBalance && (
+            <div className="rounded-md bg-red-50 border border-red-200 p-3">
+              <p className="text-sm text-red-700">
+                Insufficient wallet balance.
+                You need ₦
+                {totalCharged.toLocaleString(
+                  undefined,
+                  {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  }
+                )}
+                {" "}to complete this transfer,
+                including the ₦10 IyanjuPay fee.
+              </p>
+            </div>
+          )}
 
           {/* Narration */}
           <div className="space-y-2">
@@ -468,7 +670,9 @@ const TransferModal = ({
               id="narration"
               value={narration}
               onChange={(e) =>
-                setNarration(e.target.value)
+                setNarration(
+                  e.target.value
+                )
               }
               placeholder="Enter transaction description"
             />
@@ -480,18 +684,34 @@ const TransferModal = ({
             disabled={
               !resolvedAccount ||
               !amount ||
-              resolving
+              resolving ||
+              hasInsufficientBalance
             }
             className="w-full bg-green-600 hover:bg-green-700"
           >
             {resolving ? (
               <>
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+
                 Verifying Account...
+              </>
+            ) : transferAmount > 0 ? (
+              <>
+                <Send className="h-4 w-4 mr-2" />
+
+                Send ₦
+                {totalCharged.toLocaleString(
+                  undefined,
+                  {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  }
+                )}
               </>
             ) : (
               <>
                 <Send className="h-4 w-4 mr-2" />
+
                 Send Money
               </>
             )}

@@ -8,13 +8,33 @@ const corsHeaders = {
     "POST, OPTIONS",
 };
 
-
-const TRANSFER_FEE = 10;
+/**
+ * ============================================================
+ * IYANJUPAY INTERNAL TRANSFER
+ * ============================================================
+ *
+ * IyanjuPay → IyanjuPay
+ *
+ * TRANSFER FEE = ₦0
+ *
+ * The recipient receives the exact amount sent.
+ * The sender is debited only the transfer amount.
+ *
+ * Example:
+ *
+ * Sender balance:     ₦10,000
+ * Transfer amount:     ₦5,000
+ * Transfer fee:            ₦0
+ * Total deducted:      ₦5,000
+ *
+ * Recipient receives:  ₦5,000
+ */
+const TRANSFER_FEE = 0;
 
 Deno.serve(async (req) => {
-  // ============================================================
+  // ==========================================================
   // CORS
-  // ============================================================
+  // ==========================================================
 
   if (req.method === "OPTIONS") {
     return new Response("ok", {
@@ -32,7 +52,8 @@ Deno.serve(async (req) => {
         status: 405,
         headers: {
           ...corsHeaders,
-          "Content-Type": "application/json",
+          "Content-Type":
+            "application/json",
         },
       }
     );
@@ -44,7 +65,9 @@ Deno.serve(async (req) => {
     // ==========================================================
 
     const supabaseUrl =
-      Deno.env.get("SUPABASE_URL") ?? "";
+      Deno.env.get(
+        "SUPABASE_URL"
+      ) ?? "";
 
     const serviceRoleKey =
       Deno.env.get(
@@ -67,7 +90,7 @@ Deno.serve(async (req) => {
     }
 
     // ==========================================================
-    // AUTHORIZATION HEADER
+    // AUTHORIZATION
     // ==========================================================
 
     const authHeader =
@@ -148,6 +171,7 @@ Deno.serve(async (req) => {
           auth: {
             autoRefreshToken:
               false,
+
             persistSession:
               false,
           },
@@ -161,7 +185,8 @@ Deno.serve(async (req) => {
     let body: any;
 
     try {
-      body = await req.json();
+      body =
+        await req.json();
     } catch {
       return new Response(
         JSON.stringify({
@@ -179,15 +204,17 @@ Deno.serve(async (req) => {
       );
     }
 
-    const walletId = String(
-      body?.wallet_id ??
-        body?.walletId ??
-        ""
-    ).trim();
+    const walletId =
+      String(
+        body?.wallet_id ??
+          body?.walletId ??
+          ""
+      ).trim();
 
-    const amount = Number(
-      body?.amount
-    );
+    const amount =
+      Number(
+        body?.amount
+      );
 
     const narration =
       String(
@@ -206,7 +233,15 @@ Deno.serve(async (req) => {
     // VALIDATE WALLET ID
     // ==========================================================
 
-    if (!/^[0-9]{8}$/.test(walletId)) {
+    /**
+     * Wallet ID must be exactly
+     * 8 numeric characters.
+     */
+    if (
+      !/^[0-9]{8}$/.test(
+        walletId
+      )
+    ) {
       return new Response(
         JSON.stringify({
           error:
@@ -228,7 +263,9 @@ Deno.serve(async (req) => {
     // ==========================================================
 
     if (
-      !Number.isFinite(amount) ||
+      !Number.isFinite(
+        amount
+      ) ||
       amount <= 0
     ) {
       return new Response(
@@ -247,14 +284,18 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Prevent excessive decimal precision
+    // ==========================================================
+    // PREVENT EXCESSIVE DECIMAL PRECISION
+    // ==========================================================
+
     const roundedAmount =
       Math.round(
         amount * 100
       ) / 100;
 
     if (
-      roundedAmount !== amount
+      roundedAmount !==
+      amount
     ) {
       return new Response(
         JSON.stringify({
@@ -286,7 +327,8 @@ Deno.serve(async (req) => {
 
     const {
       data: senderWallet,
-      error: senderWalletError,
+      error:
+        senderWalletError,
     } = await admin
       .from("wallets")
       .select(
@@ -377,7 +419,9 @@ Deno.serve(async (req) => {
       throw recipientWalletError;
     }
 
-    if (!recipientWallet) {
+    if (
+      !recipientWallet
+    ) {
       return new Response(
         JSON.stringify({
           error:
@@ -470,9 +514,22 @@ Deno.serve(async (req) => {
     // TOTAL REQUIRED
     // ==========================================================
 
+    /**
+     * IMPORTANT:
+     *
+     * TRANSFER_FEE = 0
+     *
+     * Therefore:
+     *
+     * totalRequired = transfer amount
+     */
     const totalRequired =
       roundedAmount +
       TRANSFER_FEE;
+
+    // ==========================================================
+    // SENDER BALANCE
+    // ==========================================================
 
     const senderBalance =
       Number(
@@ -490,13 +547,17 @@ Deno.serve(async (req) => {
       return new Response(
         JSON.stringify({
           error:
-            `Insufficient funds. You need ₦${totalRequired.toLocaleString()} including the ₦${TRANSFER_FEE} transfer fee.`,
+            `Insufficient funds. You need ₦${totalRequired.toLocaleString()} to complete this transfer.`,
+
           required:
             totalRequired,
+
           balance:
             senderBalance,
+
           transfer_amount:
             roundedAmount,
+
           fee:
             TRANSFER_FEE,
         }),
@@ -512,11 +573,12 @@ Deno.serve(async (req) => {
     }
 
     // ==========================================================
-    // TRANSACTION REFERENCES
+    // TRANSACTION REFERENCE
     // ==========================================================
 
     const transferReference =
-      `IYJ_${Date.now()}_${crypto.randomUUID()
+      `IYJ_${Date.now()}_${crypto
+        .randomUUID()
         .replaceAll("-", "")
         .slice(0, 16)
         .toUpperCase()}`;
@@ -530,11 +592,14 @@ Deno.serve(async (req) => {
     // ==========================================================
 
     const {
-      data: existingIdempotency,
+      data:
+        existingIdempotency,
       error:
         existingIdempotencyError,
     } = await admin
-      .from("idempotency_keys")
+      .from(
+        "idempotency_keys"
+      )
       .select(
         "key, transaction_id, response"
       )
@@ -561,7 +626,9 @@ Deno.serve(async (req) => {
       return new Response(
         JSON.stringify({
           success: true,
+
           replay: true,
+
           ...(existingIdempotency.response ||
             {}),
         }),
@@ -577,24 +644,14 @@ Deno.serve(async (req) => {
     }
 
     // ==========================================================
-    // IMPORTANT
-    // ==========================================================
-    //
-    // wallet_operation() runs inside the same PostgreSQL
-    // transaction as this Edge Function's RPC calls.
-    //
-    // If the recipient credit fails after the sender debit,
-    // PostgreSQL rolls the entire operation back.
-    //
-    // ==========================================================
-
-    // ==========================================================
     // 1. DEBIT SENDER
     // ==========================================================
 
     const {
-      data: debitTransaction,
-      error: debitError,
+      data:
+        debitTransaction,
+      error:
+        debitError,
     } = await admin.rpc(
       "wallet_operation",
       {
@@ -639,10 +696,10 @@ Deno.serve(async (req) => {
             roundedAmount,
 
           fee:
-            TRANSFER_FEE,
+            0,
 
           total_charged:
-            totalRequired,
+            roundedAmount,
 
           direction:
             "outgoing",
@@ -650,7 +707,9 @@ Deno.serve(async (req) => {
       }
     );
 
-    if (debitError) {
+    if (
+      debitError
+    ) {
       console.error(
         "Sender debit failed:",
         debitError
@@ -667,8 +726,10 @@ Deno.serve(async (req) => {
     // ==========================================================
 
     const {
-      data: creditTransaction,
-      error: creditError,
+      data:
+        creditTransaction,
+      error:
+        creditError,
     } = await admin.rpc(
       "wallet_operation",
       {
@@ -712,13 +773,18 @@ Deno.serve(async (req) => {
           transfer_amount:
             roundedAmount,
 
+          fee:
+            0,
+
           direction:
             "incoming",
         },
       }
     );
 
-    if (creditError) {
+    if (
+      creditError
+    ) {
       console.error(
         "Recipient credit failed:",
         creditError
@@ -731,72 +797,21 @@ Deno.serve(async (req) => {
     }
 
     // ==========================================================
-    // 3. CHARGE ₦10 TRANSFER FEE
+    // IMPORTANT
+    // ==========================================================
+    //
+    // NO FEE TRANSACTION.
+    //
+    // IyanjuPay → IyanjuPay is completely free.
+    //
+    // We intentionally DO NOT call:
+    //
+    // wallet_operation(... "FEE" ...)
+    //
     // ==========================================================
 
-    const {
-      data: feeTransaction,
-      error: feeError,
-    } = await admin.rpc(
-      "wallet_operation",
-      {
-        _user_id:
-          user.id,
-
-        _operation:
-          "FEE",
-
-        _amount:
-          TRANSFER_FEE,
-
-        _description:
-          "IyanjuPay transfer charge",
-
-        _idempotency_key:
-          `${finalIdempotencyKey}:fee`,
-
-        _reference:
-          `${transferReference}:FEE`,
-
-        _provider:
-          "iyanjupay",
-
-        _provider_reference:
-          transferReference,
-
-        _category:
-          "transfer_fee",
-
-        _metadata: {
-          transfer_type:
-            "iyanjupay_internal",
-
-          transfer_reference:
-            transferReference,
-
-          recipient_wallet_id:
-            walletId,
-
-          fee:
-            TRANSFER_FEE,
-        },
-      }
-    );
-
-    if (feeError) {
-      console.error(
-        "Transfer fee failed:",
-        feeError
-      );
-
-      throw new Error(
-        feeError.message ||
-          "Unable to apply transfer fee."
-      );
-    }
-
     // ==========================================================
-    // 4. STORE IDEMPOTENCY RESPONSE
+    // RESPONSE
     // ==========================================================
 
     const responsePayload = {
@@ -820,17 +835,16 @@ Deno.serve(async (req) => {
         null,
 
       fee_transaction_id:
-        feeTransaction?.id ??
         null,
 
       amount:
         roundedAmount,
 
       fee:
-        TRANSFER_FEE,
+        0,
 
       total_charged:
-        totalRequired,
+        roundedAmount,
 
       recipient_wallet_id:
         walletId,
@@ -839,11 +853,17 @@ Deno.serve(async (req) => {
         `₦${roundedAmount.toLocaleString()} sent successfully.`,
     };
 
+    // ==========================================================
+    // STORE IDEMPOTENCY RESPONSE
+    // ==========================================================
+
     const {
       error:
         idempotencyInsertError,
     } = await admin
-      .from("idempotency_keys")
+      .from(
+        "idempotency_keys"
+      )
       .insert({
         key:
           finalIdempotencyKey,
@@ -876,7 +896,7 @@ Deno.serve(async (req) => {
     }
 
     // ==========================================================
-    // SUCCESS
+    // SUCCESS LOG
     // ==========================================================
 
     console.log(
@@ -895,15 +915,19 @@ Deno.serve(async (req) => {
           roundedAmount,
 
         fee:
-          TRANSFER_FEE,
+          0,
 
         total:
-          totalRequired,
+          roundedAmount,
 
         reference:
           transferReference,
       }
     );
+
+    // ==========================================================
+    // SUCCESS RESPONSE
+    // ==========================================================
 
     return new Response(
       JSON.stringify(
@@ -920,7 +944,7 @@ Deno.serve(async (req) => {
     );
   } catch (error) {
     console.error(
-      "iyanju-transfer error:",
+      "iyanjupay-transfer error:",
       error
     );
 

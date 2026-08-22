@@ -47,7 +47,8 @@ const AuthForm = () => {
   // SIGN-IN FIELD
   // --------------------------------------------------
 
-  const [loginIdentifier, setLoginIdentifier] = useState("");
+  const [loginIdentifier, setLoginIdentifier] =
+    useState("");
 
   // --------------------------------------------------
   // VERIFICATION STATE
@@ -64,16 +65,10 @@ const AuthForm = () => {
   ] = useState<VerificationMethod>(null);
 
   const [otp, setOtp] = useState("");
-  const [otpLoading, setOtpLoading] = useState(false);
-
-  // --------------------------------------------------
-  // PHONE / EMAIL OTP SENT STATES
-  // --------------------------------------------------
-
-  const [phoneOtpSent, setPhoneOtpSent] =
+  const [otpLoading, setOtpLoading] =
     useState(false);
 
-  const [emailOtpSent, setEmailOtpSent] =
+  const [phoneOtpSent, setPhoneOtpSent] =
     useState(false);
 
   // --------------------------------------------------
@@ -81,7 +76,9 @@ const AuthForm = () => {
   // --------------------------------------------------
 
   const normalizePhoneNumber = (phone: string) => {
-    let cleaned = phone.trim().replace(/[\s()-]/g, "");
+    let cleaned = phone
+      .trim()
+      .replace(/[\s()-]/g, "");
 
     // 08012345678 -> +2348012345678
     if (cleaned.startsWith("0")) {
@@ -194,7 +191,6 @@ const AuthForm = () => {
       setVerificationMethod(null);
       setOtp("");
       setPhoneOtpSent(false);
-      setEmailOtpSent(false);
       setVerificationDialogOpen(true);
 
       toast({
@@ -341,15 +337,12 @@ const AuthForm = () => {
        * - OTP verification
        * - profiles.phone_verified = true
        * - profiles.phone_verified_at
-       *
-       * No Supabase auth session is required here.
        */
 
       setVerificationDialogOpen(false);
       setVerificationMethod(null);
       setOtp("");
       setPhoneOtpSent(false);
-      setEmailOtpSent(false);
 
       toast({
         title:
@@ -396,14 +389,6 @@ const AuthForm = () => {
     setOtpLoading(true);
 
     try {
-      /*
-       * resend(type: signup) sends the Supabase
-       * signup confirmation email again.
-       *
-       * Because your Confirm sign up template uses
-       * {{ .Token }}, the email contains an OTP
-       * instead of a verification link.
-       */
       const { error } =
         await supabase.auth.resend({
           type: "signup",
@@ -414,14 +399,30 @@ const AuthForm = () => {
         throw error;
       }
 
-      setEmailOtpSent(true);
+      sessionStorage.setItem(
+        "iyanjupay_signup_email",
+        normalizedEmail,
+      );
+
+      setVerificationDialogOpen(false);
+      setVerificationMethod(null);
       setOtp("");
+      setPhoneOtpSent(false);
 
       toast({
-        title: "Email verification code sent",
+        title: "Verification code sent",
         description:
-          "A verification code has been sent to your email.",
+          "Check your email for the verification code.",
       });
+
+      navigate(
+        "/verify-email-otp",
+        {
+          state: {
+            email: normalizedEmail,
+          },
+        },
+      );
     } catch (error: any) {
       console.error(
         "Email OTP send error:",
@@ -434,83 +435,6 @@ const AuthForm = () => {
         description:
           error.message ||
           "Please try again.",
-        variant: "destructive",
-      });
-    } finally {
-      setOtpLoading(false);
-    }
-  };
-
-  // --------------------------------------------------
-  // EMAIL OTP - VERIFY
-  // --------------------------------------------------
-
-  const handleVerifyEmailOTP = async () => {
-    const normalizedEmail =
-      email.trim().toLowerCase();
-
-    const enteredCode = otp.trim();
-
-    /*
-     * Supabase email OTP length is normally 6 digits
-     * unless your project's OTP settings specify another
-     * length.
-     */
-    if (!/^\d{6}$/.test(enteredCode)) {
-      toast({
-        title: "Invalid code",
-        description:
-          "Enter the 6-digit verification code you received by email.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setOtpLoading(true);
-
-    try {
-      const {
-        data,
-        error,
-      } = await supabase.auth.verifyOtp({
-        email: normalizedEmail,
-        token: enteredCode,
-        type: "email",
-      });
-
-      if (error) {
-        throw error;
-      }
-
-      if (!data.user) {
-        throw new Error(
-          "Email verification could not be completed.",
-        );
-      }
-
-      setVerificationDialogOpen(false);
-      setVerificationMethod(null);
-      setOtp("");
-      setPhoneOtpSent(false);
-      setEmailOtpSent(false);
-
-      toast({
-        title:
-          "Email verified successfully",
-        description:
-          "Your email address has been verified. You can now continue.",
-      });
-    } catch (error: any) {
-      console.error(
-        "Email OTP verification error:",
-        error,
-      );
-
-      toast({
-        title: "Verification failed",
-        description:
-          error.message ||
-          "The email verification code is incorrect or expired.",
         variant: "destructive",
       });
     } finally {
@@ -702,7 +626,9 @@ const AuthForm = () => {
                   <Button
                     type="submit"
                     className="w-full bg-blue-600 hover:bg-blue-700"
-                    disabled={isLoading}
+                    disabled={
+                      isLoading
+                    }
                   >
                     {isLoading
                       ? "Signing In..."
@@ -716,7 +642,9 @@ const AuthForm = () => {
                         "/forgot-password",
                       )
                     }
-                    disabled={isLoading}
+                    disabled={
+                      isLoading
+                    }
                     className="w-full text-sm text-blue-600 hover:text-blue-700 hover:underline disabled:opacity-50"
                   >
                     Forgot password?
@@ -760,7 +688,9 @@ const AuthForm = () => {
                     <Input
                       id="phoneNumber"
                       type="tel"
-                      value={phoneNumber}
+                      value={
+                        phoneNumber
+                      }
                       onChange={(e) =>
                         setPhoneNumber(
                           e.target.value,
@@ -818,7 +748,9 @@ const AuthForm = () => {
                   <Button
                     type="submit"
                     className="w-full bg-blue-600 hover:bg-blue-700"
-                    disabled={isLoading}
+                    disabled={
+                      isLoading
+                    }
                   >
                     {isLoading
                       ? "Creating Account..."
@@ -851,7 +783,6 @@ const AuthForm = () => {
               );
               setOtp("");
               setPhoneOtpSent(false);
-              setEmailOtpSent(false);
             }
           }
         }}
@@ -873,8 +804,6 @@ const AuthForm = () => {
 
           {!verificationMethod && (
             <div className="space-y-3 pt-4">
-              {/* PHONE */}
-
               <Button
                 type="button"
                 variant="outline"
@@ -885,7 +814,6 @@ const AuthForm = () => {
                   );
                   setOtp("");
                   setPhoneOtpSent(false);
-                  setEmailOtpSent(false);
                 }}
               >
                 <span className="text-2xl mr-4">
@@ -903,8 +831,6 @@ const AuthForm = () => {
                 </div>
               </Button>
 
-              {/* EMAIL */}
-
               <Button
                 type="button"
                 variant="outline"
@@ -913,9 +839,6 @@ const AuthForm = () => {
                   setVerificationMethod(
                     "email",
                   );
-                  setOtp("");
-                  setPhoneOtpSent(false);
-                  setEmailOtpSent(false);
                 }}
               >
                 <span className="text-2xl mr-4">
@@ -936,7 +859,7 @@ const AuthForm = () => {
           )}
 
           {/* ========================================
-              PHONE OTP
+              PHONE VERIFICATION
           ======================================== */}
 
           {verificationMethod ===
@@ -1044,9 +967,10 @@ const AuthForm = () => {
                   );
                   setOtp("");
                   setPhoneOtpSent(false);
-                  setEmailOtpSent(false);
                 }}
-                disabled={otpLoading}
+                disabled={
+                  otpLoading
+                }
               >
                 ← Choose another method
               </Button>
@@ -1054,7 +978,7 @@ const AuthForm = () => {
           )}
 
           {/* ========================================
-              EMAIL OTP
+              EMAIL VERIFICATION
           ======================================== */}
 
           {verificationMethod ===
@@ -1070,97 +994,28 @@ const AuthForm = () => {
                 </p>
               </div>
 
-              {!emailOtpSent ? (
-                <Button
-                  type="button"
-                  className="w-full bg-blue-600 hover:bg-blue-700"
-                  onClick={
-                    handleSendEmailOTP
-                  }
-                  disabled={otpLoading}
-                >
-                  {otpLoading
-                    ? "Sending Code..."
-                    : "Send Verification Code"}
-                </Button>
-              ) : (
-                <>
-                  <div className="space-y-2">
-                    <Label htmlFor="email-otp">
-                      Email Verification Code
-                    </Label>
-
-                    <Input
-                      id="email-otp"
-                      type="text"
-                      inputMode="numeric"
-                      autoComplete="one-time-code"
-                      maxLength={6}
-                      value={otp}
-                      onChange={(e) =>
-                        setOtp(
-                          e.target.value
-                            .replace(
-                              /\D/g,
-                              "",
-                            )
-                            .slice(
-                              0,
-                              6,
-                            ),
-                        )
-                      }
-                      placeholder="Enter 6-digit code"
-                      className="text-center text-xl tracking-[0.35em]"
-                    />
-                  </div>
-
-                  <Button
-                    type="button"
-                    className="w-full bg-blue-600 hover:bg-blue-700"
-                    onClick={
-                      handleVerifyEmailOTP
-                    }
-                    disabled={
-                      otpLoading ||
-                      !/^\d{6}$/.test(
-                        otp,
-                      )
-                    }
-                  >
-                    {otpLoading
-                      ? "Verifying..."
-                      : "Verify Email"}
-                  </Button>
-
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    className="w-full"
-                    onClick={
-                      handleSendEmailOTP
-                    }
-                    disabled={
-                      otpLoading
-                    }
-                  >
-                    Resend Code
-                  </Button>
-                </>
-              )}
+              <Button
+                type="button"
+                className="w-full bg-blue-600 hover:bg-blue-700"
+                onClick={
+                  handleSendEmailOTP
+                }
+                disabled={otpLoading}
+              >
+                {otpLoading
+                  ? "Sending Code..."
+                  : "Send Verification Code"}
+              </Button>
 
               <Button
                 type="button"
                 variant="ghost"
                 className="w-full"
-                onClick={() => {
+                onClick={() =>
                   setVerificationMethod(
                     null,
-                  );
-                  setOtp("");
-                  setPhoneOtpSent(false);
-                  setEmailOtpSent(false);
-                }}
+                  )
+                }
                 disabled={otpLoading}
               >
                 ← Choose another method

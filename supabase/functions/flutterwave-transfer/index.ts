@@ -19,8 +19,24 @@ import {
  *
  * Flutterwave receives      ₦100
  *
+ * SENDER IDENTIFICATION:
+ *
+ * Sender name:
+ *   Retrieved securely from the authenticated user's profile.
+ *
+ * Narration:
+ *   "SENDER NAME - IyanjuPay"
+ *
+ * Meta:
+ *   sender_name
+ *   sender_platform = IyanjuPay
+ *
  * IMPORTANT:
  *
+ * - beneficiary_name remains the recipient's name.
+ * - IyanjuPay is NOT pretending to be the originating bank.
+ * - Flutterwave/MFB remains the actual payout institution.
+ * - The IyanjuPay identity is communicated through narration/meta.
  * - Flutterwave balance check uses transfer amount only.
  * - Wallet debit uses transfer amount + IyanjuPay fee.
  * - Flutterwave receives only the requested transfer amount.
@@ -34,8 +50,6 @@ import {
  * ============================================================
  * IYANJUPAY TRANSFER FEE
  * ============================================================
- *
- * This is the fixed IyanjuPay charge for bank transfers.
  */
 
 const IYANJUPAY_TRANSFER_FEE = 10;
@@ -108,6 +122,71 @@ Deno.serve(async (req) => {
 
     /*
      * ========================================================
+     * GET SENDER PROFILE
+     * ========================================================
+     *
+     * The sender is the authenticated IyanjuPay user.
+     *
+     * We intentionally DO NOT use beneficiary_name here.
+     *
+     * beneficiary_name = recipient
+     * senderName       = authenticated IyanjuPay user
+     */
+
+    const {
+      data: senderProfile,
+      error: senderProfileError,
+    } = await supabase
+      .from("profiles")
+      .select("full_name")
+      .eq("id", user.id)
+      .maybeSingle();
+
+    if (senderProfileError) {
+      console.error(
+        "Unable to retrieve sender profile:",
+        senderProfileError,
+      );
+
+      return json(
+        {
+          success: false,
+          stage: "sender_profile",
+          error:
+            "Unable to retrieve your profile information.",
+        },
+        500,
+      );
+    }
+
+    const senderName =
+      String(
+        senderProfile?.full_name ?? "",
+      ).trim();
+
+    if (!senderName) {
+      return json(
+        {
+          success: false,
+          stage: "sender_profile",
+          error:
+            "Your profile name is required before you can make a bank transfer.",
+        },
+        400,
+      );
+    }
+
+    console.log(
+      "IyanjuPay transfer sender:",
+      JSON.stringify({
+        user_id: user.id,
+        sender_name: senderName,
+        sender_platform: "IyanjuPay",
+      }),
+    );
+
+    /*
+     * ========================================================
      * REQUEST BODY
      * ========================================================
      */
@@ -146,10 +225,23 @@ Deno.serve(async (req) => {
       body?.beneficiary_name ?? "",
     ).trim();
 
-    const narration = String(
-      body?.narration ??
-        "IyanjuPay bank transfer",
-    ).trim();
+    /*
+     * ========================================================
+     * SENDER/APP NARRATION
+     * ========================================================
+     *
+     * We intentionally generate this server-side.
+     *
+     * Example:
+     *
+     * Aremu Lawal - IyanjuPay
+     *
+     * This prevents the frontend from pretending to be
+     * another sender.
+     */
+
+    const narration =
+      `${senderName} - IyanjuPay`;
 
     const idempotencyKey = String(
       body?.idempotency_key ?? "",
@@ -240,10 +332,11 @@ Deno.serve(async (req) => {
      *
      * amount       = amount Flutterwave sends
      * fee          = IyanjuPay charge
-     * totalCharged = amount actually removed from user's wallet
+     * totalCharged = amount removed from user's wallet
      */
 
-    const fee = IYANJUPAY_TRANSFER_FEE;
+    const fee =
+      IYANJUPAY_TRANSFER_FEE;
 
     const totalCharged =
       amount + fee;
@@ -297,6 +390,12 @@ Deno.serve(async (req) => {
       JSON.stringify({
         user_id: user.id,
 
+        sender_name:
+          senderName,
+
+        sender_platform:
+          "IyanjuPay",
+
         transfer_amount:
           amount,
 
@@ -315,6 +414,8 @@ Deno.serve(async (req) => {
         beneficiary_name:
           beneficiaryName,
 
+        narration,
+
         reference,
 
         idempotency_key:
@@ -329,20 +430,12 @@ Deno.serve(async (req) => {
      * CHECK FLUTTERWAVE AVAILABLE NGN BALANCE
      * ========================================================
      *
-     * IMPORTANT:
-     *
      * Flutterwave only needs enough money to execute the
      * provider transfer.
      *
-     * The IyanjuPay ₦10 fee is NOT sent to Flutterwave.
-     *
-     * Therefore:
+     * IyanjuPay's ₦10 fee is NOT sent to Flutterwave.
      *
      * Flutterwave balance requirement = amount
-     *
-     * NOT:
-     *
-     * amount + fee
      */
 
     console.log(
@@ -561,12 +654,6 @@ Deno.serve(async (req) => {
      * Wallet is charged:
      *
      * transfer amount + IyanjuPay fee
-     *
-     * Example:
-     *
-     * transfer = ₦100
-     * fee      = ₦10
-     * debit    = ₦110
      */
 
     console.log(
@@ -614,6 +701,23 @@ Deno.serve(async (req) => {
           "transfer",
 
         _metadata: {
+          /*
+           * SENDER
+           */
+
+          sender_name:
+            senderName,
+
+          sender_platform:
+            "IyanjuPay",
+
+          sender_user_id:
+            user.id,
+
+          /*
+           * RECIPIENT
+           */
+
           account_number:
             accountNumber,
 
@@ -625,11 +729,8 @@ Deno.serve(async (req) => {
 
           narration,
 
-          status:
-            "pending",
-
           /*
-           * Transfer pricing breakdown
+           * TRANSFER PRICING
            */
 
           transfer_amount:
@@ -648,7 +749,7 @@ Deno.serve(async (req) => {
             "NGN",
 
           /*
-           * Provider requirement
+           * PROVIDER
            */
 
           flutterwave_transfer_amount:
@@ -662,6 +763,9 @@ Deno.serve(async (req) => {
 
           currency:
             "NGN",
+
+          status:
+            "pending",
         },
       },
     );
@@ -705,6 +809,9 @@ Deno.serve(async (req) => {
         transaction_id:
           transactionId,
 
+        sender_name:
+          senderName,
+
         transfer_amount:
           amount,
 
@@ -722,17 +829,30 @@ Deno.serve(async (req) => {
      * INITIATE FLUTTERWAVE TRANSFER
      * ========================================================
      *
-     * IMPORTANT:
-     *
      * Flutterwave receives ONLY the transfer amount.
      *
      * It does NOT receive the IyanjuPay ₦10 fee.
+     *
+     * beneficiary_name = recipient
+     *
+     * narration = sender + IyanjuPay
      */
 
     console.log(
       "Initiating Flutterwave transfer:",
       JSON.stringify({
         reference,
+
+        sender_name:
+          senderName,
+
+        sender_platform:
+          "IyanjuPay",
+
+        beneficiary_name:
+          beneficiaryName,
+
+        narration,
 
         flutterwave_amount:
           amount,
@@ -765,6 +885,7 @@ Deno.serve(async (req) => {
                 /*
                  * ONLY THE BENEFICIARY TRANSFER AMOUNT
                  */
+
                 amount,
 
                 currency:
@@ -773,14 +894,48 @@ Deno.serve(async (req) => {
                 debit_currency:
                   "NGN",
 
+                /*
+                 * RECIPIENT NAME
+                 *
+                 * DO NOT put senderName here.
+                 */
+
                 beneficiary_name:
                   beneficiaryName,
+
+                /*
+                 * SENDER / PLATFORM IDENTIFICATION
+                 *
+                 * Example:
+                 *
+                 * Aremu Lawal - IyanjuPay
+                 */
 
                 narration,
 
                 reference,
 
+                /*
+                 * ADDITIONAL IYANJUPAY INFORMATION
+                 */
+
                 meta: [
+                  {
+                    key:
+                      "sender_name",
+
+                    value:
+                      senderName,
+                  },
+
+                  {
+                    key:
+                      "sender_platform",
+
+                    value:
+                      "IyanjuPay",
+                  },
+
                   {
                     key:
                       "iyanjupay_user_id",
@@ -836,15 +991,10 @@ Deno.serve(async (req) => {
       /*
        * ======================================================
        * NETWORK / PROXY FAILURE
+       * ======================================================
        *
        * Flutterwave was NOT confirmed to have received the
        * request, so refund the COMPLETE wallet charge.
-       *
-       * Example:
-       *
-       * wallet debit = ₦110
-       * refund       = ₦110
-       * ======================================================
        */
 
       console.error(
@@ -891,6 +1041,12 @@ Deno.serve(async (req) => {
             original_reference:
               reference,
 
+            sender_name:
+              senderName,
+
+            sender_platform:
+              "IyanjuPay",
+
             original_transfer_amount:
               amount,
 
@@ -922,6 +1078,12 @@ Deno.serve(async (req) => {
           .from("transactions")
           .update({
             metadata: {
+              sender_name:
+                senderName,
+
+              sender_platform:
+                "IyanjuPay",
+
               account_number:
                 accountNumber,
 
@@ -994,6 +1156,12 @@ Deno.serve(async (req) => {
             "failed",
 
           metadata: {
+            sender_name:
+              senderName,
+
+            sender_platform:
+              "IyanjuPay",
+
             account_number:
               accountNumber,
 
@@ -1176,6 +1344,12 @@ Deno.serve(async (req) => {
             original_reference:
               reference,
 
+            sender_name:
+              senderName,
+
+            sender_platform:
+              "IyanjuPay",
+
             original_transfer_amount:
               amount,
 
@@ -1213,6 +1387,12 @@ Deno.serve(async (req) => {
           .from("transactions")
           .update({
             metadata: {
+              sender_name:
+                senderName,
+
+              sender_platform:
+                "IyanjuPay",
+
               account_number:
                 accountNumber,
 
@@ -1288,6 +1468,12 @@ Deno.serve(async (req) => {
             "flutterwave",
 
           metadata: {
+            sender_name:
+              senderName,
+
+            sender_platform:
+              "IyanjuPay",
+
             account_number:
               accountNumber,
 
@@ -1419,6 +1605,12 @@ Deno.serve(async (req) => {
             "flutterwave",
 
           metadata: {
+            sender_name:
+              senderName,
+
+            sender_platform:
+              "IyanjuPay",
+
             account_number:
               accountNumber,
 
@@ -1506,6 +1698,23 @@ Deno.serve(async (req) => {
           flutterwaveTransferId,
 
         metadata: {
+          /*
+           * SENDER
+           */
+
+          sender_name:
+            senderName,
+
+          sender_platform:
+            "IyanjuPay",
+
+          sender_user_id:
+            user.id,
+
+          /*
+           * RECIPIENT
+           */
+
           account_number:
             accountNumber,
 
@@ -1518,7 +1727,7 @@ Deno.serve(async (req) => {
           narration,
 
           /*
-           * Transfer pricing
+           * TRANSFER PRICING
            */
 
           transfer_amount:
@@ -1531,7 +1740,7 @@ Deno.serve(async (req) => {
             totalCharged,
 
           /*
-           * Provider transfer
+           * PROVIDER TRANSFER
            */
 
           flutterwave_status:
@@ -1595,6 +1804,22 @@ Deno.serve(async (req) => {
         flutterwave_status:
           transferStatus,
 
+        /*
+         * SENDER INFORMATION
+         */
+
+        sender: {
+          name:
+            senderName,
+
+          platform:
+            "IyanjuPay",
+        },
+
+        /*
+         * BENEFICIARY INFORMATION
+         */
+
         beneficiary: {
           name:
             beneficiaryName,
@@ -1607,13 +1832,7 @@ Deno.serve(async (req) => {
         },
 
         /*
-         * IMPORTANT:
-         *
-         * These values allow the frontend to display:
-         *
-         * Transfer: ₦100
-         * Fee:       ₦10
-         * Total:    ₦110
+         * TRANSFER PRICING
          */
 
         transfer_amount:

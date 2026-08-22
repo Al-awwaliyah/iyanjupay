@@ -8,6 +8,7 @@ const corsHeaders = {
     "POST, OPTIONS",
 };
 
+
 const TRANSFER_FEE = 10;
 
 Deno.serve(async (req) => {

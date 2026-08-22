@@ -16,7 +16,7 @@ import {
 } from "react-router-dom";
 
 import AppSplash from "@/components/AppSplash";
-
+import PWAInstallPrompt from "@/components/PWAInstallPrompt";
 import Index from "./pages/Index";
 import ForgotPassword from "./pages/ForgotPassword";
 import VerifyEmailOtp from "./pages/VerifyEmailOtp";
@@ -115,6 +115,7 @@ const App = () => {
               element={<NotFound />}
             />
           </Routes>
+          <PWAInstallPrompt />
         </BrowserRouter>
       </TooltipProvider>
     </QueryClientProvider>

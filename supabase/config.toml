@@ -4,7 +4,7 @@ project_id = "eekfcjpoyfcuzvvsgwaw"
 verify_jwt = true
 
 [functions.iyanjuPay-transfer]
-verify_jwt = false
+verify_jwt = true
 
 [functions.flutterwave-banks]
 verify_jwt = true

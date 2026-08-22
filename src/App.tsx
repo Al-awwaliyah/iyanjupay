@@ -5,7 +5,10 @@ import {
   QueryClient,
   QueryClientProvider,
 } from "@tanstack/react-query";
-import React, { useEffect, useState } from "react";
+import React, {
+  useEffect,
+  useState,
+} from "react";
 import {
   BrowserRouter,
   Routes,
@@ -16,6 +19,7 @@ import AppSplash from "@/components/AppSplash";
 
 import Index from "./pages/Index";
 import ForgotPassword from "./pages/ForgotPassword";
+import VerifyEmailOtp from "./pages/VerifyEmailOtp";
 import VerifyRecoveryOtp from "./pages/VerifyRecoveryOtp";
 import ResetPassword from "./pages/ResetPassword";
 import NotFound from "./pages/NotFound";
@@ -53,7 +57,9 @@ const App = () => {
    */
 
   return (
-    <QueryClientProvider client={queryClient}>
+    <QueryClientProvider
+      client={queryClient}
+    >
       <TooltipProvider>
         {/* Toast notifications */}
         <Toaster />
@@ -70,25 +76,40 @@ const App = () => {
               element={<Index />}
             />
 
-            {/* Forgot password */}
+            {/* ---------------------------------- */}
+            {/* SIGNUP EMAIL VERIFICATION          */}
+            {/* ---------------------------------- */}
+
+            <Route
+              path="/verify-email-otp"
+              element={<VerifyEmailOtp />}
+            />
+
+            {/* ---------------------------------- */}
+            {/* PASSWORD RECOVERY                  */}
+            {/* ---------------------------------- */}
+
             <Route
               path="/forgot-password"
               element={<ForgotPassword />}
             />
 
-            {/* Password recovery OTP */}
             <Route
               path="/verify-recovery-otp"
-              element={<VerifyRecoveryOtp />}
+              element={
+                <VerifyRecoveryOtp />
+              }
             />
 
-            {/* Set new password */}
             <Route
               path="/reset-password"
               element={<ResetPassword />}
             />
 
-            {/* 404 */}
+            {/* ---------------------------------- */}
+            {/* 404                                */}
+            {/* ---------------------------------- */}
+
             <Route
               path="*"
               element={<NotFound />}

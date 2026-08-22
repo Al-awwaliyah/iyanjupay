@@ -4,6 +4,7 @@ import { useToast } from "@/hooks/use-toast";
 
 interface Wallet {
   id: string;
+  wallet_id: string;
   balance: number;
   virtual_account_number: string;
 }
@@ -18,11 +19,6 @@ export const useWallet = (userId: string | undefined) => {
    * ============================================================
    * FETCH WALLET
    * ============================================================
-   *
-   * The browser only READS the wallet.
-   *
-   * Wallet balance changes must happen through secure
-   * server-side Edge Functions.
    */
   const fetchWallet = useCallback(async () => {
     if (!userId) {
@@ -40,7 +36,7 @@ export const useWallet = (userId: string | undefined) => {
       } = await supabase
         .from("wallets")
         .select(
-          "id, balance, virtual_account_number"
+          "id, wallet_id, balance, virtual_account_number"
         )
         .eq("user_id", userId)
         .maybeSingle();
@@ -57,6 +53,7 @@ export const useWallet = (userId: string | undefined) => {
       if (data) {
         setWallet({
           id: data.id,
+          wallet_id: data.wallet_id || "",
           balance: Number(data.balance) || 0,
           virtual_account_number:
             data.virtual_account_number || "",
@@ -94,10 +91,15 @@ export const useWallet = (userId: string | undefined) => {
       if (bootstrapData?.wallet) {
         setWallet({
           id: bootstrapData.wallet.id,
+
+          wallet_id:
+            bootstrapData.wallet.wallet_id || "",
+
           balance:
             Number(
               bootstrapData.wallet.balance
             ) || 0,
+
           virtual_account_number:
             bootstrapData.wallet
               .virtual_account_number || "",
@@ -117,7 +119,7 @@ export const useWallet = (userId: string | undefined) => {
       } = await supabase
         .from("wallets")
         .select(
-          "id, balance, virtual_account_number"
+          "id, wallet_id, balance, virtual_account_number"
         )
         .eq("user_id", userId)
         .maybeSingle();
@@ -129,10 +131,15 @@ export const useWallet = (userId: string | undefined) => {
       if (refreshedWallet) {
         setWallet({
           id: refreshedWallet.id,
+
+          wallet_id:
+            refreshedWallet.wallet_id || "",
+
           balance:
             Number(
               refreshedWallet.balance
             ) || 0,
+
           virtual_account_number:
             refreshedWallet
               .virtual_account_number || "",
@@ -170,10 +177,6 @@ export const useWallet = (userId: string | undefined) => {
    * ============================================================
    * REFRESH WALLET
    * ============================================================
-   *
-   * This ONLY reads the latest wallet information.
-   *
-   * It never directly updates the wallet balance.
    */
   const refreshWallet = useCallback(async () => {
     if (!userId) {
@@ -187,7 +190,7 @@ export const useWallet = (userId: string | undefined) => {
       } = await supabase
         .from("wallets")
         .select(
-          "id, balance, virtual_account_number"
+          "id, wallet_id, balance, virtual_account_number"
         )
         .eq("user_id", userId)
         .maybeSingle();
@@ -202,8 +205,13 @@ export const useWallet = (userId: string | undefined) => {
 
       const updatedWallet: Wallet = {
         id: data.id,
+
+        wallet_id:
+          data.wallet_id || "",
+
         balance:
           Number(data.balance) || 0,
+
         virtual_account_number:
           data.virtual_account_number || "",
       };
@@ -225,28 +233,12 @@ export const useWallet = (userId: string | undefined) => {
    * ============================================================
    * REALTIME WALLET BALANCE
    * ============================================================
-   *
-   * IMPORTANT:
-   *
-   * We use a UNIQUE channel name for every hook instance.
-   *
-   * This prevents multiple components/hooks from accidentally
-   * sharing the same Supabase Realtime channel.
-   *
-   * It also prevents:
-   *
-   * "cannot add postgres_changes callbacks ... after subscribe()"
-   *
-   * errors.
    */
   useEffect(() => {
     if (!userId) {
       return;
     }
 
-    /**
-     * Create a genuinely unique channel name.
-     */
     const uniqueId =
       typeof crypto !== "undefined" &&
       typeof crypto.randomUUID === "function"
@@ -260,12 +252,6 @@ export const useWallet = (userId: string | undefined) => {
 
     let isMounted = true;
 
-    /**
-     * Create channel.
-     *
-     * The postgres_changes callback MUST be registered
-     * BEFORE subscribe().
-     */
     const channel = supabase
       .channel(channelName)
       .on(
@@ -285,10 +271,6 @@ export const useWallet = (userId: string | undefined) => {
             payload.new as Partial<Wallet>;
 
           setWallet((current) => {
-            /**
-             * If the wallet has not loaded yet,
-             * do not create an incomplete wallet.
-             */
             if (!current) {
               return current;
             }
@@ -299,6 +281,10 @@ export const useWallet = (userId: string | undefined) => {
               id:
                 updated.id ??
                 current.id,
+
+              wallet_id:
+                updated.wallet_id ??
+                current.wallet_id,
 
               balance:
                 updated.balance !== undefined
@@ -315,9 +301,6 @@ export const useWallet = (userId: string | undefined) => {
         }
       );
 
-    /**
-     * Subscribe AFTER .on()
-     */
     channel.subscribe((status) => {
       if (status === "SUBSCRIBED") {
         console.log(
@@ -341,17 +324,9 @@ export const useWallet = (userId: string | undefined) => {
       }
     });
 
-    /**
-     * ----------------------------------------------------------
-     * CLEANUP
-     * ----------------------------------------------------------
-     */
     return () => {
       isMounted = false;
 
-      /**
-       * Remove THIS exact channel instance.
-       */
       supabase
         .removeChannel(channel)
         .then(() => {
@@ -373,14 +348,6 @@ export const useWallet = (userId: string | undefined) => {
    * ============================================================
    * BACKWARD COMPATIBILITY
    * ============================================================
-   *
-   * Existing code may still call:
-   *
-   * updateBalance(...)
-   *
-   * We keep it so existing components don't break.
-   *
-   * It DOES NOT directly modify the database.
    */
   const updateBalance = async (
     _newBalance?: number
@@ -397,19 +364,10 @@ export const useWallet = (userId: string | undefined) => {
     wallet,
     loading,
 
-    /**
-     * Legacy compatibility.
-     */
     updateBalance,
 
-    /**
-     * Preferred wallet refresh method.
-     */
     refreshWallet,
 
-    /**
-     * Existing Dashboard compatibility.
-     */
     refetch: fetchWallet,
   };
 };

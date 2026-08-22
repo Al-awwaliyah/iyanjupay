@@ -6,6 +6,12 @@ verify_jwt = true
 [functions.flutterwave-banks]
 verify_jwt = true
 
+[functions.wallet-bootstrap]
+verify_jwt = true
+
+[functions.iyanjuPay-transfer]
+verify_jwt = true
+
 [functions.resolve-bank-account]
 verify_jwt = true
 

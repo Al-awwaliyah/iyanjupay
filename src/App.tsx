@@ -6,12 +6,18 @@ import {
   QueryClientProvider,
 } from "@tanstack/react-query";
 import React, { useEffect, useState } from "react";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import {
+  BrowserRouter,
+  Routes,
+  Route,
+} from "react-router-dom";
 
 import AppSplash from "@/components/AppSplash";
 
-import ResetPassword from "./pages/ResetPassword";
 import Index from "./pages/Index";
+import ForgotPassword from "./pages/ForgotPassword";
+import VerifyRecoveryOtp from "./pages/VerifyRecoveryOtp";
+import ResetPassword from "./pages/ResetPassword";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -34,14 +40,6 @@ const App = () => {
    * ============================================================
    * APP SPLASH SCREEN
    * ============================================================
-   *
-   * The splash screen is rendered before the main application.
-   *
-   * It uses AppSplash, so the splash itself can load from the
-   * locally bundled /public/icon-180.png asset without requiring
-   * the internet.
-   *
-   * Duration: 10 seconds
    */
 
   if (showSplash) {
@@ -57,7 +55,6 @@ const App = () => {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-
         {/* Toast notifications */}
         <Toaster />
 
@@ -67,14 +64,25 @@ const App = () => {
         {/* Application Router */}
         <BrowserRouter>
           <Routes>
-
             {/* Main application */}
             <Route
               path="/"
               element={<Index />}
             />
 
-            {/* Password reset */}
+            {/* Forgot password */}
+            <Route
+              path="/forgot-password"
+              element={<ForgotPassword />}
+            />
+
+            {/* Password recovery OTP */}
+            <Route
+              path="/verify-recovery-otp"
+              element={<VerifyRecoveryOtp />}
+            />
+
+            {/* Set new password */}
             <Route
               path="/reset-password"
               element={<ResetPassword />}
@@ -85,10 +93,8 @@ const App = () => {
               path="*"
               element={<NotFound />}
             />
-
           </Routes>
         </BrowserRouter>
-
       </TooltipProvider>
     </QueryClientProvider>
   );

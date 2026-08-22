@@ -803,15 +803,27 @@ const Dashboard = () => {
   };
 
   // ============================================================
-  // BANK TRANSFER
+  // TRANSFER HANDLER
+  //
+  // IyanjuPay transfer:
+  //   TransferModal
+  //      ↓
+  //   iyanjuPay-transfer
+  //      ↓
+  //   recipient wallet_id
   //
   // IMPORTANT:
-  // IyanjuPay-to-IyanjuPay transfers DO NOT come here.
+  // Username is NOT used for IyanjuPay transfers.
   //
-  // TransferModal directly calls:
-  // "iyanjuPay-transfer"
+  // The Dashboard bank handler must never process an
+  // IyanjuPay wallet-to-wallet transfer.
   //
-  // This handler remains for the existing bank transfer flow.
+  // Bank transfer:
+  //   TransferModal
+  //      ↓
+  //   Dashboard
+  //      ↓
+  //   flutterwave-transfer
   // ============================================================
 
   const handleTransfer = async (
@@ -849,14 +861,20 @@ const Dashboard = () => {
     // ==========================================================
     // SAFETY CHECK
     //
-    // The new TransferModal handles IyanjuPay transfers
-    // directly. If one somehow reaches this callback, stop it
-    // from accidentally going through Flutterwave.
+    // IyanjuPay transfers should already be handled by
+    // TransferModal -> iyanjuPay-transfer.
+    //
+    // If an IyanjuPay transfer reaches this callback,
+    // do NOT send it to Flutterwave.
     // ==========================================================
 
     if (
       details?.type ===
-      "iyanjupay"
+        "iyanjupay" ||
+      details?.transferType ===
+        "iyanjupay" ||
+      details?.recipientType ===
+        "iyanjupay"
     ) {
       console.warn(
         "IyanjuPay transfer reached Dashboard bank handler unexpectedly."
@@ -940,7 +958,7 @@ const Dashboard = () => {
     }
 
     // ==========================================================
-    // EXISTING BANK TRANSFER
+    // BANK TRANSFER
     // ==========================================================
 
     try {
@@ -1668,16 +1686,19 @@ const Dashboard = () => {
       {/* ========================================================
           TRANSFER MODAL
 
-          TransferModal now handles TWO routes:
+          IyanjuPay:
+            wallet_id
+              ↓
+            iyanjuPay-transfer
+              ↓
+            recipient wallet
 
-          1. IyanjuPay User
-             → iyanjuPay-transfer
-             → ₦0 fee
-
-          2. Bank Account
-             → Dashboard handleTransfer()
-             → flutterwave-transfer
-             → existing ₦10 fee
+          Bank:
+            account number + bank code
+              ↓
+            flutterwave-transfer
+              ↓
+            Flutterwave
       ======================================================== */}
 
       <TransferModal

@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -19,17 +20,25 @@ serve(async (req) => {
       TWILIO_ACCOUNT_SID,
       TWILIO_AUTH_TOKEN,
       TWILIO_VERIFY_SERVICE_SID,
+      SUPABASE_URL,
+      SUPABASE_SERVICE_ROLE_KEY,
     } = Deno.env.toObject();
 
     if (
       !TWILIO_ACCOUNT_SID ||
       !TWILIO_AUTH_TOKEN ||
-      !TWILIO_VERIFY_SERVICE_SID
+      !TWILIO_VERIFY_SERVICE_SID ||
+      !SUPABASE_URL ||
+      !SUPABASE_SERVICE_ROLE_KEY
     ) {
-      throw new Error("Twilio secrets are not configured");
+      throw new Error("Required secrets are not configured");
     }
 
-    const { action, phone, code } = await req.json();
+    const body = await req.json();
+
+    const action = body.action;
+    const phone = body.phone;
+    const code = body.code;
 
     if (!phone) {
       return new Response(
@@ -54,9 +63,9 @@ serve(async (req) => {
     const serviceUrl =
       `https://verify.twilio.com/v2/Services/${TWILIO_VERIFY_SERVICE_SID}`;
 
-    // ==============================
+    // ------------------------------------------
     // SEND OTP
-    // ==============================
+    // ------------------------------------------
 
     if (action === "send") {
       const response = await fetch(
@@ -112,15 +121,16 @@ serve(async (req) => {
       );
     }
 
-    // ==============================
-    // VERIFY OTP
-    // ==============================
+    // ------------------------------------------
+    // CHECK OTP
+    // ------------------------------------------
 
     if (action === "check") {
       if (!code) {
         return new Response(
           JSON.stringify({
             success: false,
+            verified: false,
             error: "Verification code is required",
           }),
           {
@@ -173,14 +183,96 @@ serve(async (req) => {
 
       const verified = data.status === "approved";
 
+      if (!verified) {
+        return new Response(
+          JSON.stringify({
+            success: false,
+            verified: false,
+            status: data.status,
+            message: "Invalid verification code",
+          }),
+          {
+            status: 200,
+            headers: {
+              ...corsHeaders,
+              "Content-Type": "application/json",
+            },
+          },
+        );
+      }
+
+      // ------------------------------------------
+      // UPDATE PROFILE USING SERVICE ROLE
+      // ------------------------------------------
+
+      const supabaseAdmin = createClient(
+        SUPABASE_URL,
+        SUPABASE_SERVICE_ROLE_KEY,
+      );
+
+      const { data: profile, error: profileError } =
+        await supabaseAdmin
+          .from("profiles")
+          .select("id, phone_number")
+          .eq("phone_number", phone)
+          .maybeSingle();
+
+      if (profileError) {
+        console.error(
+          "Profile lookup error:",
+          profileError,
+        );
+
+        throw new Error(
+          "Unable to find the account associated with this phone number.",
+        );
+      }
+
+      if (!profile) {
+        return new Response(
+          JSON.stringify({
+            success: false,
+            verified: false,
+            error:
+              "No IyanjuPay account was found for this phone number.",
+          }),
+          {
+            status: 404,
+            headers: {
+              ...corsHeaders,
+              "Content-Type": "application/json",
+            },
+          },
+        );
+      }
+
+      const { error: updateError } =
+        await supabaseAdmin
+          .from("profiles")
+          .update({
+            phone_verified: true,
+            phone_verified_at: new Date().toISOString(),
+          })
+          .eq("id", profile.id);
+
+      if (updateError) {
+        console.error(
+          "Profile verification update error:",
+          updateError,
+        );
+
+        throw new Error(
+          "Phone was verified, but the verification status could not be saved.",
+        );
+      }
+
       return new Response(
         JSON.stringify({
-          success: verified,
-          verified,
+          success: true,
+          verified: true,
           status: data.status,
-          message: verified
-            ? "Phone number verified successfully"
-            : "Invalid verification code",
+          message:
+            "Phone number verified successfully",
         }),
         {
           status: 200,

@@ -141,24 +141,9 @@ const AuthForm = () => {
         throw new Error("Unable to create your account.");
       }
 
-      // Store the phone number in profiles as well.
-      const { error: profileError } = await supabase
-        .from("profiles")
-        .upsert(
-          {
-            id: data.user.id,
-            full_name: fullName.trim(),
-            phone_number: normalizedPhone,
-            email: email.trim(),
-          },
-          {
-            onConflict: "id",
-          },
-        );
-
-      if (profileError) {
-        console.error("Profile update error:", profileError);
-      }
+      // The profile is created server-side by the
+      // auth.users -> profiles database trigger.
+      // Do NOT upsert into profiles from the client here.
 
       // Open verification choice.
       setVerificationMethod(null);
@@ -225,7 +210,7 @@ const AuthForm = () => {
 
       toast({
         title: "Verification code sent",
-        description: `A verification code was sent to ${normalizedPhone}.`,
+        description: `An 8-digit verification code was sent to ${normalizedPhone}.`,
       });
     } catch (error: any) {
       console.error("Send OTP error:", error);
@@ -247,11 +232,14 @@ const AuthForm = () => {
 
   const handleVerifyPhoneOTP = async () => {
     const normalizedPhone = normalizePhoneNumber(phoneNumber);
+    const enteredCode = otp.trim();
 
-    if (!otp.trim()) {
+    // Twilio Verify Service is configured for 8 digits.
+    if (!/^\d{8}$/.test(enteredCode)) {
       toast({
-        title: "Code required",
-        description: "Enter the verification code you received.",
+        title: "Invalid code",
+        description:
+          "Enter the 8-digit verification code you received.",
         variant: "destructive",
       });
       return;
@@ -266,7 +254,7 @@ const AuthForm = () => {
           body: {
             action: "check",
             phone: normalizedPhone,
-            code: otp.trim(),
+            code: enteredCode,
           },
         },
       );
@@ -284,7 +272,12 @@ const AuthForm = () => {
       // Get the currently authenticated user.
       const {
         data: { user },
+        error: userError,
       } = await supabase.auth.getUser();
+
+      if (userError) {
+        throw userError;
+      }
 
       if (!user) {
         throw new Error(
@@ -321,7 +314,8 @@ const AuthForm = () => {
       toast({
         title: "Verification failed",
         description:
-          error.message || "The verification code is incorrect.",
+          error.message ||
+          "The 8-digit verification code is incorrect.",
         variant: "destructive",
       });
     } finally {
@@ -360,8 +354,7 @@ const AuthForm = () => {
       toast({
         title: "Unable to send email",
         description:
-          error.message ||
-          "Please try again.",
+          error.message || "Please try again.",
         variant: "destructive",
       });
     } finally {
@@ -384,7 +377,9 @@ const AuthForm = () => {
           password,
         });
 
-      if (error) throw error;
+      if (error) {
+        throw error;
+      }
 
       toast({
         title: "Welcome back!",
@@ -394,7 +389,8 @@ const AuthForm = () => {
     } catch (error: any) {
       toast({
         title: "Error",
-        description: error.message,
+        description:
+          error.message || "Unable to sign in.",
         variant: "destructive",
       });
     } finally {
@@ -429,7 +425,9 @@ const AuthForm = () => {
           },
         );
 
-      if (error) throw error;
+      if (error) {
+        throw error;
+      }
 
       toast({
         title: "Reset link sent",
@@ -439,7 +437,8 @@ const AuthForm = () => {
     } catch (error: any) {
       toast({
         title: "Unable to send reset link",
-        description: error.message,
+        description:
+          error.message || "Unable to send reset link.",
         variant: "destructive",
       });
     } finally {
@@ -674,7 +673,7 @@ const AuthForm = () => {
                   </div>
 
                   <div className="text-xs text-muted-foreground">
-                    Receive a verification code by SMS
+                    Receive an 8-digit verification code by SMS
                   </div>
                 </div>
               </Button>
@@ -709,7 +708,7 @@ const AuthForm = () => {
             <div className="space-y-4 pt-4">
               <div className="rounded-lg bg-blue-50 p-4">
                 <p className="text-sm">
-                  We'll send a verification code to:
+                  We'll send an 8-digit verification code to:
                 </p>
 
                 <p className="font-semibold mt-1">
@@ -732,7 +731,7 @@ const AuthForm = () => {
                 <>
                   <div className="space-y-2">
                     <Label htmlFor="otp">
-                      Verification Code
+                      8-Digit Verification Code
                     </Label>
 
                     <Input
@@ -740,18 +739,18 @@ const AuthForm = () => {
                       type="text"
                       inputMode="numeric"
                       autoComplete="one-time-code"
-                      maxLength={6}
+                      maxLength={8}
                       value={otp}
                       onChange={(e) =>
                         setOtp(
                           e.target.value.replace(
                             /\D/g,
                             "",
-                          ),
+                          ).slice(0, 8),
                         )
                       }
-                      placeholder="Enter 6-digit code"
-                      className="text-center text-xl tracking-widest"
+                      placeholder="Enter 8-digit code"
+                      className="text-center text-xl tracking-[0.35em]"
                     />
                   </div>
 
@@ -761,7 +760,7 @@ const AuthForm = () => {
                     onClick={handleVerifyPhoneOTP}
                     disabled={
                       otpLoading ||
-                      otp.length !== 6
+                      !/^\d{8}$/.test(otp)
                     }
                   >
                     {otpLoading

@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -28,18 +29,30 @@ import { useToast } from "@/hooks/use-toast";
 type VerificationMethod = "phone" | "email" | null;
 
 const AuthForm = () => {
+  const navigate = useNavigate();
+  const { toast } = useToast();
+
   const [isLoading, setIsLoading] = useState(false);
 
-  // Signup fields
+  // --------------------------------------------------
+  // SIGNUP FIELDS
+  // --------------------------------------------------
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
   const [phoneNumber, setPhoneNumber] = useState("");
 
-  // Sign-in field
+  // --------------------------------------------------
+  // SIGN-IN FIELD
+  // --------------------------------------------------
+
   const [loginIdentifier, setLoginIdentifier] = useState("");
 
-  // Verification state
+  // --------------------------------------------------
+  // VERIFICATION STATE
+  // --------------------------------------------------
+
   const [verificationDialogOpen, setVerificationDialogOpen] =
     useState(false);
 
@@ -49,8 +62,6 @@ const AuthForm = () => {
   const [otp, setOtp] = useState("");
   const [otpLoading, setOtpLoading] = useState(false);
   const [otpSent, setOtpSent] = useState(false);
-
-  const { toast } = useToast();
 
   // --------------------------------------------------
   // PHONE NUMBER NORMALIZATION
@@ -109,14 +120,13 @@ const AuthForm = () => {
     if (!password) {
       toast({
         title: "Password required",
-        description: "Please enter a password.",
+        description: "Please enter your password.",
         variant: "destructive",
       });
       return;
     }
 
-    const normalizedPhone =
-      normalizePhoneNumber(phoneNumber);
+    const normalizedPhone = normalizePhoneNumber(phoneNumber);
 
     if (!/^\+234\d{10}$/.test(normalizedPhone)) {
       toast({
@@ -131,26 +141,23 @@ const AuthForm = () => {
     setIsLoading(true);
 
     try {
-      const { data, error } =
-        await supabase.auth.signUp({
-          email: email.trim(),
-          password,
-          options: {
-            data: {
-              full_name: fullName.trim(),
-              phone_number: normalizedPhone,
-            },
+      const { data, error } = await supabase.auth.signUp({
+        email: email.trim(),
+        password,
+        options: {
+          data: {
+            full_name: fullName.trim(),
+            phone_number: normalizedPhone,
           },
-        });
+        },
+      });
 
       if (error) {
         throw error;
       }
 
       if (!data.user) {
-        throw new Error(
-          "Unable to create your account.",
-        );
+        throw new Error("Unable to create your account.");
       }
 
       /*
@@ -158,8 +165,8 @@ const AuthForm = () => {
        * auth.users -> profiles database trigger.
        *
        * We intentionally do not insert/update profiles
-       * from the client here because the new account may
-       * not have an authenticated session yet.
+       * from the client here because a newly-created user
+       * may not have an active session yet.
        */
 
       setVerificationMethod(null);
@@ -189,8 +196,7 @@ const AuthForm = () => {
   // --------------------------------------------------
 
   const handleSendPhoneOTP = async () => {
-    const normalizedPhone =
-      normalizePhoneNumber(phoneNumber);
+    const normalizedPhone = normalizePhoneNumber(phoneNumber);
 
     if (!/^\+234\d{10}$/.test(normalizedPhone)) {
       toast({
@@ -205,16 +211,15 @@ const AuthForm = () => {
     setOtpLoading(true);
 
     try {
-      const { data, error } =
-        await supabase.functions.invoke(
-          "termii-verify",
-          {
-            body: {
-              action: "send",
-              phone: normalizedPhone,
-            },
+      const { data, error } = await supabase.functions.invoke(
+        "termii-verify",
+        {
+          body: {
+            action: "send",
+            phone: normalizedPhone,
           },
-        );
+        },
+      );
 
       if (error) {
         throw error;
@@ -236,10 +241,7 @@ const AuthForm = () => {
           "An 8-digit verification code has been sent to your phone.",
       });
     } catch (error: any) {
-      console.error(
-        "Termii send OTP error:",
-        error,
-      );
+      console.error("Termii send OTP error:", error);
 
       toast({
         title: "Unable to send code",
@@ -257,9 +259,7 @@ const AuthForm = () => {
   // --------------------------------------------------
 
   const handleVerifyPhoneOTP = async () => {
-    const normalizedPhone =
-      normalizePhoneNumber(phoneNumber);
-
+    const normalizedPhone = normalizePhoneNumber(phoneNumber);
     const enteredCode = otp.trim();
 
     if (!/^\d{8}$/.test(enteredCode)) {
@@ -275,17 +275,16 @@ const AuthForm = () => {
     setOtpLoading(true);
 
     try {
-      const { data, error } =
-        await supabase.functions.invoke(
-          "termii-verify",
-          {
-            body: {
-              action: "check",
-              phone: normalizedPhone,
-              code: enteredCode,
-            },
+      const { data, error } = await supabase.functions.invoke(
+        "termii-verify",
+        {
+          body: {
+            action: "check",
+            phone: normalizedPhone,
+            code: enteredCode,
           },
-        );
+        },
+      );
 
       if (error) {
         throw error;
@@ -319,10 +318,7 @@ const AuthForm = () => {
           "Your phone number has been verified. You can now continue.",
       });
     } catch (error: any) {
-      console.error(
-        "Termii verify OTP error:",
-        error,
-      );
+      console.error("Termii verify OTP error:", error);
 
       toast({
         title: "Verification failed",
@@ -344,11 +340,10 @@ const AuthForm = () => {
     setOtpLoading(true);
 
     try {
-      const { error } =
-        await supabase.auth.resend({
-          type: "signup",
-          email: email.trim(),
-        });
+      const { error } = await supabase.auth.resend({
+        type: "signup",
+        email: email.trim(),
+      });
 
       if (error) {
         throw error;
@@ -362,10 +357,7 @@ const AuthForm = () => {
 
       setVerificationDialogOpen(false);
     } catch (error: any) {
-      console.error(
-        "Email verification error:",
-        error,
-      );
+      console.error("Email verification error:", error);
 
       toast({
         title: "Unable to send email",
@@ -385,8 +377,7 @@ const AuthForm = () => {
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    const identifier =
-      loginIdentifier.trim();
+    const identifier = loginIdentifier.trim();
 
     if (!identifier) {
       toast({
@@ -411,39 +402,31 @@ const AuthForm = () => {
     setIsLoading(true);
 
     try {
-      const { data, error } =
-        await supabase.functions.invoke(
-          "login-with-identifier",
-          {
-            body: {
-              identifier,
-              password,
-            },
+      const { data, error } = await supabase.functions.invoke(
+        "login-with-identifier",
+        {
+          body: {
+            identifier,
+            password,
           },
-        );
+        },
+      );
 
       if (error) {
         throw error;
       }
 
-      if (
-        !data?.success ||
-        !data?.session
-      ) {
+      if (!data?.success || !data?.session) {
         throw new Error(
           data?.error ||
             "Invalid login credentials.",
         );
       }
 
-      // Install the session returned by the Edge Function
-      // into the browser's Supabase client.
       const { error: sessionError } =
         await supabase.auth.setSession({
-          access_token:
-            data.session.access_token,
-          refresh_token:
-            data.session.refresh_token,
+          access_token: data.session.access_token,
+          refresh_token: data.session.refresh_token,
         });
 
       if (sessionError) {
@@ -456,78 +439,13 @@ const AuthForm = () => {
           "You have successfully signed in.",
       });
     } catch (error: any) {
-      console.error(
-        "Sign-in error:",
-        error,
-      );
+      console.error("Sign-in error:", error);
 
       toast({
         title: "Unable to sign in",
         description:
           error.message ||
           "Invalid login credentials.",
-        variant: "destructive",
-      });
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // --------------------------------------------------
-  // FORGOT PASSWORD
-  // --------------------------------------------------
-
-  const handleForgotPassword = async () => {
-    const value = loginIdentifier.trim();
-
-    if (!value) {
-      toast({
-        title: "Email required",
-        description:
-          "Enter your email address in the login field first.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    // Password reset through Supabase requires the email.
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
-      toast({
-        title: "Email required",
-        description:
-          "For password reset, enter your email address rather than your phone number.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setIsLoading(true);
-
-    try {
-      const { error } =
-        await supabase.auth.resetPasswordForEmail(
-          value,
-          {
-            redirectTo:
-              `${window.location.origin}/reset-password`,
-          },
-        );
-
-      if (error) {
-        throw error;
-      }
-
-      toast({
-        title: "Reset link sent",
-        description:
-          "Please check your email for the password reset link.",
-      });
-    } catch (error: any) {
-      toast({
-        title: "Unable to send reset link",
-        description:
-          error.message ||
-          "Unable to send reset link.",
         variant: "destructive",
       });
     } finally {
@@ -607,9 +525,7 @@ const AuthForm = () => {
                       type="password"
                       value={password}
                       onChange={(e) =>
-                        setPassword(
-                          e.target.value,
-                        )
+                        setPassword(e.target.value)
                       }
                       autoComplete="current-password"
                       required
@@ -628,8 +544,8 @@ const AuthForm = () => {
 
                   <button
                     type="button"
-                    onClick={
-                      handleForgotPassword
+                    onClick={() =>
+                      navigate("/forgot-password")
                     }
                     disabled={isLoading}
                     className="w-full text-sm text-blue-600 hover:text-blue-700 hover:underline disabled:opacity-50"
@@ -658,9 +574,7 @@ const AuthForm = () => {
                       type="text"
                       value={fullName}
                       onChange={(e) =>
-                        setFullName(
-                          e.target.value,
-                        )
+                        setFullName(e.target.value)
                       }
                       autoComplete="name"
                       required
@@ -677,9 +591,7 @@ const AuthForm = () => {
                       type="tel"
                       value={phoneNumber}
                       onChange={(e) =>
-                        setPhoneNumber(
-                          e.target.value,
-                        )
+                        setPhoneNumber(e.target.value)
                       }
                       placeholder="+2348012345678"
                       autoComplete="tel"
@@ -702,9 +614,7 @@ const AuthForm = () => {
                       type="email"
                       value={email}
                       onChange={(e) =>
-                        setEmail(
-                          e.target.value,
-                        )
+                        setEmail(e.target.value)
                       }
                       autoComplete="email"
                       required
@@ -721,9 +631,7 @@ const AuthForm = () => {
                       type="password"
                       value={password}
                       onChange={(e) =>
-                        setPassword(
-                          e.target.value,
-                        )
+                        setPassword(e.target.value)
                       }
                       autoComplete="new-password"
                       required
@@ -754,9 +662,7 @@ const AuthForm = () => {
         open={verificationDialogOpen}
         onOpenChange={(open) => {
           if (!otpLoading) {
-            setVerificationDialogOpen(
-              open,
-            );
+            setVerificationDialogOpen(open);
 
             if (!open) {
               setVerificationMethod(null);
@@ -777,9 +683,7 @@ const AuthForm = () => {
             </DialogDescription>
           </DialogHeader>
 
-          {/* -------------------------------------- */}
-          {/* METHOD SELECTION                       */}
-          {/* -------------------------------------- */}
+          {/* VERIFICATION METHOD SELECTION */}
 
           {!verificationMethod && (
             <div className="space-y-3 pt-4">
@@ -788,9 +692,7 @@ const AuthForm = () => {
                 variant="outline"
                 className="w-full h-16 justify-start"
                 onClick={() => {
-                  setVerificationMethod(
-                    "phone",
-                  );
+                  setVerificationMethod("phone");
                   setOtp("");
                   setOtpSent(false);
                 }}
@@ -815,9 +717,7 @@ const AuthForm = () => {
                 variant="outline"
                 className="w-full h-16 justify-start"
                 onClick={() => {
-                  setVerificationMethod(
-                    "email",
-                  );
+                  setVerificationMethod("email");
                 }}
               >
                 <span className="text-2xl mr-4">
@@ -837,17 +737,13 @@ const AuthForm = () => {
             </div>
           )}
 
-          {/* -------------------------------------- */}
-          {/* PHONE VERIFICATION                     */}
-          {/* -------------------------------------- */}
+          {/* PHONE VERIFICATION */}
 
-          {verificationMethod ===
-            "phone" && (
+          {verificationMethod === "phone" && (
             <div className="space-y-4 pt-4">
               <div className="rounded-lg bg-blue-50 p-4">
                 <p className="text-sm">
-                  We'll send an 8-digit verification
-                  code to:
+                  We'll send an 8-digit verification code to:
                 </p>
 
                 <p className="font-semibold mt-1">
@@ -861,9 +757,7 @@ const AuthForm = () => {
                 <Button
                   type="button"
                   className="w-full bg-blue-600 hover:bg-blue-700"
-                  onClick={
-                    handleSendPhoneOTP
-                  }
+                  onClick={handleSendPhoneOTP}
                   disabled={otpLoading}
                 >
                   {otpLoading
@@ -887,14 +781,8 @@ const AuthForm = () => {
                       onChange={(e) =>
                         setOtp(
                           e.target.value
-                            .replace(
-                              /\D/g,
-                              "",
-                            )
-                            .slice(
-                              0,
-                              8,
-                            ),
+                            .replace(/\D/g, "")
+                            .slice(0, 8),
                         )
                       }
                       placeholder="Enter 8-digit code"
@@ -905,14 +793,10 @@ const AuthForm = () => {
                   <Button
                     type="button"
                     className="w-full bg-blue-600 hover:bg-blue-700"
-                    onClick={
-                      handleVerifyPhoneOTP
-                    }
+                    onClick={handleVerifyPhoneOTP}
                     disabled={
                       otpLoading ||
-                      !/^\d{8}$/.test(
-                        otp,
-                      )
+                      !/^\d{8}$/.test(otp)
                     }
                   >
                     {otpLoading
@@ -924,12 +808,8 @@ const AuthForm = () => {
                     type="button"
                     variant="ghost"
                     className="w-full"
-                    onClick={
-                      handleSendPhoneOTP
-                    }
-                    disabled={
-                      otpLoading
-                    }
+                    onClick={handleSendPhoneOTP}
+                    disabled={otpLoading}
                   >
                     Resend Code
                   </Button>
@@ -941,9 +821,7 @@ const AuthForm = () => {
                 variant="ghost"
                 className="w-full"
                 onClick={() => {
-                  setVerificationMethod(
-                    null,
-                  );
+                  setVerificationMethod(null);
                   setOtp("");
                   setOtpSent(false);
                 }}
@@ -954,12 +832,9 @@ const AuthForm = () => {
             </div>
           )}
 
-          {/* -------------------------------------- */}
-          {/* EMAIL VERIFICATION                     */}
-          {/* -------------------------------------- */}
+          {/* EMAIL VERIFICATION */}
 
-          {verificationMethod ===
-            "email" && (
+          {verificationMethod === "email" && (
             <div className="space-y-4 pt-4">
               <div className="rounded-lg bg-blue-50 p-4">
                 <p className="text-sm">
@@ -974,9 +849,7 @@ const AuthForm = () => {
               <Button
                 type="button"
                 className="w-full bg-blue-600 hover:bg-blue-700"
-                onClick={
-                  handleEmailVerification
-                }
+                onClick={handleEmailVerification}
                 disabled={otpLoading}
               >
                 {otpLoading
@@ -989,9 +862,7 @@ const AuthForm = () => {
                 variant="ghost"
                 className="w-full"
                 onClick={() =>
-                  setVerificationMethod(
-                    null,
-                  )
+                  setVerificationMethod(null)
                 }
                 disabled={otpLoading}
               >

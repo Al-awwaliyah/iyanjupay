@@ -23,7 +23,13 @@ import {
   Building2,
 } from "lucide-react";
 
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 import { useToast } from "@/hooks/use-toast";
 
@@ -51,6 +57,13 @@ interface ResolvedAccount {
   account_number: string;
   account_name: string;
   bank_code: string;
+}
+
+interface ResolvedIyanjuPayRecipient {
+  wallet_id: string;
+  name: string;
+  full_name?: string | null;
+  nickname?: string | null;
 }
 
 type TransferType =
@@ -100,6 +113,22 @@ const TransferModal = ({
     iyanjupayTransferring,
     setIyanjuPayTransferring,
   ] = useState(false);
+
+  const [
+    resolvedIyanjuPayRecipient,
+    setResolvedIyanjuPayRecipient,
+  ] =
+    useState<ResolvedIyanjuPayRecipient | null>(
+      null
+    );
+
+  const [
+    resolvingIyanjuPayRecipient,
+    setResolvingIyanjuPayRecipient,
+  ] = useState(false);
+
+  const iyanjuPayResolveRequestRef =
+    useRef(0);
 
   // ==========================================================
   // BANK
@@ -199,9 +228,11 @@ const TransferModal = ({
         toast({
           title:
             "Unable to load banks",
+
           description:
             error?.message ||
             "Please try again later.",
+
           variant:
             "destructive",
         });
@@ -281,9 +312,31 @@ const TransferModal = ({
             }
 
             if (error) {
-              throw new Error(
+              let message =
                 error.message ||
-                  "Unable to verify bank account."
+                "Unable to verify bank account.";
+
+              try {
+                if (
+                  error.context &&
+                  typeof error.context
+                    .json ===
+                    "function"
+                ) {
+                  const payload =
+                    await error.context.json();
+
+                  message =
+                    payload?.error ||
+                    payload?.message ||
+                    message;
+                }
+              } catch {
+                // Keep original message.
+              }
+
+              throw new Error(
+                message
               );
             }
 
@@ -299,13 +352,16 @@ const TransferModal = ({
 
             setResolvedAccount({
               account_number:
-                data.account.account_number,
+                data.account
+                  .account_number,
 
               account_name:
-                data.account.account_name,
+                data.account
+                  .account_name,
 
               bank_code:
-                data.account.bank_code,
+                data.account
+                  .bank_code,
             });
 
             toast({
@@ -313,7 +369,8 @@ const TransferModal = ({
                 "Account verified",
 
               description:
-                data.account.account_name,
+                data.account
+                  .account_name,
             });
           } catch (error: any) {
             if (
@@ -327,6 +384,8 @@ const TransferModal = ({
               "Account resolution failed:",
               error
             );
+
+            setResolvedAccount(null);
 
             toast({
               title:
@@ -363,6 +422,225 @@ const TransferModal = ({
   ]);
 
   // ==========================================================
+  // RESOLVE IYANJUPAY RECIPIENT
+  // ==========================================================
+
+  useEffect(() => {
+    if (
+      !isOpen ||
+      transferType !== "iyanjupay"
+    ) {
+      return;
+    }
+
+    const cleanWalletId =
+      iyanjupayWalletId.replace(
+        /\D/g,
+        ""
+      );
+
+    // --------------------------------------------------------
+    // WALLET ID NOT COMPLETE
+    // --------------------------------------------------------
+
+    if (
+      !/^\d{8}$/.test(
+        cleanWalletId
+      )
+    ) {
+      iyanjuPayResolveRequestRef.current++;
+
+      setResolvedIyanjuPayRecipient(
+        null
+      );
+
+      setResolvingIyanjuPayRecipient(
+        false
+      );
+
+      return;
+    }
+
+    // --------------------------------------------------------
+    // REQUEST ID
+    // --------------------------------------------------------
+
+    const requestId =
+      ++iyanjuPayResolveRequestRef.current;
+
+    // --------------------------------------------------------
+    // SMALL DEBOUNCE
+    // --------------------------------------------------------
+
+    const timeout =
+      window.setTimeout(
+        async () => {
+          setResolvingIyanjuPayRecipient(
+            true
+          );
+
+          setResolvedIyanjuPayRecipient(
+            null
+          );
+
+          try {
+            const {
+              data,
+              error,
+            } =
+              await supabase.functions.invoke(
+                "resolve-iyanjupay-recipient",
+                {
+                  body: {
+                    wallet_id:
+                      cleanWalletId,
+                  },
+                }
+              );
+
+            // Ignore old request
+            if (
+              requestId !==
+              iyanjuPayResolveRequestRef.current
+            ) {
+              return;
+            }
+
+            // ------------------------------------------------
+            // EDGE FUNCTION ERROR
+            // ------------------------------------------------
+
+            if (error) {
+              let message =
+                error.message ||
+                "Unable to verify recipient.";
+
+              try {
+                if (
+                  error.context &&
+                  typeof error.context
+                    .json ===
+                    "function"
+                ) {
+                  const payload =
+                    await error.context.json();
+
+                  message =
+                    payload?.error ||
+                    payload?.message ||
+                    message;
+                }
+              } catch {
+                // Keep original message.
+              }
+
+              throw new Error(
+                message
+              );
+            }
+
+            // ------------------------------------------------
+            // INVALID RESPONSE
+            // ------------------------------------------------
+
+            if (
+              !data?.success ||
+              !data?.recipient
+            ) {
+              throw new Error(
+                data?.error ||
+                  data?.message ||
+                  "IyanjuPay Wallet ID could not be verified."
+              );
+            }
+
+            // ------------------------------------------------
+            // VERIFY RECIPIENT
+            // ------------------------------------------------
+
+            setResolvedIyanjuPayRecipient(
+              {
+                wallet_id:
+                  data.recipient
+                    .wallet_id,
+
+                name:
+                  data.recipient
+                    .name,
+
+                full_name:
+                  data.recipient
+                    .full_name ??
+                  null,
+
+                nickname:
+                  data.recipient
+                    .nickname ??
+                  null,
+              }
+            );
+
+            toast({
+              title:
+                "Recipient verified",
+
+              description:
+                data.recipient
+                  .name,
+            });
+          } catch (error: any) {
+            if (
+              requestId !==
+              iyanjuPayResolveRequestRef.current
+            ) {
+              return;
+            }
+
+            console.error(
+              "IyanjuPay recipient verification failed:",
+              error
+            );
+
+            setResolvedIyanjuPayRecipient(
+              null
+            );
+
+            toast({
+              title:
+                "Wallet ID verification failed",
+
+              description:
+                error?.message ||
+                "We could not find this IyanjuPay Wallet ID.",
+
+              variant:
+                "destructive",
+            });
+          } finally {
+            if (
+              requestId ===
+              iyanjuPayResolveRequestRef.current
+            ) {
+              setResolvingIyanjuPayRecipient(
+                false
+              );
+            }
+          }
+        },
+        500
+      );
+
+    return () => {
+      window.clearTimeout(timeout);
+    };
+  }, [
+    iyanjupayWalletId,
+    isOpen,
+    transferType,
+    toast,
+  ]);
+
+  // ==========================================================
   // CHANGE TRANSFER TYPE
   // ==========================================================
 
@@ -371,15 +649,29 @@ const TransferModal = ({
   ) => {
     resolveRequestRef.current++;
 
+    iyanjuPayResolveRequestRef.current++;
+
     setTransferType(type);
 
     setAmount("");
     setNarration("");
 
+    // IyanjuPay
     setIyanjuPayWalletId("");
 
-    setIyanjuPayTransferring(false);
+    setResolvedIyanjuPayRecipient(
+      null
+    );
 
+    setResolvingIyanjuPayRecipient(
+      false
+    );
+
+    setIyanjuPayTransferring(
+      false
+    );
+
+    // Bank
     setBank("");
     setAccountNumber("");
 
@@ -399,7 +691,7 @@ const TransferModal = ({
         iyanjupayWalletId.trim();
 
       // --------------------------------------------------------
-      // WALLET ID
+      // WALLET ID FORMAT
       // --------------------------------------------------------
 
       if (
@@ -413,6 +705,29 @@ const TransferModal = ({
 
           description:
             "IyanjuPay Wallet ID must be exactly 8 digits.",
+
+          variant:
+            "destructive",
+        });
+
+        return;
+      }
+
+      // --------------------------------------------------------
+      // RECIPIENT VERIFICATION
+      // --------------------------------------------------------
+
+      if (
+        !resolvedIyanjuPayRecipient ||
+        resolvedIyanjuPayRecipient
+          .wallet_id !== walletId
+      ) {
+        toast({
+          title:
+            "Recipient not verified",
+
+          description:
+            "Please enter a valid IyanjuPay Wallet ID and wait for the recipient name to be verified.",
 
           variant:
             "destructive",
@@ -468,7 +783,9 @@ const TransferModal = ({
       }
 
       try {
-        setIyanjuPayTransferring(true);
+        setIyanjuPayTransferring(
+          true
+        );
 
         const idempotencyKey =
           `iyanjupay_${crypto.randomUUID()}`;
@@ -478,7 +795,7 @@ const TransferModal = ({
             "Processing transfer",
 
           description:
-            "Please wait while we send the money.",
+            `Sending ₦${transferAmount.toLocaleString()} to ${resolvedIyanjuPayRecipient.name}.`,
         });
 
         // ======================================================
@@ -514,6 +831,10 @@ const TransferModal = ({
           data
         );
 
+        // ======================================================
+        // EDGE FUNCTION ERROR
+        // ======================================================
+
         if (error) {
           console.error(
             "IyanjuPay transfer function error:",
@@ -527,7 +848,8 @@ const TransferModal = ({
           try {
             if (
               error.context &&
-              typeof error.context.json ===
+              typeof error.context
+                .json ===
                 "function"
             ) {
               const payload =
@@ -542,8 +864,14 @@ const TransferModal = ({
             // Keep original message.
           }
 
-          throw new Error(message);
+          throw new Error(
+            message
+          );
         }
+
+        // ======================================================
+        // FAILED RESPONSE
+        // ======================================================
 
         if (
           !data ||
@@ -574,7 +902,7 @@ const TransferModal = ({
 
           description:
             data?.message ||
-            `₦${transferAmount.toLocaleString()} sent successfully.`,
+            `₦${transferAmount.toLocaleString()} sent successfully to ${resolvedIyanjuPayRecipient.name}.`,
         });
 
         console.log(
@@ -600,6 +928,9 @@ const TransferModal = ({
 
             recipient_wallet_id:
               data?.recipient_wallet_id,
+
+            recipient_name:
+              resolvedIyanjuPayRecipient.name,
           }
         );
 
@@ -622,7 +953,9 @@ const TransferModal = ({
             "destructive",
         });
       } finally {
-        setIyanjuPayTransferring(false);
+        setIyanjuPayTransferring(
+          false
+        );
       }
     };
 
@@ -757,7 +1090,7 @@ const TransferModal = ({
       };
 
       // ======================================================
-      // WAIT FOR BANK TRANSFER
+      // BANK TRANSFER
       // ======================================================
 
       try {
@@ -799,6 +1132,8 @@ const TransferModal = ({
     () => {
       resolveRequestRef.current++;
 
+      iyanjuPayResolveRequestRef.current++;
+
       setTransferType(
         "iyanjupay"
       );
@@ -806,10 +1141,22 @@ const TransferModal = ({
       setAmount("");
       setNarration("");
 
+      // IyanjuPay
       setIyanjuPayWalletId("");
 
-      setIyanjuPayTransferring(false);
+      setResolvedIyanjuPayRecipient(
+        null
+      );
 
+      setResolvingIyanjuPayRecipient(
+        false
+      );
+
+      setIyanjuPayTransferring(
+        false
+      );
+
+      // Bank
       setBank("");
       setAccountNumber("");
 
@@ -830,12 +1177,18 @@ const TransferModal = ({
     iyanjupayTransferring ||
     (transferType ===
       "iyanjupay" &&
-      !/^\d{8}$/.test(
-        iyanjupayWalletId.trim()
+      (
+        !/^\d{8}$/.test(
+          iyanjupayWalletId.trim()
+        ) ||
+        resolvingIyanjuPayRecipient ||
+        !resolvedIyanjuPayRecipient
       )) ||
     (transferType === "bank" &&
-      (!resolvedAccount ||
-        resolving));
+      (
+        !resolvedAccount ||
+        resolving
+      ));
 
   // ==========================================================
   // UI
@@ -967,11 +1320,27 @@ const TransferModal = ({
                         ""
                       );
 
+                    // Cancel any previous
+                    // verification request.
+                    iyanjuPayResolveRequestRef.current++;
+
                     setIyanjuPayWalletId(
                       value.slice(
                         0,
                         8
                       )
+                    );
+
+                    // Important:
+                    // The previous recipient
+                    // must never remain verified
+                    // after the Wallet ID changes.
+                    setResolvedIyanjuPayRecipient(
+                      null
+                    );
+
+                    setResolvingIyanjuPayRecipient(
+                      false
                     );
                   }}
                   placeholder="Enter 8-digit Wallet ID"
@@ -985,6 +1354,10 @@ const TransferModal = ({
                   8-digit IyanjuPay Wallet ID.
                 </p>
 
+                {/* ------------------------------------------------ */}
+                {/* INVALID LENGTH */}
+                {/* ------------------------------------------------ */}
+
                 {iyanjupayWalletId.length >
                   0 &&
                   iyanjupayWalletId.length <
@@ -995,19 +1368,81 @@ const TransferModal = ({
                     </p>
                   )}
 
-                {iyanjupayWalletId.length ===
-                  8 && (
-                  <div className="rounded-lg border border-green-200 bg-green-50 p-3">
+                {/* ------------------------------------------------ */}
+                {/* VERIFYING */}
+                {/* ------------------------------------------------ */}
 
-                    <div className="flex items-center gap-2">
+                {resolvingIyanjuPayRecipient &&
+                  iyanjupayWalletId.length ===
+                    8 && (
+                    <div className="rounded-lg border border-blue-200 bg-blue-50 p-3">
 
-                      <CheckCircle2 className="h-4 w-4 text-green-600" />
+                      <div className="flex items-center gap-2">
 
-                      <p className="text-sm text-green-700">
-                        Wallet ID format is valid.
-                      </p>
+                        <Loader2 className="h-4 w-4 text-blue-600 animate-spin" />
+
+                        <p className="text-sm text-blue-700">
+                          Verifying recipient...
+                        </p>
+
+                      </div>
 
                     </div>
+                  )}
+
+                {/* ------------------------------------------------ */}
+                {/* VERIFIED RECIPIENT */}
+                {/* ------------------------------------------------ */}
+
+                {!resolvingIyanjuPayRecipient &&
+                  resolvedIyanjuPayRecipient && (
+                  <div className="rounded-lg border border-green-200 bg-green-50 p-4">
+
+                    <div className="flex items-start gap-3">
+
+                      <CheckCircle2 className="h-5 w-5 text-green-600 mt-0.5 shrink-0" />
+
+                      <div className="min-w-0">
+
+                        <p className="text-xs text-green-700 font-medium">
+                          VERIFIED RECIPIENT
+                        </p>
+
+                        <p className="font-semibold text-gray-900 mt-1 break-words">
+                          {
+                            resolvedIyanjuPayRecipient.name
+                          }
+                        </p>
+
+                        <p className="text-sm text-gray-600">
+                          Wallet ID:{" "}
+                          {
+                            resolvedIyanjuPayRecipient.wallet_id
+                          }
+                        </p>
+
+                      </div>
+
+                    </div>
+
+                  </div>
+                )}
+
+                {/* ------------------------------------------------ */}
+                {/* FAILED VERIFICATION */}
+                {/* ------------------------------------------------ */}
+
+                {!resolvingIyanjuPayRecipient &&
+                  iyanjupayWalletId.length ===
+                    8 &&
+                  !resolvedIyanjuPayRecipient && (
+                  <div className="rounded-lg border border-red-200 bg-red-50 p-3">
+
+                    <p className="text-sm text-red-700">
+                      Wallet ID could not be
+                      verified. Please check
+                      the recipient's Wallet ID.
+                    </p>
 
                   </div>
                 )}
@@ -1024,6 +1459,10 @@ const TransferModal = ({
           {transferType ===
             "bank" && (
             <div className="space-y-4">
+
+              {/* ------------------------------------------------ */}
+              {/* BANK SELECT */}
+              {/* ------------------------------------------------ */}
 
               <div className="space-y-2">
 
@@ -1088,6 +1527,10 @@ const TransferModal = ({
 
               </div>
 
+              {/* ------------------------------------------------ */}
+              {/* ACCOUNT NUMBER */}
+              {/* ------------------------------------------------ */}
+
               <div className="space-y-2">
 
                 <Label htmlFor="accountNumber">
@@ -1151,6 +1594,10 @@ const TransferModal = ({
                   )}
 
               </div>
+
+              {/* ------------------------------------------------ */}
+              {/* VERIFIED BANK ACCOUNT */}
+              {/* ------------------------------------------------ */}
 
               {resolvedAccount && (
                 <div className="rounded-lg border border-green-200 bg-green-50 p-4">
@@ -1220,6 +1667,8 @@ const TransferModal = ({
           {transferAmount > 0 && (
             <div className="rounded-lg border bg-gray-50 p-4 space-y-3">
 
+              {/* Transfer amount */}
+
               <div className="flex justify-between text-sm">
 
                 <span className="text-gray-600">
@@ -1239,10 +1688,12 @@ const TransferModal = ({
 
               </div>
 
+              {/* Transfer fee */}
+
               <div className="flex justify-between text-sm">
 
                 <span className="text-gray-600">
-                  IyanjuPay transfer fee
+                  Transfer fee
                 </span>
 
                 <span className="font-medium">
@@ -1257,6 +1708,8 @@ const TransferModal = ({
                 </span>
 
               </div>
+
+              {/* Total */}
 
               <div className="border-t pt-3 flex justify-between">
 
@@ -1277,6 +1730,8 @@ const TransferModal = ({
 
               </div>
 
+              {/* Bank fee message */}
+
               {transferType ===
                 "bank" && (
                 <div className="rounded-md bg-yellow-50 border border-yellow-200 p-3">
@@ -1290,6 +1745,8 @@ const TransferModal = ({
 
                 </div>
               )}
+
+              {/* IyanjuPay free message */}
 
               {transferType ===
                 "iyanjupay" && (

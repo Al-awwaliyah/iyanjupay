@@ -78,15 +78,13 @@ const SUPPORTED_BILL_SERVICES: BillService[] = [
 ];
 
 const Dashboard = () => {
-  const { user, signOut } =
-    useAuth();
+  const { user, signOut } = useAuth();
 
   const {
     wallet,
     loading,
     refreshWallet,
-  } =
-    useWallet(user?.id);
+  } = useWallet(user?.id);
 
   const [
     fundModalOpen,
@@ -111,10 +109,7 @@ const Dashboard = () => {
   const [
     selectedService,
     setSelectedService,
-  ] =
-    useState<SelectedService | null>(
-      null
-    );
+  ] = useState<SelectedService | null>(null);
 
   const [
     showBalance,
@@ -124,149 +119,112 @@ const Dashboard = () => {
   const [
     currentPage,
     setCurrentPage,
-  ] =
-    useState<CurrentPage>("home");
+  ] = useState<CurrentPage>("home");
 
-  const { toast } =
-    useToast();
+  const { toast } = useToast();
 
   // ============================================================
   // EXTRACT EDGE FUNCTION ERROR
   // ============================================================
 
-  const extractFunctionError =
-    async (
-      error: any,
-      fallback =
-        "Unable to process your request."
-    ): Promise<string> => {
-      console.error(
-        "Supabase function error:",
-        error
-      );
+  const extractFunctionError = async (
+    error: any,
+    fallback = "Unable to process your request."
+  ): Promise<string> => {
+    console.error(
+      "Supabase function error:",
+      error
+    );
 
-      // --------------------------------------------------------
-      // Supabase FunctionsHttpError
-      // --------------------------------------------------------
-
-      try {
-        if (
-          error?.context &&
-          typeof error.context.json ===
-            "function"
-        ) {
-          const response =
-            error.context;
-
-          let payload: any =
-            null;
-
-          try {
-            payload =
-              await response.json();
-          } catch {
-            payload = null;
-          }
-
-          console.error(
-            "Edge Function response:",
-            payload
-          );
-
-          if (
-            payload?.error
-          ) {
-            return String(
-              payload.error
-            );
-          }
-
-          if (
-            payload?.message
-          ) {
-            return String(
-              payload.message
-            );
-          }
-
-          if (
-            payload?.provider_message
-          ) {
-            return String(
-              payload.provider_message
-            );
-          }
-
-          if (
-            payload?.provider_response
-              ?.message
-          ) {
-            return String(
-              payload
-                .provider_response
-                .message
-            );
-          }
-
-          if (
-            payload?.provider_response
-              ?.data?.message
-          ) {
-            return String(
-              payload
-                .provider_response
-                .data
-                .message
-            );
-          }
-
-          if (
-            payload?.validation_data
-              ?.response_message
-          ) {
-            return String(
-              payload
-                .validation_data
-                .response_message
-            );
-          }
-
-          if (
-            payload?.provider_response
-              ?.data
-              ?.response_message
-          ) {
-            return String(
-              payload
-                .provider_response
-                .data
-                .response_message
-            );
-          }
-        }
-      } catch (parseError) {
-        console.error(
-          "Could not parse Edge Function error:",
-          parseError
-        );
-      }
-
-      // --------------------------------------------------------
-      // Normal Error
-      // --------------------------------------------------------
-
+    try {
       if (
-        error?.message &&
-        error.message !==
-          "Edge Function returned a non-2xx status code"
+        error?.context &&
+        typeof error.context.json === "function"
       ) {
-        return String(
-          error.message
-        );
-      }
+        const response = error.context;
 
-      return fallback;
-    };
+        let payload: any = null;
+
+        try {
+          payload = await response.json();
+        } catch {
+          payload = null;
+        }
+
+        console.error(
+          "Edge Function response:",
+          payload
+        );
+
+        if (payload?.error) {
+          return String(payload.error);
+        }
+
+        if (payload?.message) {
+          return String(payload.message);
+        }
+
+        if (payload?.provider_message) {
+          return String(
+            payload.provider_message
+          );
+        }
+
+        if (
+          payload?.provider_response
+            ?.message
+        ) {
+          return String(
+            payload.provider_response.message
+          );
+        }
+
+        if (
+          payload?.provider_response
+            ?.data?.message
+        ) {
+          return String(
+            payload.provider_response.data.message
+          );
+        }
+
+        if (
+          payload?.validation_data
+            ?.response_message
+        ) {
+          return String(
+            payload.validation_data.response_message
+          );
+        }
+
+        if (
+          payload?.provider_response
+            ?.data
+            ?.response_message
+        ) {
+          return String(
+            payload.provider_response.data
+              .response_message
+          );
+        }
+      }
+    } catch (parseError) {
+      console.error(
+        "Could not parse Edge Function error:",
+        parseError
+      );
+    }
+
+    if (
+      error?.message &&
+      error.message !==
+        "Edge Function returned a non-2xx status code"
+    ) {
+      return String(error.message);
+    }
+
+    return fallback;
+  };
 
   // ============================================================
   // WALLET BOOTSTRAP
@@ -275,57 +233,50 @@ const Dashboard = () => {
   useEffect(() => {
     if (!user) return;
 
-    let cancelled =
-      false;
+    let cancelled = false;
 
-    const bootstrapWallet =
-      async () => {
-        try {
-          const {
-            data,
-            error,
-          } =
-            await supabase.functions.invoke(
-              "wallet-bootstrap",
-              {
-                body: {},
-              }
-            );
-
-          if (
-            cancelled
-          ) {
-            return;
+    const bootstrapWallet = async () => {
+      try {
+        const {
+          data,
+          error,
+        } = await supabase.functions.invoke(
+          "wallet-bootstrap",
+          {
+            body: {},
           }
+        );
 
-          if (error) {
-            console.error(
-              "Wallet bootstrap error:",
-              error
-            );
+        if (cancelled) {
+          return;
+        }
 
-            return;
-          }
-
-          console.log(
-            "Wallet bootstrap:",
-            data
-          );
-
-          await refreshWallet();
-        } catch (error) {
-          if (
-            cancelled
-          ) {
-            return;
-          }
-
+        if (error) {
           console.error(
-            "Wallet bootstrap failed:",
+            "Wallet bootstrap error:",
             error
           );
+
+          return;
         }
-      };
+
+        console.log(
+          "Wallet bootstrap:",
+          data
+        );
+
+        await refreshWallet();
+      } catch (error) {
+        if (cancelled) {
+          return;
+        }
+
+        console.error(
+          "Wallet bootstrap failed:",
+          error
+        );
+      }
+    };
 
     bootstrapWallet();
 
@@ -341,53 +292,51 @@ const Dashboard = () => {
   // OPTIONAL MANUAL DEPOSIT SYNC
   // ============================================================
 
-  const syncDeposits =
-    async () => {
-      if (!user) return;
+  const syncDeposits = async () => {
+    if (!user) return;
 
-      try {
-        console.log(
-          "Starting Flutterwave deposit sync..."
-        );
+    try {
+      console.log(
+        "Starting Flutterwave deposit sync..."
+      );
 
-        const {
-          data,
-          error,
-        } =
-          await supabase.functions.invoke(
-            "flutterwave-sync-deposits",
-            {
-              body: {},
-            }
-          );
-
-        console.log(
-          "SYNC DATA:",
-          data
-        );
-
-        console.log(
-          "SYNC ERROR:",
-          error
-        );
-
-        if (error) {
-          console.error(
-            "Deposit sync failed:",
-            error
-          );
-
-          return;
+      const {
+        data,
+        error,
+      } = await supabase.functions.invoke(
+        "flutterwave-sync-deposits",
+        {
+          body: {},
         }
+      );
 
-        await refreshWallet();
-      } catch (error) {
+      console.log(
+        "SYNC DATA:",
+        data
+      );
+
+      console.log(
+        "SYNC ERROR:",
+        error
+      );
+
+      if (error) {
         console.error(
-          "Deposit sync error:",
+          "Deposit sync failed:",
           error
         );
+
+        return;
       }
-    };
+
+      await refreshWallet();
+    } catch (error) {
+      console.error(
+        "Deposit sync error:",
+        error
+      );
+    }
+  };
 
   // ============================================================
   // SERVICES
@@ -396,96 +345,84 @@ const Dashboard = () => {
   const services = [
     {
       title: "Buy Airtime",
-      description:
-        "Recharge your phone",
+      description: "Recharge your phone",
       icon: Smartphone,
       color: "bg-blue-500",
       type: "airtime",
     },
     {
       title: "Buy Data",
-      description:
-        "Internet data bundles",
+      description: "Internet data bundles",
       icon: Wifi,
       color: "bg-purple-500",
       type: "data",
     },
     {
       title: "Electricity",
-      description:
-        "Pay electricity bills",
+      description: "Pay electricity bills",
       icon: Zap,
       color: "bg-yellow-500",
       type: "electricity",
     },
     {
       title: "Cable TV",
-      description:
-        "DSTV, GOTV, Startimes",
+      description: "DSTV, GOTV, Startimes",
       icon: CreditCard,
       color: "bg-red-500",
       type: "cable",
     },
     {
       title: "Transfer Money",
-      description:
-        "Send money to others",
+      description: "Send money to others",
       icon: Send,
       color: "bg-green-500",
       type: "transfer",
     },
     {
       title: "Internet Bills",
-      description:
-        "Pay internet bills",
+      description: "Pay internet bills",
       icon: Wifi,
       color: "bg-indigo-500",
       type: "internet",
     },
     {
       title: "Insurance",
-      description:
-        "Pay insurance premiums",
+      description: "Pay insurance premiums",
       icon: Shield,
       color: "bg-teal-500",
       type: "insurance",
     },
     {
       title: "Gift Cards",
-      description:
-        "Buy digital gift cards",
+      description: "Buy digital gift cards",
       icon: Gift,
       color: "bg-pink-500",
       type: "giftcards",
     },
     {
       title: "Betting",
-      description:
-        "Fund betting accounts",
+      description: "Fund betting accounts",
       icon: Gamepad2,
       color: "bg-orange-500",
       type: "betting",
     },
     {
       title: "Flight Booking",
-      description:
-        "Book domestic flights",
+      description: "Book domestic flights",
       icon: Plane,
       color: "bg-sky-500",
       type: "flight",
     },
     {
       title: "Hotel Booking",
-      description:
-        "Book hotel rooms",
+      description: "Book hotel rooms",
       icon: Home,
       color: "bg-emerald-500",
       type: "hotel",
     },
     {
       title: "Transport",
-      description:
-        "Book bus tickets",
+      description: "Book bus tickets",
       icon: Car,
       color: "bg-gray-500",
       type: "transport",
@@ -496,832 +433,703 @@ const Dashboard = () => {
   // SERVICE CLICK
   // ============================================================
 
-  const handleServiceClick =
-    (
-      service: typeof services[number]
-    ) => {
-      if (
-        service.type ===
-        "transfer"
-      ) {
-        setTransferModalOpen(
-          true
-        );
+  const handleServiceClick = (
+    service: typeof services[number]
+  ) => {
+    if (service.type === "transfer") {
+      setTransferModalOpen(true);
+      return;
+    }
 
-        return;
-      }
-
-      if (
-        !SUPPORTED_BILL_SERVICES.includes(
-          service.type as BillService
-        )
-      ) {
-        toast({
-          title:
-            "Service coming soon",
-          description:
-            `${service.title} is not yet available.`,
-        });
-
-        return;
-      }
-
-      setSelectedService({
-        title:
-          service.title,
-        type:
-          service.type as BillService,
+    if (
+      !SUPPORTED_BILL_SERVICES.includes(
+        service.type as BillService
+      )
+    ) {
+      toast({
+        title: "Service coming soon",
+        description:
+          `${service.title} is not yet available.`,
       });
 
-      setServiceModalOpen(
-        true
-      );
-    };
+      return;
+    }
+
+    setSelectedService({
+      title: service.title,
+      type:
+        service.type as BillService,
+    });
+
+    setServiceModalOpen(true);
+  };
 
   // ============================================================
   // BILL PAYMENT
   // ============================================================
 
-  const handlePurchase =
-    async (
-      amount: number,
-      details: Record<
-        string,
-        any
-      >
-    ): Promise<void> => {
-      if (!user) {
+  const handlePurchase = async (
+    amount: number,
+    details: Record<string, any>
+  ): Promise<void> => {
+    if (!user) {
+      throw new Error(
+        "Authentication required. Please log in again."
+      );
+    }
+
+    if (!selectedService) {
+      throw new Error(
+        "Please select a service."
+      );
+    }
+
+    const service =
+      selectedService.type;
+
+    if (
+      !SUPPORTED_BILL_SERVICES.includes(
+        service
+      )
+    ) {
+      throw new Error(
+        `${selectedService.title} is not currently supported.`
+      );
+    }
+
+    // ==========================================================
+    // AMOUNT VALIDATION
+    // ==========================================================
+
+    if (
+      !Number.isFinite(amount) ||
+      amount <= 0
+    ) {
+      throw new Error(
+        "Please enter a valid payment amount."
+      );
+    }
+
+    // ==========================================================
+    // WALLET VALIDATION
+    // ==========================================================
+
+    const currentBalance =
+      Number(
+        wallet?.balance ?? 0
+      );
+
+    if (
+      amount >
+      currentBalance
+    ) {
+      throw new Error(
+        "Insufficient wallet balance. Please fund your wallet."
+      );
+    }
+
+    // ==========================================================
+    // NORMALISE BILLER
+    // ==========================================================
+
+    const billerCode =
+      String(
+        details?.biller_code ??
+          details?.billerCode ??
+          ""
+      ).trim();
+
+    if (!billerCode) {
+      throw new Error(
+        "Please select a valid bill provider."
+      );
+    }
+
+    // ==========================================================
+    // NORMALISE ITEM
+    // ==========================================================
+
+    const itemCode =
+      String(
+        details?.item_code ??
+          details?.itemCode ??
+          ""
+      ).trim();
+
+    if (!itemCode) {
+      throw new Error(
+        "Please select a valid bill package."
+      );
+    }
+
+    // ==========================================================
+    // NORMALISE COUNTRY
+    // ==========================================================
+
+    const country =
+      String(
+        details?.country ?? "NG"
+      )
+        .trim()
+        .toUpperCase();
+
+    if (country !== "NG") {
+      throw new Error(
+        "Flutterwave bill payments currently support Nigeria only."
+      );
+    }
+
+    // ==========================================================
+    // NORMALISE CUSTOMER
+    // ==========================================================
+
+    let customer =
+      String(
+        details?.customer ??
+          details?.customer_id ??
+          details?.customerId ??
+          details?.phoneNumber ??
+          details?.phone ??
+          details?.meterNumber ??
+          details?.meter_number ??
+          details?.smartCardNumber ??
+          details?.smartcardNumber ??
+          details?.smartcard_number ??
+          details?.accountNumber ??
+          details?.account_number ??
+          ""
+      ).trim();
+
+    if (
+      service === "airtime" ||
+      service === "data"
+    ) {
+      customer =
+        customer.replace(
+          /\s+/g,
+          ""
+        );
+    }
+
+    if (!customer) {
+      throw new Error(
+        "Customer information is required."
+      );
+    }
+
+    // ==========================================================
+    // SERVICE-SPECIFIC VALIDATION
+    // ==========================================================
+
+    if (
+      service === "airtime" ||
+      service === "data"
+    ) {
+      if (!details?.provider) {
         throw new Error(
-          "Authentication required. Please log in again."
+          "Please select a network provider."
         );
       }
 
       if (
-        !selectedService
-      ) {
-        throw new Error(
-          "Please select a service."
-        );
-      }
-
-      const service =
-        selectedService.type;
-
-      if (
-        !SUPPORTED_BILL_SERVICES.includes(
-          service
+        !/^(?:\+?234|0)[0-9]{10}$/.test(
+          customer
         )
       ) {
         throw new Error(
-          `${selectedService.title} is not currently supported.`
+          "Please provide a valid Nigerian phone number."
         );
       }
+    }
 
-      // ========================================================
-      // AMOUNT VALIDATION
-      // ========================================================
-
-      if (
-        !Number.isFinite(
-          amount
-        ) ||
-        amount <= 0
-      ) {
+    if (
+      service === "electricity"
+    ) {
+      if (!details?.provider) {
         throw new Error(
-          "Please enter a valid payment amount."
+          "Please select an electricity provider."
         );
       }
 
-      // ========================================================
-      // WALLET VALIDATION
-      // ========================================================
-
-      const currentBalance =
-        Number(
-          wallet?.balance ??
-            0
-        );
-
-      if (
-        amount >
-        currentBalance
-      ) {
+      if (customer.length < 5) {
         throw new Error(
-          "Insufficient wallet balance. Please fund your wallet."
+          "Please provide a valid meter number."
         );
       }
+    }
 
-      // ========================================================
-      // NORMALISE BILLER
-      // ========================================================
-
-      const billerCode =
-        String(
-          details?.biller_code ??
-            details?.billerCode ??
-            ""
-        ).trim();
-
-      if (
-        !billerCode
-      ) {
+    if (service === "cable") {
+      if (!details?.provider) {
         throw new Error(
-          "Please select a valid bill provider."
+          "Please select a cable provider."
         );
       }
 
-      // ========================================================
-      // NORMALISE ITEM
-      // ========================================================
-
-      const itemCode =
-        String(
-          details?.item_code ??
-            details?.itemCode ??
-            ""
-        ).trim();
-
-      if (!itemCode) {
+      if (customer.length < 5) {
         throw new Error(
-          "Please select a valid bill package."
+          "Please provide a valid smartcard or decoder number."
         );
       }
+    }
 
-      // ========================================================
-      // NORMALISE COUNTRY
-      // ========================================================
-
-      const country =
-        String(
-          details?.country ??
-            "NG"
-        )
-          .trim()
-          .toUpperCase();
-
-      if (
-        country !== "NG"
-      ) {
+    if (
+      service === "internet"
+    ) {
+      if (!details?.provider) {
         throw new Error(
-          "Flutterwave bill payments currently support Nigeria only."
+          "Please select an internet provider."
         );
       }
 
-      // ========================================================
-      // NORMALISE CUSTOMER
-      // ========================================================
-
-      let customer =
-        String(
-          details?.customer ??
-            details?.customer_id ??
-            details?.customerId ??
-            details?.phoneNumber ??
-            details?.phone ??
-            details?.meterNumber ??
-            details?.meter_number ??
-            details?.smartCardNumber ??
-            details?.smartcardNumber ??
-            details?.smartcard_number ??
-            details?.accountNumber ??
-            details?.account_number ??
-            ""
-        ).trim();
-
-      if (
-        service ===
-          "airtime" ||
-        service === "data"
-      ) {
-        customer =
-          customer.replace(
-            /\s+/g,
-            ""
-          );
-      }
-
-      if (!customer) {
+      if (customer.length < 3) {
         throw new Error(
-          "Customer information is required."
+          "Please provide a valid internet account number."
         );
       }
+    }
+
+    // ==========================================================
+    // FINAL PAYMENT DETAILS
+    // ==========================================================
+
+    const paymentDetails = {
+      ...details,
+      service,
+      amount,
+      country,
+      customer,
+      biller_code: billerCode,
+      item_code: itemCode,
+    };
+
+    console.log(
+      "Sending bill payment request:",
+      {
+        action: "pay",
+        service,
+        amount,
+        country,
+        biller_code: billerCode,
+        item_code: itemCode,
+        customer,
+      }
+    );
+
+    // ==========================================================
+    // PROCESS PAYMENT
+    // ==========================================================
+
+    toast({
+      title: "Processing payment",
+      description:
+        `Processing ${selectedService.title.toLowerCase()}...`,
+    });
+
+    try {
+      const {
+        data,
+        error,
+      } =
+        await supabase.functions.invoke(
+          "flutterwave-bills",
+          {
+            body: {
+              action: "pay",
+              service,
+              amount,
+              biller_code: billerCode,
+              item_code: itemCode,
+              customer,
+              country,
+              details: paymentDetails,
+            },
+          }
+        );
 
       // ========================================================
-      // SERVICE-SPECIFIC VALIDATION
+      // INVOCATION ERROR
       // ========================================================
 
-      if (
-        service ===
-          "airtime" ||
-        service === "data"
-      ) {
-        if (
-          !details?.provider
-        ) {
-          throw new Error(
-            "Please select a network provider."
+      if (error) {
+        const message =
+          await extractFunctionError(
+            error,
+            "Unable to process bill payment."
           );
-        }
 
-        if (
-          !/^(?:\+?234|0)[0-9]{10}$/.test(
-            customer
-          )
-        ) {
-          throw new Error(
-            "Please provide a valid Nigerian phone number."
-          );
-        }
+        console.error(
+          "flutterwave-bills invocation error:",
+          {
+            error,
+            extractedMessage:
+              message,
+          }
+        );
+
+        throw new Error(message);
       }
-
-      if (
-        service ===
-        "electricity"
-      ) {
-        if (
-          !details?.provider
-        ) {
-          throw new Error(
-            "Please select an electricity provider."
-          );
-        }
-
-        if (
-          customer.length <
-          5
-        ) {
-          throw new Error(
-            "Please provide a valid meter number."
-          );
-        }
-      }
-
-      if (
-        service ===
-        "cable"
-      ) {
-        if (
-          !details?.provider
-        ) {
-          throw new Error(
-            "Please select a cable provider."
-          );
-        }
-
-        if (
-          customer.length <
-          5
-        ) {
-          throw new Error(
-            "Please provide a valid smartcard or decoder number."
-          );
-        }
-      }
-
-      if (
-        service ===
-        "internet"
-      ) {
-        if (
-          !details?.provider
-        ) {
-          throw new Error(
-            "Please select an internet provider."
-          );
-        }
-
-        if (
-          customer.length <
-          3
-        ) {
-          throw new Error(
-            "Please provide a valid internet account number."
-          );
-        }
-      }
-
-      // ========================================================
-      // FINAL PAYMENT DETAILS
-      // ========================================================
-
-      const paymentDetails =
-        {
-          ...details,
-
-          service,
-
-          amount,
-
-          country,
-
-          customer,
-
-          biller_code:
-            billerCode,
-
-          item_code:
-            itemCode,
-        };
 
       console.log(
-        "Sending bill payment request:",
-        {
-          action:
-            "pay",
-          service,
-          amount,
-          country,
-          biller_code:
-            billerCode,
-          item_code:
-            itemCode,
-          customer,
-        }
+        "flutterwave-bills response:",
+        data
       );
 
       // ========================================================
-      // PROCESS PAYMENT
+      // BUSINESS ERROR
       // ========================================================
 
-      toast({
-        title:
-          "Processing payment",
-        description:
-          `Processing ${selectedService.title.toLowerCase()}...`,
-      });
-
-      try {
-        const {
-          data,
-          error,
-        } =
-          await supabase.functions.invoke(
-            "flutterwave-bills",
-            {
-              body: {
-                action:
-                  "pay",
-
-                service,
-
-                amount,
-
-                biller_code:
-                  billerCode,
-
-                item_code:
-                  itemCode,
-
-                customer,
-
-                country,
-
-                details:
-                  paymentDetails,
-              },
-            }
-          );
-
-        // ======================================================
-        // INVOCATION ERROR
-        // ======================================================
-
-        if (error) {
-          const message =
-            await extractFunctionError(
-              error,
-              "Unable to process bill payment."
-            );
-
-          console.error(
-            "flutterwave-bills invocation error:",
-            {
-              error,
-              extractedMessage:
-                message,
-            }
-          );
-
-          throw new Error(
-            message
-          );
-        }
-
-        console.log(
-          "flutterwave-bills response:",
-          data
-        );
-
-        // ======================================================
-        // BUSINESS ERROR
-        // ======================================================
-
-        if (
-          !data ||
-          data.success !==
-            true
-        ) {
-          throw new Error(
-            data?.error ||
-              data?.message ||
-              data
-                ?.provider_message ||
-              "Bill payment failed."
-          );
-        }
-
-        // ======================================================
-        // SUCCESS / PENDING
-        // ======================================================
-
-        await refreshWallet();
-
-        setServiceModalOpen(
-          false
-        );
-
-        setSelectedService(
-          null
-        );
-
-        const reference =
-          data?.reference ??
-          data?.transaction_reference ??
-          data?.transaction_id ??
-          null;
-
-        const isPending =
-          data?.status ===
-          "pending";
-
-        toast({
-          title:
-            isPending
-              ? "Payment Processing"
-              : "Payment Successful",
-
-          description:
-            data?.message ||
-            (isPending
-              ? `${selectedService.title} payment is being verified.`
-              : `${selectedService.title} payment was completed successfully.`),
-        });
-
-        console.log(
-          "Bill payment processed:",
-          {
-            service,
-
-            amount,
-
-            reference,
-
-            transaction_id:
-              data?.transaction_id,
-
-            provider_reference:
-              data?.provider_reference,
-
-            biller_code:
-              billerCode,
-
-            item_code:
-              itemCode,
-
-            customer,
-
-            status:
-              data?.status,
-
-            provider_data:
-              data?.data,
-          }
-        );
-      } catch (error: any) {
-        console.error(
-          "Bill payment failed:",
-          error
-        );
-
+      if (
+        !data ||
+        data.success !== true
+      ) {
         throw new Error(
-          error?.message ||
-            "Unable to complete bill payment."
+          data?.error ||
+            data?.message ||
+            data?.provider_message ||
+            "Bill payment failed."
         );
       }
-    };
+
+      // ========================================================
+      // SUCCESS / PENDING
+      // ========================================================
+
+      await refreshWallet();
+
+      setServiceModalOpen(false);
+      setSelectedService(null);
+
+      const reference =
+        data?.reference ??
+        data?.transaction_reference ??
+        data?.transaction_id ??
+        null;
+
+      const isPending =
+        data?.status === "pending";
+
+      toast({
+        title: isPending
+          ? "Payment Processing"
+          : "Payment Successful",
+
+        description:
+          data?.message ||
+          (isPending
+            ? `${selectedService.title} payment is being verified.`
+            : `${selectedService.title} payment was completed successfully.`),
+      });
+
+      console.log(
+        "Bill payment processed:",
+        {
+          service,
+          amount,
+          reference,
+          transaction_id:
+            data?.transaction_id,
+          provider_reference:
+            data?.provider_reference,
+          biller_code:
+            billerCode,
+          item_code:
+            itemCode,
+          customer,
+          status:
+            data?.status,
+          provider_data:
+            data?.data,
+        }
+      );
+    } catch (error: any) {
+      console.error(
+        "Bill payment failed:",
+        error
+      );
+
+      throw new Error(
+        error?.message ||
+          "Unable to complete bill payment."
+      );
+    }
+  };
 
   // ============================================================
   // BANK TRANSFER
   // ============================================================
 
-  const handleTransfer =
-    async (
-      amount: number,
-      details: any
-    ) => {
-      if (!user) {
-        toast({
-          title:
-            "Authentication required",
-          description:
-            "Please log in again.",
-          variant:
-            "destructive",
-        });
+  const handleTransfer = async (
+    amount: number,
+    details: any
+  ) => {
+    if (!user) {
+      toast({
+        title:
+          "Authentication required",
+        description:
+          "Please log in again.",
+        variant:
+          "destructive",
+      });
 
-        return;
-      }
+      return;
+    }
 
-      if (
-        !Number.isFinite(
-          amount
-        ) ||
-        amount <= 0
-      ) {
-        toast({
-          title:
-            "Invalid amount",
-          description:
-            "Please enter a valid transfer amount.",
-          variant:
-            "destructive",
-        });
+    if (
+      !Number.isFinite(amount) ||
+      amount <= 0
+    ) {
+      toast({
+        title: "Invalid amount",
+        description:
+          "Please enter a valid transfer amount.",
+        variant:
+          "destructive",
+      });
 
-        return;
-      }
+      return;
+    }
 
-      if (
-        wallet &&
-        amount >
-          Number(
-            wallet.balance
-          )
-      ) {
-        toast({
-          title:
-            "Insufficient Balance",
-          description:
-            "Please fund your wallet to continue.",
-          variant:
-            "destructive",
-        });
+    if (
+      wallet &&
+      amount >
+        Number(wallet.balance)
+    ) {
+      toast({
+        title:
+          "Insufficient Balance",
+        description:
+          "Please fund your wallet to continue.",
+        variant:
+          "destructive",
+      });
 
-        return;
-      }
+      return;
+    }
 
-      if (
-        !details?.accountNumber
-      ) {
-        toast({
-          title:
-            "Invalid recipient",
-          description:
-            "Recipient bank account is missing.",
-          variant:
-            "destructive",
-        });
+    if (
+      !details?.accountNumber
+    ) {
+      toast({
+        title:
+          "Invalid recipient",
+        description:
+          "Recipient bank account is missing.",
+        variant:
+          "destructive",
+      });
 
-        return;
-      }
+      return;
+    }
 
-      if (
-        !details?.bankCode
-      ) {
-        toast({
-          title:
-            "Invalid bank",
-          description:
-            "Recipient bank code is missing.",
-          variant:
-            "destructive",
-        });
+    if (!details?.bankCode) {
+      toast({
+        title: "Invalid bank",
+        description:
+          "Recipient bank code is missing.",
+        variant:
+          "destructive",
+      });
 
-        return;
-      }
+      return;
+    }
 
-      if (
-        !details?.recipient
-      ) {
-        toast({
-          title:
-            "Invalid recipient",
-          description:
-            "Verified recipient name is missing.",
-          variant:
-            "destructive",
-        });
+    if (!details?.recipient) {
+      toast({
+        title:
+          "Invalid recipient",
+        description:
+          "Verified recipient name is missing.",
+        variant:
+          "destructive",
+      });
 
-        return;
-      }
+      return;
+    }
 
-      try {
-        const idempotencyKey =
-          `transfer_${user.id}_${Date.now()}_${crypto.randomUUID()}`;
+    try {
+      const idempotencyKey =
+        `transfer_${user.id}_${Date.now()}_${crypto.randomUUID()}`;
 
-        toast({
-          title:
-            "Processing transfer",
-          description:
-            "Please wait while we send your money.",
-        });
+      toast({
+        title:
+          "Processing transfer",
+        description:
+          "Please wait while we send your money.",
+      });
 
-        const {
-          data,
-          error,
-        } =
-          await supabase.functions.invoke(
-            "flutterwave-transfer",
-            {
-              body: {
-                amount,
-
-                account_number:
-                  details.accountNumber,
-
-                account_bank:
-                  details.bankCode,
-
-                beneficiary_name:
-                  details.recipient,
-
-                narration:
-                  details.narration ||
-                  "IyanjuPay bank transfer",
-
-                idempotency_key:
-                  idempotencyKey,
-              },
-            }
-          );
-
-        if (error) {
-          console.error(
-            "Flutterwave transfer function error:",
-            error
-          );
-
-          const message =
-            await extractFunctionError(
-              error,
-              "Unable to process bank transfer."
-            );
-
-          throw new Error(
-            message
-          );
-        }
-
-        console.log(
-          "Flutterwave transfer response:",
-          data
-        );
-
-        if (
-          !data ||
-          data.success !==
-            true
-        ) {
-          throw new Error(
-            data?.error ||
-              data?.message ||
-              "Bank transfer failed."
-          );
-        }
-
-        setTransferModalOpen(
-          false
-        );
-
-        await refreshWallet();
-
-        toast({
-          title:
-            "Transfer Processing",
-          description:
-            data?.message ||
-            `₦${amount.toLocaleString()} sent to ${details.recipient}.`,
-        });
-
-        console.log(
-          "Bank transfer successfully initiated:",
+      const {
+        data,
+        error,
+      } =
+        await supabase.functions.invoke(
+          "flutterwave-transfer",
           {
-            transaction_id:
-              data?.transaction_id,
+            body: {
+              amount,
 
-            flutterwave_transfer_id:
-              data?.flutterwave_transfer_id,
+              account_number:
+                details.accountNumber,
 
-            reference:
-              data?.reference,
+              account_bank:
+                details.bankCode,
 
-            amount,
+              beneficiary_name:
+                details.recipient,
 
-            beneficiary:
-              details.recipient,
+              narration:
+                details.narration ||
+                "IyanjuPay bank transfer",
+
+              idempotency_key:
+                idempotencyKey,
+            },
           }
         );
-      } catch (error: any) {
+
+      if (error) {
         console.error(
-          "Bank transfer failed:",
+          "Flutterwave transfer function error:",
           error
         );
 
-        toast({
-          title:
-            "Transfer Failed",
-          description:
-            error?.message ||
-            "Unable to complete the bank transfer.",
-          variant:
-            "destructive",
-        });
+        const message =
+          await extractFunctionError(
+            error,
+            "Unable to process bank transfer."
+          );
+
+        throw new Error(message);
       }
-    };
+
+      console.log(
+        "Flutterwave transfer response:",
+        data
+      );
+
+      if (
+        !data ||
+        data.success !== true
+      ) {
+        throw new Error(
+          data?.error ||
+            data?.message ||
+            "Bank transfer failed."
+        );
+      }
+
+      setTransferModalOpen(false);
+
+      await refreshWallet();
+
+      toast({
+        title:
+          "Transfer Processing",
+        description:
+          data?.message ||
+          `₦${amount.toLocaleString()} sent to ${details.recipient}.`,
+      });
+
+      console.log(
+        "Bank transfer successfully initiated:",
+        {
+          transaction_id:
+            data?.transaction_id,
+
+          flutterwave_transfer_id:
+            data?.flutterwave_transfer_id,
+
+          reference:
+            data?.reference,
+
+          amount,
+
+          beneficiary:
+            details.recipient,
+        }
+      );
+    } catch (error: any) {
+      console.error(
+        "Bank transfer failed:",
+        error
+      );
+
+      toast({
+        title: "Transfer Failed",
+        description:
+          error?.message ||
+          "Unable to complete the bank transfer.",
+        variant:
+          "destructive",
+      });
+    }
+  };
 
   // ============================================================
   // PAGE ROUTING
   // ============================================================
 
   if (
-    currentPage ===
-    "profile"
+    currentPage === "profile"
   ) {
     return (
       <ProfilePage
         onBack={() =>
-          setCurrentPage(
-            "me"
-          )
+          setCurrentPage("me")
         }
       />
     );
   }
 
   if (
-    currentPage ===
-    "history"
+    currentPage === "history"
   ) {
     return (
       <TransactionHistory
         onBack={() =>
-          setCurrentPage(
-            "me"
-          )
+          setCurrentPage("me")
         }
       />
     );
   }
 
   if (
-    currentPage ===
-    "rewards"
+    currentPage === "rewards"
   ) {
     return (
       <RewardsPage
         onBack={() =>
-          setCurrentPage(
-            "home"
-          )
+          setCurrentPage("home")
         }
       />
     );
   }
 
   if (
-    currentPage ===
-    "cards"
+    currentPage === "cards"
   ) {
     return (
       <CardsPage
         onBack={() =>
-          setCurrentPage(
-            "home"
-          )
+          setCurrentPage("home")
         }
       />
     );
   }
 
   if (
-    currentPage ===
-    "me"
+    currentPage === "me"
   ) {
     return (
       <MePage
         onBack={() =>
-          setCurrentPage(
-            "home"
-          )
+          setCurrentPage("home")
         }
         onProfileClick={() =>
-          setCurrentPage(
-            "profile"
-          )
+          setCurrentPage("profile")
         }
         onHistoryClick={() =>
-          setCurrentPage(
-            "history"
-          )
+          setCurrentPage("history")
         }
       />
     );
@@ -1351,130 +1159,115 @@ const Dashboard = () => {
   // BOTTOM NAVIGATION
   // ============================================================
 
-  const renderBottomNav =
-    (
-      page: CurrentPage
-    ) => (
-      <div className="fixed bottom-0 left-0 right-0 z-40 bg-white border-t border-gray-200 px-4 py-2">
+  const renderBottomNav = (
+    page: CurrentPage
+  ) => (
+    <div className="fixed bottom-0 left-0 right-0 z-40 bg-white border-t border-gray-200 px-4 py-2">
 
-        <div className="max-w-7xl mx-auto">
+      <div className="max-w-7xl mx-auto">
 
-          <div className="flex justify-around">
+        <div className="flex justify-around">
 
-            <Button
-              variant={
-                page ===
-                "home"
-                  ? "default"
-                  : "ghost"
-              }
-              size="sm"
-              onClick={() =>
-                setCurrentPage(
-                  "home"
-                )
-              }
-              className={`flex flex-col items-center gap-1 px-6 py-3 ${
-                page ===
-                "home"
-                  ? "bg-purple-600 text-white"
-                  : "text-gray-600"
-              }`}
-            >
-              <Home className="h-4 w-4" />
+          <Button
+            variant={
+              page === "home"
+                ? "default"
+                : "ghost"
+            }
+            size="sm"
+            onClick={() =>
+              setCurrentPage("home")
+            }
+            className={`flex flex-col items-center gap-1 px-6 py-3 ${
+              page === "home"
+                ? "bg-purple-600 text-white"
+                : "text-gray-600"
+            }`}
+          >
+            <Home className="h-4 w-4" />
 
-              <span className="text-xs">
-                Home
-              </span>
-            </Button>
+            <span className="text-xs">
+              Home
+            </span>
+          </Button>
 
-            <Button
-              variant={
-                page ===
+          <Button
+            variant={
+              page === "rewards"
+                ? "default"
+                : "ghost"
+            }
+            size="sm"
+            onClick={() =>
+              setCurrentPage(
                 "rewards"
-                  ? "default"
-                  : "ghost"
-              }
-              size="sm"
-              onClick={() =>
-                setCurrentPage(
-                  "rewards"
-                )
-              }
-              className={`flex flex-col items-center gap-1 px-6 py-3 ${
-                page ===
-                "rewards"
-                  ? "bg-purple-600 text-white"
-                  : "text-gray-600"
-              }`}
-            >
-              <Gift className="h-4 w-4" />
+              )
+            }
+            className={`flex flex-col items-center gap-1 px-6 py-3 ${
+              page === "rewards"
+                ? "bg-purple-600 text-white"
+                : "text-gray-600"
+            }`}
+          >
+            <Gift className="h-4 w-4" />
 
-              <span className="text-xs">
-                Reward
-              </span>
-            </Button>
+            <span className="text-xs">
+              Reward
+            </span>
+          </Button>
 
-            <Button
-              variant={
-                page ===
-                "cards"
-                  ? "default"
-                  : "ghost"
-              }
-              size="sm"
-              onClick={() =>
-                setCurrentPage(
-                  "cards"
-                )
-              }
-              className={`flex flex-col items-center gap-1 px-6 py-3 ${
-                page ===
-                "cards"
-                  ? "bg-purple-600 text-white"
-                  : "text-gray-600"
-              }`}
-            >
-              <CreditCard className="h-4 w-4" />
+          <Button
+            variant={
+              page === "cards"
+                ? "default"
+                : "ghost"
+            }
+            size="sm"
+            onClick={() =>
+              setCurrentPage("cards")
+            }
+            className={`flex flex-col items-center gap-1 px-6 py-3 ${
+              page === "cards"
+                ? "bg-purple-600 text-white"
+                : "text-gray-600"
+            }`}
+          >
+            <CreditCard className="h-4 w-4" />
 
-              <span className="text-xs">
-                Card
-              </span>
-            </Button>
+            <span className="text-xs">
+              Card
+            </span>
+          </Button>
 
-            <Button
-              variant={
-                page ===
-                "me"
-                  ? "default"
-                  : "ghost"
-              }
-              size="sm"
-              onClick={() =>
-                setCurrentPage(
-                  "me"
-                )
-              }
-              className={`flex flex-col items-center gap-1 px-6 py-3 ${
-                page ===
-                "me"
-                  ? "bg-purple-600 text-white"
-                  : "text-gray-600"
-              }`}
-            >
-              <User className="h-4 w-4" />
+          <Button
+            variant={
+              page === "me"
+                ? "default"
+                : "ghost"
+            }
+            size="sm"
+            onClick={() =>
+              setCurrentPage("me")
+            }
+            className={`flex flex-col items-center gap-1 px-6 py-3 ${
+              page === "me"
+                ? "bg-purple-600 text-white"
+                : "text-gray-600"
+            }`}
+          >
+            <User className="h-4 w-4" />
 
-              <span className="text-xs">
-                Me
-              </span>
-            </Button>
-
-          </div>
+            <span className="text-xs">
+              Me
+            </span>
+          </Button>
 
         </div>
 
       </div>
-    );
+
+    </div>
+  );
 
   // ============================================================
   // DASHBOARD
@@ -1515,9 +1308,7 @@ const Dashboard = () => {
                 variant="ghost"
                 size="sm"
                 onClick={() =>
-                  setQrModalOpen(
-                    true
-                  )
+                  setQrModalOpen(true)
                 }
                 className="text-white hover:bg-white/20"
               >
@@ -1528,9 +1319,7 @@ const Dashboard = () => {
                 variant="ghost"
                 size="sm"
                 onClick={() =>
-                  setCurrentPage(
-                    "me"
-                  )
+                  setCurrentPage("me")
                 }
                 className="text-white hover:bg-white/20"
               >
@@ -1553,9 +1342,7 @@ const Dashboard = () => {
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={
-                  signOut
-                }
+                onClick={signOut}
                 className="text-white hover:bg-white/20"
               >
                 <LogOut className="h-4 w-4" />
@@ -1641,17 +1428,18 @@ const Dashboard = () => {
 
                 </div>
 
+                {/* ==================================================
+                    USER-FACING NUMERIC WALLET ID
+                ================================================== */}
+
                 <div className="text-right">
 
                   <p className="text-purple-100 text-sm">
                     Wallet ID
                   </p>
 
-                  <p className="font-mono text-sm">
-                    {wallet?.id?.slice(
-                      0,
-                      8
-                    ) ||
+                  <p className="font-mono text-sm font-semibold tracking-wider">
+                    {wallet?.wallet_id ||
                       "—"}
                   </p>
 
@@ -1856,84 +1644,52 @@ const Dashboard = () => {
           BOTTOM NAVIGATION
       ======================================================== */}
 
-      {renderBottomNav(
-        currentPage
-      )}
+      {renderBottomNav(currentPage)}
 
       {/* ========================================================
           MODALS
       ======================================================== */}
 
       <FundWalletModal
-        isOpen={
-          fundModalOpen
-        }
+        isOpen={fundModalOpen}
         onClose={() =>
-          setFundModalOpen(
-            false
-          )
+          setFundModalOpen(false)
         }
-        onFunded={
-          refreshWallet
-        }
+        onFunded={refreshWallet}
       />
 
       <ServiceModal
-        isOpen={
-          serviceModalOpen
-        }
+        isOpen={serviceModalOpen}
         onClose={() => {
-          setServiceModalOpen(
-            false
-          );
-
-          setSelectedService(
-            null
-          );
+          setServiceModalOpen(false);
+          setSelectedService(null);
         }}
-        service={
-          selectedService
-        }
+        service={selectedService}
         walletBalance={Number(
-          wallet?.balance ??
-            0
+          wallet?.balance ?? 0
         )}
-        onPurchase={
-          handlePurchase
-        }
+        onPurchase={handlePurchase}
       />
 
       <TransferModal
-        isOpen={
-          transferModalOpen
-        }
+        isOpen={transferModalOpen}
         onClose={() =>
-          setTransferModalOpen(
-            false
-          )
+          setTransferModalOpen(false)
         }
         walletBalance={Number(
-          wallet?.balance ??
-            0
+          wallet?.balance ?? 0
         )}
-        onTransfer={
-          handleTransfer
-        }
+        onTransfer={handleTransfer}
       />
 
       <QRCodeModal
-        isOpen={
-          qrModalOpen
-        }
+        isOpen={qrModalOpen}
         onClose={() =>
-          setQrModalOpen(
-            false
-          )
+          setQrModalOpen(false)
         }
         virtualAccountNumber=""
         userName={
-          user?.email ||
-          "User"
+          user?.email || "User"
         }
       />
 

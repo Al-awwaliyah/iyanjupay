@@ -20,10 +20,10 @@ jobs:
           node-version: 20
           cache: npm
 
-      - name: Install vite-plugin-pwa
+      - name: Install PWA plugin
         run: npm install -D vite-plugin-pwa
 
-      - name: Commit changes
+      - name: Commit updated dependencies
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -31,7 +31,7 @@ jobs:
           git add package.json package-lock.json
 
           if git diff --cached --quiet; then
-            echo "No changes to commit."
+            echo "No dependency changes."
           else
             git commit -m "Install vite-plugin-pwa"
             git push

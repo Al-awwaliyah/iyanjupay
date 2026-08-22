@@ -1,13 +1,7 @@
 import React, { useState } from "react";
-import {
-  Button,
-} from "@/components/ui/button";
-import {
-  Input,
-} from "@/components/ui/input";
-import {
-  Label,
-} from "@/components/ui/label";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Card,
   CardContent,
@@ -60,7 +54,6 @@ const AuthForm = () => {
   const normalizePhoneNumber = (phone: string) => {
     let cleaned = phone.trim().replace(/[\s()-]/g, "");
 
-    // Nigerian local format:
     // 08012345678 -> +2348012345678
     if (cleaned.startsWith("0")) {
       cleaned = `+234${cleaned.substring(1)}`;
@@ -119,6 +112,17 @@ const AuthForm = () => {
 
     const normalizedPhone = normalizePhoneNumber(phoneNumber);
 
+    // Validate Nigerian number.
+    if (!/^\+234\d{10}$/.test(normalizedPhone)) {
+      toast({
+        title: "Invalid Nigerian phone number",
+        description:
+          "Enter a valid Nigerian number such as +2348012345678.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsLoading(true);
 
     try {
@@ -141,11 +145,15 @@ const AuthForm = () => {
         throw new Error("Unable to create your account.");
       }
 
-      // The profile is created server-side by the
-      // auth.users -> profiles database trigger.
-      // Do NOT upsert into profiles from the client here.
+      /*
+       * The profile is created server-side by the
+       * auth.users -> profiles database trigger.
+       *
+       * We intentionally do not insert/update profiles here
+       * because the signup user may not have an active session
+       * yet and profiles is protected by RLS.
+       */
 
-      // Open verification choice.
       setVerificationMethod(null);
       setOtp("");
       setOtpSent(false);
@@ -159,7 +167,8 @@ const AuthForm = () => {
     } catch (error: any) {
       toast({
         title: "Unable to create account",
-        description: error.message || "Something went wrong.",
+        description:
+          error.message || "Something went wrong.",
         variant: "destructive",
       });
     } finally {
@@ -168,16 +177,17 @@ const AuthForm = () => {
   };
 
   // --------------------------------------------------
-  // PHONE OTP - SEND
+  // PHONE OTP - SEND THROUGH TERMII
   // --------------------------------------------------
 
   const handleSendPhoneOTP = async () => {
     const normalizedPhone = normalizePhoneNumber(phoneNumber);
 
-    if (!normalizedPhone) {
+    if (!/^\+234\d{10}$/.test(normalizedPhone)) {
       toast({
-        title: "Phone number required",
-        description: "Please enter a valid phone number.",
+        title: "Invalid phone number",
+        description:
+          "Enter a valid Nigerian phone number.",
         variant: "destructive",
       });
       return;
@@ -187,7 +197,7 @@ const AuthForm = () => {
 
     try {
       const { data, error } = await supabase.functions.invoke(
-        "twilio-verify",
+        "termii-verify",
         {
           body: {
             action: "send",
@@ -202,18 +212,21 @@ const AuthForm = () => {
 
       if (!data?.success) {
         throw new Error(
-          data?.error || "Unable to send verification code.",
+          data?.error ||
+            "Unable to send verification code.",
         );
       }
 
       setOtpSent(true);
+      setOtp("");
 
       toast({
         title: "Verification code sent",
-        description: `An 8-digit verification code was sent to ${normalizedPhone}.`,
+        description:
+          "An 8-digit verification code has been sent to your phone.",
       });
     } catch (error: any) {
-      console.error("Send OTP error:", error);
+      console.error("Termii send OTP error:", error);
 
       toast({
         title: "Unable to send code",
@@ -227,14 +240,13 @@ const AuthForm = () => {
   };
 
   // --------------------------------------------------
-  // PHONE OTP - VERIFY
+  // PHONE OTP - VERIFY THROUGH TERMII
   // --------------------------------------------------
 
   const handleVerifyPhoneOTP = async () => {
     const normalizedPhone = normalizePhoneNumber(phoneNumber);
     const enteredCode = otp.trim();
 
-    // Twilio Verify Service is configured for 8 digits.
     if (!/^\d{8}$/.test(enteredCode)) {
       toast({
         title: "Invalid code",
@@ -249,7 +261,7 @@ const AuthForm = () => {
 
     try {
       const { data, error } = await supabase.functions.invoke(
-        "twilio-verify",
+        "termii-verify",
         {
           body: {
             action: "check",
@@ -265,38 +277,20 @@ const AuthForm = () => {
 
       if (!data?.verified) {
         throw new Error(
-          data?.message || "Invalid verification code.",
+          data?.error ||
+            data?.message ||
+            "Invalid verification code.",
         );
       }
 
-      // Get the currently authenticated user.
-      const {
-        data: { user },
-        error: userError,
-      } = await supabase.auth.getUser();
-
-      if (userError) {
-        throw userError;
-      }
-
-      if (!user) {
-        throw new Error(
-          "Your account session could not be found. Please sign in again.",
-        );
-      }
-
-      // Mark phone as verified.
-      const { error: profileError } = await supabase
-        .from("profiles")
-        .update({
-          phone_verified: true,
-          phone_verified_at: new Date().toISOString(),
-        })
-        .eq("id", user.id);
-
-      if (profileError) {
-        throw profileError;
-      }
+      /*
+       * termii-verify handles:
+       * - OTP verification
+       * - phone_verified = true
+       * - phone_verified_at
+       *
+       * No auth session is required here.
+       */
 
       setVerificationDialogOpen(false);
       setVerificationMethod(null);
@@ -309,7 +303,7 @@ const AuthForm = () => {
           "Your phone number has been verified. You can now continue.",
       });
     } catch (error: any) {
-      console.error("Verify OTP error:", error);
+      console.error("Termii verify OTP error:", error);
 
       toast({
         title: "Verification failed",
@@ -331,11 +325,10 @@ const AuthForm = () => {
     setOtpLoading(true);
 
     try {
-      const { error } =
-        await supabase.auth.resend({
-          type: "signup",
-          email: email.trim(),
-        });
+      const { error } = await supabase.auth.resend({
+        type: "signup",
+        email: email.trim(),
+      });
 
       if (error) {
         throw error;
@@ -349,7 +342,10 @@ const AuthForm = () => {
 
       setVerificationDialogOpen(false);
     } catch (error: any) {
-      console.error("Email verification error:", error);
+      console.error(
+        "Email verification error:",
+        error,
+      );
 
       toast({
         title: "Unable to send email",
@@ -438,7 +434,8 @@ const AuthForm = () => {
       toast({
         title: "Unable to send reset link",
         description:
-          error.message || "Unable to send reset link.",
+          error.message ||
+          "Unable to send reset link.",
         variant: "destructive",
       });
     } finally {
@@ -636,6 +633,12 @@ const AuthForm = () => {
         onOpenChange={(open) => {
           if (!otpLoading) {
             setVerificationDialogOpen(open);
+
+            if (!open) {
+              setVerificationMethod(null);
+              setOtp("");
+              setOtpSent(false);
+            }
           }
         }}
       >
@@ -650,7 +653,7 @@ const AuthForm = () => {
             </DialogDescription>
           </DialogHeader>
 
-          {/* METHOD SELECTION */}
+          {/* VERIFICATION METHOD SELECTION */}
           {!verificationMethod && (
             <div className="space-y-3 pt-4">
               <Button
@@ -743,10 +746,9 @@ const AuthForm = () => {
                       value={otp}
                       onChange={(e) =>
                         setOtp(
-                          e.target.value.replace(
-                            /\D/g,
-                            "",
-                          ).slice(0, 8),
+                          e.target.value
+                            .replace(/\D/g, "")
+                            .slice(0, 8),
                         )
                       }
                       placeholder="Enter 8-digit code"

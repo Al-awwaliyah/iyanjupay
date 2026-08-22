@@ -3,7 +3,6 @@ import {
   flw,
 } from "../_shared/auth.ts";
 
-
 /**
  * ============================================================
  * IYANJUPAY - FLUTTERWAVE WEBHOOK
@@ -25,6 +24,8 @@ import {
  * 2. Bank transfers
  *
  *    transfer.disburse
+ *    transfer.completed
+ *    Transfer
  *       ↓
  *    identify IyanjuPay transaction
  *       ↓
@@ -37,10 +38,46 @@ import {
  *
  *    FAILED
  *       ↓
- *    automatic wallet refund
+ *    refund COMPLETE wallet charge
  *       ↓
  *    mark transaction failed
  *
+ * IMPORTANT:
+ *
+ * Wallet transaction amount includes:
+ *
+ *    transfer amount + IyanjuPay fee
+ *
+ * Example:
+ *
+ *    Transfer amount = ₦125
+ *    IyanjuPay fee   = ₦10
+ *    Wallet charge   = ₦135
+ *
+ * Flutterwave receives ONLY ₦125.
+ *
+ * Therefore:
+ *
+ *    transaction.amount
+ *          = ₦135
+ *
+ *    metadata.transfer_amount
+ *          = ₦125
+ *
+ *    Flutterwave verified amount
+ *          = ₦125
+ *
+ * Successful transfer verification MUST compare:
+ *
+ *    Flutterwave amount
+ *          against
+ *    metadata.transfer_amount
+ *
+ * Failed transfer refunds MUST use:
+ *
+ *    transaction.amount
+ *
+ * because the user must receive the full ₦135 back.
  * ============================================================
  */
 
@@ -493,10 +530,11 @@ Deno.serve(
        * 8. TRANSFER WEBHOOK
        * ======================================================
        *
-       * Flutterwave currently sends transfer.disburse for
-       * completed/failed transfers.
+       * Supports:
        *
-       * Older integrations may use transfer.completed.
+       * transfer.disburse
+       * transfer.completed
+       * Transfer
        */
 
       if (
@@ -645,8 +683,6 @@ async function handleTransferWebhook(
 
   /*
    * We only process final statuses.
-   *
-   * NEW/PENDING are not final.
    */
 
   if (
@@ -681,14 +717,6 @@ async function handleTransferWebhook(
    * ==========================================================
    * VERIFY TRANSFER WITH FLUTTERWAVE
    * ==========================================================
-   *
-   * This uses flw(), so when the proxy is configured:
-   *
-   * Webhook
-   *   ↓
-   * SmartASP
-   *   ↓
-   * Flutterwave
    */
 
   console.log(
@@ -715,10 +743,6 @@ async function handleTransferWebhook(
       "Transfer verification request failed:",
       error,
     );
-
-    /*
-     * Return non-2xx so Flutterwave can retry the webhook.
-     */
 
     return jsonResponse(
       {
@@ -896,12 +920,6 @@ async function handleTransferWebhook(
    * ==========================================================
    * FIND IYANJUPAY TRANSACTION
    * ==========================================================
-   *
-   * PRIMARY:
-   * provider_reference = Flutterwave transfer ID
-   *
-   * FALLBACK:
-   * reference_number = our transfer reference
    */
 
   let transaction: any =
@@ -909,6 +927,8 @@ async function handleTransferWebhook(
 
   /*
    * PRIMARY LOOKUP
+   *
+   * provider_reference = Flutterwave transfer ID
    */
 
   const {
@@ -1015,14 +1035,6 @@ async function handleTransferWebhook(
       }),
     );
 
-    /*
-     * Returning 404 would cause repeated webhook attempts without
-     * giving us anything useful if the transaction genuinely
-     * does not exist.
-     *
-     * This is logged for reconciliation.
-     */
-
     return jsonResponse(
       {
         success:
@@ -1045,8 +1057,6 @@ async function handleTransferWebhook(
    * ==========================================================
    * SECURITY CHECK
    * ==========================================================
-   *
-   * Only process our own Flutterwave transfer transactions.
    */
 
   if (
@@ -1072,20 +1082,40 @@ async function handleTransferWebhook(
 
   /*
    * ==========================================================
-   * VERIFY AMOUNT
+   * AMOUNT VERIFICATION
    * ==========================================================
+   *
+   * IMPORTANT:
+   *
+   * transaction.amount = TOTAL WALLET CHARGE
+   *
+   * Example:
+   *
+   * transfer_amount = ₦125
+   * IyanjuPay fee    = ₦10
+   * total_charged    = ₦135
+   *
+   * Therefore:
+   *
+   * transaction.amount = 135
+   *
+   * metadata.transfer_amount = 125
+   *
+   * Flutterwave verified amount = 125
+   *
+   * We compare Flutterwave against metadata.transfer_amount.
    */
 
-  const transactionAmount =
+  const transactionTotalCharged =
     Number(
       transaction.amount,
     );
 
   if (
     !Number.isFinite(
-      transactionAmount,
+      transactionTotalCharged,
     ) ||
-    transactionAmount <= 0
+    transactionTotalCharged <= 0
   ) {
     return jsonResponse(
       {
@@ -1096,9 +1126,56 @@ async function handleTransferWebhook(
     );
   }
 
+  const transactionMetadata =
+    transaction.metadata &&
+    typeof transaction.metadata ===
+      "object"
+      ? transaction.metadata
+      : {};
+
   /*
-   * Do not process a provider response that says a different
-   * amount from what we debited.
+   * Amount actually sent to Flutterwave.
+   */
+
+  const providerTransferAmount =
+    Number(
+      transactionMetadata?.transfer_amount ??
+        transactionMetadata?.flutterwave_transfer_amount ??
+        0,
+    );
+
+  if (
+    !Number.isFinite(
+      providerTransferAmount,
+    ) ||
+    providerTransferAmount <= 0
+  ) {
+    console.error(
+      "Missing provider transfer amount:",
+      JSON.stringify({
+        transaction_id:
+          transaction.id,
+
+        transaction_total_charged:
+          transactionTotalCharged,
+
+        metadata:
+          transactionMetadata,
+      }),
+    );
+
+    return jsonResponse(
+      {
+        error:
+          "Provider transfer amount is missing from transaction metadata",
+      },
+      409,
+    );
+  }
+
+  /*
+   * Flutterwave amount must match the amount that
+   * IyanjuPay instructed Flutterwave to transfer.
    */
 
   if (
@@ -1107,16 +1184,23 @@ async function handleTransferWebhook(
     ) &&
     verifiedAmount > 0 &&
     verifiedAmount !==
-      transactionAmount
+      providerTransferAmount
   ) {
     console.error(
       "Transfer amount mismatch:",
       JSON.stringify({
-        transaction:
-          transactionAmount,
+        transaction_total_charged:
+          transactionTotalCharged,
+
+        expected_provider_amount:
+          providerTransferAmount,
 
         flutterwave:
           verifiedAmount,
+
+        iyanjupay_fee:
+          transactionMetadata?.iyanjupay_fee ??
+          null,
       }),
     );
 
@@ -1140,10 +1224,7 @@ async function handleTransferWebhook(
     "SUCCESSFUL"
   ) {
     /*
-     * Idempotency:
-     *
-     * If webhook is delivered again after we already marked
-     * it successful, do nothing.
+     * Idempotency
      */
 
     if (
@@ -1263,6 +1344,12 @@ async function handleTransferWebhook(
 
         transfer_id:
           transferId,
+
+        transfer_amount:
+          providerTransferAmount,
+
+        total_charged:
+          transactionTotalCharged,
       }),
     );
 
@@ -1279,6 +1366,12 @@ async function handleTransferWebhook(
       transfer_id:
         transferId,
 
+      transfer_amount:
+        providerTransferAmount,
+
+      total_charged:
+        transactionTotalCharged,
+
       refunded:
         false,
     });
@@ -1289,8 +1382,15 @@ async function handleTransferWebhook(
    * FAILED TRANSFER
    * ==========================================================
    *
-   * THIS IS THE AUTOMATIC REFUND SECTION.
-   * ==========================================================
+   * IMPORTANT:
+   *
+   * Refund the COMPLETE wallet charge.
+   *
+   * Example:
+   *
+   * Transfer = ₦125
+   * Fee      = ₦10
+   * Refund   = ₦135
    */
 
   if (
@@ -1301,8 +1401,6 @@ async function handleTransferWebhook(
      * ========================================================
      * ALREADY REFUNDED?
      * ========================================================
-     *
-     * Check metadata first.
      */
 
     const existingMetadata =
@@ -1319,10 +1417,6 @@ async function handleTransferWebhook(
       console.log(
         `Transfer ${transferId} has already been refunded.`,
       );
-
-      /*
-       * Make sure final status is failed.
-       */
 
       if (
         String(
@@ -1362,16 +1456,16 @@ async function handleTransferWebhook(
 
         transfer_id:
           transferId,
+
+        refund_amount:
+          transactionTotalCharged,
       });
     }
 
     /*
      * ========================================================
-     * IMPORTANT IDEMPOTENCY KEY
+     * REFUND IDEMPOTENCY KEY
      * ========================================================
-     *
-     * Even if Flutterwave sends the webhook multiple times,
-     * wallet_operation should process this REFUND key only once.
      */
 
     const refundIdempotencyKey =
@@ -1383,8 +1477,11 @@ async function handleTransferWebhook(
         transaction_id:
           transaction.id,
 
-        amount:
-          transactionAmount,
+        transfer_amount:
+          providerTransferAmount,
+
+        total_charged:
+          transactionTotalCharged,
 
         refund_key:
           refundIdempotencyKey,
@@ -1396,7 +1493,7 @@ async function handleTransferWebhook(
 
     /*
      * ========================================================
-     * REFUND WALLET
+     * REFUND COMPLETE WALLET CHARGE
      * ========================================================
      */
 
@@ -1414,10 +1511,10 @@ async function handleTransferWebhook(
           "REFUND",
 
         _amount:
-          transactionAmount,
+          transactionTotalCharged,
 
         _description:
-          "Refund for failed Flutterwave bank transfer",
+          "Refund for failed Flutterwave bank transfer including IyanjuPay fee",
 
         _idempotency_key:
           refundIdempotencyKey,
@@ -1455,11 +1552,24 @@ async function handleTransferWebhook(
           flutterwave_response:
             verified,
 
+          original_transfer_amount:
+            providerTransferAmount,
+
+          original_fee:
+            transactionMetadata?.iyanjupay_fee ??
+            null,
+
+          original_total_charged:
+            transactionTotalCharged,
+
           reason:
             "Flutterwave transfer failed",
 
           refunded:
             true,
+
+          refunded_amount:
+            transactionTotalCharged,
         },
       },
     );
@@ -1479,12 +1589,7 @@ async function handleTransferWebhook(
       );
 
       /*
-       * DO NOT mark transaction simply "failed" while refund
-       * has failed, because the user's money would remain
-       * debited.
-       *
-       * Leave the transaction pending and record that refund
-       * requires retry/reconciliation.
+       * Do NOT mark simply failed while refund failed.
        */
 
       await supabase
@@ -1532,6 +1637,9 @@ async function handleTransferWebhook(
             refund_error:
               refundError.message,
 
+            refund_amount:
+              transactionTotalCharged,
+
             refund_attempted_at:
               new Date().toISOString(),
           },
@@ -1540,12 +1648,6 @@ async function handleTransferWebhook(
           "id",
           transaction.id,
         );
-
-      /*
-       * Non-2xx response is intentional.
-       *
-       * Flutterwave can retry the webhook.
-       */
 
       return jsonResponse(
         {
@@ -1566,6 +1668,9 @@ async function handleTransferWebhook(
 
           refund_required:
             true,
+
+          refund_amount:
+            transactionTotalCharged,
         },
         503,
       );
@@ -1583,8 +1688,11 @@ async function handleTransferWebhook(
         transaction_id:
           transaction.id,
 
-        amount:
-          transactionAmount,
+        transfer_amount:
+          providerTransferAmount,
+
+        total_refunded:
+          transactionTotalCharged,
 
         transfer_id:
           transferId,
@@ -1645,6 +1753,9 @@ async function handleTransferWebhook(
           refund_pending:
             false,
 
+          refund_amount:
+            transactionTotalCharged,
+
           refund_completed_at:
             new Date().toISOString(),
         },
@@ -1658,11 +1769,9 @@ async function handleTransferWebhook(
       failedUpdateError
     ) {
       /*
-       * The wallet was already refunded.
+       * Wallet was already refunded.
        *
-       * We must NOT issue another refund.
-       *
-       * The transaction update can safely be retried later.
+       * Do NOT refund again.
        */
 
       console.error(
@@ -1686,6 +1795,9 @@ async function handleTransferWebhook(
 
           transfer_id:
             transferId,
+
+          refund_amount:
+            transactionTotalCharged,
         },
         200,
       );
@@ -1713,8 +1825,11 @@ async function handleTransferWebhook(
       transfer_id:
         transferId,
 
-      amount:
-        transactionAmount,
+      transfer_amount:
+        providerTransferAmount,
+
+      refund_amount:
+        transactionTotalCharged,
     });
   }
 
@@ -1741,8 +1856,7 @@ async function handleTransferWebhook(
  * DEPOSIT WEBHOOK HANDLER
  * ============================================================
  *
- * This is your existing virtual-account deposit logic,
- * preserved and cleaned up.
+ * Virtual-account deposit logic.
  * ============================================================
  */
 
@@ -1847,10 +1961,6 @@ async function handleDepositWebhook(
    * ==========================================================
    * VERIFY CHARGE
    * ==========================================================
-   *
-   * Deposit verification remains a transaction verification
-   * endpoint because this is a charge/payment transaction,
-   * not a bank payout transfer.
    */
 
   console.log(

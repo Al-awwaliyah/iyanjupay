@@ -38,11 +38,16 @@ import ServiceModal from "./modals/ServiceModal";
 import TransferModal from "./modals/TransferModal";
 import QRCodeModal from "./modals/QRCodeModal";
 import WhatsAppFloat from "./WhatsAppFloat";
+
 import ProfilePage from "./profile/ProfilePage";
 import TransactionHistory from "./transactions/TransactionHistory";
 import RewardsPage from "./rewards/RewardsPage";
 import CardsPage from "./cards/CardsPage";
 import MePage from "./me/MePage";
+
+import CustomerServicePage from "./me/CustomerServicePage";
+import SupportPage from "./me/SupportPage";
+import TransactionLimitPage from "./me/TransactionLimitPage";
 
 import { useAuth } from "@/hooks/useAuth";
 import { useWallet } from "@/hooks/useWallet";
@@ -62,7 +67,10 @@ type CurrentPage =
   | "cards"
   | "me"
   | "profile"
-  | "history";
+  | "history"
+  | "customer-service"
+  | "support"
+  | "transaction-limit";
 
 type SelectedService = {
   title: string;
@@ -804,26 +812,6 @@ const Dashboard = () => {
 
   // ============================================================
   // TRANSFER HANDLER
-  //
-  // IyanjuPay transfer:
-  //   TransferModal
-  //      ↓
-  //   iyanjuPay-transfer
-  //      ↓
-  //   recipient wallet_id
-  //
-  // IMPORTANT:
-  // Username is NOT used for IyanjuPay transfers.
-  //
-  // The Dashboard bank handler must never process an
-  // IyanjuPay wallet-to-wallet transfer.
-  //
-  // Bank transfer:
-  //   TransferModal
-  //      ↓
-  //   Dashboard
-  //      ↓
-  //   flutterwave-transfer
   // ============================================================
 
   const handleTransfer = async (
@@ -858,16 +846,6 @@ const Dashboard = () => {
       return;
     }
 
-    // ==========================================================
-    // SAFETY CHECK
-    //
-    // IyanjuPay transfers should already be handled by
-    // TransferModal -> iyanjuPay-transfer.
-    //
-    // If an IyanjuPay transfer reaches this callback,
-    // do NOT send it to Flutterwave.
-    // ==========================================================
-
     if (
       details?.type ===
         "iyanjupay" ||
@@ -892,10 +870,6 @@ const Dashboard = () => {
       return;
     }
 
-    // ==========================================================
-    // WALLET BALANCE
-    // ==========================================================
-
     if (
       wallet &&
       amount >
@@ -912,10 +886,6 @@ const Dashboard = () => {
 
       return;
     }
-
-    // ==========================================================
-    // BANK RECIPIENT VALIDATION
-    // ==========================================================
 
     if (
       !details?.accountNumber
@@ -956,10 +926,6 @@ const Dashboard = () => {
 
       return;
     }
-
-    // ==========================================================
-    // BANK TRANSFER
-    // ==========================================================
 
     try {
       const idempotencyKey =
@@ -1139,6 +1105,60 @@ const Dashboard = () => {
     );
   }
 
+  // ============================================================
+  // CUSTOMER SERVICE
+  // ============================================================
+
+  if (
+    currentPage ===
+    "customer-service"
+  ) {
+    return (
+      <CustomerServicePage
+        onBack={() =>
+          setCurrentPage("me")
+        }
+      />
+    );
+  }
+
+  // ============================================================
+  // SUPPORT
+  // ============================================================
+
+  if (
+    currentPage === "support"
+  ) {
+    return (
+      <SupportPage
+        onBack={() =>
+          setCurrentPage("me")
+        }
+      />
+    );
+  }
+
+  // ============================================================
+  // TRANSACTION LIMIT
+  // ============================================================
+
+  if (
+    currentPage ===
+    "transaction-limit"
+  ) {
+    return (
+      <TransactionLimitPage
+        onBack={() =>
+          setCurrentPage("me")
+        }
+      />
+    );
+  }
+
+  // ============================================================
+  // ME
+  // ============================================================
+
   if (
     currentPage === "me"
   ) {
@@ -1153,6 +1173,19 @@ const Dashboard = () => {
         onHistoryClick={() =>
           setCurrentPage("history")
         }
+        onCustomerServiceClick={() =>
+          setCurrentPage(
+            "customer-service"
+          )
+        }
+        onSupportClick={() =>
+          setCurrentPage("support")
+        }
+        onTransactionLimitClick={() =>
+          setCurrentPage(
+            "transaction-limit"
+          )
+        }
       />
     );
   }
@@ -1165,11 +1198,13 @@ const Dashboard = () => {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-purple-50 to-blue-50">
         <div className="text-center">
+
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto" />
 
           <p className="mt-4 text-gray-600">
             Loading your wallet...
           </p>
+
         </div>
       </div>
     );
@@ -1183,7 +1218,9 @@ const Dashboard = () => {
     page: CurrentPage
   ) => (
     <div className="fixed bottom-0 left-0 right-0 z-40 bg-white border-t border-gray-200 px-4 py-2">
+
       <div className="max-w-7xl mx-auto">
+
         <div className="flex justify-around">
 
           <Button
@@ -1470,7 +1507,6 @@ const Dashboard = () => {
                   className="flex-1 bg-white text-purple-600 hover:bg-gray-100 font-semibold"
                 >
                   <Plus className="h-4 w-4 mr-2" />
-
                   Add Money
                 </Button>
 
@@ -1484,7 +1520,6 @@ const Dashboard = () => {
                   className="flex-1 bg-white text-purple-600 hover:bg-gray-100 font-semibold"
                 >
                   <Send className="h-4 w-4 mr-2" />
-
                   Send Money
                 </Button>
 
@@ -1547,7 +1582,6 @@ const Dashboard = () => {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
 
           <Card className="bg-white shadow-sm">
-
             <CardContent className="p-4">
 
               <div className="flex items-center justify-between">
@@ -1569,19 +1603,15 @@ const Dashboard = () => {
                 </div>
 
                 <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center">
-
                   <Banknote className="h-6 w-6 text-red-600" />
-
                 </div>
 
               </div>
 
             </CardContent>
-
           </Card>
 
           <Card className="bg-white shadow-sm">
-
             <CardContent className="p-4">
 
               <div className="flex items-center justify-between">
@@ -1603,19 +1633,15 @@ const Dashboard = () => {
                 </div>
 
                 <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
-
                   <History className="h-6 w-6 text-blue-600" />
-
                 </div>
 
               </div>
 
             </CardContent>
-
           </Card>
 
           <Card className="bg-white shadow-sm">
-
             <CardContent className="p-4">
 
               <div className="flex items-center justify-between">
@@ -1637,15 +1663,12 @@ const Dashboard = () => {
                 </div>
 
                 <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center">
-
                   <Shield className="h-6 w-6 text-green-600" />
-
                 </div>
 
               </div>
 
             </CardContent>
-
           </Card>
 
         </div>
@@ -1682,24 +1705,6 @@ const Dashboard = () => {
         )}
         onPurchase={handlePurchase}
       />
-
-      {/* ========================================================
-          TRANSFER MODAL
-
-          IyanjuPay:
-            wallet_id
-              ↓
-            iyanjuPay-transfer
-              ↓
-            recipient wallet
-
-          Bank:
-            account number + bank code
-              ↓
-            flutterwave-transfer
-              ↓
-            Flutterwave
-      ======================================================== */}
 
       <TransferModal
         isOpen={transferModalOpen}

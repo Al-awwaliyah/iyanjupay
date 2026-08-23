@@ -44,14 +44,24 @@ Deno.serve(async (req) => {
     const user = await getUser(req);
 
     if (!user) {
+      console.error(
+        "BVN verification: unauthorized request",
+      );
+
       return json(
         {
           success: false,
+          verified: false,
           error: "Unauthorized",
         },
         401,
       );
     }
+
+    console.log(
+      "Authenticated user for BVN verification:",
+      user.id,
+    );
 
     // ==========================================================
     // ENVIRONMENT
@@ -82,6 +92,7 @@ Deno.serve(async (req) => {
       return json(
         {
           success: false,
+          verified: false,
           error:
             "BVN verification service is not configured.",
         },
@@ -100,6 +111,7 @@ Deno.serve(async (req) => {
       return json(
         {
           success: false,
+          verified: false,
           error:
             "KYC database service is not configured.",
         },
@@ -135,6 +147,7 @@ Deno.serve(async (req) => {
       return json(
         {
           success: false,
+          verified: false,
           error:
             "Invalid JSON request body.",
         },
@@ -151,6 +164,19 @@ Deno.serve(async (req) => {
     // STATUS
     // ==========================================================
 
+    /*
+     * IMPORTANT:
+     *
+     * We intentionally do NOT request bvn_masked here.
+     *
+     * The previous production error showed that PostgREST's
+     * schema cache did not know about bvn_masked even though
+     * the database SQL now contains the column.
+     *
+     * We therefore read bvn and calculate the masked value
+     * locally.
+     */
+
     if (action === "status") {
       const {
         data: profile,
@@ -162,8 +188,8 @@ Deno.serve(async (req) => {
             `
               kyc_level,
               kyc_status,
+              bvn,
               bvn_verified,
-              bvn_masked,
               bvn_verified_at
             `,
           )
@@ -179,6 +205,7 @@ Deno.serve(async (req) => {
         return json(
           {
             success: false,
+            verified: false,
             error:
               "Unable to load KYC status.",
           },
@@ -191,10 +218,19 @@ Deno.serve(async (req) => {
           profile?.bvn_verified,
         ) ||
         String(
-          profile?.kyc_status ??
-            "",
+          profile?.kyc_status ?? "",
         ).toLowerCase() ===
           "verified";
+
+      const storedBvn =
+        String(
+          profile?.bvn ?? "",
+        ).replace(/\D/g, "");
+
+      const maskedBvn =
+        storedBvn.length === 11
+          ? `******${storedBvn.slice(-4)}`
+          : null;
 
       return json(
         {
@@ -217,8 +253,7 @@ Deno.serve(async (req) => {
             ),
 
           bvn_masked:
-            profile?.bvn_masked ??
-            null,
+            maskedBvn,
 
           fee: 0,
 
@@ -238,6 +273,7 @@ Deno.serve(async (req) => {
       return json(
         {
           success: false,
+          verified: false,
           error:
             "Unsupported BVN action.",
         },
@@ -246,7 +282,7 @@ Deno.serve(async (req) => {
     }
 
     // ==========================================================
-    // BVN
+    // READ BVN
     // ==========================================================
 
     const bvn =
@@ -371,6 +407,11 @@ Deno.serve(async (req) => {
         providerData?.message ||
         "BVN verification failed.";
 
+      console.error(
+        "PROVN BVN verification failed:",
+        providerError,
+      );
+
       return json(
         {
           success: false,
@@ -400,23 +441,23 @@ Deno.serve(async (req) => {
     // ==========================================================
 
     /*
-     * IMPORTANT:
+     * PROVN TEST MODE
+     * ----------------
      *
-     * PROVN TEST KEYS return DUMMY identity information.
+     * Test credentials return dummy identity information.
      *
-     * Therefore we intentionally DO NOT copy:
+     * Therefore we DO NOT copy provider identity fields into
+     * the user's profile.
      *
-     * - first_name
-     * - last_name
-     * - middle_name
-     * - date_of_birth
-     * - phone_number
-     * - state_of_origin
-     * - residential_address
+     * We only store:
      *
-     * into the user's profile.
+     *   bvn
+     *   bvn_verified
+     *   bvn_verified_at
+     *   kyc_level
+     *   kyc_status
      *
-     * We only mark the LOCAL IyanjuPay KYC state as verified.
+     * The bvn_masked value is calculated locally.
      */
 
     const now =
@@ -425,28 +466,82 @@ Deno.serve(async (req) => {
     const maskedBvn =
       `******${bvn.slice(-4)}`;
 
+    console.log(
+      "PROVN accepted BVN. Updating local profile:",
+      JSON.stringify({
+        user_id: user.id,
+        bvn_last_four:
+          bvn.slice(-4),
+        kyc_level: 2,
+        kyc_status: "verified",
+      }),
+    );
+
     // ==========================================================
-    // UPDATE LOCAL KYC STATE
+    // UPDATE PROFILE
     // ==========================================================
 
+    /*
+     * IMPORTANT:
+     *
+     * bvn_masked is intentionally NOT included here.
+     *
+     * Your previous log showed:
+     *
+     * PGRST204:
+     * Could not find the 'bvn_masked' column of 'profiles'
+     * in the schema cache
+     *
+     * Even though the SQL table now contains that column.
+     *
+     * By leaving bvn_masked out of this update, the critical
+     * profile update will not fail because of the stale
+     * PostgREST schema cache.
+     */
+
     const {
+      data: updatedProfile,
       error: updateError,
     } =
       await adminSupabase
         .from("profiles")
         .update({
           kyc_level: 2,
-          kyc_status: "verified",
-          bvn_verified: true,  
-          bvn: bvn,
-          bvn_masked: maskedBvn,
-          bvn_verified_at: now,
-          updated_at: now,
+
+          kyc_status:
+            "verified",
+
+          bvn_verified:
+            true,
+
+          bvn:
+            bvn,
+
+          bvn_verified_at:
+            now,
+
+          updated_at:
+            now,
         })
         .eq(
           "id",
           user.id,
-        );
+        )
+        .select(
+          `
+            id,
+            kyc_level,
+            kyc_status,
+            bvn,
+            bvn_verified,
+            bvn_verified_at
+          `,
+        )
+        .maybeSingle();
+
+    // ==========================================================
+    // DATABASE UPDATE FAILURE
+    // ==========================================================
 
     if (updateError) {
       console.error(
@@ -457,9 +552,106 @@ Deno.serve(async (req) => {
       return json(
         {
           success: false,
+
+          verified: false,
+
+          error:
+            "BVN was accepted by the verification service, but your profile could not be updated.",
+
+          database_error:
+            updateError.message,
+        },
+        500,
+      );
+    }
+
+    // ==========================================================
+    // MAKE SURE A PROFILE ROW WAS ACTUALLY UPDATED
+    // ==========================================================
+
+    if (!updatedProfile) {
+      console.error(
+        "BVN profile update returned no profile row.",
+      );
+
+      return json(
+        {
+          success: false,
           verified: false,
           error:
-            "BVN was accepted by the verification service, but your KYC profile could not be updated.",
+            "BVN verification succeeded, but your profile record could not be found for updating.",
+        },
+        500,
+      );
+    }
+
+    // ==========================================================
+    // VERIFY DATABASE VALUES
+    // ==========================================================
+
+    const storedBvn =
+      String(
+        updatedProfile.bvn ??
+          "",
+      ).replace(/\D/g, "");
+
+    const databaseUpdateConfirmed =
+      storedBvn === bvn &&
+      Boolean(
+        updatedProfile.bvn_verified,
+      ) === true &&
+      Number(
+        updatedProfile.kyc_level,
+      ) === 2 &&
+      String(
+        updatedProfile.kyc_status ??
+          "",
+      ).toLowerCase() ===
+        "verified";
+
+    console.log(
+      "KYC profile update result:",
+      JSON.stringify({
+        user_id:
+          user.id,
+
+        bvn_saved:
+          storedBvn === bvn,
+
+        bvn_verified:
+          updatedProfile.bvn_verified,
+
+        kyc_level:
+          updatedProfile.kyc_level,
+
+        kyc_status:
+          updatedProfile.kyc_status,
+
+        bvn_verified_at:
+          updatedProfile.bvn_verified_at,
+
+        database_update_confirmed:
+          databaseUpdateConfirmed,
+      }),
+    );
+
+    // ==========================================================
+    // DATABASE VERIFICATION FAILED
+    // ==========================================================
+
+    if (!databaseUpdateConfirmed) {
+      console.error(
+        "Database update could not be confirmed.",
+      );
+
+      return json(
+        {
+          success: false,
+
+          verified: false,
+
+          error:
+            "BVN was verified, but the saved KYC information could not be confirmed.",
         },
         500,
       );
@@ -469,6 +661,11 @@ Deno.serve(async (req) => {
     // SUCCESS
     // ==========================================================
 
+    console.log(
+      "BVN verification and profile update completed successfully:",
+      user.id,
+    );
+
     return json(
       {
         success: true,
@@ -476,7 +673,7 @@ Deno.serve(async (req) => {
         verified: true,
 
         message:
-          "BVN verification successful.",
+          "BVN verification successful. Your KYC profile has been updated.",
 
         kyc_level: 2,
 
@@ -486,13 +683,14 @@ Deno.serve(async (req) => {
         bvn_masked:
           maskedBvn,
 
+        bvn_verified_at:
+          updatedProfile.bvn_verified_at,
+
         /*
-         * The provider's identity payload is returned only
-         * for the verification response. ProfilePage does
-         * NOT use it to overwrite user information.
+         * Provider identity payload is returned only as part
+         * of the verification response.
          *
-         * This is especially important in test mode because
-         * PROVN returns dummy data.
+         * It is NOT copied into the user's profile.
          */
 
         verification:

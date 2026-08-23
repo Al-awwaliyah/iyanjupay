@@ -5,6 +5,7 @@ import React, {
 } from "react";
 
 import { Button } from "@/components/ui/button";
+
 import {
   Card,
   CardContent,
@@ -13,6 +14,7 @@ import {
 } from "@/components/ui/card";
 
 import { Input } from "@/components/ui/input";
+
 import { Label } from "@/components/ui/label";
 
 import {
@@ -54,11 +56,6 @@ import { supabase } from "@/integrations/supabase/client";
 
 import { useToast } from "@/hooks/use-toast";
 
-
-// ============================================================
-// TYPES
-// ============================================================
-
 interface ProfileData {
   full_name: string;
   phone_number: string;
@@ -82,41 +79,22 @@ interface ProfilePageProps {
   onBack: () => void;
 }
 
-
-// ============================================================
-// COMPONENT
-// ============================================================
-
 const ProfilePage = ({
   onBack,
 }: ProfilePageProps) => {
   const { user } = useAuth();
-  const { toast } = useToast();
 
-
-  // ==========================================================
-  // GENERAL STATE
-  // ==========================================================
+  const { toast } =
+    useToast();
 
   const [loading, setLoading] =
     useState(false);
 
-
-  // ==========================================================
-  // KYC STATE
-  // ==========================================================
-
   const [kyc, setKyc] =
-    useState<KycState>({
-      verified: false,
-      kyc_level: 1,
-      kyc_status: "unverified",
-      bvn_masked: null,
-      fee: 0,
-    });
+    useState<KycState | null>(null);
 
   const [kycLoading, setKycLoading] =
-    useState(false);
+    useState(true);
 
   const [bvn, setBvn] =
     useState("");
@@ -124,10 +102,9 @@ const ProfilePage = ({
   const [verifying, setVerifying] =
     useState(false);
 
-
-  // ==========================================================
-  // EMAIL CHANGE STATE
-  // ==========================================================
+  // ============================================================
+  // EMAIL CHANGE
+  // ============================================================
 
   const [
     emailChangeDialogOpen,
@@ -140,113 +117,210 @@ const ProfilePage = ({
   const [emailChangeOtp, setEmailChangeOtp] =
     useState("");
 
-  const [emailChangeLoading, setEmailChangeLoading] =
-    useState(false);
+  const [
+    emailChangeLoading,
+    setEmailChangeLoading,
+  ] = useState(false);
 
   const [
     emailChangeRequested,
     setEmailChangeRequested,
   ] = useState(false);
 
-
-  // ==========================================================
+  // ============================================================
   // FORM
-  // ==========================================================
+  // ============================================================
 
-  const form = useForm<ProfileData>({
-    defaultValues: {
-      full_name: "",
-      phone_number: "+234",
-      nickname: "",
-      gender: "",
-      date_of_birth: "",
-      email: user?.email || "",
-      address: "",
-      nin: "",
-    },
-  });
+  const form =
+    useForm<ProfileData>({
+      defaultValues: {
+        full_name: "",
+        phone_number: "+234",
+        nickname: "",
+        gender: "",
+        date_of_birth: "",
+        email:
+          user?.email || "",
+        address: "",
+        nin: "",
+      },
+    });
 
-
-  // ==========================================================
+  // ============================================================
   // PROVN BVN EDGE FUNCTION
-  // ==========================================================
+  // ============================================================
 
-  const invokeBvn = useCallback(
-    async (
-      payload: Record<string, unknown>,
-    ) => {
-      const {
-        data,
-        error,
-      } = await supabase.functions.invoke(
-        "provn-bvn",
-        {
-          body: payload,
-        },
-      );
-
-      if (error) {
-        let message =
-          error.message ||
-          "BVN request failed.";
-
-        const context =
-          (error as any)?.context;
-
-        if (
-          context &&
-          typeof context.json ===
-            "function"
-        ) {
-          try {
-            const body =
-              await context.json();
-
-            if (body?.error) {
-              message =
-                body.error;
-            }
-          } catch {
-            // Keep original error.
-          }
-        }
-
-        throw new Error(message);
-      }
-
-      if (
-        data &&
-        data.success === false
-      ) {
-        throw new Error(
-          data.error ||
-            "BVN verification failed.",
-        );
-      }
-
-      return data;
-    },
-    [],
-  );
-
-
-  // ==========================================================
-  // FETCH PROFILE
-  // ==========================================================
-
-  const fetchProfile =
+  const invokeBvn =
     useCallback(
-      async () => {
-        if (!user?.id) return;
+      async (
+        payload: Record<
+          string,
+          unknown
+        >,
+      ) => {
+        /*
+         * IMPORTANT:
+         *
+         * This is now PROVN.
+         *
+         * DO NOT change this back to
+         * flutterwave-bvn.
+         */
 
         const {
           data,
           error,
-        } = await supabase
-          .from("profiles")
-          .select("*")
-          .eq("id", user.id)
-          .maybeSingle();
+        } =
+          await supabase.functions.invoke(
+            "provn-bvn",
+            {
+              body: payload,
+            },
+          );
+
+        if (error) {
+          let message =
+            error.message ||
+            "BVN request failed.";
+
+          const context =
+            (error as any)
+              ?.context;
+
+          if (
+            context &&
+            typeof context.json ===
+              "function"
+          ) {
+            try {
+              const body =
+                await context.json();
+
+              if (
+                body?.error
+              ) {
+                message =
+                  body.error;
+              }
+            } catch {
+              // Keep original error.
+            }
+          }
+
+          throw new Error(
+            message,
+          );
+        }
+
+        if (
+          data &&
+          data.success === false
+        ) {
+          throw new Error(
+            data.error ||
+              "BVN verification failed.",
+          );
+        }
+
+        return data;
+      },
+      [],
+    );
+
+  // ============================================================
+  // FETCH KYC
+  // ============================================================
+
+  const fetchKyc =
+    useCallback(
+      async () => {
+        setKycLoading(true);
+
+        try {
+          const data =
+            await invokeBvn({
+              action:
+                "status",
+            });
+
+          setKyc({
+            verified:
+              Boolean(
+                data?.verified,
+              ),
+
+            kyc_level:
+              Number(
+                data?.kyc_level ??
+                  1,
+              ),
+
+            kyc_status:
+              String(
+                data?.kyc_status ??
+                  "unverified",
+              ),
+
+            bvn_masked:
+              data?.bvn_masked ??
+              null,
+
+            fee:
+              Number(
+                data?.fee ??
+                  0,
+              ),
+          });
+        } catch (error) {
+          console.error(
+            "Unable to load KYC status:",
+            error,
+          );
+
+          /*
+           * Don't block the whole profile page
+           * if KYC status cannot be loaded.
+           */
+          setKyc({
+            verified: false,
+            kyc_level: 1,
+            kyc_status:
+              "unverified",
+            bvn_masked: null,
+            fee: 0,
+          });
+        } finally {
+          setKycLoading(
+            false,
+          );
+        }
+      },
+      [invokeBvn],
+    );
+
+  // ============================================================
+  // FETCH PROFILE
+  // ============================================================
+
+  const fetchProfile =
+    useCallback(
+      async () => {
+        if (!user?.id) {
+          return;
+        }
+
+        const {
+          data,
+          error,
+        } =
+          await supabase
+            .from("profiles")
+            .select("*")
+            .eq(
+              "id",
+              user.id,
+            )
+            .maybeSingle();
 
         if (error) {
           console.error(
@@ -300,108 +374,113 @@ const ProfilePage = ({
       ],
     );
 
-
-  // ==========================================================
+  // ============================================================
   // INITIAL LOAD
-  // ==========================================================
+  // ============================================================
 
   useEffect(() => {
-    if (user) {
-      fetchProfile();
+    if (!user) {
+      return;
     }
+
+    fetchProfile();
+    fetchKyc();
   }, [
     user,
     fetchProfile,
+    fetchKyc,
   ]);
 
-
-  // ==========================================================
+  // ============================================================
   // SAVE PROFILE
-  // ==========================================================
+  // ============================================================
 
-  const onSubmit = async (
-    data: ProfileData,
-  ) => {
-    if (!user?.id) return;
-
-    setLoading(true);
-
-    try {
-      const {
-        error,
-      } = await supabase
-        .from("profiles")
-        .upsert({
-          id: user.id,
-
-          full_name:
-            data.full_name,
-
-          phone_number:
-            data.phone_number,
-
-          nickname:
-            data.nickname,
-
-          gender:
-            data.gender ||
-            null,
-
-          date_of_birth:
-            data.date_of_birth ||
-            null,
-
-          email:
-            user.email,
-
-          address:
-            data.address,
-
-          nin:
-            data.nin ||
-            null,
-
-          updated_at:
-            new Date().toISOString(),
-        });
-
-      if (error) {
-        throw error;
+  const onSubmit =
+    async (
+      data: ProfileData,
+    ) => {
+      if (!user?.id) {
+        return;
       }
 
-      toast({
-        title:
-          "Profile Updated",
+      setLoading(true);
 
-        description:
-          "Your profile has been successfully updated.",
-      });
-    } catch (error: any) {
-      console.error(
-        "Error updating profile:",
-        error,
-      );
+      try {
+        const {
+          error,
+        } =
+          await supabase
+            .from("profiles")
+            .upsert({
+              id: user.id,
 
-      toast({
-        title:
-          "Error",
+              full_name:
+                data.full_name,
 
-        description:
-          error.message ||
-          "Failed to update profile.",
+              phone_number:
+                data.phone_number,
 
-        variant:
-          "destructive",
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
+              nickname:
+                data.nickname,
 
+              gender:
+                data.gender ||
+                null,
 
-  // ==========================================================
+              date_of_birth:
+                data.date_of_birth ||
+                null,
+
+              email:
+                user.email,
+
+              address:
+                data.address,
+
+              nin:
+                data.nin ||
+                null,
+
+              updated_at:
+                new Date().toISOString(),
+            });
+
+        if (error) {
+          throw error;
+        }
+
+        toast({
+          title:
+            "Profile Updated",
+
+          description:
+            "Your profile has been successfully updated.",
+        });
+      } catch (error: any) {
+        console.error(
+          "Error updating profile:",
+          error,
+        );
+
+        toast({
+          title:
+            "Error",
+
+          description:
+            error.message ||
+            "Failed to update profile.",
+
+          variant:
+            "destructive",
+        });
+      } finally {
+        setLoading(false);
+      }
+    };
+
+  // ============================================================
   // START EMAIL CHANGE
-  // ==========================================================
+  // ============================================================
 
   const handleStartEmailChange =
     () => {
@@ -412,10 +491,13 @@ const ProfilePage = ({
         );
 
       setNewEmail(
-        currentEmail || "",
+        currentEmail ||
+          "",
       );
 
-      setEmailChangeOtp("");
+      setEmailChangeOtp(
+        "",
+      );
 
       setEmailChangeRequested(
         false,
@@ -426,10 +508,9 @@ const ProfilePage = ({
       );
     };
 
-
-  // ==========================================================
+  // ============================================================
   // SEND EMAIL CHANGE OTP
-  // ==========================================================
+  // ============================================================
 
   const handleSendEmailChangeOtp =
     async () => {
@@ -525,7 +606,9 @@ const ProfilePage = ({
           true,
         );
 
-        setEmailChangeOtp("");
+        setEmailChangeOtp(
+          "",
+        );
 
         toast({
           title:
@@ -558,10 +641,9 @@ const ProfilePage = ({
       }
     };
 
-
-  // ==========================================================
+  // ============================================================
   // VERIFY EMAIL CHANGE OTP
-  // ==========================================================
+  // ============================================================
 
   const handleVerifyEmailChange =
     async () => {
@@ -632,7 +714,9 @@ const ProfilePage = ({
           false,
         );
 
-        setEmailChangeOtp("");
+        setEmailChangeOtp(
+          "",
+        );
 
         toast({
           title:
@@ -667,20 +751,18 @@ const ProfilePage = ({
       }
     };
 
-
-  // ==========================================================
-  // RESEND EMAIL CHANGE OTP
-  // ==========================================================
+  // ============================================================
+  // RESEND EMAIL OTP
+  // ============================================================
 
   const handleResendEmailChangeOtp =
     async () => {
       await handleSendEmailChangeOtp();
     };
 
-
-  // ==========================================================
+  // ============================================================
   // CANCEL EMAIL CHANGE
-  // ==========================================================
+  // ============================================================
 
   const handleCancelEmailChange =
     () => {
@@ -692,21 +774,26 @@ const ProfilePage = ({
         false,
       );
 
-      setEmailChangeOtp("");
+      setEmailChangeOtp(
+        "",
+      );
     };
 
-
-  // ==========================================================
-  // BVN VERIFICATION — PROVN
-  // ==========================================================
+  // ============================================================
+  // BVN VERIFICATION
+  // ============================================================
 
   const handleVerifyBvn =
     async () => {
       const digits =
-        bvn.replace(/\D/g, "");
+        bvn.replace(
+          /\D/g,
+          "",
+        );
 
       if (
-        digits.length !== 11
+        digits.length !==
+        11
       ) {
         toast({
           title:
@@ -722,55 +809,29 @@ const ProfilePage = ({
         return;
       }
 
-      const fullName =
-        form
-          .getValues(
-            "full_name",
-          )
-          .trim();
-
-      if (
-        !fullName ||
-        fullName.split(
-          /\s+/,
-        ).length < 2
-      ) {
-        toast({
-          title:
-            "Full name required",
-
-          description:
-            "Enter your first and last name as they appear on your BVN and save your profile first.",
-
-          variant:
-            "destructive",
-        });
-
-        return;
-      }
-
       setVerifying(true);
 
       try {
-        console.log(
-          "Sending BVN verification request to PROVN...",
-        );
+        /*
+         * IMPORTANT:
+         *
+         * This calls:
+         *
+         * supabase/functions/provn-bvn
+         *
+         * NOT flutterwave-bvn.
+         */
 
         const result =
           await invokeBvn({
             action:
               "verify",
 
-            bvn:
-              digits,
-
-            full_name:
-              fullName,
+            bvn: digits,
           });
 
-
         // ======================================================
-        // VERIFY RESPONSE
+        // CHECK PROVIDER RESULT
         // ======================================================
 
         if (
@@ -779,48 +840,66 @@ const ProfilePage = ({
         ) {
           throw new Error(
             result?.error ||
-              "BVN verification was unsuccessful.",
+              "BVN verification failed.",
           );
         }
 
-
         // ======================================================
-        // MASK BVN FOR DISPLAY
-        // ======================================================
-
-        const maskedBvn =
-          `*******${digits.slice(-4)}`;
-
-
-        // ======================================================
-        // UPDATE LOCAL KYC STATE
+        // GET VERIFIED DATA
         // ======================================================
 
-        setKyc({
-          verified: true,
+        const verification =
+          result?.verification;
 
-          kyc_level: 2,
+        /*
+         * The Edge Function has already updated
+         * the database. We now update the form
+         * immediately so the user sees the
+         * verified information without refreshing.
+         */
 
-          kyc_status:
-            "verified",
+        if (
+          verification?.first_name ||
+          verification?.last_name
+        ) {
+          const verifiedName =
+            [
+              verification?.first_name,
+              verification?.middle_name,
+              verification?.last_name,
+            ]
+              .filter(Boolean)
+              .join(" ")
+              .trim();
 
-          bvn_masked:
-            maskedBvn,
+          if (verifiedName) {
+            form.setValue(
+              "full_name",
+              verifiedName,
+            );
+          }
+        }
 
-          fee:
-            0,
-        });
+        if (
+          verification?.phone_number
+        ) {
+          form.setValue(
+            "phone_number",
+            verification.phone_number,
+          );
+        }
 
+        if (
+          verification?.date_of_birth
+        ) {
+          form.setValue(
+            "date_of_birth",
+            verification.date_of_birth,
+          );
+        }
 
         // ======================================================
-        // CLEAR BVN INPUT
-        // ======================================================
-
-        setBvn("");
-
-
-        // ======================================================
-        // SUCCESS MESSAGE
+        // SUCCESS
         // ======================================================
 
         toast({
@@ -828,77 +907,19 @@ const ProfilePage = ({
             "BVN verified successfully",
 
           description:
-            "Your BVN has been successfully verified.",
+            "Your verified BVN information has been synchronized with your IyanjuPay profile.",
         });
 
+        setBvn("");
 
-        // ======================================================
-        // OPTIONAL: SAVE VERIFIED PROFILE INFORMATION
-        // ======================================================
+        // Refresh profile from database.
+        await fetchProfile();
 
-        const verification =
-          result?.verification;
-
-        if (
-          verification
-        ) {
-          const profileUpdate: Record<
-            string,
-            any
-          > = {
-            updated_at:
-              new Date().toISOString(),
-          };
-
-
-          /*
-           * We only use returned identity
-           * information to fill missing
-           * profile information.
-           */
-
-          if (
-            !form.getValues(
-              "date_of_birth",
-            ) &&
-            verification.date_of_birth
-          ) {
-            profileUpdate.date_of_birth =
-              verification.date_of_birth;
-          }
-
-          if (
-            verification.phone_number &&
-            !form.getValues(
-              "phone_number",
-            )
-          ) {
-            profileUpdate.phone_number =
-              verification.phone_number;
-          }
-
-
-          if (
-            Object.keys(
-              profileUpdate,
-            ).length > 1 &&
-            user?.id
-          ) {
-            await supabase
-              .from("profiles")
-              .update(
-                profileUpdate,
-              )
-              .eq(
-                "id",
-                user.id,
-              );
-          }
-        }
-
+        // Refresh KYC status.
+        await fetchKyc();
       } catch (error: any) {
         console.error(
-          "PROVN BVN verification error:",
+          "BVN verification error:",
           error,
         );
 
@@ -914,17 +935,20 @@ const ProfilePage = ({
             "destructive",
         });
       } finally {
-        setVerifying(false);
+        setVerifying(
+          false,
+        );
       }
     };
 
-
-  // ==========================================================
+  // ============================================================
   // KYC LEVEL
-  // ==========================================================
+  // ============================================================
 
   const getKYCLevelInfo =
-    (level: number) => {
+    (
+      level: number,
+    ) => {
       switch (level) {
         case 2:
           return {
@@ -955,30 +979,20 @@ const ProfilePage = ({
       }
     };
 
-
   const kycInfo =
     getKYCLevelInfo(
-      kyc.kyc_level,
+      kyc?.kyc_level ??
+        1,
     );
-
-
-  // ==========================================================
-  // RENDER
-  // ==========================================================
 
   return (
     <>
       <div className="min-h-screen bg-gradient-to-br from-blue-50 via-sky-50 to-indigo-50">
-
         <div className="max-w-4xl mx-auto px-4 py-6">
 
-
-          {/* ==================================================
-              HEADER
-          ================================================== */}
+          {/* HEADER */}
 
           <div className="flex items-center gap-4 mb-6">
-
             <Button
               variant="ghost"
               size="sm"
@@ -986,29 +1000,20 @@ const ProfilePage = ({
               className="text-blue-600"
             >
               <ArrowLeft className="h-4 w-4 mr-2" />
-
               Back
             </Button>
 
             <h1 className="text-2xl font-bold text-gray-900">
               Personal Information
             </h1>
-
           </div>
 
-
-          {/* ==================================================
-              KYC LEVEL CARD
-          ================================================== */}
+          {/* KYC LEVEL */}
 
           <Card className="mb-6 bg-gradient-to-r from-blue-600 to-indigo-600 text-primary-foreground">
-
             <CardContent className="p-6">
-
               <div className="flex items-center justify-between">
-
                 <div>
-
                   <h3 className="text-lg font-semibold mb-1">
                     Account Level
                   </h3>
@@ -1020,76 +1025,57 @@ const ProfilePage = ({
                   </p>
 
                   <p className="text-xs mt-1 opacity-90">
-
                     {kycLoading
                       ? "Checking verification status..."
-                      : kyc.verified
+                      : kyc?.verified
                         ? `BVN verified ${
                             kyc.bvn_masked
                               ? `(${kyc.bvn_masked})`
                               : ""
                           }`
-                        : `BVN status: ${kyc.kyc_status}`}
+                        : `BVN status: ${
+                            kyc?.kyc_status ??
+                            "unverified"
+                          }`}
                   </p>
-
                 </div>
 
-
-                {kyc.verified ? (
+                {kyc?.verified ? (
                   <CheckCircle className="h-8 w-8" />
                 ) : (
                   <Shield className="h-8 w-8" />
                 )}
-
               </div>
-
             </CardContent>
-
           </Card>
 
-
-          {/* ==================================================
-              BVN VERIFICATION
-          ================================================== */}
+          {/* BVN VERIFICATION */}
 
           <Card className="mb-6">
-
             <CardHeader>
-
               <CardTitle>
                 BVN Verification
               </CardTitle>
-
             </CardHeader>
 
-
             <CardContent className="space-y-4">
-
-              {kyc.verified ? (
-
+              {kyc?.verified ? (
                 <div className="flex items-center gap-2 text-sm text-green-600">
-
                   <CheckCircle className="h-4 w-4" />
 
-                  <span>
-                    Your BVN is verified successfully.
-                  </span>
-
+                  Your BVN is verified and your
+                  verified identity information has
+                  been synchronized with your profile.
                 </div>
-
               ) : (
-
                 <>
-
                   <p className="text-sm text-gray-500">
-                    Verify your BVN to complete your identity verification and unlock higher account limits.
+                    Verify your BVN to verify your
+                    identity and unlock higher KYC
+                    limits.
                   </p>
 
-
-                  {/* BVN INPUT */}
-
                   <div className="space-y-2">
-
                     <Label htmlFor="bvnInput">
                       BVN
                     </Label>
@@ -1097,7 +1083,6 @@ const ProfilePage = ({
                     <Input
                       id="bvnInput"
                       inputMode="numeric"
-                      autoComplete="off"
                       maxLength={11}
                       placeholder="Enter your 11-digit BVN"
                       value={bvn}
@@ -1115,80 +1100,55 @@ const ProfilePage = ({
                         )
                       }
                     />
-
                   </div>
 
-
-                  {/* VERIFY BUTTON */}
-
                   <Button
-                    type="button"
                     className="bg-blue-600 hover:bg-blue-700"
                     onClick={
                       handleVerifyBvn
                     }
                     disabled={
                       verifying ||
-                      bvn.length !== 11
+                      kycLoading ||
+                      bvn.length !==
+                        11
                     }
                   >
-
                     {verifying ? (
                       <>
                         <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-
-                        Verifying BVN...
+                        Verifying...
                       </>
                     ) : (
                       "Verify BVN"
                     )}
-
                   </Button>
-
                 </>
-
               )}
-
             </CardContent>
-
           </Card>
 
-
-          {/* ==================================================
-              PROFILE FORM
-          ================================================== */}
+          {/* PROFILE FORM */}
 
           <Form {...form}>
-
             <form
               onSubmit={form.handleSubmit(
                 onSubmit,
               )}
               className="space-y-6"
             >
-
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
 
-
-                {/* =================================================
-                    BASIC INFORMATION
-                ================================================= */}
+                {/* BASIC INFORMATION */}
 
                 <Card>
-
                   <CardHeader>
-
                     <CardTitle>
                       Basic Information
                     </CardTitle>
-
                   </CardHeader>
 
-
                   <CardContent className="space-y-4">
-
-
-                    {/* FULL NAME */}
 
                     <FormField
                       control={
@@ -1198,31 +1158,22 @@ const ProfilePage = ({
                       render={({
                         field,
                       }) => (
-
                         <FormItem>
-
                           <FormLabel>
                             Full Name
                           </FormLabel>
 
                           <FormControl>
-
                             <Input
                               placeholder="Enter your full name"
                               {...field}
                             />
-
                           </FormControl>
 
                           <FormMessage />
-
                         </FormItem>
-
                       )}
                     />
-
-
-                    {/* NICKNAME */}
 
                     <FormField
                       control={
@@ -1232,31 +1183,22 @@ const ProfilePage = ({
                       render={({
                         field,
                       }) => (
-
                         <FormItem>
-
                           <FormLabel>
                             Nickname
                           </FormLabel>
 
                           <FormControl>
-
                             <Input
                               placeholder="Enter your nickname"
                               {...field}
                             />
-
                           </FormControl>
 
                           <FormMessage />
-
                         </FormItem>
-
                       )}
                     />
-
-
-                    {/* GENDER */}
 
                     <FormField
                       control={
@@ -1266,9 +1208,7 @@ const ProfilePage = ({
                       render={({
                         field,
                       }) => (
-
                         <FormItem>
-
                           <FormLabel>
                             Gender
                           </FormLabel>
@@ -1281,20 +1221,13 @@ const ProfilePage = ({
                               field.value
                             }
                           >
-
                             <FormControl>
-
                               <SelectTrigger>
-
                                 <SelectValue placeholder="Select gender" />
-
                               </SelectTrigger>
-
                             </FormControl>
 
-
                             <SelectContent>
-
                               <SelectItem value="male">
                                 Male
                               </SelectItem>
@@ -1306,20 +1239,13 @@ const ProfilePage = ({
                               <SelectItem value="other">
                                 Other
                               </SelectItem>
-
                             </SelectContent>
-
                           </Select>
 
                           <FormMessage />
-
                         </FormItem>
-
                       )}
                     />
-
-
-                    {/* DATE OF BIRTH */}
 
                     <FormField
                       control={
@@ -1329,51 +1255,36 @@ const ProfilePage = ({
                       render={({
                         field,
                       }) => (
-
                         <FormItem>
-
                           <FormLabel>
                             Date of Birth
                           </FormLabel>
 
                           <FormControl>
-
                             <Input
                               type="date"
                               {...field}
                             />
-
                           </FormControl>
 
                           <FormMessage />
-
                         </FormItem>
-
                       )}
                     />
 
                   </CardContent>
-
                 </Card>
 
-
-                {/* =================================================
-                    CONTACT INFORMATION
-                ================================================= */}
+                {/* CONTACT INFORMATION */}
 
                 <Card>
-
                   <CardHeader>
-
                     <CardTitle>
                       Contact Information
                     </CardTitle>
-
                   </CardHeader>
 
-
                   <CardContent className="space-y-4">
-
 
                     {/* PHONE */}
 
@@ -1385,45 +1296,36 @@ const ProfilePage = ({
                       render={({
                         field,
                       }) => (
-
                         <FormItem>
-
                           <FormLabel>
                             Mobile Number
                           </FormLabel>
 
                           <FormControl>
-
                             <Input
                               placeholder="+234XXXXXXXXXX"
                               {...field}
                               disabled
                             />
-
                           </FormControl>
 
                           <p className="text-xs text-muted-foreground">
-                            Your verified phone number is managed through OTP verification.
+                            Your verified phone number is managed through verification.
                           </p>
 
                           <FormMessage />
-
                         </FormItem>
-
                       )}
                     />
-
 
                     {/* EMAIL */}
 
                     <div className="space-y-2">
-
                       <Label>
                         Email Address
                       </Label>
 
                       <div className="flex gap-2">
-
                         <Input
                           type="email"
                           value={
@@ -1444,18 +1346,14 @@ const ProfilePage = ({
                           }
                         >
                           <Mail className="h-4 w-4 mr-2" />
-
                           Change
                         </Button>
-
                       </div>
 
                       <p className="text-xs text-muted-foreground">
                         Changing your email requires OTP verification.
                       </p>
-
                     </div>
-
 
                     {/* ADDRESS */}
 
@@ -1467,29 +1365,22 @@ const ProfilePage = ({
                       render={({
                         field,
                       }) => (
-
                         <FormItem>
-
                           <FormLabel>
                             Address
                           </FormLabel>
 
                           <FormControl>
-
                             <Input
                               placeholder="Enter your address"
                               {...field}
                             />
-
                           </FormControl>
 
                           <FormMessage />
-
                         </FormItem>
-
                       )}
                     />
-
 
                     {/* NIN */}
 
@@ -1501,75 +1392,58 @@ const ProfilePage = ({
                       render={({
                         field,
                       }) => (
-
                         <FormItem>
-
                           <FormLabel>
                             NIN (National Identification Number)
                           </FormLabel>
 
                           <FormControl>
-
                             <Input
                               placeholder="Enter your NIN"
                               maxLength={11}
-                              inputMode="numeric"
                               {...field}
                             />
-
                           </FormControl>
 
                           <FormMessage />
-
                         </FormItem>
-
                       )}
                     />
 
                   </CardContent>
-
                 </Card>
-
               </div>
 
-
-              {/* ==================================================
-                  UPDATE PROFILE
-              ================================================== */}
+              {/* UPDATE PROFILE */}
 
               <Button
                 type="submit"
                 className="w-full bg-blue-600 hover:bg-blue-700"
-                disabled={loading}
+                disabled={
+                  loading
+                }
               >
-
                 {loading
                   ? "Updating..."
                   : "Update Profile"}
-
               </Button>
-
             </form>
-
           </Form>
-
         </div>
-
       </div>
 
-
-      {/* ========================================================
-          CHANGE EMAIL DIALOG
-      ======================================================== */}
+      {/* CHANGE EMAIL DIALOG */}
 
       <Dialog
         open={
           emailChangeDialogOpen
         }
-        onOpenChange={(open) => {
-
-          if (!emailChangeLoading) {
-
+        onOpenChange={(
+          open,
+        ) => {
+          if (
+            !emailChangeLoading
+          ) {
             if (!open) {
               handleCancelEmailChange();
             } else {
@@ -1577,46 +1451,31 @@ const ProfilePage = ({
                 true,
               );
             }
-
           }
-
         }}
       >
-
         <DialogContent className="sm:max-w-md">
-
           <div className="space-y-5">
 
-
-            {/* HEADER */}
-
             <div>
-
               <div className="flex items-center gap-2 mb-2">
-
                 <div className="rounded-full bg-blue-100 p-2">
-
                   <Lock className="h-5 w-5 text-blue-700" />
-
                 </div>
 
                 <h2 className="text-xl font-semibold text-[#082A63]">
                   Change Email Address
                 </h2>
-
               </div>
 
               <p className="text-sm text-muted-foreground">
-                Enter your new email address. IyanjuPay will send a verification code to confirm the change.
+                Enter your new email address.
+                IyanjuPay will send a verification
+                code to confirm the change.
               </p>
-
             </div>
 
-
-            {/* EMAIL INPUT */}
-
             <div className="space-y-2">
-
               <Label htmlFor="new-email">
                 New Email Address
               </Label>
@@ -1624,8 +1483,12 @@ const ProfilePage = ({
               <Input
                 id="new-email"
                 type="email"
-                value={newEmail}
-                onChange={(e) =>
+                value={
+                  newEmail
+                }
+                onChange={(
+                  e,
+                ) =>
                   setNewEmail(
                     e.target.value,
                   )
@@ -1635,14 +1498,9 @@ const ProfilePage = ({
                   emailChangeRequested
                 }
               />
-
             </div>
 
-
-            {/* SEND OTP */}
-
             {!emailChangeRequested ? (
-
               <Button
                 type="button"
                 className="w-full bg-[#082A63] hover:bg-[#061F49]"
@@ -1653,42 +1511,29 @@ const ProfilePage = ({
                   emailChangeLoading
                 }
               >
-
                 {emailChangeLoading ? (
                   <>
                     <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-
                     Sending Code...
                   </>
                 ) : (
                   "Send Verification Code"
                 )}
-
               </Button>
-
             ) : (
-
               <>
-
-                {/* OTP INFO */}
-
                 <div className="rounded-lg bg-blue-50 p-4">
-
                   <p className="text-sm text-gray-700">
-                    We sent a verification code to:
+                    We sent a verification
+                    code to:
                   </p>
 
                   <p className="mt-1 font-semibold text-[#082A63] break-all">
                     {newEmail}
                   </p>
-
                 </div>
 
-
-                {/* OTP */}
-
                 <div className="space-y-2">
-
                   <Label htmlFor="email-change-otp">
                     Verification Code
                   </Label>
@@ -1702,7 +1547,9 @@ const ProfilePage = ({
                     value={
                       emailChangeOtp
                     }
-                    onChange={(e) =>
+                    onChange={(
+                      e,
+                    ) =>
                       setEmailChangeOtp(
                         e.target.value
                           .replace(
@@ -1718,11 +1565,7 @@ const ProfilePage = ({
                     placeholder="Enter 6-digit code"
                     className="text-center text-xl tracking-[0.35em]"
                   />
-
                 </div>
-
-
-                {/* VERIFY EMAIL */}
 
                 <Button
                   type="button"
@@ -1737,21 +1580,15 @@ const ProfilePage = ({
                     )
                   }
                 >
-
                   {emailChangeLoading ? (
                     <>
                       <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-
                       Verifying...
                     </>
                   ) : (
                     "Verify Email Change"
                   )}
-
                 </Button>
-
-
-                {/* RESEND */}
 
                 <Button
                   type="button"
@@ -1766,13 +1603,8 @@ const ProfilePage = ({
                 >
                   Resend Code
                 </Button>
-
               </>
-
             )}
-
-
-            {/* CANCEL */}
 
             <Button
               type="button"
@@ -1789,14 +1621,10 @@ const ProfilePage = ({
             </Button>
 
           </div>
-
         </DialogContent>
-
       </Dialog>
-
     </>
   );
 };
-
 
 export default ProfilePage;

@@ -22,12 +22,16 @@ function jsonResponse(
 }
 
 function normalizePhoneNumber(phone: string): string {
-  let cleaned = phone.trim().replace(/[\s()-]/g, "");
+  let cleaned = phone
+    .trim()
+    .replace(/[\s()-]/g, "");
 
+  // 08012345678 -> +2348012345678
   if (cleaned.startsWith("0")) {
     cleaned = `+234${cleaned.substring(1)}`;
   }
 
+  // 2348012345678 -> +2348012345678
   if (cleaned.startsWith("234")) {
     cleaned = `+${cleaned}`;
   }
@@ -36,42 +40,110 @@ function normalizePhoneNumber(phone: string): string {
 }
 
 serve(async (req) => {
+  // --------------------------------------------------
+  // CORS
+  // --------------------------------------------------
+
   if (req.method === "OPTIONS") {
     return new Response("ok", {
       headers: corsHeaders,
     });
   }
 
+  // --------------------------------------------------
+  // Only POST allowed
+  // --------------------------------------------------
+
+  if (req.method !== "POST") {
+    return jsonResponse(
+      {
+        success: false,
+        error: "Method not allowed.",
+      },
+      405,
+    );
+  }
+
   try {
-    const {
-      SUPABASE_URL,
-      SUPABASE_SERVICE_ROLE_KEY,
-      SUPABASE_ANON_KEY,
-    } = Deno.env.toObject();
+    // --------------------------------------------------
+    // 1. SUPABASE CONFIGURATION
+    // --------------------------------------------------
+
+    const SUPABASE_URL =
+      Deno.env.get("SUPABASE_URL") ?? "";
+
+    const SUPABASE_SERVICE_ROLE_KEY =
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+
+    const SUPABASE_ANON_KEY =
+      Deno.env.get("SUPABASE_ANON_KEY") ?? "";
 
     if (
       !SUPABASE_URL ||
       !SUPABASE_SERVICE_ROLE_KEY ||
       !SUPABASE_ANON_KEY
     ) {
+      console.error(
+        "Supabase authentication secrets are not configured.",
+      );
+
       return jsonResponse(
         {
           success: false,
-          error: "Supabase authentication secrets are not configured.",
+          error:
+            "Authentication service is temporarily unavailable.",
         },
         500,
       );
     }
 
-    const { identifier, password } = await req.json();
+    // --------------------------------------------------
+    // 2. READ REQUEST BODY
+    // --------------------------------------------------
 
-    if (!identifier?.trim()) {
+    let body: {
+      identifier?: string;
+      password?: string;
+    };
+
+    try {
+      body = await req.json();
+    } catch {
       return jsonResponse(
         {
           success: false,
-          error: "Email or phone number is required.",
+          error: "Invalid request.",
         },
-        400,
+        200,
+      );
+    }
+
+    const identifier =
+      typeof body.identifier === "string"
+        ? body.identifier.trim()
+        : "";
+
+    const password =
+      typeof body.password === "string"
+        ? body.password
+        : "";
+
+    // --------------------------------------------------
+    // 3. VALIDATE INPUT
+    //
+    // IMPORTANT:
+    // These are returned as HTTP 200 so the frontend
+    // does not receive FunctionsHttpError.
+    // --------------------------------------------------
+
+    if (!identifier) {
+      return jsonResponse(
+        {
+          success: false,
+          error:
+            "Email or phone number is required.",
+        },
+        200,
       );
     }
 
@@ -81,35 +153,47 @@ serve(async (req) => {
           success: false,
           error: "Password is required.",
         },
-        400,
+        200,
       );
     }
 
-    const value = identifier.trim();
+    // --------------------------------------------------
+    // 4. DETERMINE EMAIL OR PHONE LOGIN
+    // --------------------------------------------------
 
-    let email = value;
+    let email = identifier;
 
-    // ---------------------------------------------
-    // PHONE LOGIN
-    // ---------------------------------------------
+    const cleanedIdentifier =
+      identifier.replace(/[\s()-]/g, "");
 
     const looksLikePhone =
       /^(\+234|234|0)\d+$/.test(
-        value.replace(/[\s()-]/g, ""),
+        cleanedIdentifier,
       );
 
+    // --------------------------------------------------
+    // 5. PHONE LOGIN
+    // --------------------------------------------------
+
     if (looksLikePhone) {
-      const phone = normalizePhoneNumber(value);
+      const phone =
+        normalizePhoneNumber(identifier);
 
       if (!/^\+234\d{10}$/.test(phone)) {
         return jsonResponse(
           {
             success: false,
-            error: "Invalid Nigerian phone number.",
+            error:
+              "Invalid Nigerian phone number.",
           },
-          400,
+          200,
         );
       }
+
+      // ------------------------------------------------
+      // ADMIN CLIENT
+      // Used only for looking up the phone profile.
+      // ------------------------------------------------
 
       const adminClient = createClient(
         SUPABASE_URL,
@@ -122,12 +206,16 @@ serve(async (req) => {
         },
       );
 
-      const { data: profile, error: profileError } =
-        await adminClient
-          .from("profiles")
-          .select("email, phone_verified")
-          .eq("phone_number", phone)
-          .maybeSingle();
+      const {
+        data: profile,
+        error: profileError,
+      } = await adminClient
+        .from("profiles")
+        .select(
+          "email, phone_verified",
+        )
+        .eq("phone_number", phone)
+        .maybeSingle();
 
       if (profileError) {
         console.error(
@@ -138,21 +226,31 @@ serve(async (req) => {
         return jsonResponse(
           {
             success: false,
-            error: "Unable to process login.",
+            error:
+              "Unable to process login. Please try again.",
           },
           500,
         );
       }
 
+      // ------------------------------------------------
+      // DO NOT reveal whether the phone exists.
+      // ------------------------------------------------
+
       if (!profile?.email) {
         return jsonResponse(
           {
             success: false,
-            error: "Invalid login credentials.",
+            error:
+              "Invalid login credentials.",
           },
-          401,
+          200,
         );
       }
+
+      // ------------------------------------------------
+      // PHONE MUST BE VERIFIED
+      // ------------------------------------------------
 
       if (!profile.phone_verified) {
         return jsonResponse(
@@ -161,16 +259,28 @@ serve(async (req) => {
             error:
               "Phone number has not been verified.",
           },
-          403,
+          200,
         );
       }
 
       email = profile.email;
     }
 
-    // ---------------------------------------------
-    // AUTHENTICATE WITH SUPABASE
-    // ---------------------------------------------
+    // --------------------------------------------------
+    // 6. EMAIL LOGIN
+    // --------------------------------------------------
+
+    /*
+     * If the identifier is not a phone number,
+     * Supabase will authenticate it as an email.
+     *
+     * We intentionally do not expose whether an
+     * email exists in the database.
+     */
+
+    // --------------------------------------------------
+    // 7. AUTH CLIENT
+    // --------------------------------------------------
 
     const authClient = createClient(
       SUPABASE_URL,
@@ -183,30 +293,68 @@ serve(async (req) => {
       },
     );
 
-    const { data, error } =
-      await authClient.auth.signInWithPassword({
-        email,
-        password,
-      });
+    // --------------------------------------------------
+    // 8. AUTHENTICATE WITH SUPABASE
+    // --------------------------------------------------
 
-    if (error || !data.session || !data.user) {
+    const {
+      data,
+      error,
+    } = await authClient.auth.signInWithPassword({
+      email,
+      password,
+    });
+
+    // --------------------------------------------------
+    // 9. INVALID CREDENTIALS
+    //
+    // IMPORTANT:
+    // Return HTTP 200 here instead of 401.
+    //
+    // This prevents:
+    // FunctionsHttpError:
+    // Edge Function returned a non-2xx status code
+    // --------------------------------------------------
+
+    if (
+      error ||
+      !data?.session ||
+      !data?.user
+    ) {
+      console.warn(
+        "Login failed:",
+        error?.message || "Invalid credentials",
+      );
+
       return jsonResponse(
         {
           success: false,
           error: "Invalid login credentials.",
         },
-        401,
+        200,
       );
     }
 
-    return jsonResponse({
-      success: true,
-      user: data.user,
-      session: data.session,
-    });
+    // --------------------------------------------------
+    // 10. SUCCESS
+    // --------------------------------------------------
+
+    console.log(
+      "Login successful:",
+      data.user.id,
+    );
+
+    return jsonResponse(
+      {
+        success: true,
+        user: data.user,
+        session: data.session,
+      },
+      200,
+    );
   } catch (error) {
     console.error(
-      "login-with-identifier error:",
+      "login-with-identifier unexpected error:",
       error,
     );
 
@@ -214,9 +362,7 @@ serve(async (req) => {
       {
         success: false,
         error:
-          error instanceof Error
-            ? error.message
-            : "Unable to process login.",
+          "Unable to process login. Please try again.",
       },
       500,
     );

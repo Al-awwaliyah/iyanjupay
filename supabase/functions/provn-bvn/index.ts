@@ -1,3 +1,4 @@
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getUser, json } from "../_shared/auth.ts";
 
 const PROVN_API_URL =
@@ -53,7 +54,7 @@ Deno.serve(async (req) => {
     }
 
     // ==========================================================
-    // PROVN CREDENTIALS
+    // ENVIRONMENT
     // ==========================================================
 
     const provnApiKey =
@@ -62,7 +63,18 @@ Deno.serve(async (req) => {
     const provnAccessKey =
       Deno.env.get("PROVN_ACCESS_KEY");
 
-    if (!provnApiKey || !provnAccessKey) {
+    const supabaseUrl =
+      Deno.env.get("SUPABASE_URL");
+
+    const serviceRoleKey =
+      Deno.env.get(
+        "SUPABASE_SERVICE_ROLE_KEY",
+      );
+
+    if (
+      !provnApiKey ||
+      !provnAccessKey
+    ) {
       console.error(
         "PROVN credentials are not configured.",
       );
@@ -76,6 +88,40 @@ Deno.serve(async (req) => {
         500,
       );
     }
+
+    if (
+      !supabaseUrl ||
+      !serviceRoleKey
+    ) {
+      console.error(
+        "Supabase service role configuration is missing.",
+      );
+
+      return json(
+        {
+          success: false,
+          error:
+            "KYC database service is not configured.",
+        },
+        500,
+      );
+    }
+
+    // ==========================================================
+    // ADMIN SUPABASE CLIENT
+    // ==========================================================
+
+    const adminSupabase =
+      createClient(
+        supabaseUrl,
+        serviceRoleKey,
+        {
+          auth: {
+            autoRefreshToken: false,
+            persistSession: false,
+          },
+        },
+      );
 
     // ==========================================================
     // REQUEST BODY
@@ -96,36 +142,89 @@ Deno.serve(async (req) => {
       );
     }
 
-    // ==========================================================
-    // ACTION
-    // ==========================================================
-
     const action =
-      String(body?.action ?? "verify")
-        .trim()
-        .toLowerCase();
+      String(
+        body?.action ?? "verify",
+      ).toLowerCase();
 
     // ==========================================================
     // STATUS
-    //
-    // IMPORTANT:
-    // This does NOT call PROVN.
-    // It only reports that the user has not been
-    // marked verified by this function.
-    //
-    // If you already have a KYC table, you can later
-    // connect this section to that table.
     // ==========================================================
 
     if (action === "status") {
+      const {
+        data: profile,
+        error: profileError,
+      } =
+        await adminSupabase
+          .from("profiles")
+          .select(
+            `
+              kyc_level,
+              kyc_status,
+              bvn_verified,
+              bvn_masked,
+              bvn_verified_at
+            `,
+          )
+          .eq("id", user.id)
+          .maybeSingle();
+
+      if (profileError) {
+        console.error(
+          "KYC status database error:",
+          profileError,
+        );
+
+        return json(
+          {
+            success: false,
+            error:
+              "Unable to load KYC status.",
+          },
+          500,
+        );
+      }
+
+      const verified =
+        Boolean(
+          profile?.bvn_verified,
+        ) ||
+        String(
+          profile?.kyc_status ??
+            "",
+        ).toLowerCase() ===
+          "verified";
+
       return json(
         {
           success: true,
-          verified: false,
-          kyc_level: 1,
-          kyc_status: "unverified",
-          bvn_masked: null,
+
+          verified,
+
+          kyc_level:
+            Number(
+              profile?.kyc_level ??
+                (verified ? 2 : 1),
+            ),
+
+          kyc_status:
+            String(
+              profile?.kyc_status ??
+                (verified
+                  ? "verified"
+                  : "unverified"),
+            ),
+
+          bvn_masked:
+            profile?.bvn_masked ??
+            null,
+
           fee: 0,
+
+          bvn_verified_at:
+            profile?.bvn_verified_at ??
+            null,
         },
         200,
       );
@@ -140,7 +239,7 @@ Deno.serve(async (req) => {
         {
           success: false,
           error:
-            "Unsupported action.",
+            "Unsupported BVN action.",
         },
         400,
       );
@@ -150,9 +249,10 @@ Deno.serve(async (req) => {
     // BVN
     // ==========================================================
 
-    const bvn = String(
-      body?.bvn ?? "",
-    ).replace(/\D/g, "");
+    const bvn =
+      String(
+        body?.bvn ?? "",
+      ).replace(/\D/g, "");
 
     if (!/^\d{11}$/.test(bvn)) {
       return json(
@@ -170,7 +270,8 @@ Deno.serve(async (req) => {
       "Starting PROVN BVN verification:",
       JSON.stringify({
         user_id: user.id,
-        bvn_last_four: bvn.slice(-4),
+        bvn_last_four:
+          bvn.slice(-4),
       }),
     );
 
@@ -232,10 +333,6 @@ Deno.serve(async (req) => {
       providerData = null;
     }
 
-    // ==========================================================
-    // LOG ONLY SAFE PROVIDER INFORMATION
-    // ==========================================================
-
     console.log(
       "PROVN BVN response:",
       JSON.stringify({
@@ -261,12 +358,13 @@ Deno.serve(async (req) => {
     );
 
     // ==========================================================
-    // PROVIDER ERROR
+    // PROVIDER FAILURE
     // ==========================================================
 
     if (
       !response.ok ||
-      providerData?.status !== "success"
+      providerData?.status !==
+        "success"
     ) {
       const providerError =
         providerData?.detail ||
@@ -298,24 +396,86 @@ Deno.serve(async (req) => {
     }
 
     // ==========================================================
+    // PROVIDER SUCCESS
+    // ==========================================================
+
+    /*
+     * IMPORTANT:
+     *
+     * PROVN TEST KEYS return DUMMY identity information.
+     *
+     * Therefore we intentionally DO NOT copy:
+     *
+     * - first_name
+     * - last_name
+     * - middle_name
+     * - date_of_birth
+     * - phone_number
+     * - state_of_origin
+     * - residential_address
+     *
+     * into the user's profile.
+     *
+     * We only mark the LOCAL IyanjuPay KYC state as verified.
+     */
+
+    const now =
+      new Date().toISOString();
+
+    const maskedBvn =
+      `******${bvn.slice(-4)}`;
+
+    // ==========================================================
+    // UPDATE LOCAL KYC STATE
+    // ==========================================================
+
+    const {
+      error: updateError,
+    } =
+      await adminSupabase
+        .from("profiles")
+        .update({
+          kyc_level: 2,
+
+          kyc_status:
+            "verified",
+
+          bvn_verified:
+            true,
+
+          bvn_masked:
+            maskedBvn,
+
+          bvn_verified_at:
+            now,
+
+          updated_at:
+            now,
+        })
+        .eq(
+          "id",
+          user.id,
+        );
+
+    if (updateError) {
+      console.error(
+        "Unable to update KYC profile:",
+        updateError,
+      );
+
+      return json(
+        {
+          success: false,
+          verified: false,
+          error:
+            "BVN was accepted by the verification service, but your KYC profile could not be updated.",
+        },
+        500,
+      );
+    }
+
+    // ==========================================================
     // SUCCESS
-    //
-    // IMPORTANT:
-    //
-    // PROVN TEST KEYS return dummy identity data.
-    //
-    // DO NOT:
-    // - update profiles.full_name
-    // - update profiles.phone_number
-    // - update profiles.date_of_birth
-    // - update profiles.address
-    // - update any other user identity fields
-    //
-    // The frontend should simply treat this as:
-    // "BVN verification successful."
-    //
-    // PROVN documentation confirms test keys return
-    // dummy payload data rather than live registry data.
     // ==========================================================
 
     return json(
@@ -325,26 +485,35 @@ Deno.serve(async (req) => {
         verified: true,
 
         message:
-          providerData?.message ||
           "BVN verification successful.",
 
+        kyc_level: 2,
+
+        kyc_status:
+          "verified",
+
+        bvn_masked:
+          maskedBvn,
+
         /*
-         * We intentionally DO NOT return the
-         * dummy identity payload to the frontend.
+         * The provider's identity payload is returned only
+         * for the verification response. ProfilePage does
+         * NOT use it to overwrite user information.
          *
-         * This prevents the React component from
-         * accidentally replacing the user's profile
-         * with PROVN test data.
+         * This is especially important in test mode because
+         * PROVN returns dummy data.
          */
 
-        verification: {
-          verified: true,
-        },
+        verification:
+          providerData?.data ??
+          null,
 
         test_mode:
           String(
             provnApiKey,
-          ).startsWith("test_"),
+          ).startsWith(
+            "test_",
+          ),
       },
       200,
     );

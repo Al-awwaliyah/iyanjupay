@@ -101,14 +101,14 @@ Deno.serve(async (req) => {
         {
           success: false,
           error:
-            "Database service is not configured.",
+            "Server database configuration is incomplete.",
         },
         500,
       );
     }
 
     // ==========================================================
-    // ADMIN SUPABASE CLIENT
+    // SUPABASE ADMIN CLIENT
     // ==========================================================
 
     const supabaseAdmin =
@@ -142,62 +142,88 @@ Deno.serve(async (req) => {
       );
     }
 
+    // ==========================================================
+    // ACTION
+    // ==========================================================
+
     const action =
       String(
         body?.action ?? "verify",
       ).toLowerCase();
 
     // ==========================================================
-    // STATUS
+    // KYC STATUS
     // ==========================================================
 
     if (action === "status") {
       const {
         data: profile,
         error: profileError,
-      } =
-        await supabaseAdmin
-          .from("profiles")
-          .select(
-            "kyc_level, kyc_status, bvn_masked",
-          )
-          .eq("id", user.id)
-          .maybeSingle();
+      } = await supabaseAdmin
+        .from("profiles")
+        .select(
+          "bvn, bvn_verified, kyc_level, kyc_status",
+        )
+        .eq("id", user.id)
+        .maybeSingle();
 
       if (profileError) {
         console.error(
-          "KYC status database error:",
+          "Unable to load KYC profile:",
           profileError,
         );
 
+        /*
+         * If the project does not yet have the KYC
+         * columns, return a safe default instead of
+         * exposing the database error to the user.
+         */
         return json(
           {
-            success: false,
-            error:
-              "Unable to load KYC status.",
+            success: true,
+            verified: false,
+            kyc_level: 1,
+            kyc_status: "unverified",
+            bvn_masked: null,
+            fee: 0,
           },
-          500,
+          200,
         );
       }
 
-      const verified =
-        profile?.kyc_status ===
-        "verified";
+      const storedBvn =
+        profile?.bvn
+          ? String(profile.bvn)
+          : "";
+
+      const bvnMasked =
+        storedBvn.length === 11
+          ? `******${storedBvn.slice(-4)}`
+          : null;
 
       return json(
         {
           success: true,
-          verified,
+
+          verified:
+            Boolean(
+              profile?.bvn_verified,
+            ),
+
           kyc_level:
             Number(
               profile?.kyc_level ?? 1,
             ),
+
           kyc_status:
-            profile?.kyc_status ??
-            "unverified",
+            String(
+              profile?.kyc_status ??
+                "unverified",
+            ),
+
           bvn_masked:
-            profile?.bvn_masked ??
-            null,
+            bvnMasked,
+
           fee: 0,
         },
         200,
@@ -223,9 +249,10 @@ Deno.serve(async (req) => {
     // BVN
     // ==========================================================
 
-    const bvn = String(
-      body?.bvn ?? "",
-    ).replace(/\D/g, "");
+    const bvn =
+      String(
+        body?.bvn ?? "",
+      ).replace(/\D/g, "");
 
     if (!/^\d{11}$/.test(bvn)) {
       return json(
@@ -347,11 +374,16 @@ Deno.serve(async (req) => {
       return json(
         {
           success: false,
+
           verified: false,
-          error: providerError,
+
+          error:
+            providerError,
+
           provider_status:
             providerData?.status ??
             null,
+
           provider_code:
             providerData?.code ??
             response.status,
@@ -364,7 +396,7 @@ Deno.serve(async (req) => {
     }
 
     // ==========================================================
-    // VERIFICATION DATA
+    // EXTRACT VERIFIED DATA
     // ==========================================================
 
     const data =
@@ -385,20 +417,14 @@ Deno.serve(async (req) => {
         data?.middle_name ?? "",
       ).trim();
 
-    const phoneNumber =
+    const verifiedPhone =
       String(
         data?.phone_number ?? "",
       ).trim();
 
-    const dateOfBirth =
+    const verifiedDob =
       String(
         data?.date_of_birth ?? "",
-      ).trim();
-
-    const residentialAddress =
-      String(
-        data?.residential_address ??
-          "",
       ).trim();
 
     const stateOfOrigin =
@@ -407,71 +433,75 @@ Deno.serve(async (req) => {
       ).trim();
 
     // ==========================================================
-    // BUILD FULL NAME FROM BVN
+    // BUILD VERIFIED FULL NAME
     // ==========================================================
 
-    const fullName = [
-      firstName,
-      middleName,
-      lastName,
-    ]
-      .filter(Boolean)
-      .join(" ")
-      .trim();
-
-    // ==========================================================
-    // MASK BVN
-    // ==========================================================
-
-    const bvnMasked =
-      `******${bvn.slice(-4)}`;
+    const verifiedFullName =
+      [
+        firstName,
+        middleName,
+        lastName,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .trim();
 
     // ==========================================================
     // UPDATE USER PROFILE
     // ==========================================================
 
+    /*
+     * BVN becomes the source of truth for the identity
+     * fields that PROVN successfully returned.
+     *
+     * We DO NOT update:
+     * - Supabase Auth email
+     * - Supabase Auth password
+     * - NIN
+     * - user's address
+     * - nickname
+     * - gender
+     *
+     * Those remain separate profile information.
+     */
+
     const profileUpdate: Record<
       string,
-      any
+      unknown
     > = {
-      kyc_status: "verified",
+      bvn: bvn,
+      bvn_verified: true,
       kyc_level: 2,
-      bvn_masked: bvnMasked,
+      kyc_status: "verified",
       updated_at:
         new Date().toISOString(),
     };
 
-    if (fullName) {
+    if (verifiedFullName) {
       profileUpdate.full_name =
-        fullName;
+        verifiedFullName;
     }
 
-    if (phoneNumber) {
+    if (verifiedPhone) {
       profileUpdate.phone_number =
-        phoneNumber;
+        verifiedPhone;
     }
 
-    if (dateOfBirth) {
+    if (verifiedDob) {
       profileUpdate.date_of_birth =
-        dateOfBirth;
-    }
-
-    if (residentialAddress) {
-      profileUpdate.address =
-        residentialAddress;
+        verifiedDob;
     }
 
     const {
       error: profileUpdateError,
-    } =
-      await supabaseAdmin
-        .from("profiles")
-        .update(profileUpdate)
-        .eq("id", user.id);
+    } = await supabaseAdmin
+      .from("profiles")
+      .update(profileUpdate)
+      .eq("id", user.id);
 
     if (profileUpdateError) {
       console.error(
-        "Failed to update profile after BVN verification:",
+        "Failed to update verified profile:",
         profileUpdateError,
       );
 
@@ -480,7 +510,7 @@ Deno.serve(async (req) => {
           success: false,
           verified: false,
           error:
-            "BVN was verified, but your profile could not be updated. Please try again.",
+            "BVN was verified, but your profile could not be updated.",
         },
         500,
       );
@@ -489,16 +519,6 @@ Deno.serve(async (req) => {
     // ==========================================================
     // SUCCESS
     // ==========================================================
-
-    console.log(
-      "BVN verification successful and profile updated:",
-      JSON.stringify({
-        user_id: user.id,
-        bvn_last_four:
-          bvn.slice(-4),
-        kyc_level: 2,
-      }),
-    );
 
     return json(
       {
@@ -521,14 +541,10 @@ Deno.serve(async (req) => {
             middleName || null,
 
           date_of_birth:
-            dateOfBirth || null,
+            verifiedDob || null,
 
           phone_number:
-            phoneNumber || null,
-
-          residential_address:
-            residentialAddress ||
-            null,
+            verifiedPhone || null,
 
           state_of_origin:
             stateOfOrigin || null,
@@ -536,10 +552,10 @@ Deno.serve(async (req) => {
 
         profile_updated: true,
 
-        kyc_level: 2,
-
-        bvn_masked:
-          bvnMasked,
+        kyc: {
+          level: 2,
+          status: "verified",
+        },
       },
       200,
     );
@@ -564,360 +580,3 @@ Deno.serve(async (req) => {
     );
   }
 });
-```
-
-### 2. Important database requirement
-
-The code above expects these columns in your existing `profiles` table:
-
-```text
-kyc_level
-kyc_status
-bvn_masked
-```
-
-Your existing component already expects those KYC concepts, so **check your `profiles` table before deploying**.
-
-If those three columns don't exist, **don't deploy this version yet**. Send me your current `profiles` table SQL and I'll give you the exact migration instead of guessing your schema.
-
-### 3. Replace the BVN-related parts in `ProfilePage.tsx`
-
-Your component must call:
-
-```text
-provn-bvn
-```
-
-—not:
-
-```text
-flutterwave-bvn
-```
-
-The important replacement is this:
-
-```tsx
-// ============================================================
-// PROVN BVN EDGE FUNCTION
-// ============================================================
-
-const invokeBvn = useCallback(
-  async (
-    payload: Record<string, unknown>,
-  ) => {
-    const {
-      data,
-      error,
-    } = await supabase.functions.invoke(
-      "provn-bvn",
-      {
-        body: payload,
-      },
-    );
-
-    if (error) {
-      let message =
-        error.message ??
-        "BVN request failed";
-
-      const context =
-        (error as any)?.context;
-
-      if (
-        context &&
-        typeof context.json ===
-          "function"
-      ) {
-        try {
-          const body =
-            await context.json();
-
-          if (body?.error) {
-            message = body.error;
-          }
-        } catch {
-          // Keep original error.
-        }
-      }
-
-      throw new Error(message);
-    }
-
-    if (
-      data &&
-      data.success === false
-    ) {
-      throw new Error(
-        data.error ??
-          "BVN verification failed.",
-      );
-    }
-
-    return data;
-  },
-  [],
-);
-
-
-// ============================================================
-// FETCH KYC STATUS
-// ============================================================
-
-const fetchKyc = useCallback(
-  async () => {
-    setKycLoading(true);
-
-    try {
-      const data =
-        await invokeBvn({
-          action: "status",
-        });
-
-      setKyc({
-        verified: Boolean(
-          data?.verified,
-        ),
-
-        kyc_level: Number(
-          data?.kyc_level ?? 1,
-        ),
-
-        kyc_status: String(
-          data?.kyc_status ??
-            "unverified",
-        ),
-
-        bvn_masked:
-          data?.bvn_masked ??
-          null,
-
-        fee: Number(
-          data?.fee ?? 0,
-        ),
-      });
-    } catch (error: any) {
-      console.error(
-        "Unable to load KYC status:",
-        error,
-      );
-
-      /*
-       * Do not block the profile page if
-       * KYC status cannot be loaded.
-       */
-      setKyc({
-        verified: false,
-        kyc_level: 1,
-        kyc_status:
-          "unverified",
-        bvn_masked: null,
-        fee: 0,
-      });
-    } finally {
-      setKycLoading(false);
-    }
-  },
-  [invokeBvn],
-);
-
-
-// ============================================================
-// BVN VERIFICATION
-// ============================================================
-
-const handleVerifyBvn =
-  async () => {
-    const digits =
-      bvn.replace(/\D/g, "");
-
-    if (digits.length !== 11) {
-      toast({
-        title: "Invalid BVN",
-        description:
-          "Your BVN must be exactly 11 digits.",
-        variant:
-          "destructive",
-      });
-
-      return;
-    }
-
-    setVerifying(true);
-
-    try {
-      const result =
-        await invokeBvn({
-          action: "verify",
-          bvn: digits,
-        });
-
-      if (
-        !result?.success ||
-        !result?.verified
-      ) {
-        throw new Error(
-          result?.error ??
-            "BVN verification failed.",
-        );
-      }
-
-      // ======================================================
-      // AUTO-UPDATE FRONTEND FORM FROM BVN
-      // ======================================================
-
-      const verification =
-        result?.verification;
-
-      if (verification) {
-        const firstName =
-          String(
-            verification.first_name ??
-              "",
-          ).trim();
-
-        const middleName =
-          String(
-            verification.middle_name ??
-              "",
-          ).trim();
-
-        const lastName =
-          String(
-            verification.last_name ??
-              "",
-          ).trim();
-
-        const fullName = [
-          firstName,
-          middleName,
-          lastName,
-        ]
-          .filter(Boolean)
-          .join(" ")
-          .trim();
-
-        if (fullName) {
-          form.setValue(
-            "full_name",
-            fullName,
-            {
-              shouldDirty: false,
-              shouldValidate: true,
-            },
-          );
-        }
-
-        if (
-          verification.phone_number
-        ) {
-          form.setValue(
-            "phone_number",
-            String(
-              verification.phone_number,
-            ),
-            {
-              shouldDirty: false,
-            },
-          );
-        }
-
-        if (
-          verification.date_of_birth
-        ) {
-          form.setValue(
-            "date_of_birth",
-            String(
-              verification.date_of_birth,
-            ),
-            {
-              shouldDirty: false,
-            },
-          );
-        }
-
-        if (
-          verification.residential_address
-        ) {
-          form.setValue(
-            "address",
-            String(
-              verification.residential_address,
-            ),
-            {
-              shouldDirty: false,
-            },
-          );
-        }
-      }
-
-      // ======================================================
-      // SUCCESS
-      // ======================================================
-
-      toast({
-        title:
-          "BVN verified successfully",
-        description:
-          "Your BVN has been verified and your profile information has been updated.",
-      });
-
-      setBvn("");
-
-      // Reload KYC status from database.
-      await fetchKyc();
-
-      // Reload profile from database.
-      await fetchProfile();
-    } catch (error: any) {
-      console.error(
-        "BVN verification error:",
-        error,
-      );
-
-      toast({
-        title:
-          "Verification failed",
-        description:
-          error?.message ??
-          "Unable to verify your BVN.",
-        variant:
-          "destructive",
-      });
-    } finally {
-      setVerifying(false);
-    }
-  };
-```
-
-Then make sure your BVN card says:
-
-```tsx
-<CardTitle>
-  BVN Verification
-</CardTitle>
-```
-
-and **not** anything referring to Flutterwave.
-
-Your button remains:
-
-```tsx
-<Button
-  type="button"
-  className="bg-blue-600 hover:bg-blue-700"
-  onClick={handleVerifyBvn}
-  disabled={
-    verifying ||
-    kycLoading ||
-    kyc?.verified === true
-  }
->
-  {verifying ? (
-    <>
-      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-      Verifying...
-    </>
-  ) : (
-    "Verify BVN"
-  )}
-</Button>

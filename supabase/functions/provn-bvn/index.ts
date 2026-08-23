@@ -4,6 +4,18 @@ import { getUser, json } from "../_shared/auth.ts";
 const PROVN_API_URL =
   "https://api.provn.ng/verification/bvn";
 
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods":
+    "POST, OPTIONS",
+};
+
+// ============================================================
+// MAIN
+// ============================================================
+
 Deno.serve(async (req) => {
   // ============================================================
   // CORS
@@ -12,13 +24,7 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, {
       status: 204,
-      headers: {
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Headers":
-          "authorization, x-client-info, apikey, content-type",
-        "Access-Control-Allow-Methods":
-          "POST, OPTIONS",
-      },
+      headers: corsHeaders,
     });
   }
 
@@ -45,7 +51,7 @@ Deno.serve(async (req) => {
 
     if (!user) {
       console.error(
-        "BVN verification: unauthorized request",
+        "PROVN BVN: unauthorized request",
       );
 
       return json(
@@ -59,7 +65,7 @@ Deno.serve(async (req) => {
     }
 
     console.log(
-      "Authenticated user for BVN verification:",
+      "Authenticated BVN user:",
       user.id,
     );
 
@@ -164,19 +170,6 @@ Deno.serve(async (req) => {
     // STATUS
     // ==========================================================
 
-    /*
-     * IMPORTANT:
-     *
-     * We intentionally do NOT request bvn_masked here.
-     *
-     * The previous production error showed that PostgREST's
-     * schema cache did not know about bvn_masked even though
-     * the database SQL now contains the column.
-     *
-     * We therefore read bvn and calculate the masked value
-     * locally.
-     */
-
     if (action === "status") {
       const {
         data: profile,
@@ -186,6 +179,7 @@ Deno.serve(async (req) => {
           .from("profiles")
           .select(
             `
+              id,
               kyc_level,
               kyc_status,
               bvn,
@@ -213,6 +207,11 @@ Deno.serve(async (req) => {
         );
       }
 
+      const storedBvn =
+        String(
+          profile?.bvn ?? "",
+        ).replace(/\D/g, "");
+
       const verified =
         Boolean(
           profile?.bvn_verified,
@@ -221,11 +220,6 @@ Deno.serve(async (req) => {
           profile?.kyc_status ?? "",
         ).toLowerCase() ===
           "verified";
-
-      const storedBvn =
-        String(
-          profile?.bvn ?? "",
-        ).replace(/\D/g, "");
 
       const maskedBvn =
         storedBvn.length === 11
@@ -266,7 +260,7 @@ Deno.serve(async (req) => {
     }
 
     // ==========================================================
-    // ONLY VERIFY ACTION IS SUPPORTED
+    // ONLY VERIFY IS SUPPORTED
     // ==========================================================
 
     if (action !== "verify") {
@@ -282,7 +276,7 @@ Deno.serve(async (req) => {
     }
 
     // ==========================================================
-    // READ BVN
+    // BVN
     // ==========================================================
 
     const bvn =
@@ -357,7 +351,7 @@ Deno.serve(async (req) => {
     }
 
     // ==========================================================
-    // READ PROVIDER RESPONSE
+    // PROVIDER RESPONSE
     // ==========================================================
 
     let providerData: any = null;
@@ -408,23 +402,19 @@ Deno.serve(async (req) => {
         "BVN verification failed.";
 
       console.error(
-        "PROVN BVN verification failed:",
+        "PROVN rejected BVN:",
         providerError,
       );
 
       return json(
         {
           success: false,
-
           verified: false,
-
           error:
             providerError,
-
           provider_status:
             providerData?.status ??
             null,
-
           provider_code:
             providerData?.code ??
             response.status,
@@ -437,27 +427,26 @@ Deno.serve(async (req) => {
     }
 
     // ==========================================================
-    // PROVIDER SUCCESS
+    // PROVN SUCCESS
     // ==========================================================
 
+    console.log(
+      "PROVN BVN verification successful.",
+    );
+
     /*
-     * PROVN TEST MODE
-     * ----------------
+     * PROVN TEST MODE returns dummy identity data.
      *
-     * Test credentials return dummy identity information.
+     * We therefore do NOT copy:
      *
-     * Therefore we DO NOT copy provider identity fields into
-     * the user's profile.
+     * - first_name
+     * - last_name
+     * - middle_name
+     * - date_of_birth
+     * - phone_number
+     * - address
      *
-     * We only store:
-     *
-     *   bvn
-     *   bvn_verified
-     *   bvn_verified_at
-     *   kyc_level
-     *   kyc_status
-     *
-     * The bvn_masked value is calculated locally.
+     * We only save the verification state and submitted BVN.
      */
 
     const now =
@@ -466,59 +455,158 @@ Deno.serve(async (req) => {
     const maskedBvn =
       `******${bvn.slice(-4)}`;
 
-    console.log(
-      "PROVN accepted BVN. Updating local profile:",
-      JSON.stringify({
-        user_id: user.id,
-        bvn_last_four:
-          bvn.slice(-4),
-        kyc_level: 2,
-        kyc_status: "verified",
-      }),
-    );
+    // ==========================================================
+    // CHECK PROFILE EXISTS
+    // ==========================================================
+
+    const {
+      data: existingProfile,
+      error: existingProfileError,
+    } =
+      await adminSupabase
+        .from("profiles")
+        .select(
+          `
+            id,
+            full_name,
+            phone_number,
+            email
+          `,
+        )
+        .eq("id", user.id)
+        .maybeSingle();
+
+    if (existingProfileError) {
+      console.error(
+        "Profile existence check failed:",
+        existingProfileError,
+      );
+
+      return json(
+        {
+          success: false,
+          verified: false,
+          error:
+            "BVN was verified, but we could not access your profile.",
+        },
+        500,
+      );
+    }
+
+    // ==========================================================
+    // CREATE PROFILE IF MISSING
+    // ==========================================================
+
+    if (!existingProfile) {
+      console.warn(
+        "Profile does not exist. Creating profile:",
+        user.id,
+      );
+
+      const metadata =
+        user.user_metadata ?? {};
+
+      const fullName =
+        String(
+          metadata.full_name ??
+            "",
+        ).trim() || null;
+
+      const phoneNumber =
+        String(
+          metadata.phone_number ??
+            "",
+        ).trim() || null;
+
+      const email =
+        user.email?.trim() ||
+        null;
+
+      const {
+        error: createProfileError,
+      } =
+        await adminSupabase
+          .from("profiles")
+          .insert({
+            id: user.id,
+            full_name:
+              fullName,
+            phone_number:
+              phoneNumber,
+            email,
+            kyc_level: 1,
+            kyc_status:
+              "unverified",
+            bvn_verified:
+              false,
+          });
+
+      if (createProfileError) {
+        console.error(
+          "Unable to create missing profile:",
+          createProfileError,
+        );
+
+        return json(
+          {
+            success: false,
+            verified: false,
+            error:
+              "BVN was verified, but your profile could not be created.",
+          },
+          500,
+        );
+      }
+
+      console.log(
+        "Missing profile created successfully:",
+        user.id,
+      );
+    }
 
     // ==========================================================
     // UPDATE PROFILE
     // ==========================================================
 
+    console.log(
+      "Updating profile KYC fields:",
+      JSON.stringify({
+        user_id: user.id,
+        bvn_last_four:
+          bvn.slice(-4),
+      }),
+    );
+
     /*
      * IMPORTANT:
      *
-     * bvn_masked is intentionally NOT included here.
+     * Do NOT include bvn_masked here.
      *
-     * Your previous log showed:
+     * The previous PGRST204 error came from that field.
      *
-     * PGRST204:
-     * Could not find the 'bvn_masked' column of 'profiles'
-     * in the schema cache
-     *
-     * Even though the SQL table now contains that column.
-     *
-     * By leaving bvn_masked out of this update, the critical
-     * profile update will not fail because of the stale
-     * PostgREST schema cache.
+     * We calculate the masked BVN in the response instead.
      */
 
     const {
-      data: updatedProfile,
       error: updateError,
     } =
       await adminSupabase
         .from("profiles")
         .update({
-          kyc_level: 2,
-
-          kyc_status:
-            "verified",
+          bvn:
+            bvn,
 
           bvn_verified:
             true,
 
-          bvn:
-            bvn,
-
           bvn_verified_at:
             now,
+
+          kyc_level:
+            2,
+
+          kyc_status:
+            "verified",
 
           updated_at:
             now,
@@ -526,7 +614,51 @@ Deno.serve(async (req) => {
         .eq(
           "id",
           user.id,
-        )
+        );
+
+    if (updateError) {
+      console.error(
+        "PROFILE KYC UPDATE FAILED:",
+        updateError,
+      );
+
+      return json(
+        {
+          success: false,
+          verified: false,
+          error:
+            "BVN was verified, but your KYC profile could not be updated.",
+          database_error:
+            updateError.message,
+        },
+        500,
+      );
+    }
+
+    console.log(
+      "Profile KYC update command completed.",
+    );
+
+    // ==========================================================
+    // SEPARATE DATABASE VERIFICATION
+    // ==========================================================
+
+    /*
+     * We intentionally perform a NEW SELECT.
+     *
+     * We no longer depend on:
+     *
+     * update(...).select(...).maybeSingle()
+     *
+     * to confirm the update.
+     */
+
+    const {
+      data: savedProfile,
+      error: verifyDatabaseError,
+    } =
+      await adminSupabase
+        .from("profiles")
         .select(
           `
             id,
@@ -537,41 +669,36 @@ Deno.serve(async (req) => {
             bvn_verified_at
           `,
         )
+        .eq("id", user.id)
         .maybeSingle();
 
-    // ==========================================================
-    // DATABASE UPDATE FAILURE
-    // ==========================================================
-
-    if (updateError) {
+    if (verifyDatabaseError) {
       console.error(
-        "Unable to update KYC profile:",
-        updateError,
+        "Unable to verify saved KYC profile:",
+        verifyDatabaseError,
       );
 
       return json(
         {
           success: false,
-
           verified: false,
-
           error:
-            "BVN was accepted by the verification service, but your profile could not be updated.",
-
+            "BVN was verified, but we could not confirm the profile update.",
           database_error:
-            updateError.message,
+            verifyDatabaseError.message,
         },
         500,
       );
     }
 
     // ==========================================================
-    // MAKE SURE A PROFILE ROW WAS ACTUALLY UPDATED
+    // PROFILE STILL MISSING
     // ==========================================================
 
-    if (!updatedProfile) {
+    if (!savedProfile) {
       console.error(
-        "BVN profile update returned no profile row.",
+        "CRITICAL: Profile still not found after update:",
+        user.id,
       );
 
       return json(
@@ -579,56 +706,62 @@ Deno.serve(async (req) => {
           success: false,
           verified: false,
           error:
-            "BVN verification succeeded, but your profile record could not be found for updating.",
+            "BVN was verified, but your profile record could not be found after the update.",
         },
         500,
       );
     }
 
     // ==========================================================
-    // VERIFY DATABASE VALUES
+    // VERIFY ACTUAL VALUES
     // ==========================================================
 
-    const storedBvn =
+    const savedBvn =
       String(
-        updatedProfile.bvn ??
+        savedProfile.bvn ??
           "",
       ).replace(/\D/g, "");
 
-    const databaseUpdateConfirmed =
-      storedBvn === bvn &&
-      Boolean(
-        updatedProfile.bvn_verified,
-      ) === true &&
+    const savedKycLevel =
       Number(
-        updatedProfile.kyc_level,
-      ) === 2 &&
+        savedProfile.kyc_level ??
+          0,
+      );
+
+    const savedKycStatus =
       String(
-        updatedProfile.kyc_status ??
+        savedProfile.kyc_status ??
           "",
-      ).toLowerCase() ===
+      ).toLowerCase();
+
+    const savedBvnVerified =
+      Boolean(
+        savedProfile.bvn_verified,
+      );
+
+    const databaseUpdateConfirmed =
+      savedBvn === bvn &&
+      savedBvnVerified === true &&
+      savedKycLevel === 2 &&
+      savedKycStatus ===
         "verified";
 
     console.log(
-      "KYC profile update result:",
+      "DATABASE KYC VERIFICATION:",
       JSON.stringify({
-        user_id:
-          user.id,
+        user_id: user.id,
 
         bvn_saved:
-          storedBvn === bvn,
+          savedBvn === bvn,
 
         bvn_verified:
-          updatedProfile.bvn_verified,
+          savedBvnVerified,
 
         kyc_level:
-          updatedProfile.kyc_level,
+          savedKycLevel,
 
         kyc_status:
-          updatedProfile.kyc_status,
-
-        bvn_verified_at:
-          updatedProfile.bvn_verified_at,
+          savedKycStatus,
 
         database_update_confirmed:
           databaseUpdateConfirmed,
@@ -641,15 +774,13 @@ Deno.serve(async (req) => {
 
     if (!databaseUpdateConfirmed) {
       console.error(
-        "Database update could not be confirmed.",
+        "KYC values do not match expected values.",
       );
 
       return json(
         {
           success: false,
-
           verified: false,
-
           error:
             "BVN was verified, but the saved KYC information could not be confirmed.",
         },
@@ -684,14 +815,7 @@ Deno.serve(async (req) => {
           maskedBvn,
 
         bvn_verified_at:
-          updatedProfile.bvn_verified_at,
-
-        /*
-         * Provider identity payload is returned only as part
-         * of the verification response.
-         *
-         * It is NOT copied into the user's profile.
-         */
+          savedProfile.bvn_verified_at,
 
         verification:
           providerData?.data ??
@@ -715,9 +839,7 @@ Deno.serve(async (req) => {
     return json(
       {
         success: false,
-
         verified: false,
-
         error:
           error instanceof Error
             ? error.message

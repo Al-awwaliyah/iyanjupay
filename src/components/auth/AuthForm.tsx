@@ -72,17 +72,109 @@ const AuthForm = () => {
     useState(false);
 
   // --------------------------------------------------
+  // EXTRACT REAL EDGE FUNCTION ERROR
+  // --------------------------------------------------
+
+  const getEdgeFunctionErrorMessage =
+    async (
+      error: any,
+      fallback: string,
+    ): Promise<string> => {
+      /*
+       * Supabase FunctionsHttpError usually looks like:
+       *
+       * {
+       *   name: "FunctionsHttpError",
+       *   message:
+       *     "Edge Function returned a non-2xx status code",
+       *   context: Response
+       * }
+       *
+       * The actual Edge Function JSON response is inside
+       * error.context.
+       */
+
+      try {
+        if (error?.context) {
+          const response =
+            typeof error.context.clone ===
+            "function"
+              ? error.context.clone()
+              : error.context;
+
+          if (
+            typeof response.json ===
+            "function"
+          ) {
+            const data =
+              await response.json();
+
+            if (
+              typeof data?.error ===
+                "string" &&
+              data.error.trim()
+            ) {
+              return data.error.trim();
+            }
+
+            if (
+              typeof data?.message ===
+                "string" &&
+              data.message.trim()
+            ) {
+              return data.message.trim();
+            }
+
+            if (
+              typeof data?.detail ===
+                "string" &&
+              data.detail.trim()
+            ) {
+              return data.detail.trim();
+            }
+          }
+        }
+      } catch (parseError) {
+        console.error(
+          "Unable to parse Edge Function error:",
+          parseError,
+        );
+      }
+
+      /*
+       * If this wasn't a FunctionsHttpError,
+       * fall back to the normal JavaScript error.
+       */
+
+      if (
+        typeof error?.message ===
+          "string" &&
+        error.message.trim() &&
+        error.message !==
+          "Edge Function returned a non-2xx status code"
+      ) {
+        return error.message.trim();
+      }
+
+      return fallback;
+    };
+
+  // --------------------------------------------------
   // PHONE NUMBER NORMALIZATION
   // --------------------------------------------------
 
-  const normalizePhoneNumber = (phone: string) => {
+  const normalizePhoneNumber = (
+    phone: string,
+  ) => {
     let cleaned = phone
       .trim()
       .replace(/[\s()-]/g, "");
 
     // 08012345678 -> +2348012345678
     if (cleaned.startsWith("0")) {
-      cleaned = `+234${cleaned.substring(1)}`;
+      cleaned = `+234${cleaned.substring(
+        1,
+      )}`;
     }
 
     // 2348012345678 -> +2348012345678
@@ -143,11 +235,18 @@ const AuthForm = () => {
     }
 
     const normalizedPhone =
-      normalizePhoneNumber(phoneNumber);
+      normalizePhoneNumber(
+        phoneNumber,
+      );
 
-    if (!/^\+234\d{10}$/.test(normalizedPhone)) {
+    if (
+      !/^\+234\d{10}$/.test(
+        normalizedPhone,
+      )
+    ) {
       toast({
-        title: "Invalid Nigerian phone number",
+        title:
+          "Invalid Nigerian phone number",
         description:
           "Enter a valid Nigerian number such as +2348012345678.",
         variant: "destructive",
@@ -160,12 +259,16 @@ const AuthForm = () => {
     try {
       const { data, error } =
         await supabase.auth.signUp({
-          email: email.trim().toLowerCase(),
+          email: email
+            .trim()
+            .toLowerCase(),
           password,
           options: {
             data: {
-              full_name: fullName.trim(),
-              phone_number: normalizedPhone,
+              full_name:
+                fullName.trim(),
+              phone_number:
+                normalizedPhone,
             },
           },
         });
@@ -188,10 +291,14 @@ const AuthForm = () => {
        * from the client here.
        */
 
-      setVerificationMethod(null);
+      setVerificationMethod(
+        null,
+      );
       setOtp("");
       setPhoneOtpSent(false);
-      setVerificationDialogOpen(true);
+      setVerificationDialogOpen(
+        true,
+      );
 
       toast({
         title: "Account created",
@@ -204,11 +311,14 @@ const AuthForm = () => {
         error,
       );
 
+      const message =
+        error?.message ||
+        "Something went wrong.";
+
       toast({
-        title: "Unable to create account",
-        description:
-          error.message ||
-          "Something went wrong.",
+        title:
+          "Unable to create account",
+        description: message,
         variant: "destructive",
       });
     } finally {
@@ -220,227 +330,281 @@ const AuthForm = () => {
   // PHONE OTP - SEND THROUGH TERMII
   // --------------------------------------------------
 
-  const handleSendPhoneOTP = async () => {
-    const normalizedPhone =
-      normalizePhoneNumber(phoneNumber);
+  const handleSendPhoneOTP =
+    async () => {
+      const normalizedPhone =
+        normalizePhoneNumber(
+          phoneNumber,
+        );
 
-    if (!/^\+234\d{10}$/.test(normalizedPhone)) {
-      toast({
-        title: "Invalid phone number",
-        description:
-          "Enter a valid Nigerian phone number.",
-        variant: "destructive",
-      });
-      return;
-    }
+      if (
+        !/^\+234\d{10}$/.test(
+          normalizedPhone,
+        )
+      ) {
+        toast({
+          title:
+            "Invalid phone number",
+          description:
+            "Enter a valid Nigerian phone number.",
+          variant: "destructive",
+        });
+        return;
+      }
 
-    setOtpLoading(true);
+      setOtpLoading(true);
 
-    try {
-      const { data, error } =
-        await supabase.functions.invoke(
-          "termii-verify",
-          {
-            body: {
-              action: "send",
-              phone: normalizedPhone,
+      try {
+        const { data, error } =
+          await supabase.functions.invoke(
+            "termii-verify",
+            {
+              body: {
+                action: "send",
+                phone:
+                  normalizedPhone,
+              },
             },
-          },
+          );
+
+        if (error) {
+          const message =
+            await getEdgeFunctionErrorMessage(
+              error,
+              "Unable to send verification code.",
+            );
+
+          throw new Error(
+            message,
+          );
+        }
+
+        if (!data?.success) {
+          throw new Error(
+            data?.error ||
+              "Unable to send verification code.",
+          );
+        }
+
+        setPhoneOtpSent(true);
+        setOtp("");
+
+        toast({
+          title:
+            "Verification code sent",
+          description:
+            "An 8-digit verification code has been sent to your phone.",
+        });
+      } catch (error: any) {
+        console.error(
+          "Termii send OTP error:",
+          error,
         );
 
-      if (error) {
-        throw error;
+        const message =
+          error?.message ||
+          "Please try again.";
+
+        toast({
+          title:
+            "Unable to send code",
+          description: message,
+          variant: "destructive",
+        });
+      } finally {
+        setOtpLoading(false);
       }
-
-      if (!data?.success) {
-        throw new Error(
-          data?.error ||
-            "Unable to send verification code.",
-        );
-      }
-
-      setPhoneOtpSent(true);
-      setOtp("");
-
-      toast({
-        title: "Verification code sent",
-        description:
-          "An 8-digit verification code has been sent to your phone.",
-      });
-    } catch (error: any) {
-      console.error(
-        "Termii send OTP error:",
-        error,
-      );
-
-      toast({
-        title: "Unable to send code",
-        description:
-          error.message ||
-          "Please try again.",
-        variant: "destructive",
-      });
-    } finally {
-      setOtpLoading(false);
-    }
-  };
+    };
 
   // --------------------------------------------------
   // PHONE OTP - VERIFY THROUGH TERMII
   // --------------------------------------------------
 
-  const handleVerifyPhoneOTP = async () => {
-    const normalizedPhone =
-      normalizePhoneNumber(phoneNumber);
+  const handleVerifyPhoneOTP =
+    async () => {
+      const normalizedPhone =
+        normalizePhoneNumber(
+          phoneNumber,
+        );
 
-    const enteredCode = otp.trim();
+      const enteredCode =
+        otp.trim();
 
-    if (!/^\d{8}$/.test(enteredCode)) {
-      toast({
-        title: "Invalid code",
-        description:
-          "Enter the 8-digit verification code you received.",
-        variant: "destructive",
-      });
-      return;
-    }
+      if (
+        !/^\d{8}$/.test(
+          enteredCode,
+        )
+      ) {
+        toast({
+          title: "Invalid code",
+          description:
+            "Enter the 8-digit verification code you received.",
+          variant: "destructive",
+        });
+        return;
+      }
 
-    setOtpLoading(true);
+      setOtpLoading(true);
 
-    try {
-      const { data, error } =
-        await supabase.functions.invoke(
-          "termii-verify",
-          {
-            body: {
-              action: "check",
-              phone: normalizedPhone,
-              code: enteredCode,
+      try {
+        const { data, error } =
+          await supabase.functions.invoke(
+            "termii-verify",
+            {
+              body: {
+                action: "check",
+                phone:
+                  normalizedPhone,
+                code:
+                  enteredCode,
+              },
             },
-          },
+          );
+
+        if (error) {
+          const message =
+            await getEdgeFunctionErrorMessage(
+              error,
+              "Invalid verification code.",
+            );
+
+          throw new Error(
+            message,
+          );
+        }
+
+        if (!data?.verified) {
+          throw new Error(
+            data?.error ||
+              data?.message ||
+              "Invalid verification code.",
+          );
+        }
+
+        /*
+         * termii-verify handles:
+         * - OTP verification
+         * - profiles.phone_verified = true
+         * - profiles.phone_verified_at
+         */
+
+        setVerificationDialogOpen(
+          false,
+        );
+        setVerificationMethod(
+          null,
+        );
+        setOtp("");
+        setPhoneOtpSent(false);
+
+        toast({
+          title:
+            "Phone verified successfully",
+          description:
+            "Your phone number has been verified. You can now continue.",
+        });
+      } catch (error: any) {
+        console.error(
+          "Termii verify OTP error:",
+          error,
         );
 
-      if (error) {
-        throw error;
+        const message =
+          error?.message ||
+          "The 8-digit verification code is incorrect.";
+
+        toast({
+          title:
+            "Verification failed",
+          description: message,
+          variant: "destructive",
+        });
+      } finally {
+        setOtpLoading(false);
       }
-
-      if (!data?.verified) {
-        throw new Error(
-          data?.error ||
-            data?.message ||
-            "Invalid verification code.",
-        );
-      }
-
-      /*
-       * termii-verify handles:
-       * - OTP verification
-       * - profiles.phone_verified = true
-       * - profiles.phone_verified_at
-       */
-
-      setVerificationDialogOpen(false);
-      setVerificationMethod(null);
-      setOtp("");
-      setPhoneOtpSent(false);
-
-      toast({
-        title:
-          "Phone verified successfully",
-        description:
-          "Your phone number has been verified. You can now continue.",
-      });
-    } catch (error: any) {
-      console.error(
-        "Termii verify OTP error:",
-        error,
-      );
-
-      toast({
-        title: "Verification failed",
-        description:
-          error.message ||
-          "The 8-digit verification code is incorrect.",
-        variant: "destructive",
-      });
-    } finally {
-      setOtpLoading(false);
-    }
-  };
+    };
 
   // --------------------------------------------------
   // EMAIL OTP - SEND
   // --------------------------------------------------
 
-  const handleSendEmailOTP = async () => {
-    const normalizedEmail =
-      email.trim().toLowerCase();
+  const handleSendEmailOTP =
+    async () => {
+      const normalizedEmail =
+        email.trim().toLowerCase();
 
-    if (!normalizedEmail) {
-      toast({
-        title: "Email required",
-        description:
-          "Your email address is required.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setOtpLoading(true);
-
-    try {
-      const { error } =
-        await supabase.auth.resend({
-          type: "signup",
-          email: normalizedEmail,
+      if (!normalizedEmail) {
+        toast({
+          title: "Email required",
+          description:
+            "Your email address is required.",
+          variant: "destructive",
         });
-
-      if (error) {
-        throw error;
+        return;
       }
 
-      sessionStorage.setItem(
-        "iyanjupay_signup_email",
-        normalizedEmail,
-      );
+      setOtpLoading(true);
 
-      setVerificationDialogOpen(false);
-      setVerificationMethod(null);
-      setOtp("");
-      setPhoneOtpSent(false);
+      try {
+        const { error } =
+          await supabase.auth.resend({
+            type: "signup",
+            email:
+              normalizedEmail,
+          });
 
-      toast({
-        title: "Verification code sent",
-        description:
-          "Check your email for the verification code.",
-      });
+        if (error) {
+          throw error;
+        }
 
-      navigate(
-        "/verify-email-otp",
-        {
-          state: {
-            email: normalizedEmail,
+        sessionStorage.setItem(
+          "iyanjupay_signup_email",
+          normalizedEmail,
+        );
+
+        setVerificationDialogOpen(
+          false,
+        );
+        setVerificationMethod(
+          null,
+        );
+        setOtp("");
+        setPhoneOtpSent(false);
+
+        toast({
+          title:
+            "Verification code sent",
+          description:
+            "Check your email for the verification code.",
+        });
+
+        navigate(
+          "/verify-email-otp",
+          {
+            state: {
+              email:
+                normalizedEmail,
+            },
           },
-        },
-      );
-    } catch (error: any) {
-      console.error(
-        "Email OTP send error:",
-        error,
-      );
+        );
+      } catch (error: any) {
+        console.error(
+          "Email OTP send error:",
+          error,
+        );
 
-      toast({
-        title:
-          "Unable to send verification code",
-        description:
-          error.message ||
-          "Please try again.",
-        variant: "destructive",
-      });
-    } finally {
-      setOtpLoading(false);
-    }
-  };
+        toast({
+          title:
+            "Unable to send verification code",
+          description:
+            error?.message ||
+            "Please try again.",
+          variant: "destructive",
+        });
+      } finally {
+        setOtpLoading(false);
+      }
+    };
 
   // --------------------------------------------------
   // SIGN IN - EMAIL OR PHONE
@@ -467,7 +631,8 @@ const AuthForm = () => {
 
     if (!password) {
       toast({
-        title: "Password required",
+        title:
+          "Password required",
         description:
           "Please enter your password.",
         variant: "destructive",
@@ -489,9 +654,32 @@ const AuthForm = () => {
           },
         );
 
+      /*
+       * IMPORTANT:
+       *
+       * When login-with-identifier returns HTTP 401,
+       * Supabase gives us a FunctionsHttpError.
+       *
+       * The actual message from the Edge Function is
+       * inside error.context.
+       */
+
       if (error) {
-        throw error;
+        const message =
+          await getEdgeFunctionErrorMessage(
+            error,
+            "Invalid login credentials.",
+          );
+
+        throw new Error(
+          message,
+        );
       }
+
+      /*
+       * Also handle a 200 response containing
+       * success:false.
+       */
 
       if (
         !data?.success ||
@@ -499,26 +687,37 @@ const AuthForm = () => {
       ) {
         throw new Error(
           data?.error ||
+            data?.message ||
             "Invalid login credentials.",
         );
       }
 
+      // ------------------------------------------------
+      // SET SUPABASE SESSION
+      // ------------------------------------------------
+
       const {
         error: sessionError,
       } =
-        await supabase.auth.setSession({
-          access_token:
-            data.session.access_token,
-          refresh_token:
-            data.session.refresh_token,
-        });
+        await supabase.auth.setSession(
+          {
+            access_token:
+              data.session
+                .access_token,
+
+            refresh_token:
+              data.session
+                .refresh_token,
+          },
+        );
 
       if (sessionError) {
         throw sessionError;
       }
 
       toast({
-        title: "Welcome back!",
+        title:
+          "Welcome back!",
         description:
           "You have successfully signed in.",
       });
@@ -528,11 +727,28 @@ const AuthForm = () => {
         error,
       );
 
+      /*
+       * At this point we have already extracted the
+       * actual Edge Function error above.
+       *
+       * So instead of showing:
+       *
+       * FunctionsHttpError:
+       * Edge Function returned a non-2xx status code
+       *
+       * the user sees the actual message, e.g.:
+       *
+       * Invalid email or password
+       */
+
+      const message =
+        error?.message ||
+        "Invalid login credentials.";
+
       toast({
-        title: "Unable to sign in",
-        description:
-          error.message ||
-          "Invalid login credentials.",
+        title:
+          "Unable to sign in",
+        description: message,
         variant: "destructive",
       });
     } finally {
@@ -782,7 +998,9 @@ const AuthForm = () => {
                 null,
               );
               setOtp("");
-              setPhoneOtpSent(false);
+              setPhoneOtpSent(
+                false,
+              );
             }
           }
         }}
@@ -813,7 +1031,9 @@ const AuthForm = () => {
                     "phone",
                   );
                   setOtp("");
-                  setPhoneOtpSent(false);
+                  setPhoneOtpSent(
+                    false,
+                  );
                 }}
               >
                 <span className="text-2xl mr-4">
@@ -885,7 +1105,9 @@ const AuthForm = () => {
                   onClick={
                     handleSendPhoneOTP
                   }
-                  disabled={otpLoading}
+                  disabled={
+                    otpLoading
+                  }
                 >
                   {otpLoading
                     ? "Sending Code..."
@@ -966,7 +1188,9 @@ const AuthForm = () => {
                     null,
                   );
                   setOtp("");
-                  setPhoneOtpSent(false);
+                  setPhoneOtpSent(
+                    false,
+                  );
                 }}
                 disabled={
                   otpLoading
@@ -1000,7 +1224,9 @@ const AuthForm = () => {
                 onClick={
                   handleSendEmailOTP
                 }
-                disabled={otpLoading}
+                disabled={
+                  otpLoading
+                }
               >
                 {otpLoading
                   ? "Sending Code..."
@@ -1016,7 +1242,9 @@ const AuthForm = () => {
                     null,
                   )
                 }
-                disabled={otpLoading}
+                disabled={
+                  otpLoading
+                }
               >
                 ← Choose another method
               </Button>

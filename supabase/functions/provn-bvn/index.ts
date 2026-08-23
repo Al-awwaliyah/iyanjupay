@@ -436,21 +436,12 @@ Deno.serve(async (req) => {
         .from("profiles")
         .update({
           kyc_level: 2,
-
-          kyc_status:
-            "verified",
-
-          bvn_verified:
-            true,
-
-          bvn_masked:
-            maskedBvn,
-
-          bvn_verified_at:
-            now,
-
-          updated_at:
-            now,
+          kyc_status: "verified",
+          bvn_verified: true,  
+          bvn: bvn,
+          bvn_masked: maskedBvn,
+          bvn_verified_at: now,
+          updated_at: now,
         })
         .eq(
           "id",

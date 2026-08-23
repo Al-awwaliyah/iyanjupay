@@ -47,9 +47,16 @@ import {
 } from "lucide-react";
 
 import { useForm } from "react-hook-form";
+
 import { useAuth } from "@/hooks/useAuth";
+
 import { supabase } from "@/integrations/supabase/client";
+
 import { useToast } from "@/hooks/use-toast";
+
+// ============================================================
+// TYPES
+// ============================================================
 
 interface ProfileData {
   full_name: string;
@@ -68,17 +75,24 @@ interface KycState {
   kyc_status: string;
   bvn_masked: string | null;
   fee: number;
+  bvn_verified_at?: string | null;
 }
 
 interface ProfilePageProps {
   onBack: () => void;
 }
 
+// ============================================================
+// COMPONENT
+// ============================================================
+
 const ProfilePage = ({
   onBack,
 }: ProfilePageProps) => {
   const { user } = useAuth();
-  const { toast } = useToast();
+
+  const { toast } =
+    useToast();
 
   const [loading, setLoading] =
     useState(false);
@@ -95,9 +109,9 @@ const ProfilePage = ({
   const [verifying, setVerifying] =
     useState(false);
 
-  // ============================================================
+  // ==========================================================
   // EMAIL CHANGE STATE
-  // ============================================================
+  // ==========================================================
 
   const [
     emailChangeDialogOpen,
@@ -107,20 +121,24 @@ const ProfilePage = ({
   const [newEmail, setNewEmail] =
     useState("");
 
-  const [emailChangeOtp, setEmailChangeOtp] =
-    useState("");
+  const [
+    emailChangeOtp,
+    setEmailChangeOtp,
+  ] = useState("");
 
-  const [emailChangeLoading, setEmailChangeLoading] =
-    useState(false);
+  const [
+    emailChangeLoading,
+    setEmailChangeLoading,
+  ] = useState(false);
 
   const [
     emailChangeRequested,
     setEmailChangeRequested,
   ] = useState(false);
 
-  // ============================================================
+  // ==========================================================
   // FORM
-  // ============================================================
+  // ==========================================================
 
   const form =
     useForm<ProfileData>({
@@ -137,9 +155,9 @@ const ProfilePage = ({
       },
     });
 
-  // ============================================================
+  // ==========================================================
   // PROVN BVN EDGE FUNCTION
-  // ============================================================
+  // ==========================================================
 
   const invokeBvn =
     useCallback(
@@ -162,7 +180,7 @@ const ProfilePage = ({
 
         if (error) {
           let message =
-            error.message ||
+            error.message ??
             "BVN request failed.";
 
           const context =
@@ -178,14 +196,12 @@ const ProfilePage = ({
               const body =
                 await context.json();
 
-              if (
-                body?.error
-              ) {
+              if (body?.error) {
                 message =
                   body.error;
               }
             } catch {
-              // Keep original error.
+              // Keep original message.
             }
           }
 
@@ -199,7 +215,7 @@ const ProfilePage = ({
           data.success === false
         ) {
           throw new Error(
-            data.error ||
+            data.error ??
               "BVN verification failed.",
           );
         }
@@ -209,56 +225,100 @@ const ProfilePage = ({
       [],
     );
 
-  // ============================================================
+  // ==========================================================
   // FETCH KYC STATUS
-  // ============================================================
+  // ==========================================================
 
   const fetchKyc =
     useCallback(
       async () => {
+        if (!user?.id) {
+          return;
+        }
+
         setKycLoading(true);
 
         try {
-          /*
-           * The current PROVN Edge Function does not
-           * persist KYC verification yet.
-           *
-           * Therefore status starts as unverified.
-           *
-           * Once we create a proper KYC table/RPC,
-           * this function can read the persistent
-           * verification status from Supabase.
-           */
+          const data =
+            await invokeBvn({
+              action: "status",
+            });
+
+          const verified =
+            Boolean(
+              data?.verified,
+            );
+
+          const level =
+            Number(
+              data?.kyc_level ??
+                (verified
+                  ? 2
+                  : 1),
+            );
 
           setKyc({
-            verified: false,
-            kyc_level: 1,
+            verified,
+
+            kyc_level:
+              level,
+
             kyc_status:
-              "unverified",
-            bvn_masked: null,
-            fee: 0,
+              String(
+                data?.kyc_status ??
+                  (verified
+                    ? "verified"
+                    : "unverified"),
+              ),
+
+            bvn_masked:
+              data?.bvn_masked ??
+              null,
+
+            fee:
+              Number(
+                data?.fee ?? 0,
+              ),
+
+            bvn_verified_at:
+              data?.bvn_verified_at ??
+              null,
           });
         } catch (error) {
           console.error(
             "Unable to load KYC status:",
             error,
           );
+
+          /*
+           * Do not show an incorrect "verified" state
+           * when the status request itself failed.
+           */
+
+          setKyc(
+            (current) =>
+              current,
+          );
         } finally {
           setKycLoading(false);
         }
       },
-      [],
+      [
+        user?.id,
+        invokeBvn,
+      ],
     );
 
-  // ============================================================
+  // ==========================================================
   // FETCH PROFILE
-  // ============================================================
+  // ==========================================================
 
   const fetchProfile =
     useCallback(
       async () => {
-        if (!user?.id)
+        if (!user?.id) {
           return;
+        }
 
         const {
           data,
@@ -278,6 +338,7 @@ const ProfilePage = ({
             "Error fetching profile:",
             error,
           );
+
           return;
         }
 
@@ -324,31 +385,34 @@ const ProfilePage = ({
       ],
     );
 
-  // ============================================================
+  // ==========================================================
   // INITIAL LOAD
-  // ============================================================
+  // ==========================================================
 
   useEffect(() => {
-    if (user) {
-      fetchProfile();
-      fetchKyc();
+    if (!user) {
+      return;
     }
+
+    fetchProfile();
+    fetchKyc();
   }, [
     user,
     fetchProfile,
     fetchKyc,
   ]);
 
-  // ============================================================
+  // ==========================================================
   // SAVE PROFILE
-  // ============================================================
+  // ==========================================================
 
   const onSubmit =
     async (
       data: ProfileData,
     ) => {
-      if (!user?.id)
+      if (!user?.id) {
         return;
+      }
 
       setLoading(true);
 
@@ -392,12 +456,14 @@ const ProfilePage = ({
                 new Date().toISOString(),
             });
 
-        if (error)
+        if (error) {
           throw error;
+        }
 
         toast({
           title:
             "Profile Updated",
+
           description:
             "Your profile has been successfully updated.",
         });
@@ -408,10 +474,13 @@ const ProfilePage = ({
         );
 
         toast({
-          title: "Error",
+          title:
+            "Error",
+
           description:
-            error.message ||
+            error.message ??
             "Failed to update profile.",
+
           variant:
             "destructive",
         });
@@ -420,9 +489,9 @@ const ProfilePage = ({
       }
     };
 
-  // ============================================================
+  // ==========================================================
   // START EMAIL CHANGE
-  // ============================================================
+  // ==========================================================
 
   const handleStartEmailChange =
     () => {
@@ -437,6 +506,7 @@ const ProfilePage = ({
       );
 
       setEmailChangeOtp("");
+
       setEmailChangeRequested(
         false,
       );
@@ -446,9 +516,9 @@ const ProfilePage = ({
       );
     };
 
-  // ============================================================
+  // ==========================================================
   // SEND EMAIL CHANGE OTP
-  // ============================================================
+  // ==========================================================
 
   const handleSendEmailChangeOtp =
     async () => {
@@ -468,8 +538,10 @@ const ProfilePage = ({
         toast({
           title:
             "Email required",
+
           description:
             "Enter the new email address.",
+
           variant:
             "destructive",
         });
@@ -485,8 +557,10 @@ const ProfilePage = ({
         toast({
           title:
             "Invalid email",
+
           description:
             "Enter a valid email address.",
+
           variant:
             "destructive",
         });
@@ -502,8 +576,10 @@ const ProfilePage = ({
         toast({
           title:
             "Same email address",
+
           description:
             "Enter a different email address.",
+
           variant:
             "destructive",
         });
@@ -526,8 +602,9 @@ const ProfilePage = ({
             },
           );
 
-        if (error)
+        if (error) {
           throw error;
+        }
 
         setNewEmail(
           normalizedNewEmail,
@@ -542,6 +619,7 @@ const ProfilePage = ({
         toast({
           title:
             "Verification code sent",
+
           description:
             "Check the new email address for your verification code.",
         });
@@ -554,9 +632,11 @@ const ProfilePage = ({
         toast({
           title:
             "Unable to change email",
+
           description:
             error.message ||
             "Unable to send the verification code.",
+
           variant:
             "destructive",
         });
@@ -567,9 +647,9 @@ const ProfilePage = ({
       }
     };
 
-  // ============================================================
+  // ==========================================================
   // VERIFY EMAIL CHANGE OTP
-  // ============================================================
+  // ==========================================================
 
   const handleVerifyEmailChange =
     async () => {
@@ -587,8 +667,10 @@ const ProfilePage = ({
         toast({
           title:
             "Invalid verification code",
+
           description:
             "Enter the 6-digit code sent to your new email address.",
+
           variant:
             "destructive",
         });
@@ -617,8 +699,9 @@ const ProfilePage = ({
             },
           );
 
-        if (error)
+        if (error) {
           throw error;
+        }
 
         const updatedEmail =
           data?.user?.email ||
@@ -642,6 +725,7 @@ const ProfilePage = ({
         toast({
           title:
             "Email changed successfully",
+
           description:
             "Your email address has been updated successfully.",
         });
@@ -656,9 +740,11 @@ const ProfilePage = ({
         toast({
           title:
             "Verification failed",
+
           description:
             error.message ||
             "The email verification code is incorrect or expired.",
+
           variant:
             "destructive",
         });
@@ -669,18 +755,18 @@ const ProfilePage = ({
       }
     };
 
-  // ============================================================
+  // ==========================================================
   // RESEND EMAIL OTP
-  // ============================================================
+  // ==========================================================
 
   const handleResendEmailChangeOtp =
     async () => {
       await handleSendEmailChangeOtp();
     };
 
-  // ============================================================
+  // ==========================================================
   // CANCEL EMAIL CHANGE
-  // ============================================================
+  // ==========================================================
 
   const handleCancelEmailChange =
     () => {
@@ -695,9 +781,9 @@ const ProfilePage = ({
       setEmailChangeOtp("");
     };
 
-  // ============================================================
+  // ==========================================================
   // BVN VERIFICATION
-  // ============================================================
+  // ==========================================================
 
   const handleVerifyBvn =
     async () => {
@@ -713,8 +799,10 @@ const ProfilePage = ({
         toast({
           title:
             "Invalid BVN",
+
           description:
             "Your BVN must be exactly 11 digits.",
+
           variant:
             "destructive",
         });
@@ -728,22 +816,14 @@ const ProfilePage = ({
         /*
          * IMPORTANT:
          *
-         * We only send the BVN.
+         * We intentionally DO NOT send full_name.
          *
-         * We do NOT send the user's profile
-         * information for automatic replacement.
+         * PROVN only needs the BVN.
          *
-         * We also DO NOT update:
-         * - full_name
-         * - phone_number
-         * - date_of_birth
-         * - address
-         * - gender
-         * - NIN
-         *
-         * The PROVN test response contains dummy
-         * identity information, so it must not be
-         * copied into the user's profile.
+         * Also, because this is a PROVN test key,
+         * its returned identity information is dummy
+         * information. We therefore never use it to
+         * overwrite the user's profile.
          */
 
         const result =
@@ -751,7 +831,8 @@ const ProfilePage = ({
             action:
               "verify",
 
-            bvn: digits,
+            bvn:
+              digits,
           });
 
         if (
@@ -759,36 +840,43 @@ const ProfilePage = ({
           !result?.verified
         ) {
           throw new Error(
-            result?.error ||
+            result?.error ??
               "BVN verification failed.",
           );
         }
 
-        /*
-         * IMPORTANT:
-         *
-         * Do NOT call form.setValue()
-         * with PROVN identity data.
-         *
-         * Do NOT call profiles.update()
-         * here.
-         *
-         * The user's profile remains exactly
-         * as it currently is.
-         */
+        // ======================================================
+        // UPDATE UI IMMEDIATELY
+        // ======================================================
 
         setKyc({
           verified: true,
 
-          kyc_level: 2,
+          kyc_level:
+            Number(
+              result?.kyc_level ??
+                2,
+            ),
 
           kyc_status:
-            "verified",
+            String(
+              result?.kyc_status ??
+                "verified",
+            ),
 
           bvn_masked:
-            `******${digits.slice(-4)}`,
+            result?.bvn_masked ??
+            `******${digits.slice(
+              -4,
+            )}`,
 
-          fee: 0,
+          fee:
+            Number(
+              result?.fee ?? 0,
+            ),
+
+          bvn_verified_at:
+            new Date().toISOString(),
         });
 
         setBvn("");
@@ -796,9 +884,17 @@ const ProfilePage = ({
         toast({
           title:
             "BVN verified successfully",
+
           description:
-            "Your BVN verification was successful. Your existing profile information was not changed.",
+            "Your IyanjuPay account has been upgraded to KYC Tier 2.",
         });
+
+        /*
+         * Re-read the persisted KYC status from Supabase.
+         * This makes sure the UI matches the database.
+         */
+
+        await fetchKyc();
       } catch (error: any) {
         console.error(
           "BVN verification error:",
@@ -810,7 +906,7 @@ const ProfilePage = ({
             "Verification failed",
 
           description:
-            error.message ||
+            error?.message ??
             "Unable to verify BVN.",
 
           variant:
@@ -821,9 +917,9 @@ const ProfilePage = ({
       }
     };
 
-  // ============================================================
+  // ==========================================================
   // KYC LEVEL
-  // ============================================================
+  // ==========================================================
 
   const getKYCLevelInfo =
     (
@@ -834,6 +930,7 @@ const ProfilePage = ({
           return {
             text:
               "Verified (₦200,000 limit)",
+
             color:
               "text-blue-100",
           };
@@ -842,6 +939,7 @@ const ProfilePage = ({
           return {
             text:
               "Premium (₦1,000,000 limit)",
+
             color:
               "text-blue-100",
           };
@@ -850,6 +948,7 @@ const ProfilePage = ({
           return {
             text:
               "Basic (₦50,000 limit)",
+
             color:
               "text-blue-100",
           };
@@ -858,8 +957,13 @@ const ProfilePage = ({
 
   const kycInfo =
     getKYCLevelInfo(
-      kyc?.kyc_level ?? 1,
+      kyc?.kyc_level ??
+        1,
     );
+
+  // ==========================================================
+  // RENDER
+  // ==========================================================
 
   return (
     <>
@@ -884,7 +988,9 @@ const ProfilePage = ({
             </h1>
           </div>
 
-          {/* KYC LEVEL */}
+          {/* ==================================================
+              KYC LEVEL CARD
+          ================================================== */}
 
           <Card className="mb-6 bg-gradient-to-r from-blue-600 to-indigo-600 text-primary-foreground">
             <CardContent className="p-6">
@@ -897,7 +1003,9 @@ const ProfilePage = ({
                   <p
                     className={`text-sm ${kycInfo.color}`}
                   >
-                    {kycInfo.text}
+                    {kycLoading
+                      ? "Checking verification status..."
+                      : kycInfo.text}
                   </p>
 
                   <p className="text-xs mt-1 opacity-90">
@@ -910,7 +1018,7 @@ const ProfilePage = ({
                               : ""
                           }`
                         : `BVN status: ${
-                            kyc?.kyc_status ||
+                            kyc?.kyc_status ??
                             "unverified"
                           }`}
                   </p>
@@ -925,7 +1033,9 @@ const ProfilePage = ({
             </CardContent>
           </Card>
 
-          {/* BVN VERIFICATION */}
+          {/* ==================================================
+              BVN VERIFICATION
+          ================================================== */}
 
           <Card className="mb-6">
             <CardHeader>
@@ -937,15 +1047,31 @@ const ProfilePage = ({
             <CardContent className="space-y-4">
 
               {kyc?.verified ? (
-                <div className="flex items-center gap-2 text-sm text-green-600">
-                  <CheckCircle className="h-4 w-4" />
+                <div className="rounded-lg border border-green-200 bg-green-50 p-4">
+                  <div className="flex items-center gap-2 text-sm font-medium text-green-700">
+                    <CheckCircle className="h-5 w-5" />
 
-                  Your BVN has been verified successfully.
+                    BVN verified successfully
+                  </div>
+
+                  <p className="mt-2 text-sm text-green-700">
+                    Your IyanjuPay account is now at KYC Tier 2.
+                  </p>
+
+                  {kyc.bvn_masked && (
+                    <p className="mt-1 text-xs text-green-600">
+                      BVN: {kyc.bvn_masked}
+                    </p>
+                  )}
+
+                  <p className="mt-2 text-xs text-green-600">
+                    Your existing profile information was not replaced with provider test data.
+                  </p>
                 </div>
               ) : (
                 <>
                   <p className="text-sm text-gray-500">
-                    Verify your BVN to confirm your identity and unlock higher account limits.
+                    Verify your BVN to verify your identity and unlock higher KYC limits.
                   </p>
 
                   <div className="space-y-2">
@@ -983,7 +1109,9 @@ const ProfilePage = ({
                     }
                     disabled={
                       verifying ||
-                      kycLoading
+                      kycLoading ||
+                      bvn.length !==
+                        11
                     }
                   >
                     {verifying ? (
@@ -997,11 +1125,12 @@ const ProfilePage = ({
                   </Button>
                 </>
               )}
-
             </CardContent>
           </Card>
 
-          {/* PROFILE FORM */}
+          {/* ==================================================
+              PROFILE FORM
+          ================================================== */}
 
           <Form {...form}>
             <form
@@ -1010,7 +1139,6 @@ const ProfilePage = ({
               )}
               className="space-y-6"
             >
-
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
 
                 {/* BASIC INFORMATION */}
@@ -1145,7 +1273,6 @@ const ProfilePage = ({
                         </FormItem>
                       )}
                     />
-
                   </CardContent>
                 </Card>
 
@@ -1159,6 +1286,8 @@ const ProfilePage = ({
                   </CardHeader>
 
                   <CardContent className="space-y-4">
+
+                    {/* PHONE */}
 
                     <FormField
                       control={
@@ -1284,8 +1413,9 @@ const ProfilePage = ({
 
                   </CardContent>
                 </Card>
-
               </div>
+
+              {/* UPDATE PROFILE */}
 
               <Button
                 type="submit"
@@ -1296,15 +1426,13 @@ const ProfilePage = ({
                   ? "Updating..."
                   : "Update Profile"}
               </Button>
-
             </form>
           </Form>
-
         </div>
       </div>
 
       {/* ======================================================
-          EMAIL CHANGE DIALOG
+          CHANGE EMAIL DIALOG
       ====================================================== */}
 
       <Dialog
@@ -1312,9 +1440,7 @@ const ProfilePage = ({
           emailChangeDialogOpen
         }
         onOpenChange={(open) => {
-          if (
-            !emailChangeLoading
-          ) {
+          if (!emailChangeLoading) {
             if (!open) {
               handleCancelEmailChange();
             } else {
@@ -1326,7 +1452,6 @@ const ProfilePage = ({
         }}
       >
         <DialogContent className="sm:max-w-md">
-
           <div className="space-y-5">
 
             <div>
@@ -1482,9 +1607,7 @@ const ProfilePage = ({
             >
               Cancel
             </Button>
-
           </div>
-
         </DialogContent>
       </Dialog>
     </>

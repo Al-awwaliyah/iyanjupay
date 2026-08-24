@@ -58,6 +58,10 @@ interface Biller {
   id?: number | string;
 
   name?: string;
+  biller_name?: string;
+  billerName?: string;
+  short_name?: string;
+
   biller_code?: string;
   billerCode?: string;
 
@@ -67,10 +71,6 @@ interface Biller {
 
   logo?: string | null;
   description?: string;
-  short_name?: string;
-
-  biller_name?: string;
-  billerName?: string;
 
   [key: string]: any;
 }
@@ -88,9 +88,9 @@ interface BillItem {
   productCode?: string;
 
   name?: string;
-  short_name?: string;
   item_name?: string;
   itemName?: string;
+  short_name?: string;
   description?: string;
 
   amount?: number | string;
@@ -98,12 +98,13 @@ interface BillItem {
   cost?: number | string;
   value?: number | string;
 
+  provider_amount?: number | string;
+  selling_price?: number | string;
+  profit?: number | string;
+
   minimum?: number | string;
   maximum?: number | string;
   fee?: number | string;
-
-  label_name?: string;
-  label_name_2?: string;
 
   validity?: string;
   validity_period?: string;
@@ -112,12 +113,13 @@ interface BillItem {
   period?: string;
   period_label?: string;
 
-  provider_amount?: number | string;
-  selling_price?: number | string;
-  profit?: number | string;
+  label_name?: string;
+  label_name_2?: string;
 
   is_airtime?: boolean;
+
   country?: string;
+  currency?: string;
 
   [key: string]: any;
 }
@@ -196,22 +198,6 @@ function getItemName(
   );
 }
 
-function getValidity(
-  item: BillItem
-): string {
-  return clean(
-    item.validity ??
-      item.validity_period ??
-      item.validityPeriod ??
-      item.period_label ??
-      ""
-  );
-}
-
-// ============================================================
-// PROVIDER PRICE
-// ============================================================
-
 function getProviderAmount(
   item: BillItem
 ): number {
@@ -223,11 +209,8 @@ function getProviderAmount(
     item.value,
   ];
 
-  for (
-    const value of values
-  ) {
-    const number =
-      Number(value);
+  for (const value of values) {
+    const number = Number(value);
 
     if (
       Number.isFinite(number) &&
@@ -242,161 +225,58 @@ function getProviderAmount(
   return 0;
 }
 
-// ============================================================
-// SELLING PRICE
-// ============================================================
-
-function getSellingPrice(
+function getValidity(
   item: BillItem
-): number {
-  const serverPrice =
-    Number(
-      item.selling_price
-    );
-
-  if (
-    Number.isFinite(
-      serverPrice
-    ) &&
-    serverPrice > 0
-  ) {
-    return Number(
-      serverPrice.toFixed(2)
-    );
-  }
-
-  const provider =
-    getProviderAmount(item);
-
-  if (provider <= 0) {
-    return 0;
-  }
-
-  return Number(
-    (
-      provider +
-      MARKUP
-    ).toFixed(2)
+): string {
+  return clean(
+    item.validity ??
+      item.validity_period ??
+      item.validityPeriod ??
+      item.period_label ??
+      ""
   );
 }
 
-// ============================================================
-// PROFIT / MARKUP
-// ============================================================
-
-function getProfit(
-  item: BillItem
-): number {
-  const serverProfit =
-    Number(
-      item.profit
-    );
-
-  if (
-    Number.isFinite(
-      serverProfit
-    ) &&
-    serverProfit >= 0
-  ) {
-    return Number(
-      serverProfit.toFixed(2)
-    );
-  }
-
-  const provider =
-    getProviderAmount(item);
-
-  const selling =
-    getSellingPrice(item);
-
-  if (
-    provider > 0 &&
-    selling > 0
-  ) {
-    return Number(
-      (
-        selling -
-        provider
-      ).toFixed(2)
-    );
-  }
-
-  return MARKUP;
-}
-
-// ============================================================
-// DATA PLAN TYPE
-// ============================================================
-
-type PlanPeriod =
-  | "daily"
-  | "weekly"
-  | "monthly"
-  | "other";
-
 function getPlanType(
   item: BillItem
-): PlanPeriod {
-  const serverPeriod =
+): "daily" | "weekly" | "monthly" | "other" {
+  const explicitPeriod =
     clean(
       item.period
     ).toLowerCase();
 
   if (
-    serverPeriod ===
-      "daily" ||
-    serverPeriod ===
-      "weekly" ||
-    serverPeriod ===
-      "monthly"
+    explicitPeriod === "daily" ||
+    explicitPeriod === "weekly" ||
+    explicitPeriod === "monthly"
   ) {
-    return serverPeriod;
+    return explicitPeriod;
   }
 
   const text =
-    `${getItemName(
-      item
-    )} ${getValidity(item)}`
+    `${getItemName(item)} ${getValidity(item)}`
       .toLowerCase();
 
   if (
-    text.includes(
-      "daily"
-    ) ||
-    /\b1\s*day\b/.test(
-      text
-    ) ||
-    /\b24\s*hour/.test(
-      text
-    )
+    text.includes("daily") ||
+    /\b1\s*day\b/.test(text) ||
+    /\b24\s*hour/.test(text)
   ) {
     return "daily";
   }
 
   if (
-    text.includes(
-      "weekly"
-    ) ||
-    /\b7\s*day/.test(
-      text
-    ) ||
-    /\b14\s*day/.test(
-      text
-    )
+    text.includes("weekly") ||
+    /\b7\s*day/.test(text) ||
+    /\b14\s*day/.test(text)
   ) {
     return "weekly";
   }
 
   if (
-    text.includes(
-      "monthly"
-    ) ||
-    /\b30\s*day/.test(
-      text
-    ) ||
-    /\b31\s*day/.test(
-      text
-    )
+    text.includes("monthly") ||
+    /\b30\s*day/.test(text) ||
+    /\b31\s*day/.test(text)
   ) {
     return "monthly";
   }
@@ -404,72 +284,64 @@ function getPlanType(
   return "other";
 }
 
-// ============================================================
-// PHONE NORMALIZATION
-// ============================================================
-
-function normalizePhone(
-  value: string
-): string {
-  let phone =
-    value
-      .trim()
-      .replace(
-        /\s+/g,
-        ""
-      );
-
-  if (
-    /^0\d{10}$/.test(
-      phone
-    )
-  ) {
-    return `+234${phone.substring(
-      1
-    )}`;
-  }
-
-  if (
-    /^\d{10}$/.test(
-      phone
-    )
-  ) {
-    return `+234${phone}`;
-  }
-
-  if (
-    /^234\d{10}$/.test(
-      phone
-    )
-  ) {
-    return `+${phone}`;
-  }
-
-  if (
-    /^\+234\d{10}$/.test(
-      phone
-    )
-  ) {
-    return phone;
-  }
-
-  return phone;
-}
-
-// ============================================================
-// MONEY
-// ============================================================
-
 function formatMoney(
-  value: number
+  amount: number
 ): string {
-  return `₦${value.toLocaleString(
+  return `₦${Number(
+    amount || 0
+  ).toLocaleString(
     "en-NG",
     {
       minimumFractionDigits: 0,
       maximumFractionDigits: 2,
     }
   )}`;
+}
+
+// ============================================================
+// PHONE NORMALISATION
+// ============================================================
+
+function normalizeNigerianPhone(
+  value: string
+): string {
+  let phone =
+    value
+      .replace(
+        /\s+/g,
+        ""
+      )
+      .trim();
+
+  // 08012345678
+  if (
+    /^0\d{10}$/.test(phone)
+  ) {
+    return `+234${phone.slice(1)}`;
+  }
+
+  // 8012345678
+  if (
+    /^\d{10}$/.test(phone)
+  ) {
+    return `+234${phone}`;
+  }
+
+  // 2348012345678
+  if (
+    /^234\d{10}$/.test(phone)
+  ) {
+    return `+${phone}`;
+  }
+
+  // +2348012345678
+  if (
+    /^\+234\d{10}$/.test(phone)
+  ) {
+    return phone;
+  }
+
+  return phone;
 }
 
 // ============================================================
@@ -483,36 +355,21 @@ const ServiceModal = ({
   walletBalance,
   onPurchase,
 }: ServiceModalProps) => {
-  const {
-    toast,
-  } = useToast();
+  const { toast } =
+    useToast();
 
   // ==========================================================
-  // FORM
+  // STATE
   // ==========================================================
 
-  const [
-    customer,
-    setCustomer,
-  ] = useState("");
+  const [customer, setCustomer] =
+    useState("");
 
-  // ==========================================================
-  // CATALOGUE
-  // ==========================================================
+  const [billers, setBillers] =
+    useState<Biller[]>([]);
 
-  const [
-    billers,
-    setBillers,
-  ] = useState<Biller[]>(
-    []
-  );
-
-  const [
-    items,
-    setItems,
-  ] = useState<BillItem[]>(
-    []
-  );
+  const [items, setItems] =
+    useState<BillItem[]>([]);
 
   const [
     selectedBillerCode,
@@ -523,21 +380,6 @@ const ServiceModal = ({
     selectedItemCode,
     setSelectedItemCode,
   ] = useState("");
-
-  // ==========================================================
-  // DATA TABS
-  // ==========================================================
-
-  const [
-    planTab,
-    setPlanTab,
-  ] = useState<PlanPeriod>(
-    "daily"
-  );
-
-  // ==========================================================
-  // LOADING
-  // ==========================================================
 
   const [
     loadingBillers,
@@ -555,14 +397,19 @@ const ServiceModal = ({
   ] = useState(false);
 
   const [
-    successMessage,
-    setSuccessMessage,
-  ] = useState("");
-
-  const [
     error,
     setError,
   ] = useState("");
+
+  const [
+    planTab,
+    setPlanTab,
+  ] = useState<
+    "daily" |
+    "weekly" |
+    "monthly" |
+    "other"
+  >("daily");
 
   // ==========================================================
   // SERVICE
@@ -581,57 +428,140 @@ const ServiceModal = ({
     );
 
   const isPhoneService =
-    serviceType ===
-      "airtime" ||
-    serviceType ===
-      "data";
+    serviceType === "airtime" ||
+    serviceType === "data";
+
+  // ==========================================================
+  // SELECTED BILLER
+  // ==========================================================
+
+  const selectedBiller =
+    useMemo(
+      () =>
+        billers.find(
+          (biller) =>
+            getBillerCode(
+              biller
+            ) ===
+            selectedBillerCode
+        ) ?? null,
+      [
+        billers,
+        selectedBillerCode,
+      ]
+    );
+
+  // ==========================================================
+  // SELECTED ITEM
+  // ==========================================================
+
+  const selectedItem =
+    useMemo(
+      () =>
+        items.find(
+          (item) =>
+            getItemCode(
+              item
+            ) ===
+            selectedItemCode
+        ) ?? null,
+      [
+        items,
+        selectedItemCode,
+      ]
+    );
+
+  // ==========================================================
+  // CUSTOMER LABEL
+  // ==========================================================
+
+  const customerLabel =
+    useMemo(() => {
+      if (
+        selectedItem?.label_name
+      ) {
+        return selectedItem.label_name;
+      }
+
+      switch (
+        serviceType
+      ) {
+        case "airtime":
+        case "data":
+          return "Phone Number";
+
+        case "electricity":
+          return "Meter Number";
+
+        case "cable":
+          return "Smart Card / Decoder Number";
+
+        case "internet":
+          return "Account Number";
+
+        default:
+          return "Customer Number";
+      }
+    }, [
+      selectedItem,
+      serviceType,
+    ]);
+
+  // ==========================================================
+  // CUSTOMER PLACEHOLDER
+  // ==========================================================
+
+  const customerPlaceholder =
+    useMemo(() => {
+      switch (
+        serviceType
+      ) {
+        case "airtime":
+        case "data":
+          return "08012345678";
+
+        case "electricity":
+          return "Enter meter number";
+
+        case "cable":
+          return "Enter smartcard number";
+
+        case "internet":
+          return "Enter account number";
+
+        default:
+          return "Enter customer number";
+      }
+    }, [serviceType]);
 
   // ==========================================================
   // RESET
   // ==========================================================
 
-  const resetForm =
-    () => {
-      setCustomer("");
+  const resetForm = () => {
+    setCustomer("");
 
-      setBillers([]);
+    setBillers([]);
 
-      setItems([]);
+    setItems([]);
 
-      setSelectedBillerCode(
-        ""
-      );
+    setSelectedBillerCode("");
 
-      setSelectedItemCode(
-        ""
-      );
+    setSelectedItemCode("");
 
-      setPlanTab(
-        serviceType ===
-          "data"
-          ? "daily"
-          : "other"
-      );
+    setError("");
 
-      setError("");
+    setPlanTab("daily");
 
-      setSuccessMessage("");
+    setLoadingBillers(false);
 
-      setLoadingBillers(
-        false
-      );
+    setLoadingItems(false);
 
-      setLoadingItems(
-        false
-      );
-
-      setProcessingPayment(
-        false
-      );
-    };
+    setProcessingPayment(false);
+  };
 
   // ==========================================================
-  // RESET SERVICE
+  // RESET WHEN MODAL/SERVICE CHANGES
   // ==========================================================
 
   useEffect(() => {
@@ -645,21 +575,14 @@ const ServiceModal = ({
 
     setItems([]);
 
-    setSelectedBillerCode(
-      ""
-    );
+    setSelectedBillerCode("");
 
-    setSelectedItemCode(
-      ""
-    );
+    setSelectedItemCode("");
 
     setError("");
 
-    setSuccessMessage("");
-
     setPlanTab(
-      serviceType ===
-        "data"
+      serviceType === "data"
         ? "daily"
         : "other"
     );
@@ -679,19 +602,13 @@ const ServiceModal = ({
         return;
       }
 
-      setLoadingBillers(
-        true
-      );
+      setLoadingBillers(true);
 
       setError("");
 
-      setSelectedBillerCode(
-        ""
-      );
+      setSelectedBillerCode("");
 
-      setSelectedItemCode(
-        ""
-      );
+      setSelectedItemCode("");
 
       setItems([]);
 
@@ -716,9 +633,12 @@ const ServiceModal = ({
             }
           );
 
-        if (
-          functionError
-        ) {
+        if (functionError) {
+          console.error(
+            "Billers function error:",
+            functionError
+          );
+
           throw new Error(
             functionError.message ||
               "Unable to load bill providers."
@@ -727,8 +647,7 @@ const ServiceModal = ({
 
         if (
           !data ||
-          data.success !==
-            true
+          data.success !== true
         ) {
           throw new Error(
             data?.error ||
@@ -737,7 +656,7 @@ const ServiceModal = ({
           );
         }
 
-        const loaded =
+        const loadedBillers =
           Array.isArray(
             data.billers
           )
@@ -745,12 +664,11 @@ const ServiceModal = ({
             : [];
 
         setBillers(
-          loaded
+          loadedBillers
         );
 
         if (
-          loaded.length ===
-          0
+          loadedBillers.length === 0
         ) {
           setError(
             "No providers are currently available for this service."
@@ -786,7 +704,7 @@ const ServiceModal = ({
     };
 
   // ==========================================================
-  // LOAD BILLERS ON OPEN
+  // LOAD BILLERS WHEN OPEN
   // ==========================================================
 
   useEffect(() => {
@@ -811,28 +729,23 @@ const ServiceModal = ({
     async (
       billerCode: string
     ) => {
-      const code =
+      const cleanCode =
         String(
-          billerCode ??
-            ""
+          billerCode ?? ""
         ).trim();
 
-      if (!code) {
+      if (!cleanCode) {
         setItems([]);
         return;
       }
 
-      setLoadingItems(
-        true
-      );
+      setLoadingItems(true);
 
       setError("");
 
       setItems([]);
 
-      setSelectedItemCode(
-        ""
-      );
+      setSelectedItemCode("");
 
       try {
         const {
@@ -848,7 +761,7 @@ const ServiceModal = ({
                   "items",
 
                 biller_code:
-                  code,
+                  cleanCode,
 
                 country:
                   "NG",
@@ -856,9 +769,12 @@ const ServiceModal = ({
             }
           );
 
-        if (
-          functionError
-        ) {
+        if (functionError) {
+          console.error(
+            "Bill items function error:",
+            functionError
+          );
+
           throw new Error(
             functionError.message ||
               "Unable to load bill packages."
@@ -867,8 +783,7 @@ const ServiceModal = ({
 
         if (
           !data ||
-          data.success !==
-            true
+          data.success !== true
         ) {
           throw new Error(
             data?.error ||
@@ -878,119 +793,106 @@ const ServiceModal = ({
         }
 
         /*
-         * Newer Edge Function:
+         * IMPORTANT:
          *
-         * data.plans
+         * Always use data.items.
          *
-         * Older response:
+         * The Data grouping happens locally
+         * AFTER receiving the catalogue.
          *
-         * data.items
+         * This fixes:
+         *
+         * "No packages are currently available"
+         *
+         * for Airtime, Electricity,
+         * Cable and Internet.
          */
         const loadedItems =
           Array.isArray(
-            data.plans
+            data.items
           )
-            ? data.plans
-            : Array.isArray(
-                  data.items
-                )
-              ? data.items
-              : [];
+            ? data.items
+            : [];
 
         setItems(
           loadedItems
         );
 
-        // ======================================================
-        // AUTOMATICALLY SELECT FIRST AVAILABLE DATA TAB
-        // ======================================================
-
         if (
-          serviceType ===
-          "data"
-        ) {
-          const groups =
-            {
-              daily:
-                loadedItems.filter(
-                  (
-                    item: BillItem
-                  ) =>
-                    getPlanType(
-                      item
-                    ) ===
-                    "daily"
-                ),
-
-              weekly:
-                loadedItems.filter(
-                  (
-                    item: BillItem
-                  ) =>
-                    getPlanType(
-                      item
-                    ) ===
-                    "weekly"
-                ),
-
-              monthly:
-                loadedItems.filter(
-                  (
-                    item: BillItem
-                  ) =>
-                    getPlanType(
-                      item
-                    ) ===
-                    "monthly"
-                ),
-
-              other:
-                loadedItems.filter(
-                  (
-                    item: BillItem
-                  ) =>
-                    getPlanType(
-                      item
-                    ) ===
-                    "other"
-                ),
-            };
-
-          if (
-            groups.daily
-              .length > 0
-          ) {
-            setPlanTab(
-              "daily"
-            );
-          } else if (
-            groups.weekly
-              .length > 0
-          ) {
-            setPlanTab(
-              "weekly"
-            );
-          } else if (
-            groups.monthly
-              .length > 0
-          ) {
-            setPlanTab(
-              "monthly"
-            );
-          } else {
-            setPlanTab(
-              "other"
-            );
-          }
-        }
-
-        if (
-          loadedItems.length ===
-          0
+          loadedItems.length === 0
         ) {
           setError(
             "No packages are currently available for this provider."
           );
+          return;
+        }
+
+        /*
+         * Automatically select the first
+         * available Data tab.
+         */
+        if (
+          serviceType === "data"
+        ) {
+          const hasDaily =
+            loadedItems.some(
+              (item) =>
+                getProviderAmount(
+                  item
+                ) > 0 &&
+                getPlanType(
+                  item
+                ) === "daily"
+            );
+
+          const hasWeekly =
+            loadedItems.some(
+              (item) =>
+                getProviderAmount(
+                  item
+                ) > 0 &&
+                getPlanType(
+                  item
+                ) === "weekly"
+            );
+
+          const hasMonthly =
+            loadedItems.some(
+              (item) =>
+                getProviderAmount(
+                  item
+                ) > 0 &&
+                getPlanType(
+                  item
+                ) === "monthly"
+            );
+
+          const hasOther =
+            loadedItems.some(
+              (item) =>
+                getProviderAmount(
+                  item
+                ) > 0 &&
+                getPlanType(
+                  item
+                ) === "other"
+            );
+
+          if (hasDaily) {
+            setPlanTab("daily");
+          } else if (
+            hasWeekly
+          ) {
+            setPlanTab("weekly");
+          } else if (
+            hasMonthly
+          ) {
+            setPlanTab("monthly");
+          } else if (
+            hasOther
+          ) {
+            setPlanTab("other");
+          }
         }
       } catch (
         err: any
@@ -1039,13 +941,16 @@ const ServiceModal = ({
         value
       );
 
-      setSelectedItemCode(
-        ""
-      );
+      setSelectedItemCode("");
 
       setCustomer("");
 
       setError("");
+
+      if (!value) {
+        setItems([]);
+        return;
+      }
 
       await loadItems(
         value
@@ -1053,57 +958,37 @@ const ServiceModal = ({
     };
 
   // ==========================================================
-  // SELECTED BILLER
+  // ITEM CHANGE
   // ==========================================================
 
-  const selectedBiller =
-    useMemo(
-      () =>
-        billers.find(
-          (
-            biller
-          ) =>
-            getBillerCode(
-              biller
-            ) ===
-            selectedBillerCode
-        ) ?? null,
-      [
-        billers,
-        selectedBillerCode,
-      ]
-    );
+  const handleItemChange =
+    (
+      value: string
+    ) => {
+      if (
+        processingPayment
+      ) {
+        return;
+      }
+
+      setSelectedItemCode(
+        value
+      );
+
+      setError("");
+    };
 
   // ==========================================================
-  // SELECTED ITEM
-  // ==========================================================
-
-  const selectedItem =
-    useMemo(
-      () =>
-        items.find(
-          (
-            item
-          ) =>
-            getItemCode(
-              item
-            ) ===
-            selectedItemCode
-        ) ?? null,
-      [
-        items,
-        selectedItemCode,
-      ]
-    );
-
-  // ==========================================================
-  // GROUP DATA PLANS
+  // DATA GROUPING
   // ==========================================================
 
   const groupedItems =
     useMemo(() => {
       const groups: Record<
-        PlanPeriod,
+        "daily" |
+          "weekly" |
+          "monthly" |
+          "other",
         BillItem[]
       > = {
         daily: [],
@@ -1123,118 +1008,56 @@ const ServiceModal = ({
           continue;
         }
 
-        groups[
-          getPlanType(
-            item
-          )
-        ].push(item);
+        const type =
+          getPlanType(item);
+
+        groups[type].push(
+          item
+        );
       }
 
       return groups;
     }, [items]);
 
+  // ==========================================================
+  // VISIBLE ITEMS
+  // ==========================================================
+
   const visibleItems =
-    serviceType ===
-    "data"
+    serviceType === "data"
       ? groupedItems[
           planTab
         ]
       : items.filter(
-          (
-            item
-          ) =>
+          (item) =>
             getProviderAmount(
               item
             ) > 0
         );
 
   // ==========================================================
-  // CUSTOMER LABEL
+  // CUSTOMER VALUE
   // ==========================================================
 
-  const customerLabel =
-    useMemo(() => {
-      if (
-        selectedItem?.label_name
-      ) {
-        return selectedItem.label_name;
-      }
-
-      switch (
-        serviceType
-      ) {
-        case "airtime":
-        case "data":
-          return "Phone Number";
-
-        case "electricity":
-          return "Meter Number";
-
-        case "cable":
-          return "Smart Card / Decoder Number";
-
-        case "internet":
-          return "Account Number";
-
-        default:
-          return "Customer ID";
-      }
-    }, [
-      selectedItem,
-      serviceType,
-    ]);
+  const finalCustomer =
+    isPhoneService
+      ? normalizeNigerianPhone(
+          customer
+        )
+      : customer.trim();
 
   // ==========================================================
-  // CUSTOMER PLACEHOLDER
+  // PHONE VALIDATION
   // ==========================================================
 
-  const customerPlaceholder =
-    useMemo(() => {
-      switch (
-        serviceType
-      ) {
-        case "airtime":
-        case "data":
-          return "e.g. 08012345678";
-
-        case "electricity":
-          return "Enter meter number";
-
-        case "cable":
-          return "Enter smart card number";
-
-        case "internet":
-          return "Enter account number";
-
-        default:
-          return "Enter customer identifier";
-      }
-    }, [
-      serviceType,
-    ]);
+  const validPhone =
+    !isPhoneService ||
+    /^\+234\d{10}$/.test(
+      finalCustomer
+    );
 
   // ==========================================================
-  // NORMALIZE CUSTOMER
-  // ==========================================================
-
-  const normalizeCustomer =
-    (): string => {
-      const value =
-        customer.trim();
-
-      if (
-        isPhoneService
-      ) {
-        return normalizePhone(
-          value
-        );
-      }
-
-      return value;
-    };
-
-  // ==========================================================
-  // PRICES
+  // PROVIDER AMOUNT
   // ==========================================================
 
   const providerAmount =
@@ -1244,25 +1067,29 @@ const ServiceModal = ({
         )
       : 0;
 
-  const sellingPrice =
-    selectedItem
-      ? getSellingPrice(
-          selectedItem
-        )
-      : 0;
+  // ==========================================================
+  // FINAL SELLING PRICE
+  //
+  // Provider price + ₦50
+  //
+  // The ₦50 is NOT shown separately.
+  // ==========================================================
 
-  const profit =
-    selectedItem
-      ? getProfit(
-          selectedItem
+  const finalAmount =
+    providerAmount > 0
+      ? Number(
+          (
+            providerAmount +
+            MARKUP
+          ).toFixed(2)
         )
       : 0;
 
   // ==========================================================
-  // VALIDATE FORM
+  // VALIDATE PURCHASE
   // ==========================================================
 
-  const validateForm =
+  const validatePurchase =
     (): boolean => {
       if (
         !selectedBillerCode
@@ -1280,7 +1107,8 @@ const ServiceModal = ({
       }
 
       if (
-        !selectedItemCode
+        !selectedItemCode ||
+        !selectedItem
       ) {
         toast({
           title:
@@ -1293,9 +1121,6 @@ const ServiceModal = ({
 
         return false;
       }
-
-      const finalCustomer =
-        normalizeCustomer();
 
       if (
         !finalCustomer
@@ -1312,46 +1137,15 @@ const ServiceModal = ({
         return false;
       }
 
-      // ========================================================
-      // PHONE
-      // ========================================================
-
       if (
-        isPhoneService
-      ) {
-        if (
-          !/^\+234\d{10}$/.test(
-            finalCustomer
-          )
-        ) {
-          toast({
-            title:
-              "Invalid phone number",
-            description:
-              "Enter a valid Nigerian phone number.",
-            variant:
-              "destructive",
-          });
-
-          return false;
-        }
-      }
-
-      // ========================================================
-      // PROVIDER PRICE
-      // ========================================================
-
-      if (
-        !Number.isFinite(
-          providerAmount
-        ) ||
-        providerAmount <= 0
+        isPhoneService &&
+        !validPhone
       ) {
         toast({
           title:
-            "Invalid package",
+            "Invalid phone number",
           description:
-            "The selected package has no valid provider price.",
+            "Enter a valid Nigerian phone number.",
           variant:
             "destructive",
         });
@@ -1359,21 +1153,29 @@ const ServiceModal = ({
         return false;
       }
 
-      // ========================================================
-      // SELLING PRICE
-      // ========================================================
-
       if (
-        !Number.isFinite(
-          sellingPrice
-        ) ||
-        sellingPrice <= 0
+        providerAmount <= 0
       ) {
         toast({
           title:
-            "Invalid price",
+            "Invalid package",
           description:
-            "Unable to determine the package selling price.",
+            "The selected package has no valid price.",
+          variant:
+            "destructive",
+        });
+
+        return false;
+      }
+
+      if (
+        finalAmount <= 0
+      ) {
+        toast({
+          title:
+            "Invalid amount",
+          description:
+            "Unable to determine the purchase amount.",
           variant:
             "destructive",
         });
@@ -1382,41 +1184,37 @@ const ServiceModal = ({
       }
 
       /*
-       * IMPORTANT:
+       * UX balance check only.
        *
-       * Do NOT block the purchase here using walletBalance.
-       *
-       * Your Edge Function should perform the authoritative
-       * balance check and debit.
-       *
-       * This prevents a stale dashboard balance from making
-       * the Buy button appear unusable.
+       * Backend remains authoritative.
        */
-
-      return true;
-    };
-
-  // ==========================================================
-  // ITEM SELECT
-  // ==========================================================
-
-  const handleItemChange =
-    (
-      value: string
-    ) => {
       if (
-        processingPayment
+        Number.isFinite(
+          walletBalance
+        ) &&
+        Number(
+          walletBalance
+        ) >= 0 &&
+        finalAmount >
+          Number(
+            walletBalance
+          )
       ) {
-        return;
+        toast({
+          title:
+            "Insufficient Balance",
+          description:
+            `You need ${formatMoney(
+              finalAmount
+            )} to complete this purchase.`,
+          variant:
+            "destructive",
+        });
+
+        return false;
       }
 
-      setSelectedItemCode(
-        value
-      );
-
-      setError("");
-
-      setSuccessMessage("");
+      return true;
     };
 
   // ==========================================================
@@ -1425,10 +1223,6 @@ const ServiceModal = ({
 
   const handlePurchase =
     async () => {
-      console.log(
-        "BUY BUTTON CLICKED"
-      );
-
       if (!service) {
         return;
       }
@@ -1440,18 +1234,28 @@ const ServiceModal = ({
       }
 
       if (
-        !validateForm()
+        !validatePurchase()
       ) {
         return;
       }
 
-      const finalCustomer =
-        normalizeCustomer();
-
+      /*
+       * IMPORTANT:
+       *
+       * finalAmount already contains
+       * provider price + ₦50.
+       *
+       * The UI never exposes the markup.
+       */
       const details = {
-        // ======================================================
-        // BASIC
-        // ======================================================
+        service:
+          serviceType,
+
+        type:
+          serviceType,
+
+        country:
+          "NG",
 
         customer:
           finalCustomer,
@@ -1464,26 +1268,19 @@ const ServiceModal = ({
 
         provider:
           getBillerName(
-            selectedBiller ??
-              {}
+            selectedBiller!
           ),
 
-        type:
-          serviceType,
-
-        country:
-          "NG",
-
-        // ======================================================
-        // PHONE
-        // ======================================================
-
-        phoneNumber:
+        /*
+         * Phone aliases for
+         * Airtime/Data compatibility.
+         */
+        phone:
           isPhoneService
             ? finalCustomer
             : "",
 
-        phone:
+        phoneNumber:
           isPhoneService
             ? finalCustomer
             : "",
@@ -1493,10 +1290,9 @@ const ServiceModal = ({
             ? finalCustomer
             : "",
 
-        // ======================================================
-        // ELECTRICITY
-        // ======================================================
-
+        /*
+         * Electricity
+         */
         meterNumber:
           serviceType ===
           "electricity"
@@ -1509,10 +1305,9 @@ const ServiceModal = ({
             ? finalCustomer
             : "",
 
-        // ======================================================
-        // CABLE
-        // ======================================================
-
+        /*
+         * Cable
+         */
         smartCardNumber:
           serviceType ===
           "cable"
@@ -1531,10 +1326,9 @@ const ServiceModal = ({
             ? finalCustomer
             : "",
 
-        // ======================================================
-        // INTERNET
-        // ======================================================
-
+        /*
+         * Internet
+         */
         accountNumber:
           serviceType ===
           "internet"
@@ -1547,76 +1341,40 @@ const ServiceModal = ({
             ? finalCustomer
             : "",
 
-        // ======================================================
-        // PLAN
-        // ======================================================
-
-        plan_name:
-          selectedItem
-            ? getItemName(
-                selectedItem
-              )
-            : "",
-
-        plan_validity:
-          selectedItem
-            ? getValidity(
-                selectedItem
-              )
-            : "",
-
-        period:
-          selectedItem
-            ? getPlanType(
-                selectedItem
-              )
-            : "other",
-
-        // ======================================================
-        // PRICING
-        // ======================================================
-
-        provider_amount:
-          providerAmount,
-
-        selling_price:
-          sellingPrice,
-
-        profit,
-
-        markup:
-          MARKUP,
-
-        // ======================================================
-        // COMPLETE OBJECTS
-        // ======================================================
-
+        /*
+         * Catalogue information.
+         *
+         * This is sent to the parent/Edge Function
+         * for verification, but NOT displayed.
+         */
         item:
           selectedItem,
 
         biller:
           selectedBiller,
 
-        customerLabel,
+        provider_amount:
+          providerAmount,
+
+        selling_price:
+          finalAmount,
+
+        /*
+         * Keep markup explicit for server-side
+         * verification.
+         */
+        markup:
+          MARKUP,
       };
 
       console.log(
-        "Sending bill purchase details:",
+        "Sending bill purchase:",
         {
           service:
             serviceType,
 
           amount:
-            sellingPrice,
-
-          provider_amount:
-            providerAmount,
-
-          selling_price:
-            sellingPrice,
-
-          markup:
-            MARKUP,
+            finalAmount,
 
           biller_code:
             selectedBillerCode,
@@ -1626,8 +1384,6 @@ const ServiceModal = ({
 
           customer:
             finalCustomer,
-
-          details,
         }
       );
 
@@ -1638,47 +1394,25 @@ const ServiceModal = ({
 
         setError("");
 
-        setSuccessMessage("");
-
         /*
-         * IMPORTANT:
-         *
-         * The parent onPurchase remains responsible
-         * for invoking your flutterwave-bills function.
-         *
-         * We pass the FINAL selling price here.
-         *
-         * Provider price + ₦50 markup.
+         * This remains compatible with
+         * your existing Dashboard handler.
          */
         await onPurchase(
-          sellingPrice,
+          finalAmount,
           details
-        );
-
-        setSuccessMessage(
-          "Payment successful."
         );
 
         toast({
           title:
             "Payment successful",
           description:
-            `${formatMoney(
-              sellingPrice
-            )} payment has been processed.`,
+            `${service.title} purchase has been processed.`,
         });
 
-        /*
-         * Keep the successful dialog visible briefly
-         * so the user sees confirmation.
-         */
-        window.setTimeout(
-          () => {
-            resetForm();
-            onClose();
-          },
-          1200
-        );
+        resetForm();
+
+        onClose();
       } catch (
         err: any
       ) {
@@ -1691,9 +1425,7 @@ const ServiceModal = ({
           err?.message ||
           "Unable to complete this payment.";
 
-        setError(
-          message
-        );
+        setError(message);
 
         toast({
           title:
@@ -1736,46 +1468,6 @@ const ServiceModal = ({
   }
 
   // ==========================================================
-  // BUY BUTTON STATE
-  // ==========================================================
-
-  /*
-   * IMPORTANT:
-   *
-   * Do NOT use walletBalance here.
-   *
-   * The button becomes enabled once:
-   *
-   * provider selected
-   * package selected
-   * customer entered
-   * phone valid when required
-   * package has a valid price
-   */
-
-  const canPurchase =
-    !processingPayment &&
-    !loadingBillers &&
-    !loadingItems &&
-    Boolean(
-      selectedBillerCode
-    ) &&
-    Boolean(
-      selectedItemCode
-    ) &&
-    Boolean(
-      customer.trim()
-    ) &&
-    providerAmount > 0 &&
-    sellingPrice > 0 &&
-    (
-      !isPhoneService ||
-      /^\+234\d{10}$/.test(
-        normalizeCustomer()
-      )
-    );
-
-  // ==========================================================
   // UI
   // ==========================================================
 
@@ -1795,10 +1487,6 @@ const ServiceModal = ({
     >
       <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
 
-        {/* ================================================== */}
-        {/* HEADER */}
-        {/* ================================================== */}
-
         <DialogHeader>
           <DialogTitle className="text-center text-green-700">
             {service.title}
@@ -1816,23 +1504,20 @@ const ServiceModal = ({
               Wallet Balance:{" "}
               {formatMoney(
                 Number(
-                  walletBalance ||
-                    0
+                  walletBalance || 0
                 )
               )}
             </p>
           </div>
 
           {/* ================================================== */}
-          {/* SUCCESS */}
+          {/* ERROR */}
           {/* ================================================== */}
 
-          {successMessage && (
-            <div className="flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 p-3">
-              <CheckCircle2 className="h-4 w-4 text-green-600" />
-
-              <p className="text-sm text-green-700">
-                {successMessage}
+          {error && (
+            <div className="rounded-lg border border-red-200 bg-red-50 p-3">
+              <p className="text-sm text-red-700">
+                {error}
               </p>
             </div>
           )}
@@ -1844,7 +1529,6 @@ const ServiceModal = ({
           {loadingBillers && (
             <div className="flex items-center justify-center gap-2 py-3 text-sm text-gray-500">
               <Loader2 className="h-4 w-4 animate-spin" />
-
               Loading providers...
             </div>
           )}
@@ -1873,7 +1557,6 @@ const ServiceModal = ({
                     className="h-7 px-2"
                   >
                     <RefreshCw className="mr-1 h-3.5 w-3.5" />
-
                     Refresh
                   </Button>
                 )}
@@ -1894,6 +1577,7 @@ const ServiceModal = ({
                   0
               }
             >
+
               <SelectTrigger>
                 <SelectValue
                   placeholder={
@@ -1934,74 +1618,8 @@ const ServiceModal = ({
                 )}
 
               </SelectContent>
+
             </Select>
-
-          </div>
-
-          {/* ================================================== */}
-          {/* CUSTOMER / PHONE */}
-          {/* ================================================== */}
-
-          <div className="space-y-2">
-
-            <Label htmlFor="billCustomer">
-              {customerLabel}
-            </Label>
-
-            <Input
-              id="billCustomer"
-              value={
-                customer
-              }
-              onChange={(
-                event
-              ) => {
-                setCustomer(
-                  event.target.value
-                );
-
-                setError("");
-
-                setSuccessMessage(
-                  ""
-                );
-              }}
-              placeholder={
-                customerPlaceholder
-              }
-              disabled={
-                processingPayment
-              }
-              type={
-                isPhoneService
-                  ? "tel"
-                  : "text"
-              }
-              inputMode={
-                isPhoneService ||
-                serviceType ===
-                  "electricity" ||
-                serviceType ===
-                  "cable"
-                  ? "numeric"
-                  : "text"
-              }
-            />
-
-            {isPhoneService &&
-              customer &&
-              !/^(?:\+234|234|0)?\d{10}$/.test(
-                customer
-                  .replace(
-                    /\s+/g,
-                    ""
-                  )
-              ) && (
-                <p className="text-xs text-red-600">
-                  Enter a valid Nigerian
-                  phone number.
-                </p>
-              )}
 
           </div>
 
@@ -2011,14 +1629,15 @@ const ServiceModal = ({
 
           {serviceType ===
             "data" &&
-            selectedBillerCode && (
-              <div className="space-y-3">
+            selectedBillerCode &&
+            !loadingItems && (
+              <div className="space-y-2">
 
                 <Label>
-                  Data Plans
+                  Data Package
                 </Label>
 
-                <div className="grid grid-cols-4 gap-1.5">
+                <div className="grid grid-cols-4 gap-2">
 
                   {(
                     [
@@ -2057,7 +1676,6 @@ const ServiceModal = ({
                           type="button"
                           disabled={
                             processingPayment ||
-                            loadingItems ||
                             count ===
                               0
                           }
@@ -2070,7 +1688,9 @@ const ServiceModal = ({
                               ""
                             );
 
-                            setError("");
+                            setError(
+                              ""
+                            );
                           }}
                           className={`rounded-lg px-2 py-2 text-xs font-semibold transition ${
                             planTab ===
@@ -2081,7 +1701,7 @@ const ServiceModal = ({
                             count ===
                             0
                               ? "cursor-not-allowed opacity-40"
-                              : "hover:bg-green-100"
+                              : "hover:bg-green-50"
                           }`}
                         >
                           {label}
@@ -2123,200 +1743,134 @@ const ServiceModal = ({
 
             </div>
 
-            {serviceType ===
-            "data" ? (
+            <Select
+              value={
+                selectedItemCode
+              }
+              onValueChange={
+                handleItemChange
+              }
+              disabled={
+                loadingItems ||
+                processingPayment ||
+                !selectedBillerCode ||
+                visibleItems.length ===
+                  0
+              }
+            >
 
-              loadingItems ? (
-                <div className="flex items-center justify-center rounded-lg bg-gray-50 p-6">
-                  <Loader2 className="h-5 w-5 animate-spin text-green-600" />
-                </div>
-              ) : (
-                <div className="grid grid-cols-2 gap-2">
-
-                  {visibleItems.map(
-                    (
-                      item,
-                      index
-                    ) => {
-                      const code =
-                        getItemCode(
-                          item
-                        );
-
-                      if (!code) {
-                        return null;
-                      }
-
-                      const provider =
-                        getProviderAmount(
-                          item
-                        );
-
-                      const selling =
-                        getSellingPrice(
-                          item
-                        );
-
-                      const selected =
-                        selectedItemCode ===
-                        code;
-
-                      return (
-                        <button
-                          key={`${code}-${index}`}
-                          type="button"
-                          disabled={
-                            processingPayment ||
-                            loadingItems
-                          }
-                          onClick={() =>
-                            handleItemChange(
-                              code
-                            )
-                          }
-                          className={`rounded-xl border p-3 text-left transition ${
-                            selected
-                              ? "border-green-600 bg-green-50 ring-2 ring-green-100"
-                              : "border-gray-200 bg-white hover:border-green-300"
-                          } ${
-                            processingPayment
-                              ? "cursor-not-allowed opacity-60"
-                              : "cursor-pointer"
-                          }`}
-                        >
-
-                          <div className="flex items-start justify-between gap-2">
-
-                            <div className="min-w-0">
-
-                              <p className="text-sm font-semibold text-gray-900">
-                                {getItemName(
-                                  item
-                                )}
-                              </p>
-
-                              {getValidity(
-                                item
-                              ) && (
-                                <p className="mt-1 text-xs text-gray-500">
-                                  {getValidity(
-                                    item
-                                  )}
-                                </p>
-                              )}
-
-                            </div>
-
-                            {selected && (
-                              <CheckCircle2 className="h-4 w-4 shrink-0 text-green-600" />
-                            )}
-
-                          </div>
-
-                          <p className="mt-2 font-bold text-green-600">
-                            {formatMoney(
-                              selling
-                            )}
-                          </p>
-
-                          <p className="mt-1 text-[10px] text-gray-400">
-                            Provider:{" "}
-                            {formatMoney(
-                              provider
-                            )}
-                          </p>
-
-                          <p className="text-[10px] text-green-600">
-                            +₦50 service charge
-                          </p>
-
-                        </button>
-                      );
-                    }
-                  )}
-
-                </div>
-              )
-
-            ) : (
-
-              <Select
-                value={
-                  selectedItemCode
-                }
-                onValueChange={
-                  handleItemChange
-                }
-                disabled={
-                  loadingItems ||
-                  processingPayment ||
-                  !selectedBillerCode ||
-                  items.length ===
-                    0
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue
-                    placeholder={
-                      loadingItems
-                        ? "Loading packages..."
-                        : !selectedBillerCode
-                          ? "Select provider first"
-                          : "Select package"
-                    }
-                  />
-                </SelectTrigger>
-
-                <SelectContent>
-
-                  {items.map(
-                    (
-                      item,
-                      index
-                    ) => {
-                      const code =
-                        getItemCode(
-                          item
-                        );
-
-                      if (!code) {
-                        return null;
-                      }
-
-                      const provider =
-                        getProviderAmount(
-                          item
-                        );
-
-                      const selling =
-                        getSellingPrice(
-                          item
-                        );
-
-                      return (
-                        <SelectItem
-                          key={`${code}-${index}`}
-                          value={code}
-                        >
-                          {getItemName(
-                            item
-                          )}
-
-                          {provider >
+              <SelectTrigger>
+                <SelectValue
+                  placeholder={
+                    loadingItems
+                      ? "Loading packages..."
+                      : !selectedBillerCode
+                        ? "Select provider first"
+                        : visibleItems.length ===
                             0
-                            ? ` — ${formatMoney(
-                                selling
-                              )}`
-                            : ""}
-                        </SelectItem>
+                          ? "No packages available"
+                          : "Select package"
+                  }
+                />
+              </SelectTrigger>
+
+              <SelectContent>
+
+                {visibleItems.map(
+                  (
+                    item,
+                    index
+                  ) => {
+                    const code =
+                      getItemCode(
+                        item
                       );
+
+                    if (!code) {
+                      return null;
                     }
-                  )}
 
-                </SelectContent>
-              </Select>
+                    return (
+                      <SelectItem
+                        key={`${code}-${index}`}
+                        value={code}
+                      >
+                        {getItemName(
+                          item
+                        )}
+                      </SelectItem>
+                    );
+                  }
+                )}
 
-            )}
+              </SelectContent>
+
+            </Select>
+
+            {!loadingItems &&
+              selectedBillerCode &&
+              visibleItems.length ===
+                0 && (
+                <p className="text-xs text-gray-500">
+                  No packages are available in this category for the selected provider.
+                </p>
+              )}
+
+          </div>
+
+          {/* ================================================== */}
+          {/* CUSTOMER */}
+          {/* ================================================== */}
+
+          <div className="space-y-2">
+
+            <Label htmlFor="billCustomer">
+              {customerLabel}
+            </Label>
+
+            <Input
+              id="billCustomer"
+              value={
+                customer
+              }
+              onChange={(
+                event
+              ) => {
+                setCustomer(
+                  event.target.value
+                );
+
+                setError("");
+              }}
+              placeholder={
+                customerPlaceholder
+              }
+              disabled={
+                processingPayment
+              }
+              type={
+                isPhoneService
+                  ? "tel"
+                  : "text"
+              }
+              inputMode={
+                isPhoneService ||
+                serviceType ===
+                  "electricity" ||
+                serviceType ===
+                  "cable"
+                  ? "numeric"
+                  : "text"
+              }
+            />
+
+            {isPhoneService &&
+              customer &&
+              !validPhone && (
+                <p className="text-xs text-red-600">
+                  Enter a valid Nigerian phone number.
+                </p>
+              )}
 
           </div>
 
@@ -2325,69 +1879,54 @@ const ServiceModal = ({
           {/* ================================================== */}
 
           {selectedItem &&
-            providerAmount >
-              0 && (
+            finalAmount > 0 && (
               <div className="rounded-xl bg-gray-50 p-4">
 
-                <div className="mb-2 flex items-center justify-between gap-3">
+                <div className="mb-3 flex items-center justify-between gap-3">
+
                   <span className="text-sm text-gray-500">
-                    Plan
+                    Package
                   </span>
 
-                  <span className="text-right text-sm font-medium text-gray-900">
+                  <span className="max-w-[65%] text-right text-sm font-medium text-gray-900">
                     {getItemName(
                       selectedItem
                     )}
                   </span>
+
                 </div>
 
-                {isPhoneService && (
-                  <div className="mb-2 flex items-center justify-between gap-3">
-                    <span className="text-sm text-gray-500">
-                      Phone
-                    </span>
+                <div className="mb-3 flex items-center justify-between gap-3">
 
-                    <span className="text-sm font-medium text-gray-900">
-                      {normalizeCustomer()}
-                    </span>
-                  </div>
-                )}
-
-                <div className="mb-2 flex items-center justify-between">
                   <span className="text-sm text-gray-500">
-                    Provider price
+                    Customer
                   </span>
 
-                  <span className="text-sm text-gray-700">
-                    {formatMoney(
-                      providerAmount
-                    )}
+                  <span className="max-w-[65%] break-all text-right text-sm font-medium text-gray-900">
+                    {finalCustomer}
                   </span>
+
                 </div>
 
-                <div className="mb-2 flex items-center justify-between">
-                  <span className="text-sm text-gray-500">
-                    Service charge
-                  </span>
+                {/* 
+                 * IMPORTANT:
+                 *
+                 * No provider price.
+                 * No ₦50 markup line.
+                 * Only final amount.
+                 */}
 
-                  <span className="text-sm text-gray-700">
-                    {formatMoney(
-                      MARKUP
-                    )}
-                  </span>
-                </div>
-
-                <div className="mt-3 border-t pt-3">
+                <div className="border-t pt-3">
 
                   <div className="flex items-center justify-between">
 
                     <span className="font-semibold text-gray-900">
-                      You pay
+                      Total
                     </span>
 
                     <span className="text-xl font-bold text-green-600">
                       {formatMoney(
-                        sellingPrice
+                        finalAmount
                       )}
                     </span>
 
@@ -2399,19 +1938,7 @@ const ServiceModal = ({
             )}
 
           {/* ================================================== */}
-          {/* ERROR */}
-          {/* ================================================== */}
-
-          {error && (
-            <div className="rounded-lg border border-red-200 bg-red-50 p-3">
-              <p className="text-sm text-red-700">
-                {error}
-              </p>
-            </div>
-          )}
-
-          {/* ================================================== */}
-          {/* PURCHASE */}
+          {/* BUY BUTTON */}
           {/* ================================================== */}
 
           <Button
@@ -2420,44 +1947,39 @@ const ServiceModal = ({
               handlePurchase
             }
             disabled={
-              !canPurchase
+              processingPayment ||
+              loadingBillers ||
+              loadingItems ||
+              !selectedBillerCode ||
+              !selectedItemCode ||
+              !customer.trim() ||
+              !validPhone ||
+              finalAmount <= 0
             }
-            className="w-full bg-green-600 hover:bg-green-700 disabled:cursor-not-allowed"
+            className="w-full bg-green-600 hover:bg-green-700"
           >
+
             {processingPayment ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-
                 Processing...
               </>
             ) : selectedItem ? (
               <>
-                Purchase{" "}
+                Buy{" "}
                 {formatMoney(
-                  sellingPrice
+                  finalAmount
                 )}
               </>
             ) : (
               "Select a package"
             )}
-          </Button>
 
-          {/* ================================================== */}
-          {/* PROCESSING NOTE */}
-          {/* ================================================== */}
+          </Button>
 
           {processingPayment && (
             <p className="text-center text-xs text-gray-500">
-              Please do not close this
-              window while your payment is
-              being processed.
-            </p>
-          )}
-
-          {selectedItem && (
-            <p className="text-center text-[11px] text-gray-400">
-              Provider price + ₦50 service
-              charge
+              Please do not close this window while your payment is being processed.
             </p>
           )}
 

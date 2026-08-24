@@ -169,6 +169,8 @@ const TransferModal = ({
 
   const transferFee =
     transferType === "iyanjupay"
+      ? ELECTRONIC_FEE
+      : transferAmount > 0
       ? IYANJUPAY_TRANSFER_FEE
       : transferAmount > 0
         ? BANK_TRANSFER_FEE

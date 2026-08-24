@@ -21,6 +21,12 @@ type ServiceType =
   | "cable"
   | "internet";
 
+type PlanPeriod =
+  | "daily"
+  | "weekly"
+  | "monthly"
+  | "other";
+
 type BillItem = {
   item_code?: string;
   itemCode?: string;
@@ -44,12 +50,22 @@ type BillItem = {
   validity_period?: string;
   validityPeriod?: string;
 
+  period?: string;
+  period_label?: string;
+
+  provider_amount?: number | string;
+  selling_price?: number | string;
+  profit?: number | string;
+
+  currency?: string;
+
   [key: string]: any;
 };
 
 type Biller = {
   biller_code?: string;
   billerCode?: string;
+
   name?: string;
   biller_name?: string;
   billerName?: string;
@@ -91,36 +107,44 @@ const CATEGORY_MAP: Record<ServiceType, string> = {
   internet: "INTSERVICE",
 };
 
+function clean(value: unknown): string {
+  return String(value ?? "").trim();
+}
+
 function getItemCode(item: BillItem): string {
-  return String(
+  return clean(
     item.item_code ??
       item.itemCode ??
       item.product_code ??
-      item.productCode ??
-      "",
-  ).trim();
+      item.productCode,
+  );
 }
 
 function getBillerCode(item: BillItem): string {
-  return String(
+  return clean(
     item.biller_code ??
-      item.billerCode ??
-      "",
-  ).trim();
+      item.billerCode,
+  );
 }
 
 function getItemName(item: BillItem): string {
-  return String(
+  return clean(
     item.name ??
       item.item_name ??
       item.itemName ??
       item.description ??
       "Bill package",
-  ).trim();
+  );
 }
 
 function getProviderAmount(item: BillItem): number {
+  /*
+   * The latest Edge Function returns provider_amount.
+   * Fall back to Flutterwave's original catalogue fields
+   * so the UI remains compatible with the raw `items` response.
+   */
   const values = [
+    item.provider_amount,
     item.amount,
     item.price,
     item.cost,
@@ -128,39 +152,113 @@ function getProviderAmount(item: BillItem): number {
   ];
 
   for (const value of values) {
-    const number = Number(value);
+    const amount = Number(value);
 
     if (
-      Number.isFinite(number) &&
-      number > 0
+      Number.isFinite(amount) &&
+      amount > 0
     ) {
-      return Number(number.toFixed(2));
+      return Number(amount.toFixed(2));
     }
   }
 
   return 0;
 }
 
-function getBillerName(biller: Biller): string {
-  return String(
+function getSellingPrice(item: BillItem): number {
+  const serverSellingPrice =
+    Number(item.selling_price);
+
+  if (
+    Number.isFinite(
+      serverSellingPrice,
+    ) &&
+    serverSellingPrice > 0
+  ) {
+    return Number(
+      serverSellingPrice.toFixed(2),
+    );
+  }
+
+  const provider =
+    getProviderAmount(item);
+
+  return provider > 0
+    ? Number(
+        (provider + MARKUP).toFixed(2),
+      )
+    : 0;
+}
+
+function getProfit(item: BillItem): number {
+  const serverProfit =
+    Number(item.profit);
+
+  if (
+    Number.isFinite(serverProfit) &&
+    serverProfit >= 0
+  ) {
+    return Number(
+      serverProfit.toFixed(2),
+    );
+  }
+
+  const provider =
+    getProviderAmount(item);
+
+  const selling =
+    getSellingPrice(item);
+
+  return provider > 0 && selling > 0
+    ? Number(
+        (selling - provider).toFixed(2),
+      )
+    : MARKUP;
+}
+
+function getBillerName(
+  biller: Biller,
+): string {
+  return clean(
     biller.name ??
       biller.biller_name ??
       biller.billerName ??
       "Provider",
-  ).trim();
+  );
 }
 
-function getValidity(item: BillItem): string {
-  return String(
+function getValidity(
+  item: BillItem,
+): string {
+  return clean(
     item.validity ??
       item.validity_period ??
       item.validityPeriod ??
+      item.period_label ??
       "",
-  ).trim();
+  );
 }
 
-function getPlanType(item: BillItem): "daily" | "weekly" | "monthly" | "other" {
-  const text = `${getItemName(item)} ${getValidity(item)}`.toLowerCase();
+function getPlanType(
+  item: BillItem,
+): PlanPeriod {
+  /*
+   * Prefer the server-provided period.
+   */
+  const serverPeriod =
+    clean(item.period).toLowerCase();
+
+  if (
+    serverPeriod === "daily" ||
+    serverPeriod === "weekly" ||
+    serverPeriod === "monthly"
+  ) {
+    return serverPeriod;
+  }
+
+  const text =
+    `${getItemName(item)} ${getValidity(item)}`
+      .toLowerCase();
 
   if (
     text.includes("daily") ||
@@ -189,15 +287,24 @@ function getPlanType(item: BillItem): "daily" | "weekly" | "monthly" | "other" {
   return "other";
 }
 
-function normalizePhone(value: string): string {
-  return value.replace(/\s+/g, "").trim();
+function normalizePhone(
+  value: string,
+): string {
+  return value
+    .replace(/\s+/g, "")
+    .trim();
 }
 
-function formatMoney(value: number): string {
-  return `₦${value.toLocaleString("en-NG", {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 2,
-  })}`;
+function formatMoney(
+  value: number,
+): string {
+  return `₦${value.toLocaleString(
+    "en-NG",
+    {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 2,
+    },
+  )}`;
 }
 
 export default function ServiceModal({
@@ -207,24 +314,43 @@ export default function ServiceModal({
   walletBalance = 0,
   onSuccess,
 }: ServiceModalProps) {
-  const [billers, setBillers] = useState<Biller[]>([]);
-  const [items, setItems] = useState<BillItem[]>([]);
+  const [billers, setBillers] =
+    useState<Biller[]>([]);
 
-  const [selectedBiller, setSelectedBiller] = useState("");
-  const [selectedItem, setSelectedItem] =
-    useState<BillItem | null>(null);
+  const [items, setItems] =
+    useState<BillItem[]>([]);
 
-  const [phoneNumber, setPhoneNumber] =
-    useState("");
+  const [
+    selectedBiller,
+    setSelectedBiller,
+  ] = useState("");
 
-  const [customer, setCustomer] =
-    useState("");
+  const [
+    selectedItem,
+    setSelectedItem,
+  ] = useState<BillItem | null>(
+    null,
+  );
 
-  const [loadingBillers, setLoadingBillers] =
-    useState(false);
+  const [
+    phoneNumber,
+    setPhoneNumber,
+  ] = useState("");
 
-  const [loadingItems, setLoadingItems] =
-    useState(false);
+  const [
+    customer,
+    setCustomer,
+  ] = useState("");
+
+  const [
+    loadingBillers,
+    setLoadingBillers,
+  ] = useState(false);
+
+  const [
+    loadingItems,
+    setLoadingItems,
+  ] = useState(false);
 
   const [paying, setPaying] =
     useState(false);
@@ -232,18 +358,28 @@ export default function ServiceModal({
   const [error, setError] =
     useState("");
 
-  const [successMessage, setSuccessMessage] =
-    useState("");
+  const [
+    successMessage,
+    setSuccessMessage,
+  ] = useState("");
 
-  const [planTab, setPlanTab] =
-    useState<"daily" | "weekly" | "monthly" | "other">(
-      "daily",
-    );
+  const [
+    planTab,
+    setPlanTab,
+  ] = useState<PlanPeriod>("daily");
 
-  // ============================================================
-  // RESET
-  // ============================================================
+  /*
+   * Airtime and Data use phone numbers.
+   */
+  const isPhoneService =
+    service === "airtime" ||
+    service === "data";
 
+  /*
+   * ============================================================
+   * RESET MODAL
+   * ============================================================
+   */
   useEffect(() => {
     if (!open) return;
 
@@ -255,13 +391,18 @@ export default function ServiceModal({
     setCustomer("");
     setError("");
     setSuccessMessage("");
-    setPlanTab("daily");
+    setPlanTab(
+      service === "data"
+        ? "daily"
+        : "other",
+    );
   }, [open, service]);
 
-  // ============================================================
-  // LOAD FLUTTERWAVE BILLERS
-  // ============================================================
-
+  /*
+   * ============================================================
+   * LOAD BILLERS
+   * ============================================================
+   */
   useEffect(() => {
     if (!open) return;
 
@@ -272,7 +413,10 @@ export default function ServiceModal({
       setError("");
 
       try {
-        const { data, error } =
+        const {
+          data,
+          error,
+        } =
           await supabase.functions.invoke(
             "flutterwave-bills",
             {
@@ -300,7 +444,9 @@ export default function ServiceModal({
 
         if (!cancelled) {
           setBillers(
-            Array.isArray(data.billers)
+            Array.isArray(
+              data.billers,
+            )
               ? data.billers
               : [],
           );
@@ -326,10 +472,11 @@ export default function ServiceModal({
     };
   }, [open, service]);
 
-  // ============================================================
-  // LOAD FLUTTERWAVE ITEMS
-  // ============================================================
-
+  /*
+   * ============================================================
+   * LOAD FLUTTERWAVE ITEMS
+   * ============================================================
+   */
   useEffect(() => {
     if (!selectedBiller) {
       setItems([]);
@@ -345,7 +492,10 @@ export default function ServiceModal({
       setSelectedItem(null);
 
       try {
-        const { data, error } =
+        const {
+          data,
+          error,
+        } =
           await supabase.functions.invoke(
             "flutterwave-bills",
             {
@@ -372,28 +522,82 @@ export default function ServiceModal({
         }
 
         if (!cancelled) {
+          /*
+           * Latest backend returns:
+           *
+           * data.items
+           * data.plans
+           * data.daily
+           * data.weekly
+           * data.monthly
+           * data.other
+           *
+           * Prefer `plans` because those are already
+           * enriched with provider_amount/selling_price.
+           */
           const loadedItems =
-            Array.isArray(data.items)
-              ? data.items
-              : [];
+            Array.isArray(
+              data.plans,
+            )
+              ? data.plans
+              : Array.isArray(
+                    data.items,
+                  )
+                ? data.items
+                : [];
 
-          setItems(loadedItems);
+          setItems(
+            loadedItems,
+          );
 
           if (
-            loadedItems.length > 0
+            service === "data"
           ) {
-            const firstDaily =
-              loadedItems.find(
+            const hasDaily =
+              loadedItems.some(
                 (item: BillItem) =>
-                  getPlanType(item) ===
-                  "daily",
+                  getPlanType(
+                    item,
+                  ) === "daily",
               );
 
-            setPlanTab(
-              firstDaily
-                ? "daily"
-                : "other",
-            );
+            const hasWeekly =
+              loadedItems.some(
+                (item: BillItem) =>
+                  getPlanType(
+                    item,
+                  ) === "weekly",
+              );
+
+            const hasMonthly =
+              loadedItems.some(
+                (item: BillItem) =>
+                  getPlanType(
+                    item,
+                  ) === "monthly",
+              );
+
+            if (hasDaily) {
+              setPlanTab(
+                "daily",
+              );
+            } else if (
+              hasWeekly
+            ) {
+              setPlanTab(
+                "weekly",
+              );
+            } else if (
+              hasMonthly
+            ) {
+              setPlanTab(
+                "monthly",
+              );
+            } else {
+              setPlanTab(
+                "other",
+              );
+            }
           }
         }
       } catch (err: any) {
@@ -415,65 +619,103 @@ export default function ServiceModal({
     return () => {
       cancelled = true;
     };
-  }, [selectedBiller]);
+  }, [
+    selectedBiller,
+    service,
+  ]);
 
-  // ============================================================
-  // GROUP PLANS
-  // ============================================================
+  /*
+   * ============================================================
+   * GROUP DATA PLANS
+   * ============================================================
+   */
+  const groupedItems =
+    useMemo(() => {
+      const groups: Record<
+        PlanPeriod,
+        BillItem[]
+      > = {
+        daily: [],
+        weekly: [],
+        monthly: [],
+        other: [],
+      };
 
-  const groupedItems = useMemo(() => {
-    const groups = {
-      daily: [] as BillItem[],
-      weekly: [] as BillItem[],
-      monthly: [] as BillItem[],
-      other: [] as BillItem[],
-    };
+      for (const item of items) {
+        if (
+          getProviderAmount(item) <=
+          0
+        ) {
+          continue;
+        }
 
-    for (const item of items) {
-      const amount =
-        getProviderAmount(item);
+        const type =
+          getPlanType(item);
 
-      if (amount <= 0) continue;
+        groups[type].push(
+          item,
+        );
+      }
 
-      const type =
-        getPlanType(item);
-
-      groups[type].push(item);
-    }
-
-    return groups;
-  }, [items]);
+      return groups;
+    }, [items]);
 
   const visibleItems =
-    groupedItems[planTab];
+    service === "data"
+      ? groupedItems[planTab]
+      : items.filter(
+          (item) =>
+            getProviderAmount(
+              item,
+            ) > 0,
+        );
 
-  // ============================================================
-  // SELECT ITEM
-  // ============================================================
-
-  function selectItem(item: BillItem) {
-    setSelectedItem(item);
-    setError("");
-  }
-
-  // ============================================================
-  // CUSTOMER VALUE
-  // ============================================================
-
-  const isPhoneService =
-    service === "airtime" ||
-    service === "data";
-
+  /*
+   * ============================================================
+   * CUSTOMER
+   * ============================================================
+   */
   const customerValue =
     isPhoneService
-      ? normalizePhone(phoneNumber)
+      ? normalizePhone(
+          phoneNumber,
+        )
       : customer.trim();
 
-  // ============================================================
-  // PAYMENT
-  // ============================================================
+  /*
+   * ============================================================
+   * PHONE VALIDATION
+   * ============================================================
+   */
+  const validPhone =
+    !isPhoneService ||
+    /^(?:\+?234|0)[0-9]{10}$/.test(
+      customerValue,
+    );
 
+  /*
+   * ============================================================
+   * SELECT PLAN
+   * ============================================================
+   */
+  function selectItem(
+    item: BillItem,
+  ) {
+    if (paying) return;
+
+    setSelectedItem(item);
+    setError("");
+    setSuccessMessage("");
+  }
+
+  /*
+   * ============================================================
+   * PAYMENT
+   * ============================================================
+   */
   async function handlePayment() {
+    if (paying) return;
+
     setError("");
     setSuccessMessage("");
 
@@ -486,7 +728,7 @@ export default function ServiceModal({
 
     if (!selectedItem) {
       setError(
-        "Please select a bill package.",
+        "Please select a plan.",
       );
       return;
     }
@@ -502,12 +744,22 @@ export default function ServiceModal({
 
     if (
       isPhoneService &&
-      !/^(?:\+?234|0)[0-9]{10}$/.test(
-        customerValue,
-      )
+      !validPhone
     ) {
       setError(
         "Please enter a valid Nigerian phone number.",
+      );
+      return;
+    }
+
+    const itemCode =
+      getItemCode(
+        selectedItem,
+      );
+
+    if (!itemCode) {
+      setError(
+        "The selected plan has no valid Flutterwave item code.",
       );
       return;
     }
@@ -517,24 +769,53 @@ export default function ServiceModal({
         selectedItem,
       );
 
-    if (providerAmount <= 0) {
+    if (
+      !Number.isFinite(
+        providerAmount,
+      ) ||
+      providerAmount <= 0
+    ) {
       setError(
-        "This Flutterwave plan does not have a valid provider price.",
+        "The selected plan has an invalid provider price.",
       );
       return;
     }
 
     const sellingPrice =
-      Number(
-        (
-          providerAmount +
-          MARKUP
-        ).toFixed(2),
+      getSellingPrice(
+        selectedItem,
       );
 
     if (
+      !Number.isFinite(
+        sellingPrice,
+      ) ||
+      sellingPrice <= 0
+    ) {
+      setError(
+        "Unable to determine the selling price.",
+      );
+      return;
+    }
+
+    /*
+     * This is only a UX check.
+     *
+     * The backend performs the authoritative
+     * wallet balance/debit check.
+     *
+     * Do NOT use `walletBalance > 0` as a
+     * requirement because a stale/undefined
+     * dashboard balance must not disable
+     * the Buy button.
+     */
+    if (
+      Number.isFinite(
+        walletBalance,
+      ) &&
       walletBalance > 0 &&
-      walletBalance < sellingPrice
+      walletBalance <
+        sellingPrice
     ) {
       setError(
         `Insufficient wallet balance. You need ${formatMoney(
@@ -550,14 +831,18 @@ export default function ServiceModal({
       /*
        * IMPORTANT:
        *
-       * provider_amount = Flutterwave price
-       * selling_price   = Flutterwave price + ₦50
+       * We send:
        *
-       * The backend will verify the provider amount
-       * against Flutterwave's catalogue again.
+       * provider_amount = Flutterwave catalogue price
+       * selling_price   = provider price + ₦50
+       *
+       * The backend verifies these again against
+       * Flutterwave's catalogue.
        */
-
-      const { data, error } =
+      const {
+        data,
+        error,
+      } =
         await supabase.functions.invoke(
           "flutterwave-bills",
           {
@@ -566,34 +851,30 @@ export default function ServiceModal({
 
               service,
 
+              country: "NG",
+
               biller_code:
                 selectedBiller,
 
               item_code:
-                getItemCode(
-                  selectedItem,
-                ),
+                itemCode,
 
               customer:
                 customerValue,
 
               /*
-               * This is the amount the customer
-               * actually pays.
-               */
-              selling_price:
-                sellingPrice,
-
-              /*
-               * This is what Flutterwave's
-               * catalogue says the plan costs.
+               * These are intentionally explicit.
+               * The server remains authoritative.
                */
               provider_amount:
                 providerAmount,
 
+              selling_price:
+                sellingPrice,
+
               /*
-               * Keep amount for compatibility
-               * with your current backend.
+               * Keep `amount` for compatibility
+               * with the current Edge Function.
                */
               amount:
                 sellingPrice,
@@ -602,7 +883,10 @@ export default function ServiceModal({
                 phone_number:
                   isPhoneService
                     ? customerValue
-                    : phoneNumber,
+                    : "",
+
+                customer:
+                  customerValue,
 
                 plan_name:
                   getItemName(
@@ -614,6 +898,17 @@ export default function ServiceModal({
                     selectedItem,
                   ),
 
+                period:
+                  getPlanType(
+                    selectedItem,
+                  ),
+
+                item_code:
+                  itemCode,
+
+                biller_code:
+                  selectedBiller,
+
                 provider_amount:
                   providerAmount,
 
@@ -621,7 +916,9 @@ export default function ServiceModal({
                   sellingPrice,
 
                 profit:
-                  MARKUP,
+                  getProfit(
+                    selectedItem,
+                  ),
               },
             },
           },
@@ -634,9 +931,24 @@ export default function ServiceModal({
         );
       }
 
-      if (!data?.success) {
+      if (!data) {
         throw new Error(
-          data?.error ||
+          "No response was received from the bill payment service.",
+        );
+      }
+
+      /*
+       * The backend returns success:true for both
+       * successful and pending transactions.
+       *
+       * Therefore do NOT reject a pending response
+       * just because it is not `successful`.
+       */
+      if (
+        data.success !== true
+      ) {
+        throw new Error(
+          data.error ||
             "Bill payment failed.",
         );
       }
@@ -646,27 +958,36 @@ export default function ServiceModal({
         "failed"
       ) {
         throw new Error(
-          data?.error ||
+          data.error ||
             "Bill payment failed.",
         );
       }
 
-      setSuccessMessage(
+      if (
         data.status ===
-          "pending"
-          ? "Payment is being verified."
-          : "Payment successful.",
-      );
+        "pending"
+      ) {
+        setSuccessMessage(
+          "Payment is being verified. Your wallet has been debited.",
+        );
+      } else {
+        setSuccessMessage(
+          "Payment successful.",
+        );
+      }
 
+      /*
+       * Pass the complete backend response
+       * back to Dashboard/parent.
+       */
       onSuccess?.(data);
 
       /*
-       * Give the transaction response a moment
-       * before closing the modal.
+       * Close after a short delay.
        */
-      setTimeout(() => {
+      window.setTimeout(() => {
         onClose();
-      }, 1000);
+      }, 1200);
     } catch (err: any) {
       console.error(
         "Bill payment error:",
@@ -682,18 +1003,19 @@ export default function ServiceModal({
     }
   }
 
-  if (!open) {
-    return null;
-  }
-
+  /*
+   * ============================================================
+   * DERIVED VALUES
+   * ============================================================
+   */
   const selectedProvider =
     billers.find(
       (biller) =>
-        String(
+        clean(
           biller.biller_code ??
-            biller.billerCode ??
-            "",
-        ) === selectedBiller,
+            biller.billerCode,
+        ) ===
+        selectedBiller,
     );
 
   const selectedProviderName =
@@ -711,39 +1033,85 @@ export default function ServiceModal({
       : 0;
 
   const sellingPrice =
-    providerAmount > 0
-      ? providerAmount +
-        MARKUP
+    selectedItem
+      ? getSellingPrice(
+          selectedItem,
+        )
       : 0;
+
+  const profit =
+    selectedItem
+      ? getProfit(
+          selectedItem,
+        )
+      : 0;
+
+  /*
+   * This controls whether the button is disabled.
+   *
+   * Notice that we DON'T include walletBalance here.
+   * The backend is responsible for the authoritative
+   * balance check.
+   */
+  const canPay =
+    !paying &&
+    !loadingBillers &&
+    !loadingItems &&
+    Boolean(
+      selectedBiller,
+    ) &&
+    Boolean(
+      selectedItem,
+    ) &&
+    Boolean(
+      customerValue,
+    ) &&
+    validPhone;
+
+  if (!open) {
+    return null;
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-0 sm:items-center sm:p-4">
       <div className="max-h-[95vh] w-full max-w-lg overflow-y-auto rounded-t-3xl bg-white shadow-xl sm:rounded-3xl">
+        {/* ================================================== */}
         {/* HEADER */}
-        <div className="sticky top-0 z-10 border-b bg-white px-5 py-4">
+        {/* ================================================== */}
+
+        <div className="sticky top-0 z-20 border-b bg-white px-5 py-4">
           <div className="flex items-center justify-between">
-            <div>
-              <div className="flex items-center gap-2">
-                <div className="rounded-xl bg-blue-50 p-2 text-blue-600">
-                  {SERVICE_ICONS[service]}
-                </div>
+            <div className="flex items-center gap-3">
+              <div className="rounded-xl bg-blue-50 p-2 text-blue-600">
+                {SERVICE_ICONS[
+                  service
+                ]}
+              </div>
 
-                <div>
-                  <h2 className="font-semibold text-gray-900">
-                    {SERVICE_LABELS[service]}
-                  </h2>
+              <div>
+                <h2 className="font-semibold text-gray-900">
+                  {
+                    SERVICE_LABELS[
+                      service
+                    ]
+                  }
+                </h2>
 
-                  <p className="text-xs text-gray-500">
-                    Select a provider and package
-                  </p>
-                </div>
+                <p className="text-xs text-gray-500">
+                  Select a provider and package
+                </p>
               </div>
             </div>
 
             <button
               type="button"
-              onClick={onClose}
-              className="rounded-full px-3 py-2 text-xl text-gray-400 hover:bg-gray-100"
+              onClick={
+                paying
+                  ? undefined
+                  : onClose
+              }
+              disabled={paying}
+              className="rounded-full px-3 py-2 text-xl text-gray-400 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50"
             >
               ×
             </button>
@@ -751,38 +1119,58 @@ export default function ServiceModal({
         </div>
 
         <div className="space-y-5 p-5">
+          {/* ================================================== */}
           {/* ERROR */}
+          {/* ================================================== */}
+
           {error && (
             <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
               {error}
             </div>
           )}
 
+          {/* ================================================== */}
           {/* SUCCESS */}
+          {/* ================================================== */}
+
           {successMessage && (
             <div className="flex items-center gap-2 rounded-xl border border-green-200 bg-green-50 p-3 text-sm text-green-700">
-              <CheckCircle2 className="h-4 w-4" />
-              {successMessage}
+              <CheckCircle2 className="h-4 w-4 shrink-0" />
+
+              <span>
+                {successMessage}
+              </span>
             </div>
           )}
 
+          {/* ================================================== */}
           {/* PROVIDER */}
+          {/* ================================================== */}
+
           <div className="space-y-2">
-            <Label>Provider</Label>
+            <Label>
+              Provider
+            </Label>
 
             <div className="relative">
               <select
-                value={selectedBiller}
-                onChange={(e) =>
+                value={
+                  selectedBiller
+                }
+                onChange={(e) => {
                   setSelectedBiller(
                     e.target.value,
-                  )
-                }
+                  );
+                  setSelectedItem(
+                    null,
+                  );
+                  setError("");
+                }}
                 disabled={
                   loadingBillers ||
                   paying
                 }
-                className="h-11 w-full appearance-none rounded-xl border bg-white px-3 pr-10 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                className="h-11 w-full appearance-none rounded-xl border bg-white px-3 pr-10 text-sm outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:bg-gray-100"
               >
                 <option value="">
                   {loadingBillers
@@ -793,11 +1181,13 @@ export default function ServiceModal({
                 {billers.map(
                   (biller) => {
                     const code =
-                      String(
+                      clean(
                         biller.biller_code ??
-                          biller.billerCode ??
-                          "",
+                          biller.billerCode,
                       );
+
+                    if (!code)
+                      return null;
 
                     return (
                       <option
@@ -817,7 +1207,10 @@ export default function ServiceModal({
             </div>
           </div>
 
+          {/* ================================================== */}
           {/* PHONE / CUSTOMER */}
+          {/* ================================================== */}
+
           <div className="space-y-2">
             <Label>
               {isPhoneService
@@ -838,6 +1231,8 @@ export default function ServiceModal({
                   : customer
               }
               onChange={(e) => {
+                setError("");
+
                 if (
                   isPhoneService
                 ) {
@@ -850,6 +1245,16 @@ export default function ServiceModal({
                   );
                 }
               }}
+              type={
+                isPhoneService
+                  ? "tel"
+                  : "text"
+              }
+              inputMode={
+                isPhoneService
+                  ? "tel"
+                  : "text"
+              }
               placeholder={
                 isPhoneService
                   ? "08012345678"
@@ -862,26 +1267,38 @@ export default function ServiceModal({
                       : "Enter account number"
               }
               disabled={paying}
+              className="h-11 rounded-xl"
             />
+
+            {isPhoneService &&
+              phoneNumber &&
+              !validPhone && (
+                <p className="text-xs text-red-600">
+                  Enter a valid Nigerian
+                  phone number.
+                </p>
+              )}
           </div>
 
-          {/* PLANS */}
-          {selectedBiller && (
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <Label>
-                  {selectedProviderName ||
-                    "Available Plans"}
-                </Label>
+          {/* ================================================== */}
+          {/* DATA PLAN TABS */}
+          {/* ================================================== */}
 
-                {loadingItems && (
-                  <Loader2 className="h-4 w-4 animate-spin text-blue-600" />
-                )}
-              </div>
+          {selectedBiller &&
+            service === "data" && (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <Label>
+                    {selectedProviderName ||
+                      "Data Plans"}
+                  </Label>
 
-              {service ===
-                "data" && (
-                <div className="flex gap-2 overflow-x-auto pb-1">
+                  {loadingItems && (
+                    <Loader2 className="h-4 w-4 animate-spin text-blue-600" />
+                  )}
+                </div>
+
+                <div className="grid grid-cols-4 gap-2">
                   {(
                     [
                       [
@@ -911,145 +1328,243 @@ export default function ServiceModal({
                           value
                         ].length;
 
-                      if (
-                        count ===
-                          0 &&
-                        value !==
-                          planTab
-                      ) {
-                        return null;
-                      }
-
                       return (
                         <button
-                          key={value}
+                          key={
+                            value
+                          }
                           type="button"
-                          onClick={() =>
+                          disabled={
+                            paying ||
+                            loadingItems ||
+                            count ===
+                              0
+                          }
+                          onClick={() => {
                             setPlanTab(
                               value,
-                            )
-                          }
-                          className={`whitespace-nowrap rounded-full px-4 py-2 text-sm font-medium ${
+                            );
+                            setSelectedItem(
+                              null,
+                            );
+                            setError("");
+                          }}
+                          className={`rounded-xl px-2 py-2 text-xs font-semibold transition ${
                             planTab ===
                             value
                               ? "bg-blue-600 text-white"
                               : "bg-gray-100 text-gray-600"
+                          } ${
+                            count ===
+                            0
+                              ? "cursor-not-allowed opacity-40"
+                              : "hover:bg-blue-100"
                           }`}
                         >
                           {label}
+
+                          <span className="ml-1 opacity-70">
+                            ({count})
+                          </span>
+                        </button>
+                      );
+                    },
+                  )}
+                </div>
+              </div>
+            )}
+
+          {/* ================================================== */}
+          {/* PLANS */}
+          {/* ================================================== */}
+
+          {selectedBiller && (
+            <div className="space-y-3">
+              {service !==
+                "data" && (
+                <div className="flex items-center justify-between">
+                  <Label>
+                    {selectedProviderName ||
+                      "Available Plans"}
+                  </Label>
+
+                  {loadingItems && (
+                    <Loader2 className="h-4 w-4 animate-spin text-blue-600" />
+                  )}
+                </div>
+              )}
+
+              {loadingItems ? (
+                <div className="flex items-center justify-center rounded-2xl bg-gray-50 p-8">
+                  <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
+                </div>
+              ) : visibleItems.length ===
+                0 ? (
+                <div className="rounded-xl bg-gray-50 p-5 text-center text-sm text-gray-500">
+                  No plans available for
+                  this provider.
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-3">
+                  {visibleItems.map(
+                    (
+                      item,
+                      index,
+                    ) => {
+                      const code =
+                        getItemCode(
+                          item,
+                        );
+
+                      /*
+                       * Some provider responses can
+                       * occasionally have an empty item
+                       * code. Avoid rendering an unusable
+                       * button.
+                       */
+                      if (!code) {
+                        return null;
+                      }
+
+                      const provider =
+                        getProviderAmount(
+                          item,
+                        );
+
+                      const selling =
+                        getSellingPrice(
+                          item,
+                        );
+
+                      const selected =
+                        selectedItem &&
+                        getItemCode(
+                          selectedItem,
+                        ) ===
+                          code;
+
+                      return (
+                        <button
+                          key={`${code}-${index}`}
+                          type="button"
+                          disabled={
+                            paying ||
+                            loadingItems
+                          }
+                          onClick={() =>
+                            selectItem(
+                              item,
+                            )
+                          }
+                          className={`rounded-2xl border p-4 text-left transition ${
+                            selected
+                              ? "border-blue-600 bg-blue-50 ring-2 ring-blue-100"
+                              : "border-gray-200 bg-white hover:border-blue-300 hover:bg-blue-50/30"
+                          } ${
+                            paying
+                              ? "cursor-not-allowed opacity-60"
+                              : "cursor-pointer"
+                          }`}
+                        >
+                          <div className="mb-2 flex items-start justify-between gap-2">
+                            <span className="text-sm font-semibold text-gray-900">
+                              {getItemName(
+                                item,
+                              )}
+                            </span>
+
+                            {selected && (
+                              <CheckCircle2 className="h-5 w-5 shrink-0 text-blue-600" />
+                            )}
+                          </div>
+
+                          {getValidity(
+                            item,
+                          ) && (
+                            <p className="mb-2 text-xs text-gray-500">
+                              {getValidity(
+                                item,
+                              )}
+                            </p>
+                          )}
+
+                          <div className="font-bold text-blue-600">
+                            {formatMoney(
+                              selling,
+                            )}
+                          </div>
+
+                          <div className="mt-1 space-y-0.5">
+                            <p className="text-[10px] text-gray-400">
+                              Provider:{" "}
+                              {formatMoney(
+                                provider,
+                              )}
+                            </p>
+
+                            <p className="text-[10px] text-green-600">
+                              +₦
+                              {getProfit(
+                                item,
+                              )}{" "}
+                              service charge
+                            </p>
+                          </div>
                         </button>
                       );
                     },
                   )}
                 </div>
               )}
-
-              {!loadingItems &&
-                visibleItems.length ===
-                  0 && (
-                  <div className="rounded-xl bg-gray-50 p-5 text-center text-sm text-gray-500">
-                    No plans available for this provider.
-                  </div>
-                )}
-
-              <div className="grid grid-cols-2 gap-3">
-                {visibleItems.map(
-                  (item) => {
-                    const code =
-                      getItemCode(
-                        item,
-                      );
-
-                    const provider =
-                      getProviderAmount(
-                        item,
-                      );
-
-                    const selling =
-                      provider +
-                      MARKUP;
-
-                    const selected =
-                      selectedItem &&
-                      getItemCode(
-                        selectedItem,
-                      ) === code;
-
-                    return (
-                      <button
-                        key={code}
-                        type="button"
-                        onClick={() =>
-                          selectItem(
-                            item,
-                          )
-                        }
-                        disabled={
-                          paying
-                        }
-                        className={`rounded-2xl border p-4 text-left transition ${
-                          selected
-                            ? "border-blue-600 bg-blue-50 ring-2 ring-blue-100"
-                            : "border-gray-200 bg-white hover:border-blue-300"
-                        }`}
-                      >
-                        <div className="mb-2 flex items-start justify-between gap-2">
-                          <span className="text-sm font-semibold text-gray-900">
-                            {getItemName(
-                              item,
-                            )}
-                          </span>
-
-                          {selected && (
-                            <CheckCircle2 className="h-5 w-5 shrink-0 text-blue-600" />
-                          )}
-                        </div>
-
-                        {getValidity(
-                          item,
-                        ) && (
-                          <p className="mb-2 text-xs text-gray-500">
-                            {getValidity(
-                              item,
-                            )}
-                          </p>
-                        )}
-
-                        <div className="font-bold text-blue-600">
-                          {formatMoney(
-                            selling,
-                          )}
-                        </div>
-
-                        <p className="mt-1 text-[10px] text-gray-400">
-                          Provider:{" "}
-                          {formatMoney(
-                            provider,
-                          )}
-                        </p>
-                      </button>
-                    );
-                  },
-                )}
-              </div>
             </div>
           )}
 
+          {/* ================================================== */}
           {/* PAYMENT SUMMARY */}
+          {/* ================================================== */}
+
           {selectedItem &&
             providerAmount > 0 && (
               <div className="rounded-2xl bg-gray-50 p-4">
-                <div className="mb-3 flex items-center justify-between">
+                <div className="mb-3 flex items-center justify-between gap-3">
                   <span className="text-sm text-gray-500">
                     Plan
                   </span>
 
-                  <span className="max-w-[60%] text-right text-sm font-medium text-gray-900">
+                  <span className="max-w-[65%] text-right text-sm font-medium text-gray-900">
                     {getItemName(
                       selectedItem,
                     )}
                   </span>
                 </div>
+
+                {isPhoneService && (
+                  <div className="mb-2 flex items-center justify-between gap-3">
+                    <span className="text-sm text-gray-500">
+                      Phone
+                    </span>
+
+                    <span className="text-sm font-medium text-gray-900">
+                      {customerValue}
+                    </span>
+                  </div>
+                )}
+
+                {getValidity(
+                  selectedItem,
+                ) && (
+                  <div className="mb-2 flex items-center justify-between gap-3">
+                    <span className="text-sm text-gray-500">
+                      Validity
+                    </span>
+
+                    <span className="text-sm text-gray-700">
+                      {getValidity(
+                        selectedItem,
+                      )}
+                    </span>
+                  </div>
+                )}
 
                 <div className="mb-2 flex items-center justify-between">
                   <span className="text-sm text-gray-500">
@@ -1070,7 +1585,7 @@ export default function ServiceModal({
 
                   <span className="text-sm text-gray-700">
                     {formatMoney(
-                      MARKUP,
+                      profit,
                     )}
                   </span>
                 </div>
@@ -1091,17 +1606,19 @@ export default function ServiceModal({
               </div>
             )}
 
+          {/* ================================================== */}
           {/* BUY BUTTON */}
+          {/* ================================================== */}
+
           <Button
             type="button"
-            onClick={handlePayment}
-            disabled={
-              paying ||
-              !selectedItem ||
-              !selectedBiller ||
-              !customerValue
+            onClick={
+              handlePayment
             }
-            className="h-12 w-full rounded-xl"
+            disabled={
+              !canPay
+            }
+            className="h-12 w-full rounded-xl text-base font-semibold"
           >
             {paying ? (
               <>
@@ -1109,7 +1626,7 @@ export default function ServiceModal({
                 Processing...
               </>
             ) : selectedItem ? (
-              `Pay ${formatMoney(
+              `Buy ${formatMoney(
                 sellingPrice,
               )}`
             ) : (
@@ -1117,7 +1634,13 @@ export default function ServiceModal({
             )}
           </Button>
 
-          
+          {/* ================================================== */}
+          {/* PRICE NOTE */}
+          {/* ================================================== */}
+
+          {selectedItem && (
+  
+          )}
         </div>
       </div>
     </div>

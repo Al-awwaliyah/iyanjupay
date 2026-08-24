@@ -21,6 +21,7 @@ import {
   Loader2,
   User,
   Building2,
+  Search,
 } from "lucide-react";
 
 import {
@@ -45,7 +46,9 @@ interface TransferModalProps {
     details: any
   ) => Promise<void>;
 
-  onTransferSuccess?: () => Promise<void> | void;
+  onTransferSuccess?: () =>
+    | Promise<void>
+    | void;
 }
 
 interface Bank {
@@ -83,7 +86,6 @@ type TransferType =
  */
 const IYANJUPAY_TRANSFER_FEE = 0;
 const BANK_TRANSFER_FEE = 10;
-const ELECTRONIC_FEE = 50;
 
 const TransferModal = ({
   isOpen,
@@ -93,7 +95,9 @@ const TransferModal = ({
   onTransferSuccess,
 }: TransferModalProps) => {
   const [transferType, setTransferType] =
-    useState<TransferType>("iyanjupay");
+    useState<TransferType>(
+      "iyanjupay"
+    );
 
   const [amount, setAmount] =
     useState("");
@@ -138,6 +142,9 @@ const TransferModal = ({
   const [bank, setBank] =
     useState("");
 
+  const [bankSearch, setBankSearch] =
+    useState("");
+
   const [accountNumber, setAccountNumber] =
     useState("");
 
@@ -150,7 +157,9 @@ const TransferModal = ({
   const [
     resolvedAccount,
     setResolvedAccount,
-  ] = useState<ResolvedAccount | null>(null);
+  ] = useState<ResolvedAccount | null>(
+    null
+  );
 
   const [resolving, setResolving] =
     useState(false);
@@ -162,6 +171,21 @@ const TransferModal = ({
     useToast();
 
   // ==========================================================
+  // FILTER BANKS
+  // ==========================================================
+
+  const filteredBanks = banks.filter(
+    (bankItem) =>
+      bankItem.name
+        .toLowerCase()
+        .includes(
+          bankSearch
+            .trim()
+            .toLowerCase()
+        )
+  );
+
+  // ==========================================================
   // TRANSFER PRICING
   // ==========================================================
 
@@ -170,21 +194,11 @@ const TransferModal = ({
 
   const transferFee =
     transferType === "iyanjupay"
-      
       ? IYANJUPAY_TRANSFER_FEE
       : transferAmount > 0
         ? BANK_TRANSFER_FEE
         : 0;
-        
-    const electronicFee =
-      transferType === "flutterwave" && transferAmount > 5000
-        ? ELECTRONIC_FEE
-        : 0;
-  
-    transferType === "iyanjupay" && transferAmount >= 10000
-      ? ELECTRONIC_FEE
-      : 0;
-  
+
   const totalCharged =
     transferAmount +
     transferFee;
@@ -450,10 +464,6 @@ const TransferModal = ({
         ""
       );
 
-    // --------------------------------------------------------
-    // WALLET ID NOT COMPLETE
-    // --------------------------------------------------------
-
     if (
       !/^\d{8}$/.test(
         cleanWalletId
@@ -472,16 +482,8 @@ const TransferModal = ({
       return;
     }
 
-    // --------------------------------------------------------
-    // REQUEST ID
-    // --------------------------------------------------------
-
     const requestId =
       ++iyanjuPayResolveRequestRef.current;
-
-    // --------------------------------------------------------
-    // SMALL DEBOUNCE
-    // --------------------------------------------------------
 
     const timeout =
       window.setTimeout(
@@ -509,17 +511,12 @@ const TransferModal = ({
                 }
               );
 
-            // Ignore old request
             if (
               requestId !==
               iyanjuPayResolveRequestRef.current
             ) {
               return;
             }
-
-            // ------------------------------------------------
-            // EDGE FUNCTION ERROR
-            // ------------------------------------------------
 
             if (error) {
               let message =
@@ -550,10 +547,6 @@ const TransferModal = ({
               );
             }
 
-            // ------------------------------------------------
-            // INVALID RESPONSE
-            // ------------------------------------------------
-
             if (
               !data?.success ||
               !data?.recipient
@@ -564,10 +557,6 @@ const TransferModal = ({
                   "IyanjuPay Wallet ID could not be verified."
               );
             }
-
-            // ------------------------------------------------
-            // VERIFY RECIPIENT
-            // ------------------------------------------------
 
             setResolvedIyanjuPayRecipient(
               {
@@ -684,6 +673,7 @@ const TransferModal = ({
 
     // Bank
     setBank("");
+    setBankSearch("");
     setAccountNumber("");
 
     setResolvedAccount(null);
@@ -700,10 +690,6 @@ const TransferModal = ({
     ) => {
       const walletId =
         iyanjupayWalletId.trim();
-
-      // --------------------------------------------------------
-      // WALLET ID FORMAT
-      // --------------------------------------------------------
 
       if (
         !/^\d{8}$/.test(
@@ -724,10 +710,6 @@ const TransferModal = ({
         return;
       }
 
-      // --------------------------------------------------------
-      // RECIPIENT VERIFICATION
-      // --------------------------------------------------------
-
       if (
         !resolvedIyanjuPayRecipient ||
         resolvedIyanjuPayRecipient
@@ -746,10 +728,6 @@ const TransferModal = ({
 
         return;
       }
-
-      // --------------------------------------------------------
-      // AMOUNT
-      // --------------------------------------------------------
 
       if (
         !Number.isFinite(
@@ -770,10 +748,6 @@ const TransferModal = ({
 
         return;
       }
-
-      // --------------------------------------------------------
-      // BALANCE
-      // --------------------------------------------------------
 
       if (
         transferAmount >
@@ -842,10 +816,6 @@ const TransferModal = ({
           data
         );
 
-        // ======================================================
-        // EDGE FUNCTION ERROR
-        // ======================================================
-
         if (error) {
           console.error(
             "IyanjuPay transfer function error:",
@@ -880,10 +850,6 @@ const TransferModal = ({
           );
         }
 
-        // ======================================================
-        // FAILED RESPONSE
-        // ======================================================
-
         if (
           !data ||
           data.success !== true
@@ -895,17 +861,9 @@ const TransferModal = ({
           );
         }
 
-        // ======================================================
-        // REFRESH WALLET
-        // ======================================================
-
         if (onTransferSuccess) {
           await onTransferSuccess();
         }
-
-        // ======================================================
-        // SUCCESS
-        // ======================================================
 
         toast({
           title:
@@ -978,10 +936,6 @@ const TransferModal = ({
     async () => {
       const transferAmount =
         Number(amount);
-
-      // --------------------------------------------------------
-      // AMOUNT
-      // --------------------------------------------------------
 
       if (
         !Number.isFinite(
@@ -1100,10 +1054,6 @@ const TransferModal = ({
           total,
       };
 
-      // ======================================================
-      // BANK TRANSFER
-      // ======================================================
-
       try {
         await onTransfer(
           transferAmount,
@@ -1169,6 +1119,7 @@ const TransferModal = ({
 
       // Bank
       setBank("");
+      setBankSearch("");
       setAccountNumber("");
 
       setResolvedAccount(null);
@@ -1331,8 +1282,6 @@ const TransferModal = ({
                         ""
                       );
 
-                    // Cancel any previous
-                    // verification request.
                     iyanjuPayResolveRequestRef.current++;
 
                     setIyanjuPayWalletId(
@@ -1342,10 +1291,6 @@ const TransferModal = ({
                       )
                     );
 
-                    // Important:
-                    // The previous recipient
-                    // must never remain verified
-                    // after the Wallet ID changes.
                     setResolvedIyanjuPayRecipient(
                       null
                     );
@@ -1365,10 +1310,6 @@ const TransferModal = ({
                   8-digit IyanjuPay Wallet ID.
                 </p>
 
-                {/* ------------------------------------------------ */}
-                {/* INVALID LENGTH */}
-                {/* ------------------------------------------------ */}
-
                 {iyanjupayWalletId.length >
                   0 &&
                   iyanjupayWalletId.length <
@@ -1378,10 +1319,6 @@ const TransferModal = ({
                       exactly 8 digits.
                     </p>
                   )}
-
-                {/* ------------------------------------------------ */}
-                {/* VERIFYING */}
-                {/* ------------------------------------------------ */}
 
                 {resolvingIyanjuPayRecipient &&
                   iyanjupayWalletId.length ===
@@ -1400,10 +1337,6 @@ const TransferModal = ({
 
                     </div>
                   )}
-
-                {/* ------------------------------------------------ */}
-                {/* VERIFIED RECIPIENT */}
-                {/* ------------------------------------------------ */}
 
                 {!resolvingIyanjuPayRecipient &&
                   resolvedIyanjuPayRecipient && (
@@ -1439,10 +1372,6 @@ const TransferModal = ({
                   </div>
                 )}
 
-                {/* ------------------------------------------------ */}
-                {/* FAILED VERIFICATION */}
-                {/* ------------------------------------------------ */}
-
                 {!resolvingIyanjuPayRecipient &&
                   iyanjupayWalletId.length ===
                     8 &&
@@ -1472,7 +1401,7 @@ const TransferModal = ({
             <div className="space-y-4">
 
               {/* ------------------------------------------------ */}
-              {/* BANK SELECT */}
+              {/* SEARCHABLE BANK SELECT */}
               {/* ------------------------------------------------ */}
 
               <div className="space-y-2">
@@ -1493,6 +1422,8 @@ const TransferModal = ({
                     );
 
                     setResolving(false);
+
+                    setBankSearch("");
                   }}
                   disabled={
                     banksLoading
@@ -1513,28 +1444,97 @@ const TransferModal = ({
 
                   <SelectContent>
 
-                    {banks.map(
-                      (
-                        bankItem
-                      ) => (
-                        <SelectItem
-                          key={
-                            bankItem.code
-                          }
+                    {/* SEARCH BAR */}
+
+                    <div
+                      className="sticky top-0 z-10 bg-white p-2 border-b"
+                      onPointerDown={(e) =>
+                        e.stopPropagation()
+                      }
+                      onKeyDown={(e) =>
+                        e.stopPropagation()
+                      }
+                    >
+                      <div className="relative">
+
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+
+                        <Input
                           value={
-                            bankItem.code
+                            bankSearch
                           }
-                        >
-                          {
-                            bankItem.name
+                          onChange={(e) =>
+                            setBankSearch(
+                              e.target.value
+                            )
                           }
-                        </SelectItem>
+                          onKeyDown={(e) =>
+                            e.stopPropagation()
+                          }
+                          placeholder="Search bank name..."
+                          className="pl-9"
+                          autoComplete="off"
+                        />
+
+                      </div>
+                    </div>
+
+                    {/* BANK RESULTS */}
+
+                    {banksLoading ? (
+                      <div className="flex items-center justify-center gap-2 p-4 text-sm text-gray-500">
+
+                        <Loader2 className="h-4 w-4 animate-spin" />
+
+                        Loading banks...
+
+                      </div>
+                    ) : filteredBanks.length >
+                      0 ? (
+                      filteredBanks.map(
+                        (
+                          bankItem
+                        ) => (
+                          <SelectItem
+                            key={
+                              bankItem.code
+                            }
+                            value={
+                              bankItem.code
+                            }
+                          >
+                            {
+                              bankItem.name
+                            }
+                          </SelectItem>
+                        )
                       )
+                    ) : (
+                      <div className="p-4 text-center text-sm text-gray-500">
+                        No bank found.
+                      </div>
                     )}
 
                   </SelectContent>
 
                 </Select>
+
+                {bankSearch.trim() &&
+                  !bank && (
+                  <p className="text-xs text-gray-500">
+                    Search results:
+                    {" "}
+                    {filteredBanks.length}
+                    {" "}
+                    bank
+                    {filteredBanks.length ===
+                    1
+                      ? ""
+                      : "s"}
+                    {" "}
+                    found.
+                  </p>
+                )}
 
               </div>
 
@@ -1678,8 +1678,6 @@ const TransferModal = ({
           {transferAmount > 0 && (
             <div className="rounded-lg border bg-gray-50 p-4 space-y-3">
 
-              {/* Transfer amount */}
-
               <div className="flex justify-between text-sm">
 
                 <span className="text-gray-600">
@@ -1698,8 +1696,6 @@ const TransferModal = ({
                 </span>
 
               </div>
-
-              {/* Transfer fee */}
 
               <div className="flex justify-between text-sm">
 
@@ -1720,8 +1716,6 @@ const TransferModal = ({
 
               </div>
 
-              {/* Total */}
-
               <div className="border-t pt-3 flex justify-between">
 
                 <span className="font-semibold">
@@ -1741,8 +1735,6 @@ const TransferModal = ({
 
               </div>
 
-              {/* Bank fee message */}
-
               {transferType ===
                 "bank" && (
                 <div className="rounded-md bg-yellow-50 border border-yellow-200 p-3">
@@ -1756,8 +1748,6 @@ const TransferModal = ({
 
                 </div>
               )}
-
-              {/* IyanjuPay free message */}
 
               {transferType ===
                 "iyanjupay" && (

@@ -24,7 +24,13 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-import { Loader2, Smartphone, Zap, Tv, Wifi } from "lucide-react";
+import {
+  Loader2,
+  Smartphone,
+  Zap,
+  Tv,
+  Wifi,
+} from "lucide-react";
 
 import { supabase } from "@/integrations/supabase/client";
 
@@ -51,10 +57,13 @@ interface BillProvider {
   code?: string;
   biller_code?: string;
   billerCode?: string;
+
   name?: string;
   biller_name?: string;
   billerName?: string;
+
   description?: string;
+
   [key: string]: any;
 }
 
@@ -69,11 +78,13 @@ interface BillPackage {
   description?: string;
 
   validity?: string;
+
   period?: PlanPeriod;
   period_label?: string;
 
   provider_amount: number;
   selling_price: number;
+
   profit?: number;
   markup?: number;
 
@@ -88,25 +99,28 @@ interface BillPackage {
 
 interface ServiceModalProps {
   open: boolean;
-  onOpenChange: (open: boolean) => void;
 
-  service: ServiceType;
+  onOpenChange:
+    (open: boolean) => void;
+
+  service:
+    ServiceType;
 
   /**
-   * Existing parent flow:
+   * The parent should invoke the Edge Function using
+   * these details.
    *
-   * onPurchase(finalAmount, details)
-   *
-   * The parent remains responsible for invoking the actual
-   * Flutterwave bills Edge Function.
+   * The backend remains authoritative for the amount.
    */
   onPurchase: (
     amount: number,
     details: {
       service: ServiceType;
+
       country: string;
 
       biller_code: string;
+
       item_code: string;
 
       customer: string;
@@ -114,15 +128,21 @@ interface ServiceModalProps {
       phoneNumber?: string;
 
       meterNumber?: string;
+
       smartcardNumber?: string;
+
       accountNumber?: string;
 
       plan_name?: string;
+
       plan_validity?: string;
+
       period?: PlanPeriod;
+
       period_label?: string;
 
       provider_amount?: number;
+
       selling_price?: number;
 
       provider_type?: string | null;
@@ -131,16 +151,8 @@ interface ServiceModalProps {
     },
   ) => Promise<void> | void;
 
-  /**
-   * Optional initial provider.
-   *
-   * If omitted, providers are loaded automatically.
-   */
   initialBillerCode?: string;
 
-  /**
-   * Optional initial customer.
-   */
   initialCustomer?: string;
 }
 
@@ -154,11 +166,13 @@ const SERVICE_CONFIG: Record<
   ServiceType,
   {
     title: string;
+
     description: string;
 
     category: string;
 
     customerLabel: string;
+
     customerPlaceholder: string;
 
     customerType:
@@ -172,10 +186,12 @@ const SERVICE_CONFIG: Record<
 > = {
   airtime: {
     title: "Airtime",
+
     description:
       "Buy airtime for any supported network.",
 
-    category: "AIRTIME",
+    category:
+      "AIRTIME",
 
     customerLabel:
       "Phone Number",
@@ -186,15 +202,18 @@ const SERVICE_CONFIG: Record<
     customerType:
       "phone",
 
-    icon: <Smartphone className="h-5 w-5" />,
+    icon:
+      <Smartphone className="h-5 w-5" />,
   },
 
   data: {
     title: "Data",
+
     description:
       "Buy data bundles for any supported network.",
 
-    category: "MOBILEDATA",
+    category:
+      "MOBILEDATA",
 
     customerLabel:
       "Phone Number",
@@ -205,15 +224,18 @@ const SERVICE_CONFIG: Record<
     customerType:
       "phone",
 
-    icon: <Smartphone className="h-5 w-5" />,
+    icon:
+      <Smartphone className="h-5 w-5" />,
   },
 
   electricity: {
     title: "Electricity",
+
     description:
       "Pay your electricity bill.",
 
-    category: "UTILITYBILLS",
+    category:
+      "UTILITYBILLS",
 
     customerLabel:
       "Meter Number",
@@ -224,15 +246,18 @@ const SERVICE_CONFIG: Record<
     customerType:
       "meter",
 
-    icon: <Zap className="h-5 w-5" />,
+    icon:
+      <Zap className="h-5 w-5" />,
   },
 
   cable: {
     title: "Cable TV",
+
     description:
       "Pay your cable TV subscription.",
 
-    category: "CABLEBILLS",
+    category:
+      "CABLEBILLS",
 
     customerLabel:
       "Smartcard / Decoder Number",
@@ -243,15 +268,18 @@ const SERVICE_CONFIG: Record<
     customerType:
       "smartcard",
 
-    icon: <Tv className="h-5 w-5" />,
+    icon:
+      <Tv className="h-5 w-5" />,
   },
 
   internet: {
     title: "Internet",
+
     description:
       "Pay your internet subscription.",
 
-    category: "INTSERVICE",
+    category:
+      "INTSERVICE",
 
     customerLabel:
       "Account Number",
@@ -262,7 +290,8 @@ const SERVICE_CONFIG: Record<
     customerType:
       "account",
 
-    icon: <Wifi className="h-5 w-5" />,
+    icon:
+      <Wifi className="h-5 w-5" />,
   },
 };
 
@@ -275,14 +304,9 @@ const SERVICE_CONFIG: Record<
 function cleanString(
   value: unknown,
 ): string {
-  return String(value ?? "").trim();
-}
-
-function normalizeServiceName(
-  value: unknown,
-): string {
-  return cleanString(value)
-    .toLowerCase();
+  return String(
+    value ?? "",
+  ).trim();
 }
 
 function extractBillerCode(
@@ -305,7 +329,9 @@ function extractBillerName(
         biller?.billerName ??
         biller?.description,
     ) ||
-    extractBillerCode(biller)
+    extractBillerCode(
+      biller,
+    )
   );
 }
 
@@ -350,11 +376,11 @@ function extractProviderAmount(
     item?.price,
     item?.cost,
     item?.value,
-    item?.selling_price,
-    item?.sellingPrice,
   ];
 
-  for (const value of values) {
+  for (
+    const value of values
+  ) {
     if (
       value === null ||
       value === undefined ||
@@ -381,6 +407,26 @@ function extractProviderAmount(
   return null;
 }
 
+function extractSellingPrice(
+  item: any,
+): number | null {
+  const value =
+    Number(
+      item?.selling_price,
+    );
+
+  if (
+    Number.isFinite(value) &&
+    value > 0
+  ) {
+    return Number(
+      value.toFixed(2),
+    );
+  }
+
+  return null;
+}
+
 function extractValidity(
   item: any,
 ): string {
@@ -395,6 +441,12 @@ function extractValidity(
       "",
   );
 }
+
+type PlanPeriod =
+  | "daily"
+  | "weekly"
+  | "monthly"
+  | "other";
 
 function extractPeriod(
   item: any,
@@ -429,7 +481,9 @@ function extractPeriod(
     item?.productName,
   ]
     .map((value) =>
-      cleanString(value).toLowerCase(),
+      cleanString(
+        value,
+      ).toLowerCase(),
     )
     .filter(Boolean)
     .join(" ");
@@ -473,9 +527,14 @@ function formatNaira(
   return new Intl.NumberFormat(
     "en-NG",
     {
-      style: "currency",
-      currency: "NGN",
-      maximumFractionDigits: 0,
+      style:
+        "currency",
+
+      currency:
+        "NGN",
+
+      maximumFractionDigits:
+        0,
     },
   ).format(amount);
 }
@@ -527,71 +586,83 @@ export default function ServiceModal({
   const config =
     SERVICE_CONFIG[service];
 
-  /**
-   * ==========================================================
-   * STATE
-   * ==========================================================
-   */
-
   const [
     billers,
     setBillers,
-  ] = useState<BillProvider[]>([]);
+  ] =
+    useState<BillProvider[]>(
+      [],
+    );
 
   const [
     packages,
     setPackages,
-  ] = useState<BillPackage[]>([]);
+  ] =
+    useState<BillPackage[]>(
+      [],
+    );
 
   const [
     selectedBillerCode,
     setSelectedBillerCode,
-  ] = useState(
-    initialBillerCode ?? "",
-  );
+  ] =
+    useState(
+      initialBillerCode ??
+        "",
+    );
 
   const [
     selectedItemCode,
     setSelectedItemCode,
-  ] = useState("");
+  ] =
+    useState("");
 
   const [
     customer,
     setCustomer,
-  ] = useState(
-    initialCustomer ?? "",
-  );
+  ] =
+    useState(
+      initialCustomer ??
+        "",
+    );
 
   const [
     planTab,
     setPlanTab,
-  ] = useState<
-    PlanPeriod
-  >("daily");
+  ] =
+    useState<PlanPeriod>(
+      service === "data"
+        ? "daily"
+        : "other",
+    );
 
   const [
     loadingBillers,
     setLoadingBillers,
-  ] = useState(false);
+  ] =
+    useState(false);
 
   const [
     loadingPackages,
     setLoadingPackages,
-  ] = useState(false);
+  ] =
+    useState(false);
 
   const [
     submitting,
     setSubmitting,
-  ] = useState(false);
+  ] =
+    useState(false);
 
   const [
     error,
     setError,
-  ] = useState("");
+  ] =
+    useState("");
 
   /**
    * ==========================================================
-   * RESET WHEN SERVICE CHANGES
+   * RESET
    * ==========================================================
    */
 
@@ -601,16 +672,21 @@ export default function ServiceModal({
     }
 
     setBillers([]);
+
     setPackages([]);
 
     setSelectedBillerCode(
-      initialBillerCode ?? "",
+      initialBillerCode ??
+        "",
     );
 
-    setSelectedItemCode("");
+    setSelectedItemCode(
+      "",
+    );
 
     setCustomer(
-      initialCustomer ?? "",
+      initialCustomer ??
+        "",
     );
 
     setPlanTab(
@@ -630,13 +706,6 @@ export default function ServiceModal({
   /**
    * ==========================================================
    * LOAD BILLERS
-   * ==========================================================
-   *
-   * IMPORTANT:
-   *
-   * We use the biller code returned by Flutterwave.
-   *
-   * We NEVER invent the biller code based on the network name.
    * ==========================================================
    */
 
@@ -658,7 +727,8 @@ export default function ServiceModal({
       try {
         const {
           data,
-          error: invokeError,
+          error:
+            invokeError,
         } =
           await supabase.functions.invoke(
             "flutterwave-bills",
@@ -708,13 +778,12 @@ export default function ServiceModal({
           loadedBillers,
         );
 
-        /**
-         * If an initial biller exists and is still available,
-         * keep it.
-         */
         const initialExists =
           loadedBillers.some(
-            (biller: BillProvider) =>
+            (
+              biller:
+                BillProvider,
+            ) =>
               extractBillerCode(
                 biller,
               ) ===
@@ -731,14 +800,13 @@ export default function ServiceModal({
             initialBillerCode!,
           );
         } else {
-          /**
-           * Do not blindly select a provider when the user has
-           * not selected one. This prevents the wrong provider
-           * code from being submitted.
-           */
-          setSelectedBillerCode("");
+          setSelectedBillerCode(
+            "",
+          );
         }
-      } catch (err: any) {
+      } catch (
+        err: any
+      ) {
         if (
           cancelled
         ) {
@@ -780,28 +848,7 @@ export default function ServiceModal({
 
   /**
    * ==========================================================
-   * LOAD ITEMS
-   * ==========================================================
-   *
-   * CRITICAL FIX:
-   *
-   * The service MUST be included.
-   *
-   * Previous implementation could call:
-   *
-   * {
-   *   action: "items",
-   *   biller_code
-   * }
-   *
-   * but the backend now intentionally requires:
-   *
-   * {
-   *   action: "items",
-   *   service,
-   *   biller_code
-   * }
-   *
+   * LOAD PACKAGES
    * ==========================================================
    */
 
@@ -811,7 +858,11 @@ export default function ServiceModal({
       !selectedBillerCode
     ) {
       setPackages([]);
-      setSelectedItemCode("");
+
+      setSelectedItemCode(
+        "",
+      );
+
       return;
     }
 
@@ -826,12 +877,16 @@ export default function ServiceModal({
       setError("");
 
       setPackages([]);
-      setSelectedItemCode("");
+
+      setSelectedItemCode(
+        "",
+      );
 
       try {
         const {
           data,
-          error: invokeError,
+          error:
+            invokeError,
         } =
           await supabase.functions.invoke(
             "flutterwave-bills",
@@ -872,10 +927,6 @@ export default function ServiceModal({
           return;
         }
 
-        /**
-         * Prefer the already-enriched `packages` returned by
-         * the Edge Function.
-         */
         const loadedPackages =
           Array.isArray(
             data?.packages,
@@ -883,9 +934,6 @@ export default function ServiceModal({
             ? data.packages
             : [];
 
-        /**
-         * Only retain packages with valid item codes.
-         */
         const validPackages =
           loadedPackages.filter(
             (item: any) =>
@@ -899,7 +947,9 @@ export default function ServiceModal({
         setPackages(
           validPackages,
         );
-      } catch (err: any) {
+      } catch (
+        err: any
+      ) {
         if (
           cancelled
         ) {
@@ -941,24 +991,7 @@ export default function ServiceModal({
 
   /**
    * ==========================================================
-   * DATA PLAN GROUPS
-   * ==========================================================
-   *
-   * IMPORTANT:
-   *
-   * DATA:
-   *   Daily
-   *   Weekly
-   *   Monthly
-   *   Other
-   *
-   * NON-DATA:
-   *
-   * We DO NOT filter them using `planTab`.
-   *
-   * This fixes the previous bug where Airtime,
-   * Electricity, Cable and Internet could disappear because
-   * their period was "other" while the UI was on "daily".
+   * DATA GROUPS
    * ==========================================================
    */
 
@@ -1013,23 +1046,15 @@ export default function ServiceModal({
 
   const visiblePackages =
     useMemo(() => {
-      /**
-       * NON-DATA SERVICES:
-       *
-       * Show every valid package.
-       */
       if (
         service !== "data"
       ) {
         return packages;
       }
 
-      /**
-       * DATA SERVICES:
-       *
-       * Filter according to the selected tab.
-       */
-      switch (planTab) {
+      switch (
+        planTab
+      ) {
         case "daily":
           return dailyPlans;
 
@@ -1039,7 +1064,6 @@ export default function ServiceModal({
         case "monthly":
           return monthlyPlans;
 
-        case "other":
         default:
           return otherPlans;
       }
@@ -1068,7 +1092,8 @@ export default function ServiceModal({
               item,
             ) ===
             selectedItemCode,
-        ) ?? null,
+        ) ??
+        null,
       [
         packages,
         selectedItemCode,
@@ -1077,7 +1102,7 @@ export default function ServiceModal({
 
   /**
    * ==========================================================
-   * SELECTED PROVIDER
+   * SELECTED BILLER
    * ==========================================================
    */
 
@@ -1090,7 +1115,8 @@ export default function ServiceModal({
               biller,
             ) ===
             selectedBillerCode,
-        ) ?? null,
+        ) ??
+        null,
       [
         billers,
         selectedBillerCode,
@@ -1113,7 +1139,8 @@ export default function ServiceModal({
       }
 
       if (
-        service === "airtime" ||
+        service ===
+          "airtime" ||
         service === "data"
       ) {
         const cleaned =
@@ -1139,21 +1166,24 @@ export default function ServiceModal({
       }
 
       if (
-        service === "electricity" &&
+        service ===
+          "electricity" &&
         value.length < 5
       ) {
         return "Enter a valid meter number.";
       }
 
       if (
-        service === "cable" &&
+        service ===
+          "cable" &&
         value.length < 5
       ) {
         return "Enter a valid smartcard or decoder number.";
       }
 
       if (
-        service === "internet" &&
+        service ===
+          "internet" &&
         value.length < 3
       ) {
         return "Enter a valid internet account number.";
@@ -1167,29 +1197,23 @@ export default function ServiceModal({
 
   /**
    * ==========================================================
-   * SUBMIT
+   * PURCHASE
    * ==========================================================
    */
 
   async function handlePurchase() {
     setError("");
 
-    /**
-     * Provider is mandatory.
-     */
     if (
       !selectedBillerCode
     ) {
       setError(
         "Please select a bill provider.",
       );
+
       return;
     }
 
-    /**
-     * Package is mandatory because the Edge Function requires
-     * an item_code for every bill payment.
-     */
     if (
       !selectedItemCode ||
       !selectedPackage
@@ -1197,18 +1221,17 @@ export default function ServiceModal({
       setError(
         "Please select a bill package.",
       );
+
       return;
     }
 
-    /**
-     * Customer identifier is mandatory.
-     */
     if (
       !customer.trim()
     ) {
       setError(
         `Please enter your ${config.customerLabel.toLowerCase()}.`,
       );
+
       return;
     }
 
@@ -1218,22 +1241,19 @@ export default function ServiceModal({
       setError(
         customerError,
       );
+
       return;
     }
 
     setSubmitting(true);
 
     try {
-      /**
-       * Normalize phone numbers before sending them to the
-       * parent. The Edge Function also normalizes them again,
-       * so the backend remains authoritative.
-       */
       let finalCustomer =
         customer.trim();
 
       if (
-        service === "airtime" ||
+        service ===
+          "airtime" ||
         service === "data"
       ) {
         finalCustomer =
@@ -1242,22 +1262,13 @@ export default function ServiceModal({
           );
       }
 
-      /**
-       * IMPORTANT:
-       *
-       * The frontend does NOT calculate the final customer
-       * selling price.
-       *
-       * The backend owns:
-       *
-       * provider amount
-       * + ₦50 DATA markup
-       * = selling price
-       *
-       * We only pass the catalogue information through.
-       */
       const providerAmount =
         extractProviderAmount(
+          selectedPackage,
+        );
+
+      const sellingPrice =
+        extractSellingPrice(
           selectedPackage,
         );
 
@@ -1286,7 +1297,8 @@ export default function ServiceModal({
           ? (
               selectedPackage.period_label ??
               (
-                period === "daily"
+                period ===
+                "daily"
                   ? "Daily"
                   : period ===
                       "weekly"
@@ -1300,58 +1312,43 @@ export default function ServiceModal({
           : "Other";
 
       /**
-       * This is intentionally passed as the amount argument
-       * expected by the existing parent.
+       * IMPORTANT:
        *
-       * The parent MUST NOT trust this value for the actual
-       * debit. The Edge Function calculates the authoritative
-       * selling price from Flutterwave's catalogue.
+       * This amount is only passed to the existing parent
+       * interface.
        *
-       * If the catalogue already contains selling_price from
-       * the Edge Function, use it; otherwise use provider
-       * amount as a display/fallback value.
+       * It is NOT trusted by the Edge Function.
+       *
+       * The Edge Function fetches Flutterwave again and
+       * calculates the authoritative selling price.
        */
       const displayAmount =
-        Number(
-          selectedPackage
-            ?.selling_price ??
-            providerAmount ??
-            0,
-        );
+        sellingPrice ??
+        providerAmount ??
+        0;
 
       await onPurchase(
         displayAmount,
         {
           service,
 
-          country: "NG",
+          country:
+            "NG",
 
-          /**
-           * CRITICAL:
-           * Use the exact Flutterwave biller code.
-           */
           biller_code:
             selectedBillerCode,
 
-          /**
-           * CRITICAL:
-           * Use the exact Flutterwave item code.
-           */
           item_code:
             selectedItemCode,
 
-          /**
-           * Backend accepts `customer`.
-           */
           customer:
             finalCustomer,
 
-          /**
-           * Convenience fields for the existing UI/parent.
-           */
           phoneNumber:
-            service === "airtime" ||
-            service === "data"
+            service ===
+              "airtime" ||
+            service ===
+              "data"
               ? finalCustomer
               : undefined,
 
@@ -1367,7 +1364,8 @@ export default function ServiceModal({
               : undefined,
 
           accountNumber:
-            service === "internet"
+            service ===
+            "internet"
               ? finalCustomer
               : undefined,
 
@@ -1382,26 +1380,16 @@ export default function ServiceModal({
           period_label:
             periodLabel,
 
-          /**
-           * These are informational only.
-           *
-           * The Edge Function fetches Flutterwave's catalogue
-           * again and calculates the authoritative amount.
-           */
           provider_amount:
             providerAmount ??
             undefined,
 
           selling_price:
-            Number(
-              selectedPackage
-                ?.selling_price ??
-                0,
-            ) || undefined,
+            sellingPrice ??
+            undefined,
 
           provider_type:
-            selectedPackage
-              ?.provider_type ??
+            selectedPackage.provider_type ??
             null,
 
           provider:
@@ -1418,24 +1406,13 @@ export default function ServiceModal({
             planName,
 
           description:
-            selectedPackage
-              ?.description ??
+            selectedPackage.description ??
             planName,
         },
       );
-
-      /**
-       * Do not close the modal here.
-       *
-       * The parent can decide whether the transaction was:
-       *
-       * successful
-       * pending
-       * failed/refunded
-       *
-       * and then close the modal appropriately.
-       */
-    } catch (err: any) {
+    } catch (
+      err: any
+    ) {
       console.error(
         "Bill purchase failed:",
         err,
@@ -1461,7 +1438,9 @@ export default function ServiceModal({
   return (
     <Dialog
       open={open}
-      onOpenChange={(value) => {
+      onOpenChange={(
+        value,
+      ) => {
         if (
           submitting
         ) {
@@ -1489,9 +1468,6 @@ export default function ServiceModal({
         </DialogHeader>
 
         <div className="space-y-5">
-          {/* ================================================= */}
-          {/* ERROR */}
-          {/* ================================================= */}
 
           {error && (
             <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
@@ -1590,8 +1566,7 @@ export default function ServiceModal({
                 event,
               ) => {
                 setCustomer(
-                  event.target
-                    .value,
+                  event.target.value,
                 );
 
                 setError("");
@@ -1616,12 +1591,14 @@ export default function ServiceModal({
               </p>
             )}
 
-            {(service ===
-              "electricity" ||
+            {(
+              service ===
+                "electricity" ||
               service ===
                 "cable" ||
               service ===
-                "internet") && (
+                "internet"
+            ) && (
               <p className="text-xs text-muted-foreground">
                 Your details will be
                 verified with the
@@ -1632,7 +1609,7 @@ export default function ServiceModal({
           </div>
 
           {/* ================================================= */}
-          {/* DATA PERIOD TABS */}
+          {/* DATA PERIOD */}
           {/* ================================================= */}
 
           {service ===
@@ -1643,91 +1620,58 @@ export default function ServiceModal({
               </Label>
 
               <div className="grid grid-cols-4 gap-1 rounded-lg bg-muted p-1">
-                <button
-                  type="button"
-                  onClick={() =>
-                    setPlanTab(
-                      "daily",
-                    )
-                  }
-                  disabled={
-                    submitting
-                  }
-                  className={`rounded-md px-2 py-2 text-xs font-medium transition ${
-                    planTab ===
-                    "daily"
-                      ? "bg-background shadow"
-                      : "text-muted-foreground"
-                  }`}
-                >
-                  Daily
-                </button>
 
-                <button
-                  type="button"
-                  onClick={() =>
-                    setPlanTab(
-                      "weekly",
-                    )
-                  }
-                  disabled={
-                    submitting
-                  }
-                  className={`rounded-md px-2 py-2 text-xs font-medium transition ${
-                    planTab ===
-                    "weekly"
-                      ? "bg-background shadow"
-                      : "text-muted-foreground"
-                  }`}
-                >
-                  Weekly
-                </button>
+                {(
+                  [
+                    "daily",
+                    "weekly",
+                    "monthly",
+                    "other",
+                  ] as PlanPeriod[]
+                ).map(
+                  (
+                    period,
+                  ) => (
+                    <button
+                      key={
+                        period
+                      }
+                      type="button"
+                      onClick={() =>
+                        setPlanTab(
+                          period,
+                        )
+                      }
+                      disabled={
+                        submitting
+                      }
+                      className={`rounded-md px-2 py-2 text-xs font-medium transition ${
+                        planTab ===
+                        period
+                          ? "bg-background shadow"
+                          : "text-muted-foreground"
+                      }`}
+                    >
+                      {period ===
+                      "daily"
+                        ? "Daily"
+                        : period ===
+                            "weekly"
+                          ? "Weekly"
+                          : period ===
+                              "monthly"
+                            ? "Monthly"
+                            : "Other"}
+                    </button>
+                  ),
+                )}
 
-                <button
-                  type="button"
-                  onClick={() =>
-                    setPlanTab(
-                      "monthly",
-                    )
-                  }
-                  disabled={
-                    submitting
-                  }
-                  className={`rounded-md px-2 py-2 text-xs font-medium transition ${
-                    planTab ===
-                    "monthly"
-                      ? "bg-background shadow"
-                      : "text-muted-foreground"
-                  }`}
-                >
-                  Monthly
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() =>
-                    setPlanTab(
-                      "other",
-                    )
-                  }
-                  disabled={
-                    submitting
-                  }
-                  className={`rounded-md px-2 py-2 text-xs font-medium transition ${
-                    planTab ===
-                    "other"
-                      ? "bg-background shadow"
-                      : "text-muted-foreground"
-                  }`}
-                >
-                  Other
-                </button>
               </div>
             </div>
           )}
 
           {/* ================================================= */}
-          {/* PACKAGE LIST */}
+          {/* PACKAGE */}
           {/* ================================================= */}
 
           <div className="space-y-2">
@@ -1761,6 +1705,7 @@ export default function ServiceModal({
               </div>
             ) : (
               <div className="grid max-h-72 grid-cols-2 gap-2 overflow-y-auto pr-1">
+
                 {visiblePackages.map(
                   (
                     item,
@@ -1782,10 +1727,9 @@ export default function ServiceModal({
                       );
 
                     const sellingPrice =
-                      Number(
-                        item?.selling_price ??
-                          0,
-                      ) || null;
+                      extractSellingPrice(
+                        item,
+                      );
 
                     const validity =
                       extractValidity(
@@ -1818,6 +1762,7 @@ export default function ServiceModal({
                       >
                         <div className="flex items-start justify-between gap-2">
                           <div className="min-w-0">
+
                             <p className="truncate text-sm font-semibold">
                               {name}
                             </p>
@@ -1827,6 +1772,7 @@ export default function ServiceModal({
                                 {validity}
                               </p>
                             )}
+
                           </div>
 
                           {isSelected && (
@@ -1837,6 +1783,7 @@ export default function ServiceModal({
                         </div>
 
                         <div className="mt-2">
+
                           <p className="text-sm font-bold">
                             {formatNaira(
                               sellingPrice ??
@@ -1848,16 +1795,16 @@ export default function ServiceModal({
                           {service ===
                             "data" && (
                             <p className="mt-0.5 text-[11px] text-muted-foreground">
-                              Includes ₦50
-                              service
-                              charge
+                              Includes ₦50 service charge
                             </p>
                           )}
+
                         </div>
                       </button>
                     );
                   },
                 )}
+
               </div>
             )}
           </div>
@@ -1868,7 +1815,9 @@ export default function ServiceModal({
 
           {selectedPackage && (
             <div className="rounded-xl border bg-muted/30 p-4">
+
               <div className="flex items-center justify-between gap-3">
+
                 <div>
                   <p className="text-sm font-semibold">
                     {extractItemName(
@@ -1887,57 +1836,57 @@ export default function ServiceModal({
 
                 <p className="text-lg font-bold">
                   {formatNaira(
-                    Number(
-                      selectedPackage
-                        .selling_price ??
-                        extractProviderAmount(
-                          selectedPackage,
-                        ) ??
-                        0,
-                    ),
+                    extractSellingPrice(
+                      selectedPackage,
+                    ) ??
+                      extractProviderAmount(
+                        selectedPackage,
+                      ) ??
+                      0,
                   )}
                 </p>
+
               </div>
 
               {service ===
                 "data" && (
-                <div className="mt-3 flex items-center justify-between border-t pt-3 text-xs">
-                  <span className="text-muted-foreground">
-                    Provider price
-                  </span>
+                <>
+                  <div className="mt-3 flex items-center justify-between border-t pt-3 text-xs">
 
-                  <span>
-                    {formatNaira(
-                      Number(
-                        selectedPackage
-                          .provider_amount ??
-                          extractProviderAmount(
-                            selectedPackage,
-                          ) ??
+                    <span className="text-muted-foreground">
+                      Provider price
+                    </span>
+
+                    <span>
+                      {formatNaira(
+                        extractProviderAmount(
+                          selectedPackage,
+                        ) ??
                           0,
-                      ),
-                    )}
-                  </span>
-                </div>
+                      )}
+                    </span>
+
+                  </div>
+
+                  <div className="mt-1 flex items-center justify-between text-xs">
+
+                    <span className="text-muted-foreground">
+                      Service charge
+                    </span>
+
+                    <span>
+                      ₦50
+                    </span>
+
+                  </div>
+                </>
               )}
 
-              {service ===
-                "data" && (
-                <div className="mt-1 flex items-center justify-between text-xs">
-                  <span className="text-muted-foreground">
-                    Service charge
-                  </span>
-
-                  <span>
-                    ₦50
-                  </span>
-                </div>
-              )}
             </div>
           )}
 
           {/* ================================================= */}
-          {/* PURCHASE BUTTON */}
+          {/* PAY */}
           {/* ================================================= */}
 
           <Button
@@ -1968,20 +1917,20 @@ export default function ServiceModal({
               <>
                 Pay{" "}
                 {formatNaira(
-                  Number(
-                    selectedPackage
-                      .selling_price ??
-                      extractProviderAmount(
-                        selectedPackage,
-                      ) ??
-                      0,
-                  ),
+                  extractSellingPrice(
+                    selectedPackage,
+                  ) ??
+                    extractProviderAmount(
+                      selectedPackage,
+                    ) ??
+                    0,
                 )}
               </>
             ) : (
               "Continue"
             )}
           </Button>
+
         </div>
       </DialogContent>
     </Dialog>

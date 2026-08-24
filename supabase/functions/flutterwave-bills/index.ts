@@ -21,22 +21,36 @@ import {
  * PRICING:
  *
  * DATA:
- *   Flutterwave provider amount + ₦50 markup
+ *   Provider amount + ₦50 markup
  *
  * OTHER SERVICES:
- *   Flutterwave provider amount
+ *   Provider amount
  *
- * IMPORTANT:
- *   The frontend is NEVER trusted for pricing.
+ * SECURITY:
  *
- *   The server always:
+ * The frontend is NEVER trusted for:
+ *   - provider price
+ *   - provider amount
+ *   - biller price
+ *   - markup
+ *
+ * The server:
  *
  *   1. Fetches Flutterwave catalogue
  *   2. Finds the selected item
- *   3. Reads the provider price
- *   4. Calculates the customer selling price
- *   5. Debits the customer's wallet
- *   6. Sends ONLY provider amount to Flutterwave
+ *   3. Reads provider amount
+ *   4. Calculates customer selling price
+ *   5. Validates customer where required
+ *   6. Debits wallet
+ *   7. Sends ONLY provider amount to Flutterwave
+ *   8. Reconciles ambiguous transactions
+ *   9. Refunds definitive failures
+ *
+ * IMPORTANT:
+ *
+ * Flutterwave's bill payment amount must match the provider
+ * catalogue amount. Therefore the ₦50 DATA markup is NOT sent
+ * to Flutterwave.
  *
  * ============================================================
  */
@@ -57,17 +71,35 @@ const SUPPORTED_SERVICES: ServiceType[] = [
 ];
 
 /**
- * Data markup only.
+ * ============================================================
+ * PRICING
+ * ============================================================
  */
+
 const DATA_PLAN_MARKUP = 50;
 
-const SERVICE_CATEGORY_MAP: Record<ServiceType, string> = {
+/**
+ * ============================================================
+ * FLUTTERWAVE CATEGORY MAP
+ * ============================================================
+ */
+
+const SERVICE_CATEGORY_MAP: Record<
+  ServiceType,
+  string
+> = {
   airtime: "AIRTIME",
   data: "MOBILEDATA",
   electricity: "UTILITYBILLS",
   cable: "CABLEBILLS",
   internet: "INTSERVICE",
 };
+
+/**
+ * ============================================================
+ * PROVIDER STATUS
+ * ============================================================
+ */
 
 const SUCCESS_STATUSES = new Set([
   "successful",
@@ -99,14 +131,17 @@ const PENDING_STATUSES = new Set([
  * ============================================================
  */
 
-function cleanString(value: unknown): string {
+function cleanString(
+  value: unknown,
+): string {
   return String(value ?? "").trim();
 }
 
 function normalizeService(
   value: unknown,
 ): ServiceType | null {
-  const service = cleanString(value).toLowerCase();
+  const service =
+    cleanString(value).toLowerCase();
 
   if (
     service === "airtime" ||
@@ -121,18 +156,32 @@ function normalizeService(
   return null;
 }
 
-function normalizeStatus(value: unknown): string {
+function normalizeStatus(
+  value: unknown,
+): string {
   return cleanString(value).toLowerCase();
 }
 
-function isSuccessfulStatus(value: unknown): boolean {
+function isSuccessfulStatus(
+  value: unknown,
+): boolean {
   return SUCCESS_STATUSES.has(
     normalizeStatus(value),
   );
 }
 
-function isFailedStatus(value: unknown): boolean {
+function isFailedStatus(
+  value: unknown,
+): boolean {
   return FAILED_STATUSES.has(
+    normalizeStatus(value),
+  );
+}
+
+function isPendingStatus(
+  value: unknown,
+): boolean {
+  return PENDING_STATUSES.has(
     normalizeStatus(value),
   );
 }
@@ -148,7 +197,8 @@ function normalizeAmount(
     return null;
   }
 
-  const amount = Number(value);
+  const amount =
+    Number(value);
 
   if (
     !Number.isFinite(amount) ||
@@ -164,13 +214,7 @@ function normalizeAmount(
 
 /**
  * ============================================================
- * FLUTTERWAVE ITEM EXTRACTION
- * ============================================================
- *
- * Flutterwave catalogue responses can differ between
- * bill providers.
- *
- * Therefore we intentionally support several field names.
+ * ITEM EXTRACTION
  * ============================================================
  */
 
@@ -182,7 +226,6 @@ function extractAmount(
     item?.price,
     item?.cost,
     item?.value,
-    item?.fee,
     item?.selling_price,
     item?.sellingPrice,
   ];
@@ -238,8 +281,7 @@ function extractItemName(
         item?.productName ??
         item?.label ??
         item?.title,
-    ) ||
-    "Bill Package"
+    ) || "Bill Package"
   );
 }
 
@@ -255,6 +297,30 @@ function extractValidity(
       item?.subscription_period ??
       item?.data_validity ??
       item?.type ??
+      "",
+  );
+}
+
+/**
+ * ============================================================
+ * DATA TYPE
+ * ============================================================
+ *
+ * Flutterwave's data-bundle API can expose a `type` field.
+ *
+ * Preserve it from the catalogue and send it back during
+ * payment when available.
+ * ============================================================
+ */
+
+function extractProviderType(
+  item: any,
+): string {
+  return cleanString(
+    item?.type ??
+      item?.item_type ??
+      item?.service_type ??
+      item?.product_type ??
       "",
   );
 }
@@ -296,9 +362,6 @@ function classifyPlanPeriod(
     .filter(Boolean)
     .join(" ");
 
-  /**
-   * Check monthly first.
-   */
   if (
     /\bmonthly\b/.test(text) ||
     /\b30\s*days?\b/.test(text) ||
@@ -352,22 +415,7 @@ function periodLabel(
 
 /**
  * ============================================================
- * GENERIC PACKAGE ENRICHMENT
- * ============================================================
- *
- * THIS IS THE MAIN FIX.
- *
- * The old implementation treated every catalogue item as a
- * DATA plan.
- *
- * That is not correct for:
- *
- *   - Airtime
- *   - Electricity
- *   - Cable
- *   - Internet
- *
- * This function now supports ALL services.
+ * ENRICH BILL PACKAGE
  * ============================================================
  */
 
@@ -382,29 +430,14 @@ function enrichBillPackage(
   const itemCode =
     extractItemCode(item);
 
-  /**
-   * A catalogue item without an item code cannot be purchased.
-   */
   if (!itemCode) {
     return null;
   }
 
-  /**
-   * Some Flutterwave catalogue entries may not contain an
-   * amount because they represent a non-priced option.
-   *
-   * We still return them in the raw items list, but they are
-   * not returned as purchasable packages.
-   */
-  if (
-    providerAmount === null
-  ) {
+  if (providerAmount === null) {
     return null;
   }
 
-  /**
-   * Only DATA gets the ₦50 markup.
-   */
   const markup =
     service === "data"
       ? DATA_PLAN_MARKUP
@@ -432,15 +465,15 @@ function enrichBillPackage(
   const validity =
     extractValidity(item);
 
+  const providerType =
+    extractProviderType(item);
+
   const period =
     service === "data"
       ? classifyPlanPeriod(item)
       : "other";
 
   return {
-    /**
-     * Provider identifiers
-     */
     item_code:
       itemCode,
 
@@ -448,14 +481,8 @@ function enrichBillPackage(
       extractBillerCode(item) ||
       billerCode,
 
-    /**
-     * Service
-     */
     service,
 
-    /**
-     * Names
-     */
     name,
 
     item_name:
@@ -466,9 +493,6 @@ function enrichBillPackage(
         item?.description,
       ) || name,
 
-    /**
-     * Validity / period
-     */
     validity,
 
     period,
@@ -476,9 +500,6 @@ function enrichBillPackage(
     period_label:
       periodLabel(period),
 
-    /**
-     * Pricing
-     */
     provider_amount:
       providerAmount,
 
@@ -493,8 +514,11 @@ function enrichBillPackage(
       "NGN",
 
     /**
-     * Raw provider catalogue object.
+     * Preserve provider type for data bundles.
      */
+    provider_type:
+      providerType || null,
+
     provider_item:
       item,
   };
@@ -502,37 +526,7 @@ function enrichBillPackage(
 
 /**
  * ============================================================
- * BUILD BILL CATALOGUE
- * ============================================================
- *
- * Works for ALL supported services.
- *
- * Data:
- *   plans
- *   daily
- *   weekly
- *   monthly
- *   other
- *
- * Airtime:
- *   packages
- *   plans
- *   other
- *
- * Electricity:
- *   packages
- *   plans
- *   other
- *
- * Cable:
- *   packages
- *   plans
- *   other
- *
- * Internet:
- *   packages
- *   plans
- *   other
+ * BUILD CATALOGUE
  * ============================================================
  */
 
@@ -548,7 +542,7 @@ function buildBillCatalogue(
           item,
           billerCode,
           service,
-        )
+        ),
       )
       .filter(Boolean);
 
@@ -579,9 +573,6 @@ function buildBillCatalogue(
   return {
     packages,
 
-    /**
-     * Alias maintained for existing ServiceModal.
-     */
     plans:
       packages,
 
@@ -650,6 +641,7 @@ function extractProviderStatus(
       data?.status ??
         data?.transaction_status ??
         data?.bill_status ??
+        data?.response_code ??
         body?.status,
     ) || "pending"
   );
@@ -736,15 +728,19 @@ async function updateTransaction(
     const {
       data,
       error,
-    } = await admin
-      .from("transactions")
-      .update(updates)
-      .eq("user_id", userId)
-      .eq(
-        "reference_number",
-        reference,
-      )
-      .select("id");
+    } =
+      await admin
+        .from("transactions")
+        .update(updates)
+        .eq(
+          "user_id",
+          userId,
+        )
+        .eq(
+          "reference_number",
+          reference,
+        )
+        .select("id");
 
     if (error) {
       console.error(
@@ -803,7 +799,10 @@ async function getLocalTransaction(
         metadata,
         created_at
       `)
-      .eq("user_id", userId)
+      .eq(
+        "user_id",
+        userId,
+      )
       .eq(
         "reference_number",
         reference,
@@ -833,6 +832,12 @@ async function refundBillTransaction(
     `REFUND_${reference}`;
 
   try {
+    /**
+     * The refund RPC must be idempotent.
+     *
+     * Therefore retrying the reconciliation endpoint will
+     * NOT credit the wallet twice.
+     */
     const {
       error,
     } =
@@ -897,7 +902,7 @@ async function refundBillTransaction(
 
 /**
  * ============================================================
- * FLUTTERWAVE BILL API
+ * FLUTTERWAVE API
  * ============================================================
  */
 
@@ -924,6 +929,16 @@ async function validateBillCustomer(
   );
 }
 
+async function fetchBillStatus(
+  reference: string,
+) {
+  return await flw(
+    `/bills/${encodeURIComponent(
+      reference,
+    )}?verbose=1`,
+  );
+}
+
 /**
  * ============================================================
  * CUSTOMER VALIDATION
@@ -937,6 +952,50 @@ function shouldValidateCustomer(
     service === "airtime" ||
     service === "data"
   );
+}
+
+/**
+ * ============================================================
+ * PHONE NORMALIZATION
+ * ============================================================
+ */
+
+function normalizeNigeriaPhone(
+  value: string,
+): string | null {
+  const phone =
+    value.replace(
+      /\s+/g,
+      "",
+    );
+
+  if (
+    /^\+234[0-9]{10}$/.test(
+      phone,
+    )
+  ) {
+    return phone;
+  }
+
+  if (
+    /^234[0-9]{10}$/.test(
+      phone,
+    )
+  ) {
+    return `+${phone}`;
+  }
+
+  if (
+    /^0[0-9]{10}$/.test(
+      phone,
+    )
+  ) {
+    return `+234${phone.slice(
+      1,
+    )}`;
+  }
+
+  return null;
 }
 
 /**
@@ -988,7 +1047,7 @@ Deno.serve(async (req) => {
   try {
     /**
      * ========================================================
-     * 2. AUTHENTICATION
+     * 2. AUTH
      * ========================================================
      */
 
@@ -1197,24 +1256,6 @@ Deno.serve(async (req) => {
      * ========================================================
      * 6. ITEMS
      * ========================================================
-     *
-     * FIXED:
-     *
-     * The previous implementation always used DATA
-     * enrichment.
-     *
-     * We now determine the service before building the
-     * catalogue.
-     *
-     * This allows:
-     *
-     *   Airtime
-     *   Data
-     *   Electricity
-     *   Cable
-     *   Internet
-     *
-     * to all return usable packages.
      */
 
     if (
@@ -1244,13 +1285,25 @@ Deno.serve(async (req) => {
       }
 
       /**
-       * If the frontend supplies service, use it.
+       * We require the service for the enriched catalogue.
        *
-       * If service is omitted, we still return raw items.
-       * This maintains compatibility with older clients.
+       * Defaulting to DATA can incorrectly apply the ₦50 markup
+       * to another service.
        */
-      const catalogueService =
-        service ?? "data";
+      if (!service) {
+        return json(
+          {
+            success: false,
+
+            error:
+              "service is required when loading bill items.",
+
+            supported_services:
+              SUPPORTED_SERVICES,
+          },
+          400,
+        );
+      }
 
       const result =
         await fetchBillItems(
@@ -1294,68 +1347,30 @@ Deno.serve(async (req) => {
           ? result.body.data
           : [];
 
-      /**
-       * Build a generic catalogue.
-       */
       const catalogue =
         buildBillCatalogue(
           rawItems,
           billerCode,
-          catalogueService,
+          service,
         );
-
-      console.log(
-        "Bill catalogue built:",
-        JSON.stringify({
-          service:
-            catalogueService,
-
-          biller_code:
-            billerCode,
-
-          raw_items:
-            rawItems.length,
-
-          packages:
-            catalogue.packages.length,
-
-          counts:
-            catalogue.counts,
-        }),
-      );
 
       return json({
         success: true,
 
-        service:
-          service,
+        service,
 
         biller_code:
           billerCode,
 
-        /**
-         * Original raw Flutterwave items.
-         */
         items:
           rawItems,
 
-        /**
-         * Generic purchasable packages.
-         *
-         * ALL services use this.
-         */
         packages:
           catalogue.packages,
 
-        /**
-         * Existing ServiceModal compatibility.
-         */
         plans:
           catalogue.plans,
 
-        /**
-         * Data-period tabs.
-         */
         daily:
           catalogue.daily,
 
@@ -1371,14 +1386,8 @@ Deno.serve(async (req) => {
         counts:
           catalogue.counts,
 
-        /**
-         * Data markup.
-         *
-         * Other services have markup = 0.
-         */
         markup:
-          catalogueService ===
-          "data"
+          service === "data"
             ? DATA_PLAN_MARKUP
             : 0,
 
@@ -1557,10 +1566,9 @@ Deno.serve(async (req) => {
        * Already successful.
        */
       if (
-        normalizeStatus(
+        isSuccessfulStatus(
           txn.status,
-        ) ===
-        "successful"
+        )
       ) {
         return json({
           success: true,
@@ -1568,7 +1576,7 @@ Deno.serve(async (req) => {
           reference,
 
           local_status:
-            txn.status,
+            "successful",
 
           provider_status:
             "successful",
@@ -1584,7 +1592,9 @@ Deno.serve(async (req) => {
       if (
         metadata.refunded ===
           true ||
-        metadata.refund_reference
+        Boolean(
+          metadata.refund_reference,
+        )
       ) {
         return json({
           success: true,
@@ -1615,15 +1625,17 @@ Deno.serve(async (req) => {
             "",
         );
 
+      /**
+       * Flutterwave bill status accepts the tx_ref/reference
+       * used when the bill was created.
+       */
       const flutterwaveReference =
         providerReference ||
         reference;
 
       const providerResult =
-        await flw(
-          `/bills/${encodeURIComponent(
-            flutterwaveReference,
-          )}?verbose=1`,
+        await fetchBillStatus(
+          flutterwaveReference,
         );
 
       console.log(
@@ -1641,7 +1653,7 @@ Deno.serve(async (req) => {
       );
 
       /**
-       * Provider unavailable.
+       * Provider unavailable:
        *
        * NEVER refund.
        */
@@ -1720,11 +1732,11 @@ Deno.serve(async (req) => {
               flutterwave_status:
                 providerBody,
 
-              reconciled_at:
-                new Date().toISOString(),
-
               reconciliation_required:
                 false,
+
+              reconciled_at:
+                new Date().toISOString(),
             },
           },
         );
@@ -1753,7 +1765,7 @@ Deno.serve(async (req) => {
       }
 
       /**
-       * FAILED
+       * FAILED / REVERSED
        */
       if (
         isFailedStatus(
@@ -1854,7 +1866,10 @@ Deno.serve(async (req) => {
                   true,
 
                 refund_error:
-                  refund.error,
+                  String(
+                    refund.error ??
+                      "Unknown refund error",
+                  ),
               },
             },
           );
@@ -2006,7 +2021,7 @@ Deno.serve(async (req) => {
 
     /**
      * ========================================================
-     * 9. PAYMENT / SERVICE
+     * 9. PAYMENT
      * ========================================================
      */
 
@@ -2227,17 +2242,12 @@ Deno.serve(async (req) => {
         "airtime" ||
       service === "data"
     ) {
-      customer =
-        customer.replace(
-          /\s+/g,
-          "",
+      const normalizedPhone =
+        normalizeNigeriaPhone(
+          customer,
         );
 
-      if (
-        !/^(?:\+?234|0)[0-9]{10}$/.test(
-          customer,
-        )
-      ) {
+      if (!normalizedPhone) {
         return json(
           {
             success: false,
@@ -2248,6 +2258,13 @@ Deno.serve(async (req) => {
           400,
         );
       }
+
+      /**
+       * Flutterwave testing/documentation expects +234 format
+       * for Nigerian airtime/data customer identifiers.
+       */
+      customer =
+        normalizedPhone;
     }
 
     if (
@@ -2397,7 +2414,7 @@ Deno.serve(async (req) => {
 
     /**
      * ========================================================
-     * 18. VERIFY ITEM BELONGS TO BILLER
+     * 18. VERIFY ITEM BILLER
      * ========================================================
      */
 
@@ -2495,7 +2512,7 @@ Deno.serve(async (req) => {
 
     /**
      * ========================================================
-     * 21. PLAN / PACKAGE DETAILS
+     * 21. PACKAGE DETAILS
      * ========================================================
      */
 
@@ -2506,6 +2523,11 @@ Deno.serve(async (req) => {
 
     const validity =
       extractValidity(
+        selectedItem,
+      );
+
+    const providerType =
+      extractProviderType(
         selectedItem,
       );
 
@@ -2594,18 +2616,6 @@ Deno.serve(async (req) => {
         validation.body
           ?.data ??
         null;
-    } else {
-      console.log(
-        "Skipping Flutterwave customer validation:",
-        {
-          service,
-
-          item_code:
-            itemCode,
-
-          customer,
-        },
-      );
     }
 
     /**
@@ -2661,6 +2671,10 @@ Deno.serve(async (req) => {
       plan_period_label:
         periodLabel(period),
 
+      provider_type:
+        providerType ||
+        null,
+
       provider_amount:
         providerAmount,
 
@@ -2683,18 +2697,8 @@ Deno.serve(async (req) => {
 
     /**
      * ========================================================
-     * 25. DEBIT CUSTOMER WALLET
+     * 25. DEBIT WALLET
      * ========================================================
-     *
-     * DATA:
-     *
-     *   provider = ₦500
-     *   customer = ₦550
-     *
-     * OTHER:
-     *
-     *   provider = ₦500
-     *   customer = ₦500
      */
 
     const {
@@ -2776,21 +2780,33 @@ Deno.serve(async (req) => {
 
         service,
 
-        phone:
-          customer,
+        customer,
       }),
     );
 
     /**
      * ========================================================
-     * 26. FLUTTERWAVE PAYMENT BODY
+     * 26. FLUTTERWAVE PAYMENT
      * ========================================================
      *
      * IMPORTANT:
      *
-     * Flutterwave receives providerAmount.
+     * Flutterwave gets providerAmount.
      *
-     * It NEVER receives sellingPrice.
+     * Flutterwave does NOT get sellingPrice.
+     *
+     * This is essential because Flutterwave requires the
+     * payment amount to match the bill item's amount.
+     *
+     * DATA:
+     *
+     *   Provider = ₦500
+     *   Customer = ₦550
+     *
+     * Flutterwave receives:
+     *
+     *   ₦500
+     * ========================================================
      */
 
     const providerPath =
@@ -2816,6 +2832,29 @@ Deno.serve(async (req) => {
       reference,
     };
 
+    /**
+     * ========================================================
+     * DATA TYPE FIX
+     * ========================================================
+     *
+     * Flutterwave's data bundle documentation specifies a
+     * `type` value for data bundle payments.
+     *
+     * We preserve the provider's catalogue type instead of
+     * inventing a value.
+     *
+     * Only send it when Flutterwave actually supplied it.
+     * ========================================================
+     */
+
+    if (
+      service === "data" &&
+      providerType
+    ) {
+      paymentBody.type =
+        providerType;
+    }
+
     const callbackUrl =
       Deno.env.get(
         "FLUTTERWAVE_BILL_CALLBACK_URL",
@@ -2839,6 +2878,10 @@ Deno.serve(async (req) => {
           customer,
 
         reference,
+
+        type:
+          paymentBody.type ??
+          null,
       }),
     );
 
@@ -2871,9 +2914,8 @@ Deno.serve(async (req) => {
       /**
        * Network failure is ambiguous.
        *
-       * NEVER refund here.
+       * NEVER refund automatically.
        */
-
       console.error(
         "Flutterwave payment request exception:",
         providerError,
@@ -3106,6 +3148,14 @@ Deno.serve(async (req) => {
      * ========================================================
      * 29. DEFINITIVE FAILURE
      * ========================================================
+     *
+     * A 4xx provider response is treated as a definitive
+     * rejection.
+     *
+     * A 5xx response is NOT automatically refunded because
+     * the provider may have accepted the transaction before
+     * the error reached us.
+     * ========================================================
      */
 
     const providerHttpStatus =
@@ -3142,7 +3192,9 @@ Deno.serve(async (req) => {
       );
 
       /**
-       * Refund exactly what customer paid.
+       * Refund the COMPLETE amount paid by the customer.
+       *
+       * For DATA this is provider amount + ₦50.
        */
       const refund =
         await refundBillTransaction(
@@ -3190,7 +3242,10 @@ Deno.serve(async (req) => {
                 true,
 
               refund_error:
-                refund.error,
+                String(
+                  refund.error ??
+                    "Unknown refund error",
+                ),
 
               reconciliation_required:
                 false,
@@ -3338,6 +3393,13 @@ Deno.serve(async (req) => {
      * ========================================================
      *
      * NEVER refund.
+     *
+     * This includes provider/network/5xx/unknown responses
+     * where Flutterwave's final state is not known.
+     *
+     * Flutterwave recommends querying the bill status endpoint
+     * for timeout/ambiguous bill payments. 
+     * ========================================================
      */
 
     await updateTransaction(

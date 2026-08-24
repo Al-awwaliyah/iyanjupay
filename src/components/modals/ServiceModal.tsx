@@ -1987,5 +1987,3 @@ export default function ServiceModal({
     </Dialog>
   );
 }
-
-export default ServiceModal;

@@ -921,40 +921,39 @@ const ProfilePage = ({
   // KYC LEVEL
   // ==========================================================
 
-  const getKYCLevelInfo =
-    (
-      level: number,
-    ) => {
-      switch (level) {
-        case 2:
-          return {
-            text:
-              "Verified (₦200,000 limit)",
+  const getKYCLevelInfo = (
+  level: number,
+) => {
+  switch (level) {
+    case 2:
+      return {
+        text:
+          "Verified (₦1,000,000 daily transfer limit)",
 
-            color:
-              "text-blue-100",
-          };
+        color:
+          "text-blue-100",
+      };
 
-        case 3:
-          return {
-            text:
-              "Premium (₦1,000,000 limit)",
+    case 3:
+      return {
+        text:
+          "Premium (₦5,000,000 daily transfer limit)",
 
-            color:
-              "text-blue-100",
-          };
+        color:
+          "text-blue-100",
+      };
 
-        default:
-          return {
-            text:
-              "Basic (₦50,000 limit)",
+    default:
+      return {
+        text:
+          "Basic (₦300,000 daily transfer limit)",
 
-            color:
-              "text-blue-100",
-          };
-      }
-    };
-
+        color:
+          "text-blue-100",
+      };
+  }
+};
+  
   const kycInfo =
     getKYCLevelInfo(
       kyc?.kyc_level ??

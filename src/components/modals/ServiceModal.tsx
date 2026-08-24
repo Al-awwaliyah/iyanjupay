@@ -1639,7 +1639,10 @@ export default function ServiceModal({
           {/* ================================================== */}
 
           {selectedItem && (
-  
+            <p className="text-center text-[11px] text-gray-400">
+              Provider price + ₦50 service
+              charge
+            </p>
           )}
         </div>
       </div>

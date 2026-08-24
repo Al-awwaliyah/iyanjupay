@@ -175,9 +175,17 @@ const TransferModal = ({
       : transferAmount > 0
         ? BANK_TRANSFER_FEE
         : 0;
+        
+    const electronicFee =
+      transferType === "flutterwave" && transferAmount > 5000
         ? ELECTRONIC_FEE
         : 0;
-
+  
+  const electronicFee =
+    transferType === "iyanjupay" && transferAmount >= 10000
+      ? ELECTRONIC_FEE
+      : 0;
+  
   const totalCharged =
     transferAmount +
     transferFee;

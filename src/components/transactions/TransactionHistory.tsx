@@ -1,45 +1,33 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow
-} from "@/components/ui/table";
-import {
-  ArrowLeft,
-  Filter,
-  Download,
-  ChevronRight,
-  Clock,
-  CheckCircle2,
-  XCircle,
-  ArrowDownLeft,
-  ArrowUpRight,
-  Receipt,
-  Search,
-  X,
-  Copy,
-  Printer,
-  User,
-  Building2,
-  Hash,
-  CalendarDays,
-  FileText,
-  Wallet,
-  Banknote,
-  ShieldCheck
-} from 'lucide-react';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
+import { ArrowLeft, Filter, Download, ChevronRight, Clock, CheckCircle2, XCircle, ArrowDownLeft, ArrowUpRight, Receipt, Search,  X, Copy, Printer, User, Building2,
+  Hash,  CalendarDays,  FileText,  Wallet,  Banknote,  ShieldCheck } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 
+
+/*
+|--------------------------------------------------------------------------
+| TYPES
+|--------------------------------------------------------------------------
+*/
+
 interface TransactionMetadata {
   [key: string]: any;
+}
+
+interface TransactionParty {
+  user_id?: string | null;
+  wallet_id?: string | null;
+  name?: string | null;
+  full_name?: string | null;
+  nickname?: string | null;
+  phone_number?: string | null;
+  email?: string | null;
 }
 
 interface Transaction {
@@ -65,7 +53,6 @@ interface Transaction {
 
   created_at: string;
 
-  // Some transaction tables may contain these.
   fee?: number | null;
   currency?: string | null;
 }
@@ -74,16 +61,27 @@ interface TransactionHistoryProps {
   onBack: () => void;
 }
 
+
 /*
 |--------------------------------------------------------------------------
 | HELPERS
 |--------------------------------------------------------------------------
 */
 
-const safeString = (value: any, fallback = ''): string => {
-  if (value === null || value === undefined) return fallback;
+const safeString = (
+  value: any,
+  fallback = ''
+): string => {
+  if (
+    value === null ||
+    value === undefined
+  ) {
+    return fallback;
+  }
+
   return String(value);
 };
+
 
 const firstValue = (
   metadata: TransactionMetadata | null | undefined,
@@ -91,7 +89,9 @@ const firstValue = (
   fallback = ''
 ) => {
   for (const key of keys) {
-    const value = metadata?.[key];
+
+    const value =
+      metadata?.[key];
 
     if (
       value !== undefined &&
@@ -105,18 +105,36 @@ const firstValue = (
   return fallback;
 };
 
-const formatMoney = (amount: number | string | null | undefined) => {
-  const value = Number(amount || 0);
 
-  return `₦${value.toLocaleString('en-NG', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2
-  })}`;
+const formatMoney = (
+  amount:
+    | number
+    | string
+    | null
+    | undefined
+) => {
+
+  const value =
+    Number(amount || 0);
+
+  return `₦${value.toLocaleString(
+    'en-NG',
+    {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    }
+  )}`;
 };
 
-const normalizeStatus = (status?: string) => {
-  return safeString(status).toLowerCase();
+
+const normalizeStatus = (
+  status?: string
+) => {
+  return safeString(
+    status
+  ).toLowerCase();
 };
+
 
 /*
 |--------------------------------------------------------------------------
@@ -127,23 +145,47 @@ const normalizeStatus = (status?: string) => {
 const TransactionHistory = ({
   onBack
 }: TransactionHistoryProps) => {
+
   const { user } = useAuth();
-  const { toast } = useToast();
 
-  const [transactions, setTransactions] =
-    useState<Transaction[]>([]);
+  const { toast } =
+    useToast();
 
-  const [loading, setLoading] =
-    useState(true);
 
-  const [filter, setFilter] =
-    useState<string>('all');
+  /*
+  |--------------------------------------------------------------------------
+  | STATE
+  |--------------------------------------------------------------------------
+  */
 
-  const [search, setSearch] =
-    useState('');
+  const [
+    transactions,
+    setTransactions
+  ] = useState<Transaction[]>([]);
 
-  const [selectedTransaction, setSelectedTransaction] =
-    useState<Transaction | null>(null);
+  const [
+    loading,
+    setLoading
+  ] = useState(true);
+
+  const [
+    filter,
+    setFilter
+  ] = useState<string>('all');
+
+  const [
+    search,
+    setSearch
+  ] = useState('');
+
+  const [
+    selectedTransaction,
+    setSelectedTransaction
+  ] =
+    useState<Transaction | null>(
+      null
+    );
+
 
   /*
   |--------------------------------------------------------------------------
@@ -152,208 +194,442 @@ const TransactionHistory = ({
   */
 
   useEffect(() => {
-    if (!user?.id) return;
+
+    if (!user?.id) {
+      return;
+    }
 
     fetchTransactions();
 
-    /*
-     * Realtime refresh.
-     * This allows a newly completed transfer/funding
-     * transaction to appear without refreshing the page.
-     */
-    const channel = supabase
-      .channel(`transaction-history-${user.id}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'transactions',
-          filter: `user_id=eq.${user.id}`
-        },
-        () => {
-          fetchTransactions();
-        }
-      )
-      .subscribe();
+    const channel =
+      supabase
+        .channel(
+          `transaction-history-${user.id}`
+        )
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'transactions',
+            filter:
+              `user_id=eq.${user.id}`
+          },
+          () => {
+            fetchTransactions();
+          }
+        )
+        .subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      supabase.removeChannel(
+        channel
+      );
     };
+
   }, [user?.id]);
 
-  const fetchTransactions = async () => {
-    if (!user?.id) return;
 
-    try {
-      setLoading(true);
+  const fetchTransactions =
+    async () => {
 
-      const { data, error } = await supabase
-        .from('transactions')
-        .select(`
-          *
-        `)
-        .eq('user_id', user.id)
-        .order('created_at', {
-          ascending: false
-        });
-
-      if (error) {
-        throw error;
+      if (!user?.id) {
+        return;
       }
 
-      setTransactions(
-        (data || []) as Transaction[]
-      );
-    } catch (error: any) {
-      console.error(
-        'Error fetching transactions:',
-        error
-      );
+      try {
 
-      toast({
-        title: "Error",
-        description:
-          error?.message ||
-          "Failed to load transaction history",
-        variant: "destructive"
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
+        setLoading(true);
 
-  /*
-  |--------------------------------------------------------------------------
-  | TRANSACTION CLASSIFICATION
-  |--------------------------------------------------------------------------
-  */
+        const {
+          data,
+          error
+        } =
+          await supabase
+            .from('transactions')
+            .select('*')
+            .eq(
+              'user_id',
+              user.id
+            )
+            .order(
+              'created_at',
+              {
+                ascending: false
+              }
+            );
 
-  const getTransactionMetadata = (
-    transaction: Transaction
-  ) => {
-    return transaction.metadata || {};
-  };
+        if (error) {
+          throw error;
+        }
 
-  const getTransactionType = (
-    transaction: Transaction
-  ) => {
-    const metadata =
-      getTransactionMetadata(transaction);
+        setTransactions(
+          (data || []) as Transaction[]
+        );
 
-    return safeString(
-      firstValue(
-        metadata,
-        [
-          'transaction_type',
-          'type',
-          'transactionType'
-        ],
-        transaction.transaction_type
-      ),
-      'transaction'
-    ).toLowerCase();
-  };
+      } catch (error: any) {
 
-  const isMoneyIn = (
-    transaction: Transaction
-  ) => {
-    const metadata =
-      getTransactionMetadata(transaction);
+        console.error(
+          'Error fetching transactions:',
+          error
+        );
 
-    const direction = safeString(
-      firstValue(
-        metadata,
-        [
-          'direction',
-          'transaction_direction'
-        ]
-      )
-    ).toLowerCase();
+        toast({
+          title: 'Error',
+          description:
+            error?.message ||
+            'Failed to load transaction history',
+          variant:
+            'destructive'
+        });
 
-    if (
-      direction === 'in' ||
-      direction === 'credit' ||
-      direction === 'money_in'
-    ) {
-      return true;
-    }
+      } finally {
 
-    if (
-      direction === 'out' ||
-      direction === 'debit' ||
-      direction === 'money_out'
-    ) {
-      return false;
-    }
+        setLoading(false);
 
-    const type =
-      getTransactionType(transaction);
+      }
+    };
 
-    return [
-      'deposit',
-      'credit',
-      'funding',
-      'refund',
-      'cashback',
-      'reversal',
-      'money_in'
-    ].includes(type);
-  };
 
   /*
   |--------------------------------------------------------------------------
-  | DISPLAY NAME
+  | METADATA
   |--------------------------------------------------------------------------
   */
 
-  const getCounterpartyName = (
-    transaction: Transaction
-  ) => {
-    const metadata =
-      getTransactionMetadata(transaction);
+  const getTransactionMetadata =
+    (
+      transaction: Transaction
+    ): TransactionMetadata => {
 
-    const moneyIn =
-      isMoneyIn(transaction);
+      return (
+        transaction.metadata ||
+        {}
+      );
+    };
 
-    if (moneyIn) {
+
+  /*
+  |--------------------------------------------------------------------------
+  | TRANSACTION TYPE
+  |--------------------------------------------------------------------------
+  */
+
+  const getTransactionType =
+    (
+      transaction: Transaction
+    ) => {
+
+      const metadata =
+        getTransactionMetadata(
+          transaction
+        );
+
+      const rawType =
+        safeString(
+          firstValue(
+            metadata,
+            [
+              'transaction_type',
+              'type',
+              'transactionType'
+            ],
+            transaction.transaction_type
+          ),
+          'transaction'
+        ).toLowerCase();
+
+
+      if (
+        rawType ===
+          'internal_transfer' ||
+        rawType ===
+          'wallet_to_wallet' ||
+        rawType ===
+          'transfer'
+      ) {
+        return 'transfer';
+      }
+
+
+      if (
+        rawType ===
+          'virtual_account_funding' ||
+        rawType ===
+          'wallet_funding' ||
+        rawType ===
+          'funding'
+      ) {
+        return 'funding';
+      }
+
+
+      return rawType;
+    };
+
+
+  /*
+  |--------------------------------------------------------------------------
+  | DIRECTION
+  |--------------------------------------------------------------------------
+  */
+
+  const isMoneyIn =
+    (
+      transaction: Transaction
+    ) => {
+
+      const metadata =
+        getTransactionMetadata(
+          transaction
+        );
+
+      const direction =
+        safeString(
+          firstValue(
+            metadata,
+            [
+              'direction',
+              'transaction_direction'
+            ]
+          )
+        ).toLowerCase();
+
+
+      if (
+        direction ===
+          'incoming' ||
+        direction ===
+          'in' ||
+        direction ===
+          'credit' ||
+        direction ===
+          'money_in'
+      ) {
+        return true;
+      }
+
+
+      if (
+        direction ===
+          'outgoing' ||
+        direction ===
+          'out' ||
+        direction ===
+          'debit' ||
+        direction ===
+          'money_out'
+      ) {
+        return false;
+      }
+
+
+      const type =
+        getTransactionType(
+          transaction
+        );
+
+
+      return [
+        'deposit',
+        'credit',
+        'funding',
+        'refund',
+        'cashback',
+        'reversal',
+        'money_in'
+      ].includes(type);
+    };
+
+
+  /*
+  |--------------------------------------------------------------------------
+  | SENDER
+  |--------------------------------------------------------------------------
+  */
+
+  const getSender =
+    (
+      transaction: Transaction
+    ): TransactionParty => {
+
+      const metadata =
+        getTransactionMetadata(
+          transaction
+        );
+
+      return (
+        metadata.sender || {
+          user_id:
+            metadata.sender_user_id,
+
+          wallet_id:
+            metadata.sender_wallet_id,
+
+          name:
+            metadata.sender_name,
+
+          full_name:
+            metadata.sender_full_name,
+
+          nickname:
+            metadata.sender_nickname,
+
+          phone_number:
+            metadata.sender_phone_number,
+
+          email:
+            metadata.sender_email
+        }
+      );
+    };
+
+
+  /*
+  |--------------------------------------------------------------------------
+  | RECIPIENT
+  |--------------------------------------------------------------------------
+  */
+
+  const getRecipient =
+    (
+      transaction: Transaction
+    ): TransactionParty => {
+
+      const metadata =
+        getTransactionMetadata(
+          transaction
+        );
+
+      return (
+        metadata.recipient || {
+          user_id:
+            metadata.recipient_user_id,
+
+          wallet_id:
+            metadata.recipient_wallet_id,
+
+          name:
+            metadata.recipient_name,
+
+          full_name:
+            metadata.recipient_full_name,
+
+          nickname:
+            metadata.recipient_nickname,
+
+          phone_number:
+            metadata.recipient_phone_number,
+
+          email:
+            metadata.recipient_email
+        }
+      );
+    };
+
+
+  /*
+  |--------------------------------------------------------------------------
+  | COUNTERPARTY NAME
+  |--------------------------------------------------------------------------
+  */
+
+  const getCounterpartyName =
+    (
+      transaction: Transaction
+    ) => {
+
+      const metadata =
+        getTransactionMetadata(
+          transaction
+        );
+
+      const moneyIn =
+        isMoneyIn(
+          transaction
+        );
+
+      const party =
+        moneyIn
+          ? getSender(transaction)
+          : getRecipient(transaction);
+
+
+      const partyName =
+        safeString(
+          party?.name ||
+          party?.full_name ||
+          party?.nickname
+        );
+
+
+      if (partyName) {
+        return partyName;
+      }
+
+
+      if (moneyIn) {
+
+        return safeString(
+          firstValue(
+            metadata,
+            [
+              'sender_name',
+              'sender_full_name',
+              'senderName',
+              'from_name',
+              'from_full_name',
+              'account_name',
+              'bank_account_name',
+              'customer_name',
+              'payer_name'
+            ],
+            'Funding source'
+          )
+        );
+      }
+
+
       return safeString(
         firstValue(
           metadata,
           [
-            'sender_name',
-            'sender_full_name',
-            'senderName',
-            'from_name',
-            'from_full_name',
-            'account_name',
-            'bank_account_name',
-            'customer_name',
-            'payer_name'
+            'recipient_name',
+            'recipient_full_name',
+            'recipientName',
+            'receiver_name',
+            'receiver_full_name',
+            'to_name',
+            'to_full_name'
           ],
-          ''
-        ),
-        'Funding source'
+          'Recipient'
+        )
       );
-    }
+    };
 
-    return safeString(
-      firstValue(
-        metadata,
-        [
-          'recipient_name',
-          'recipient_full_name',
-          'recipientName',
-          'receiver_name',
-          'receiver_full_name',
-          'to_name',
-          'to_full_name'
-        ],
+
+  /*
+  |--------------------------------------------------------------------------
+  | COUNTERPARTY NICKNAME
+  |--------------------------------------------------------------------------
+  */
+
+  const getCounterpartyNickname =
+    (
+      transaction: Transaction
+    ) => {
+
+      const party =
+        isMoneyIn(transaction)
+          ? getSender(transaction)
+          : getRecipient(transaction);
+
+      return safeString(
+        party?.nickname ||
         ''
-      ),
-      'Recipient'
-    );
-  };
+      );
+    };
+
 
   /*
   |--------------------------------------------------------------------------
@@ -361,76 +637,128 @@ const TransactionHistory = ({
   |--------------------------------------------------------------------------
   */
 
-  const getCounterpartyWallet = (
-    transaction: Transaction
-  ) => {
-    const metadata =
-      getTransactionMetadata(transaction);
+  const getCounterpartyWallet =
+    (
+      transaction: Transaction
+    ) => {
 
-    return safeString(
-      firstValue(
-        metadata,
-        [
-          'recipient_wallet_id',
-          'recipientWalletId',
-          'receiver_wallet_id',
-          'to_wallet_id',
-          'wallet_id'
-        ],
-        ''
-      )
-    );
-  };
+      const metadata =
+        getTransactionMetadata(
+          transaction
+        );
+
+      const party =
+        isMoneyIn(transaction)
+          ? getSender(transaction)
+          : getRecipient(transaction);
+
+
+      if (party?.wallet_id) {
+
+        return safeString(
+          party.wallet_id
+        );
+      }
+
+
+      if (
+        isMoneyIn(transaction)
+      ) {
+
+        return safeString(
+          firstValue(
+            metadata,
+            [
+              'sender_wallet_id',
+              'senderWalletId',
+              'from_wallet_id'
+            ],
+            ''
+          )
+        );
+      }
+
+
+      return safeString(
+        firstValue(
+          metadata,
+          [
+            'recipient_wallet_id',
+            'recipientWalletId',
+            'receiver_wallet_id',
+            'to_wallet_id'
+          ],
+          ''
+        )
+      );
+    };
+
 
   /*
   |--------------------------------------------------------------------------
-  | BANK DETAILS
+  | BANK NAME
   |--------------------------------------------------------------------------
   */
 
-  const getBankName = (
-    transaction: Transaction
-  ) => {
-    const metadata =
-      getTransactionMetadata(transaction);
+  const getBankName =
+    (
+      transaction: Transaction
+    ) => {
 
-    return safeString(
-      firstValue(
-        metadata,
-        [
-          'sender_bank_name',
-          'bank_name',
-          'bankName',
-          'from_bank_name',
-          'recipient_bank_name',
-          'to_bank_name'
-        ],
-        ''
-      )
-    );
-  };
+      const metadata =
+        getTransactionMetadata(
+          transaction
+        );
 
-  const getAccountNumber = (
-    transaction: Transaction
-  ) => {
-    const metadata =
-      getTransactionMetadata(transaction);
+      return safeString(
+        firstValue(
+          metadata,
+          [
+            'sender_bank_name',
+            'bank_name',
+            'bankName',
+            'from_bank_name',
+            'recipient_bank_name',
+            'to_bank_name'
+          ],
+          ''
+        )
+      );
+    };
 
-    return safeString(
-      firstValue(
-        metadata,
-        [
-          'sender_account_number',
-          'account_number',
-          'accountNumber',
-          'from_account_number',
-          'recipient_account_number',
-          'to_account_number'
-        ],
-        ''
-      )
-    );
-  };
+
+  /*
+  |--------------------------------------------------------------------------
+  | ACCOUNT NUMBER
+  |--------------------------------------------------------------------------
+  */
+
+  const getAccountNumber =
+    (
+      transaction: Transaction
+    ) => {
+
+      const metadata =
+        getTransactionMetadata(
+          transaction
+        );
+
+      return safeString(
+        firstValue(
+          metadata,
+          [
+            'sender_account_number',
+            'account_number',
+            'accountNumber',
+            'from_account_number',
+            'recipient_account_number',
+            'to_account_number'
+          ],
+          ''
+        )
+      );
+    };
+
 
   /*
   |--------------------------------------------------------------------------
@@ -438,25 +766,31 @@ const TransactionHistory = ({
   |--------------------------------------------------------------------------
   */
 
-  const getNarration = (
-    transaction: Transaction
-  ) => {
-    const metadata =
-      getTransactionMetadata(transaction);
+  const getNarration =
+    (
+      transaction: Transaction
+    ) => {
 
-    return safeString(
-      firstValue(
-        metadata,
-        [
-          'narration',
-          'description',
-          'remark',
-          'reason'
-        ],
-        transaction.description || 'Wallet transaction'
-      )
-    );
-  };
+      const metadata =
+        getTransactionMetadata(
+          transaction
+        );
+
+      return safeString(
+        firstValue(
+          metadata,
+          [
+            'narration',
+            'description',
+            'remark',
+            'reason'
+          ],
+          transaction.description ||
+            'Wallet transaction'
+        )
+      );
+    };
+
 
   /*
   |--------------------------------------------------------------------------
@@ -464,26 +798,31 @@ const TransactionHistory = ({
   |--------------------------------------------------------------------------
   */
 
-  const getReference = (
-    transaction: Transaction
-  ) => {
-    const metadata =
-      getTransactionMetadata(transaction);
+  const getReference =
+    (
+      transaction: Transaction
+    ) => {
 
-    return safeString(
-      firstValue(
-        metadata,
-        [
-          'reference',
-          'transaction_reference',
-          'transactionReference'
-        ],
-        transaction.reference_number ||
-          transaction.reference ||
-          transaction.id
-      )
-    );
-  };
+      const metadata =
+        getTransactionMetadata(
+          transaction
+        );
+
+      return safeString(
+        firstValue(
+          metadata,
+          [
+            'reference',
+            'transaction_reference',
+            'transactionReference'
+          ],
+          transaction.reference_number ||
+            transaction.reference ||
+            transaction.id
+        )
+      );
+    };
+
 
   /*
   |--------------------------------------------------------------------------
@@ -491,25 +830,31 @@ const TransactionHistory = ({
   |--------------------------------------------------------------------------
   */
 
-  const getProviderReference = (
-    transaction: Transaction
-  ) => {
-    const metadata =
-      getTransactionMetadata(transaction);
+  const getProviderReference =
+    (
+      transaction: Transaction
+    ) => {
 
-    return safeString(
-      firstValue(
-        metadata,
-        [
-          'provider_reference',
-          'providerReference',
-          'flutterwave_reference',
-          'flw_reference'
-        ],
-        transaction.provider_reference || ''
-      )
-    );
-  };
+      const metadata =
+        getTransactionMetadata(
+          transaction
+        );
+
+      return safeString(
+        firstValue(
+          metadata,
+          [
+            'provider_reference',
+            'providerReference',
+            'flutterwave_reference',
+            'flw_reference'
+          ],
+          transaction.provider_reference ||
+            ''
+        )
+      );
+    };
+
 
   /*
   |--------------------------------------------------------------------------
@@ -517,25 +862,280 @@ const TransactionHistory = ({
   |--------------------------------------------------------------------------
   */
 
-  const getFee = (
-    transaction: Transaction
-  ) => {
-    const metadata =
-      getTransactionMetadata(transaction);
+  const getFee =
+    (
+      transaction: Transaction
+    ) => {
 
-    const fee = firstValue(
-      metadata,
-      [
-        'fee',
-        'transaction_fee',
-        'charge',
-        'transfer_fee'
-      ],
-      transaction.fee ?? 0
-    );
+      const metadata =
+        getTransactionMetadata(
+          transaction
+        );
 
-    return Number(fee || 0);
-  };
+      const fee =
+        firstValue(
+          metadata,
+          [
+            'fee',
+            'transaction_fee',
+            'charge',
+            'transfer_fee'
+          ],
+          transaction.fee ?? 0
+        );
+
+      return Number(
+        fee || 0
+      );
+    };
+
+
+  /*
+  |--------------------------------------------------------------------------
+  | OPAY STYLE TITLE
+  |--------------------------------------------------------------------------
+  */
+
+  const getTransactionTitle =
+    (
+      transaction: Transaction
+    ) => {
+
+      const type =
+        getTransactionType(
+          transaction
+        );
+
+      const moneyIn =
+        isMoneyIn(
+          transaction
+        );
+
+
+      switch (type) {
+
+        case 'transfer':
+
+          return moneyIn
+            ? `Received from ${getCounterpartyName(transaction)}`
+            : `Transfer to ${getCounterpartyName(transaction)}`;
+
+
+        case 'funding':
+
+          return 'Wallet Funding';
+
+
+        case 'deposit':
+
+          return 'Wallet Deposit';
+
+
+        case 'refund':
+
+          return 'Refund';
+
+
+        case 'cashback':
+
+          return 'Cashback';
+
+
+        case 'airtime':
+
+          return 'Airtime';
+
+
+        case 'data':
+
+          return 'Data';
+
+
+        case 'electricity':
+
+          return 'Electricity';
+
+
+        case 'cable':
+
+          return 'Cable TV';
+
+
+        case 'withdrawal':
+
+          return 'Withdrawal';
+
+
+        default:
+
+          return moneyIn
+            ? `Money received from ${getCounterpartyName(transaction)}`
+            : `Money sent to ${getCounterpartyName(transaction)}`;
+      }
+    };
+
+
+  /*
+  |--------------------------------------------------------------------------
+  | SUBTITLE
+  |--------------------------------------------------------------------------
+  */
+
+  const getTransactionSubtitle =
+    (
+      transaction: Transaction
+    ) => {
+
+      const type =
+        getTransactionType(
+          transaction
+        );
+
+      const moneyIn =
+        isMoneyIn(
+          transaction
+        );
+
+
+      if (type === 'transfer') {
+
+        return moneyIn
+          ? 'Money received'
+          : 'Money sent';
+      }
+
+
+      if (type === 'funding') {
+
+        const bank =
+          getBankName(
+            transaction
+          );
+
+        return bank
+          ? `Funding via ${bank}`
+          : 'Money added to wallet';
+      }
+
+
+      return getNarration(
+        transaction
+      );
+    };
+
+
+  /*
+  |--------------------------------------------------------------------------
+  | ICON
+  |--------------------------------------------------------------------------
+  */
+
+  const getTransactionIcon =
+    (
+      transaction: Transaction
+    ) => {
+
+      const type =
+        getTransactionType(
+          transaction
+        );
+
+      const moneyIn =
+        isMoneyIn(
+          transaction
+        );
+
+
+      if (type === 'transfer') {
+
+        return moneyIn ? (
+          <ArrowDownLeft
+            className="h-5 w-5 text-green-600"
+          />
+        ) : (
+          <ArrowUpRight
+            className="h-5 w-5 text-purple-600"
+          />
+        );
+      }
+
+
+      switch (type) {
+
+        case 'funding':
+        case 'deposit':
+        case 'credit':
+
+          return (
+            <Banknote
+              className="h-5 w-5 text-green-600"
+            />
+          );
+
+
+        case 'airtime':
+
+          return (
+            <span className="text-lg">
+              📱
+            </span>
+          );
+
+
+        case 'data':
+
+          return (
+            <span className="text-lg">
+              🌐
+            </span>
+          );
+
+
+        case 'electricity':
+
+          return (
+            <span className="text-lg">
+              ⚡
+            </span>
+          );
+
+
+        case 'cable':
+
+          return (
+            <span className="text-lg">
+              📺
+            </span>
+          );
+
+
+        default:
+
+          return (
+            <Wallet
+              className="h-5 w-5 text-purple-600"
+            />
+          );
+      }
+    };
+
+
+  /*
+  |--------------------------------------------------------------------------
+  | ICON BACKGROUND
+  |--------------------------------------------------------------------------
+  */
+
+  const getTransactionIconBackground =
+    (
+      transaction: Transaction
+    ) => {
+
+      return isMoneyIn(transaction)
+        ? 'bg-green-50'
+        : 'bg-purple-50';
+    };
+
 
   /*
   |--------------------------------------------------------------------------
@@ -543,92 +1143,95 @@ const TransactionHistory = ({
   |--------------------------------------------------------------------------
   */
 
-  const getStatusColor = (
-    status: string
-  ) => {
-    switch (normalizeStatus(status)) {
-      case 'completed':
-      case 'successful':
-      case 'success':
-        return 'text-green-700 bg-green-100 border-green-200';
+  const getStatusColor =
+    (
+      status: string
+    ) => {
 
-      case 'pending':
-      case 'processing':
-        return 'text-yellow-700 bg-yellow-100 border-yellow-200';
+      switch (
+        normalizeStatus(status)
+      ) {
 
-      case 'failed':
-      case 'cancelled':
-      case 'canceled':
-      case 'reversed':
-        return 'text-red-700 bg-red-100 border-red-200';
+        case 'completed':
+        case 'successful':
+        case 'success':
 
-      default:
-        return 'text-gray-700 bg-gray-100 border-gray-200';
-    }
-  };
+          return 'text-green-700 bg-green-100 border-green-200';
 
-  const getStatusIcon = (
-    status: string
-  ) => {
-    switch (normalizeStatus(status)) {
-      case 'completed':
-      case 'successful':
-      case 'success':
-        return (
-          <CheckCircle2 className="h-3.5 w-3.5" />
-        );
 
-      case 'pending':
-      case 'processing':
-        return (
-          <Clock className="h-3.5 w-3.5" />
-        );
+        case 'pending':
+        case 'processing':
 
-      case 'failed':
-      case 'cancelled':
-      case 'canceled':
-      case 'reversed':
-        return (
-          <XCircle className="h-3.5 w-3.5" />
-        );
+          return 'text-yellow-700 bg-yellow-100 border-yellow-200';
 
-      default:
-        return (
-          <Clock className="h-3.5 w-3.5" />
-        );
-    }
-  };
 
-  /*
-  |--------------------------------------------------------------------------
-  | TRANSACTION ICON
-  |--------------------------------------------------------------------------
-  */
+        case 'failed':
+        case 'cancelled':
+        case 'canceled':
+        case 'reversed':
 
-  const getTransactionTypeIcon = (
-    type: string
-  ) => {
-    const icons: {
-      [key: string]: string
-    } = {
-      airtime: '📱',
-      data: '🌐',
-      electricity: '⚡',
-      cable: '📺',
-      transfer: '💸',
-      deposit: '💰',
-      funding: '💰',
-      credit: '💰',
-      refund: '↩️',
-      bills: '📄',
-      withdrawal: '💸'
+          return 'text-red-700 bg-red-100 border-red-200';
+
+
+        default:
+
+          return 'text-gray-700 bg-gray-100 border-gray-200';
+      }
     };
 
-    return (
-      icons[type?.toLowerCase()] ||
-      '💳'
-    );
-  };
+
+  const getStatusIcon =
+    (
+      status: string
+    ) => {
+
+      switch (
+        normalizeStatus(status)
+      ) {
+
+        case 'completed':
+        case 'successful':
+        case 'success':
+
+          return (
+            <CheckCircle2
+              className="h-3.5 w-3.5"
+            />
+          );
+
+
+        case 'pending':
+        case 'processing':
+
+          return (
+            <Clock
+              className="h-3.5 w-3.5"
+            />
+          );
+
+
+        case 'failed':
+        case 'cancelled':
+        case 'canceled':
+        case 'reversed':
+
+          return (
+            <XCircle
+              className="h-3.5 w-3.5"
+            />
+          );
+
+
+        default:
+
+          return (
+            <Clock
+              className="h-3.5 w-3.5"
+            />
+          );
+      }
+    };
+
 
   /*
   |--------------------------------------------------------------------------
@@ -636,78 +1239,102 @@ const TransactionHistory = ({
   |--------------------------------------------------------------------------
   */
 
-  const formatDate = (
-    date: string
-  ) => {
-    return new Date(date).toLocaleDateString(
-      'en-NG',
-      {
-        day: 'numeric',
-        month: 'short',
-        year: 'numeric'
-      }
-    );
-  };
+  const formatDate =
+    (
+      date: string
+    ) => {
 
-  const formatTime = (
-    date: string
-  ) => {
-    return new Date(date).toLocaleTimeString(
-      'en-NG',
-      {
-        hour: '2-digit',
-        minute: '2-digit'
-      }
-    );
-  };
+      return new Date(
+        date
+      ).toLocaleDateString(
+        'en-NG',
+        {
+          day: 'numeric',
+          month: 'short',
+          year: 'numeric'
+        }
+      );
+    };
 
-  const formatFullDate = (
-    date: string
-  ) => {
-    return new Date(date).toLocaleString(
-      'en-NG',
-      {
-        weekday: 'short',
-        day: 'numeric',
-        month: 'long',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit'
-      }
-    );
-  };
+
+  const formatTime =
+    (
+      date: string
+    ) => {
+
+      return new Date(
+        date
+      ).toLocaleTimeString(
+        'en-NG',
+        {
+          hour: '2-digit',
+          minute: '2-digit'
+        }
+      );
+    };
+
+
+  const formatFullDate =
+    (
+      date: string
+    ) => {
+
+      return new Date(
+        date
+      ).toLocaleString(
+        'en-NG',
+        {
+          weekday: 'short',
+          day: 'numeric',
+          month: 'long',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit'
+        }
+      );
+    };
+
 
   /*
   |--------------------------------------------------------------------------
-  | COPY
+  | COPY REFERENCE
   |--------------------------------------------------------------------------
   */
 
-  const copyReference = async (
-    transaction: Transaction
-  ) => {
-    const reference =
-      getReference(transaction);
+  const copyReference =
+    async (
+      transaction: Transaction
+    ) => {
 
-    try {
-      await navigator.clipboard.writeText(
-        reference
-      );
+      const reference =
+        getReference(
+          transaction
+        );
 
-      toast({
-        title: "Copied",
-        description:
-          "Transaction reference copied"
-      });
-    } catch {
-      toast({
-        title: "Unable to copy",
-        description:
-          "Please copy the reference manually",
-        variant: "destructive"
-      });
-    }
-  };
+      try {
+
+        await navigator.clipboard.writeText(
+          reference
+        );
+
+        toast({
+          title: 'Copied',
+          description:
+            'Transaction reference copied'
+        });
+
+      } catch {
+
+        toast({
+          title: 'Unable to copy',
+          description:
+            'Please copy the reference manually',
+          variant:
+            'destructive'
+        });
+      }
+    };
+
 
   /*
   |--------------------------------------------------------------------------
@@ -715,452 +1342,621 @@ const TransactionHistory = ({
   |--------------------------------------------------------------------------
   */
 
-  const printReceipt = (
-    transaction: Transaction
-  ) => {
-    const moneyIn =
-      isMoneyIn(transaction);
+  const printReceipt =
+    (
+      transaction: Transaction
+    ) => {
 
-    const counterparty =
-      getCounterpartyName(transaction);
+      const moneyIn =
+        isMoneyIn(
+          transaction
+        );
 
-    const wallet =
-      getCounterpartyWallet(transaction);
+      const counterparty =
+        getCounterpartyName(
+          transaction
+        );
 
-    const bank =
-      getBankName(transaction);
+      const wallet =
+        getCounterpartyWallet(
+          transaction
+        );
 
-    const account =
-      getAccountNumber(transaction);
+      const bank =
+        getBankName(
+          transaction
+        );
 
-    const narration =
-      getNarration(transaction);
+      const account =
+        getAccountNumber(
+          transaction
+        );
 
-    const reference =
-      getReference(transaction);
+      const narration =
+        getNarration(
+          transaction
+        );
 
-    const providerReference =
-      getProviderReference(transaction);
+      const reference =
+        getReference(
+          transaction
+        );
 
-    const fee =
-      getFee(transaction);
+      const providerReference =
+        getProviderReference(
+          transaction
+        );
 
-    const type =
-      getTransactionType(transaction);
+      const fee =
+        getFee(
+          transaction
+        );
 
-    const status =
-      transaction.status || 'completed';
+      const title =
+        getTransactionTitle(
+          transaction
+        );
 
-    const currency =
-      transaction.currency || 'NGN';
+      const status =
+        transaction.status ||
+        'completed';
 
-    const amount =
-      Number(transaction.amount || 0);
+      const currency =
+        transaction.currency ||
+        'NGN';
 
-    const receiptWindow =
-      window.open(
-        '',
-        '_blank',
-        'width=500,height=800'
-      );
+      const amount =
+        Number(
+          transaction.amount || 0
+        );
 
-    if (!receiptWindow) {
-      toast({
-        title: "Popup blocked",
-        description:
-          "Please allow popups to print the receipt",
-        variant: "destructive"
-      });
 
-      return;
-    }
+      const receiptWindow =
+        window.open(
+          '',
+          '_blank',
+          'width=500,height=800'
+        );
 
-    receiptWindow.document.write(`
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>IyanjuPay Transaction Receipt</title>
 
-        <style>
-          * {
-            box-sizing: border-box;
-          }
+      if (!receiptWindow) {
 
-          body {
-            margin: 0;
-            padding: 30px;
-            font-family:
-              Arial,
-              Helvetica,
-              sans-serif;
-            background: #f5f7fb;
-            color: #111827;
-          }
+        toast({
+          title: 'Popup blocked',
+          description:
+            'Please allow popups to print the receipt',
+          variant:
+            'destructive'
+        });
 
-          .receipt {
-            max-width: 430px;
-            margin: 0 auto;
-            background: white;
-            border-radius: 18px;
-            padding: 28px;
-            box-shadow:
-              0 10px 30px rgba(
-                0,
-                0,
-                0,
-                0.08
-              );
-          }
+        return;
+      }
 
-          .brand {
-            text-align: center;
-            font-size: 24px;
-            font-weight: 800;
-            color: #6d28d9;
-            margin-bottom: 4px;
-          }
 
-          .subtitle {
-            text-align: center;
-            color: #6b7280;
-            font-size: 12px;
-          }
+      const escaped =
+        (value: any) =>
+          String(
+            value ?? ''
+          )
+            .replace(
+              /&/g,
+              '&amp;'
+            )
+            .replace(
+              /</g,
+              '&lt;'
+            )
+            .replace(
+              />/g,
+              '&gt;'
+            )
+            .replace(
+              /"/g,
+              '&quot;'
+            )
+            .replace(
+              /'/g,
+              '&#039;'
+            );
 
-          .status {
-            margin: 22px auto;
-            width: 76px;
-            height: 76px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            background: ${
-              moneyIn
-                ? '#dcfce7'
-                : '#ede9fe'
-            };
-            color: ${
-              moneyIn
-                ? '#16a34a'
-                : '#7c3aed'
-            };
-            font-size: 36px;
-          }
 
-          .amount {
-            text-align: center;
-            font-size: 30px;
-            font-weight: 800;
-            margin-bottom: 4px;
-          }
+      receiptWindow.document.write(`
+        <!DOCTYPE html>
 
-          .direction {
-            text-align: center;
-            color: #6b7280;
-            font-size: 13px;
-            margin-bottom: 24px;
-          }
+        <html>
 
-          .divider {
-            border-top: 1px solid #e5e7eb;
-            margin: 20px 0;
-          }
+        <head>
 
-          .row {
-            display: flex;
-            justify-content: space-between;
-            gap: 20px;
-            padding: 9px 0;
-            font-size: 13px;
-          }
+          <title>
+            IyanjuPay Transaction Receipt
+          </title>
 
-          .label {
-            color: #6b7280;
-          }
+          <style>
 
-          .value {
-            text-align: right;
-            font-weight: 600;
-            max-width: 60%;
-            word-break: break-word;
-          }
+            * {
+              box-sizing: border-box;
+            }
 
-          .reference {
-            font-family: monospace;
-            font-size: 11px;
-          }
-
-          .footer {
-            margin-top: 25px;
-            padding-top: 18px;
-            border-top: 1px dashed #d1d5db;
-            text-align: center;
-            color: #9ca3af;
-            font-size: 11px;
-            line-height: 1.6;
-          }
-
-          @media print {
             body {
-              background: white;
-              padding: 0;
+              margin: 0;
+              padding: 30px;
+              font-family:
+                Arial,
+                Helvetica,
+                sans-serif;
+              background: #f5f7fb;
+              color: #111827;
             }
 
             .receipt {
-              box-shadow: none;
-              max-width: 100%;
+              max-width: 430px;
+              margin: 0 auto;
+              background: white;
+              border-radius: 18px;
+              padding: 28px;
+              box-shadow:
+                0 10px 30px
+                rgba(
+                  0,
+                  0,
+                  0,
+                  0.08
+                );
             }
-          }
-        </style>
-      </head>
 
-      <body>
+            .brand {
+              text-align: center;
+              font-size: 24px;
+              font-weight: 800;
+              color: #6d28d9;
+              margin-bottom: 4px;
+            }
 
-        <div class="receipt">
+            .subtitle {
+              text-align: center;
+              color: #6b7280;
+              font-size: 12px;
+            }
 
-          <div class="brand">
-            IyanjuPay
-          </div>
+            .status {
+              margin: 22px auto;
+              width: 76px;
+              height: 76px;
+              border-radius: 50%;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              background:
+                ${
+                  moneyIn
+                    ? '#dcfce7'
+                    : '#ede9fe'
+                };
+              color:
+                ${
+                  moneyIn
+                    ? '#16a34a'
+                    : '#7c3aed'
+                };
+              font-size: 36px;
+            }
 
-          <div class="subtitle">
-            Transaction Receipt
-          </div>
+            .amount {
+              text-align: center;
+              font-size: 30px;
+              font-weight: 800;
+              margin-bottom: 4px;
+            }
 
-          <div class="status">
-            ${status.toLowerCase() === 'completed' ||
-            status.toLowerCase() === 'successful' ||
-            status.toLowerCase() === 'success'
-              ? '✓'
-              : status.toLowerCase() === 'failed'
-              ? '×'
-              : '⋯'}
-          </div>
+            .direction {
+              text-align: center;
+              color: #6b7280;
+              font-size: 13px;
+              margin-bottom: 24px;
+            }
 
-          <div class="amount">
-            ${moneyIn ? '+' : '-'}
-            ${currency}
-            ${amount.toLocaleString(
-              'en-NG',
-              {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2
+            .divider {
+              border-top:
+                1px solid #e5e7eb;
+              margin: 20px 0;
+            }
+
+            .row {
+              display: flex;
+              justify-content: space-between;
+              gap: 20px;
+              padding: 9px 0;
+              font-size: 13px;
+            }
+
+            .label {
+              color: #6b7280;
+            }
+
+            .value {
+              text-align: right;
+              font-weight: 600;
+              max-width: 60%;
+              word-break: break-word;
+            }
+
+            .reference {
+              font-family: monospace;
+              font-size: 11px;
+            }
+
+            .footer {
+              margin-top: 25px;
+              padding-top: 18px;
+              border-top:
+                1px dashed #d1d5db;
+              text-align: center;
+              color: #9ca3af;
+              font-size: 11px;
+              line-height: 1.6;
+            }
+
+            @media print {
+
+              body {
+                background: white;
+                padding: 0;
               }
-            )}
-          </div>
 
-          <div class="direction">
-            ${
-              moneyIn
-                ? 'Money received'
-                : 'Money sent'
+              .receipt {
+                box-shadow: none;
+                max-width: 100%;
+              }
+
             }
-          </div>
 
-          <div class="divider"></div>
+          </style>
 
-          <div class="row">
-            <span class="label">
-              Status
-            </span>
+        </head>
 
-            <span class="value">
-              ${status}
-            </span>
-          </div>
+        <body>
 
-          <div class="row">
-            <span class="label">
+          <div class="receipt">
+
+            <div class="brand">
+              IyanjuPay
+            </div>
+
+            <div class="subtitle">
+              Transaction Receipt
+            </div>
+
+            <div class="status">
+
+              ${
+                normalizeStatus(
+                  status
+                ) === 'completed' ||
+                normalizeStatus(
+                  status
+                ) === 'successful' ||
+                normalizeStatus(
+                  status
+                ) === 'success'
+                  ? '✓'
+                  : normalizeStatus(
+                      status
+                    ) === 'failed'
+                    ? '×'
+                    : '⋯'
+              }
+
+            </div>
+
+            <div class="amount">
+
               ${
                 moneyIn
-                  ? 'From'
-                  : 'To'
+                  ? '+'
+                  : '-'
               }
-            </span>
 
-            <span class="value">
-              ${counterparty}
-            </span>
-          </div>
+              ${escaped(currency)}
 
-          ${
-            wallet
-              ? `
-                <div class="row">
-                  <span class="label">
-                    Wallet ID
-                  </span>
-
-                  <span class="value">
-                    ${wallet}
-                  </span>
-                </div>
-              `
-              : ''
-          }
-
-          ${
-            bank
-              ? `
-                <div class="row">
-                  <span class="label">
-                    Bank
-                  </span>
-
-                  <span class="value">
-                    ${bank}
-                  </span>
-                </div>
-              `
-              : ''
-          }
-
-          ${
-            account
-              ? `
-                <div class="row">
-                  <span class="label">
-                    Account
-                  </span>
-
-                  <span class="value">
-                    ${account}
-                  </span>
-                </div>
-              `
-              : ''
-          }
-
-          <div class="row">
-            <span class="label">
-              Type
-            </span>
-
-            <span class="value">
-              ${type}
-            </span>
-          </div>
-
-          <div class="row">
-            <span class="label">
-              Narration
-            </span>
-
-            <span class="value">
-              ${narration}
-            </span>
-          </div>
-
-          ${
-            fee > 0
-              ? `
-                <div class="row">
-                  <span class="label">
-                    Fee
-                  </span>
-
-                  <span class="value">
-                    ${formatMoney(fee)}
-                  </span>
-                </div>
-              `
-              : ''
-          }
-
-          <div class="row">
-            <span class="label">
-              Date
-            </span>
-
-            <span class="value">
-              ${formatFullDate(
-                transaction.created_at
+              ${amount.toLocaleString(
+                'en-NG',
+                {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2
+                }
               )}
-            </span>
+
+            </div>
+
+            <div class="direction">
+
+              ${
+                moneyIn
+                  ? 'Money received'
+                  : 'Money sent'
+              }
+
+            </div>
+
+            <div class="divider"></div>
+
+
+            <div class="row">
+
+              <span class="label">
+                Status
+              </span>
+
+              <span class="value">
+                ${escaped(status)}
+              </span>
+
+            </div>
+
+
+            <div class="row">
+
+              <span class="label">
+
+                ${
+                  moneyIn
+                    ? 'From'
+                    : 'To'
+                }
+
+              </span>
+
+              <span class="value">
+                ${escaped(counterparty)}
+              </span>
+
+            </div>
+
+
+            ${
+              wallet
+                ? `
+                  <div class="row">
+
+                    <span class="label">
+                      Wallet ID
+                    </span>
+
+                    <span class="value">
+                      ${escaped(wallet)}
+                    </span>
+
+                  </div>
+                `
+                : ''
+            }
+
+
+            ${
+              bank
+                ? `
+                  <div class="row">
+
+                    <span class="label">
+                      Bank
+                    </span>
+
+                    <span class="value">
+                      ${escaped(bank)}
+                    </span>
+
+                  </div>
+                `
+                : ''
+            }
+
+
+            ${
+              account
+                ? `
+                  <div class="row">
+
+                    <span class="label">
+                      Account
+                    </span>
+
+                    <span class="value">
+                      ${escaped(account)}
+                    </span>
+
+                  </div>
+                `
+                : ''
+            }
+
+
+            <div class="row">
+
+              <span class="label">
+                Type
+              </span>
+
+              <span class="value">
+                ${escaped(title)}
+              </span>
+
+            </div>
+
+
+            <div class="row">
+
+              <span class="label">
+                Narration
+              </span>
+
+              <span class="value">
+                ${escaped(narration)}
+              </span>
+
+            </div>
+
+
+            ${
+              fee > 0
+                ? `
+                  <div class="row">
+
+                    <span class="label">
+                      Fee
+                    </span>
+
+                    <span class="value">
+                      ${formatMoney(fee)}
+                    </span>
+
+                  </div>
+                `
+                : ''
+            }
+
+
+            <div class="row">
+
+              <span class="label">
+                Date
+              </span>
+
+              <span class="value">
+                ${escaped(
+                  formatFullDate(
+                    transaction.created_at
+                  )
+                )}
+              </span>
+
+            </div>
+
+
+            <div class="row">
+
+              <span class="label">
+                Reference
+              </span>
+
+              <span class="value reference">
+                ${escaped(reference)}
+              </span>
+
+            </div>
+
+
+            ${
+              providerReference
+                ? `
+                  <div class="row">
+
+                    <span class="label">
+                      Provider Ref.
+                    </span>
+
+                    <span class="value reference">
+                      ${escaped(
+                        providerReference
+                      )}
+                    </span>
+
+                  </div>
+                `
+                : ''
+            }
+
+
+            <div class="footer">
+
+              This is an electronically generated
+              transaction receipt from IyanjuPay.
+
+              <br />
+
+              Keep this receipt for your records.
+
+            </div>
+
           </div>
 
-          <div class="row">
-            <span class="label">
-              Reference
-            </span>
 
-            <span class="value reference">
-              ${reference}
-            </span>
-          </div>
+          <script>
 
-          ${
-            providerReference
-              ? `
-                <div class="row">
-                  <span class="label">
-                    Provider Ref.
-                  </span>
+            window.onload = function() {
+              window.print();
+            };
 
-                  <span class="value reference">
-                    ${providerReference}
-                  </span>
-                </div>
-              `
-              : ''
-          }
+          </script>
 
-          <div class="footer">
-            This is an electronically generated
-            transaction receipt from IyanjuPay.
-            <br />
-            Keep this receipt for your records.
-          </div>
+        </body>
 
-        </div>
+        </html>
+      `);
 
-        <script>
-          window.onload = function() {
-            window.print();
-          };
-        </script>
+      receiptWindow.document.close();
+    };
 
-      </body>
-      </html>
-    `);
-
-    receiptWindow.document.close();
-  };
 
   /*
   |--------------------------------------------------------------------------
-  | FILTER
+  | FILTERED TRANSACTIONS
   |--------------------------------------------------------------------------
   */
 
   const filteredTransactions =
     useMemo(() => {
+
       return transactions.filter(
         (transaction) => {
+
           const status =
             normalizeStatus(
               transaction.status
             );
 
+
           const matchesFilter =
             filter === 'all' ||
             status === filter;
 
+
           const searchText =
-            search.toLowerCase().trim();
+            search
+              .toLowerCase()
+              .trim();
+
 
           const metadata =
             getTransactionMetadata(
               transaction
             );
 
+
           const searchableText = [
+
             transaction.description,
+
             transaction.transaction_type,
+
             transaction.reference_number,
+
             transaction.reference,
+
             transaction.provider_reference,
 
+            getTransactionTitle(
+              transaction
+            ),
+
             getCounterpartyName(
+              transaction
+            ),
+
+            getCounterpartyNickname(
+              transaction
+            ),
+
+            getCounterpartyWallet(
               transaction
             ),
 
@@ -1169,6 +1965,10 @@ const TransactionHistory = ({
             ),
 
             getAccountNumber(
+              transaction
+            ),
+
+            getNarration(
               transaction
             ),
 
@@ -1181,10 +1981,12 @@ const TransactionHistory = ({
                 'recipient_account_name'
               ]
             )
+
           ]
             .filter(Boolean)
             .join(' ')
             .toLowerCase();
+
 
           const matchesSearch =
             !searchText ||
@@ -1192,17 +1994,20 @@ const TransactionHistory = ({
               searchText
             );
 
+
           return (
             matchesFilter &&
             matchesSearch
           );
         }
       );
+
     }, [
       transactions,
       filter,
       search
     ]);
+
 
   /*
   |--------------------------------------------------------------------------
@@ -1211,52 +2016,78 @@ const TransactionHistory = ({
   */
 
   const completedTransactions =
-    transactions.filter((t) => {
-      const status =
-        normalizeStatus(t.status);
+    transactions.filter(
+      (transaction) => {
 
-      return [
-        'completed',
-        'successful',
-        'success'
-      ].includes(status);
-    });
+        const status =
+          normalizeStatus(
+            transaction.status
+          );
+
+        return [
+          'completed',
+          'successful',
+          'success'
+        ].includes(status);
+      }
+    );
+
 
   const pendingTransactions =
-    transactions.filter((t) => {
-      const status =
-        normalizeStatus(t.status);
+    transactions.filter(
+      (transaction) => {
 
-      return [
-        'pending',
-        'processing'
-      ].includes(status);
-    });
+        const status =
+          normalizeStatus(
+            transaction.status
+          );
+
+        return [
+          'pending',
+          'processing'
+        ].includes(status);
+      }
+    );
+
 
   const failedTransactions =
-    transactions.filter((t) => {
-      const status =
-        normalizeStatus(t.status);
+    transactions.filter(
+      (transaction) => {
 
-      return [
-        'failed',
-        'cancelled',
-        'canceled'
-      ].includes(status);
-    });
+        const status =
+          normalizeStatus(
+            transaction.status
+          );
+
+        return [
+          'failed',
+          'cancelled',
+          'canceled'
+        ].includes(status);
+      }
+    );
+
 
   const totalSpent =
     completedTransactions
       .filter(
         (transaction) =>
-          !isMoneyIn(transaction)
+          !isMoneyIn(
+            transaction
+          )
       )
       .reduce(
-        (sum, transaction) =>
+        (
+          sum,
+          transaction
+        ) =>
           sum +
-          Number(transaction.amount || 0),
+          Number(
+            transaction.amount || 0
+          ),
         0
       );
+
 
   /*
   |--------------------------------------------------------------------------
@@ -1265,8 +2096,11 @@ const TransactionHistory = ({
   */
 
   if (loading) {
+
     return (
+
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-50 px-4">
+
         <div className="text-center">
 
           <div className="animate-spin rounded-full h-12 w-12 sm:h-16 sm:w-16 border-b-2 border-purple-600 mx-auto" />
@@ -1276,9 +2110,11 @@ const TransactionHistory = ({
           </p>
 
         </div>
+
       </div>
     );
   }
+
 
   /*
   |--------------------------------------------------------------------------
@@ -1287,9 +2123,11 @@ const TransactionHistory = ({
   */
 
   return (
+
     <div className="min-h-screen bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-50">
 
       <div className="w-full max-w-6xl mx-auto px-3 sm:px-4 md:px-6 py-4 sm:py-6">
+
 
         {/* HEADER */}
 
@@ -1303,12 +2141,15 @@ const TransactionHistory = ({
               onClick={onBack}
               className="text-purple-600 shrink-0 px-2 sm:px-3"
             >
+
               <ArrowLeft className="h-4 w-4 sm:mr-2" />
 
               <span className="hidden sm:inline">
                 Back
               </span>
+
             </Button>
+
 
             <h1 className="text-lg sm:text-2xl font-bold text-gray-900 truncate">
               Transaction History
@@ -1316,85 +2157,125 @@ const TransactionHistory = ({
 
           </div>
 
+
           <div className="hidden sm:flex gap-2 shrink-0">
 
             <Button
               variant="outline"
               size="sm"
               onClick={() => {
+
                 setFilter(
                   filter === 'all'
                     ? 'completed'
                     : 'all'
                 );
+
               }}
             >
+
               <Filter className="h-4 w-4 mr-2" />
+
               Filter
+
             </Button>
+
 
             <Button
               variant="outline"
               size="sm"
               onClick={() => {
+
                 if (
                   filteredTransactions.length === 0
                 ) {
+
                   toast({
-                    title: "No transactions",
+                    title:
+                      'No transactions',
                     description:
-                      "There are no transactions to export."
+                      'There are no transactions to export.'
                   });
 
                   return;
                 }
 
+
                 const rows =
                   filteredTransactions.map(
-                    (t) => ({
-                      Date: formatFullDate(
-                        t.created_at
-                      ),
-                      Type:
-                        getTransactionType(t),
+                    (transaction) => ({
+                      Date:
+                        formatFullDate(
+                          transaction.created_at
+                        ),
+
+                      Transaction:
+                        getTransactionTitle(
+                          transaction
+                        ),
+
                       Direction:
-                        isMoneyIn(t)
+                        isMoneyIn(
+                          transaction
+                        )
                           ? 'Money In'
                           : 'Money Out',
-                      Counterparty:
-                        getCounterpartyName(t),
+
+                      FromTo:
+                        getCounterpartyName(
+                          transaction
+                        ),
+
                       Amount:
-                        Number(t.amount),
+                        Number(
+                          transaction.amount
+                        ),
+
                       Status:
-                        t.status,
+                        transaction.status,
+
                       Reference:
-                        getReference(t),
+                        getReference(
+                          transaction
+                        ),
+
                       Narration:
-                        getNarration(t)
+                        getNarration(
+                          transaction
+                        )
                     })
                   );
 
+
                 const headers =
-                  Object.keys(rows[0]);
+                  Object.keys(
+                    rows[0]
+                  );
+
 
                 const csv = [
+
                   headers.join(','),
-                  ...rows.map((row) =>
-                    headers
-                      .map(
-                        (header) =>
-                          `"${String(
-                            (row as any)[
-                              header
-                            ] ?? ''
-                          ).replace(
-                            /"/g,
-                            '""'
-                          )}"`
-                      )
-                      .join(',')
+
+                  ...rows.map(
+                    (row) =>
+                      headers
+                        .map(
+                          (header) =>
+                            `"${String(
+                              (row as any)[
+                                header
+                              ] ?? ''
+                            ).replace(
+                              /"/g,
+                              '""'
+                            )}"`
+                        )
+                        .join(',')
                   )
+
                 ].join('\n');
+
 
                 const blob =
                   new Blob(
@@ -1405,10 +2286,12 @@ const TransactionHistory = ({
                     }
                   );
 
+
                 const url =
                   URL.createObjectURL(
                     blob
                   );
+
 
                 const a =
                   document.createElement(
@@ -1416,6 +2299,7 @@ const TransactionHistory = ({
                   );
 
                 a.href = url;
+
                 a.download =
                   `iyanjupay-transactions-${new Date()
                     .toISOString()
@@ -1423,31 +2307,43 @@ const TransactionHistory = ({
 
                 a.click();
 
-                URL.revokeObjectURL(url);
+                URL.revokeObjectURL(
+                  url
+                );
+
               }}
             >
+
               <Download className="h-4 w-4 mr-2" />
+
               Export
+
             </Button>
 
           </div>
+
 
           <Button
             variant="outline"
             size="sm"
             className="sm:hidden shrink-0"
             onClick={() => {
+
               setFilter(
                 filter === 'all'
                   ? 'completed'
                   : 'all'
               );
+
             }}
           >
+
             <Filter className="h-4 w-4" />
+
           </Button>
 
         </div>
+
 
         {/* SEARCH */}
 
@@ -1459,13 +2355,16 @@ const TransactionHistory = ({
             type="text"
             value={search}
             onChange={(e) =>
-              setSearch(e.target.value)
+              setSearch(
+                e.target.value
+              )
             }
             placeholder="Search by name, wallet, reference..."
             className="w-full h-11 rounded-xl border border-gray-200 bg-white pl-10 pr-4 text-sm outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
           />
 
         </div>
+
 
         {/* SUMMARY */}
 
@@ -1487,6 +2386,7 @@ const TransactionHistory = ({
 
           </Card>
 
+
           <Card className="min-w-[150px] md:min-w-0 shadow-sm">
 
             <CardContent className="p-4 text-center">
@@ -1502,6 +2402,7 @@ const TransactionHistory = ({
             </CardContent>
 
           </Card>
+
 
           <Card className="min-w-[150px] md:min-w-0 shadow-sm">
 
@@ -1519,12 +2420,15 @@ const TransactionHistory = ({
 
           </Card>
 
+
           <Card className="min-w-[180px] md:min-w-0 shadow-sm">
 
             <CardContent className="p-4 text-center">
 
               <p className="text-xl sm:text-2xl font-bold text-purple-600">
-                {formatMoney(totalSpent)}
+                {formatMoney(
+                  totalSpent
+                )}
               </p>
 
               <p className="text-xs sm:text-sm text-gray-600 mt-1">
@@ -1537,6 +2441,7 @@ const TransactionHistory = ({
 
         </div>
 
+
         {/* FILTER BUTTONS */}
 
         <div className="flex gap-2 mb-5 overflow-x-auto pb-1">
@@ -1546,37 +2451,44 @@ const TransactionHistory = ({
             'completed',
             'pending',
             'failed'
-          ].map((status) => (
+          ].map(
+            (status) => (
 
-            <Button
-              key={status}
-              variant={
-                filter === status
-                  ? "default"
-                  : "outline"
-              }
-              size="sm"
-              onClick={() =>
-                setFilter(status)
-              }
-              className={`
-                shrink-0 rounded-full px-4
-                ${
+              <Button
+                key={status}
+                variant={
                   filter === status
-                    ? "bg-purple-600 hover:bg-purple-700"
-                    : "bg-white"
+                    ? 'default'
+                    : 'outline'
                 }
-              `}
-            >
-              {status === 'all'
-                ? 'All'
-                : status.charAt(0).toUpperCase() +
-                  status.slice(1)}
-            </Button>
+                size="sm"
+                onClick={() =>
+                  setFilter(status)
+                }
+                className={`
+                  shrink-0 rounded-full px-4
+                  ${
+                    filter === status
+                      ? 'bg-purple-600 hover:bg-purple-700'
+                      : 'bg-white'
+                  }
+                `}
+              >
 
-          ))}
+                {status === 'all'
+                  ? 'All'
+                  : status
+                      .charAt(0)
+                      .toUpperCase() +
+                    status.slice(1)}
+
+              </Button>
+
+            )
+          )}
 
         </div>
+
 
         {/* TRANSACTIONS */}
 
@@ -1589,6 +2501,7 @@ const TransactionHistory = ({
             </CardTitle>
 
           </CardHeader>
+
 
           <CardContent className="p-0">
 
@@ -1618,7 +2531,9 @@ const TransactionHistory = ({
 
               <>
 
-                {/* MOBILE */}
+                {/* ======================================================
+                    MOBILE
+                ====================================================== */}
 
                 <div className="md:hidden divide-y divide-gray-100">
 
@@ -1630,15 +2545,11 @@ const TransactionHistory = ({
                           transaction
                         );
 
-                      const type =
-                        getTransactionType(
-                          transaction
+                      const status =
+                        normalizeStatus(
+                          transaction.status
                         );
 
-                      const counterparty =
-                        getCounterpartyName(
-                          transaction
-                        );
 
                       return (
 
@@ -1652,58 +2563,50 @@ const TransactionHistory = ({
                               transaction
                             )
                           }
-                          className="w-full text-left px-4 py-4 bg-white active:bg-gray-50 transition-colors"
+                          className="w-full text-left bg-white px-4 py-4 active:bg-gray-50 transition-colors"
                         >
 
                           <div className="flex items-center gap-3">
+
+                            {/* ICON */}
 
                             <div
                               className={`
                                 h-11 w-11 rounded-full
                                 flex items-center justify-center
                                 shrink-0
-                                ${
-                                  moneyIn
-                                    ? "bg-green-50"
-                                    : "bg-purple-50"
-                                }
+                                ${getTransactionIconBackground(
+                                  transaction
+                                )}
                               `}
                             >
 
-                              {moneyIn ? (
-                                <ArrowDownLeft
-                                  className="h-5 w-5 text-green-600"
-                                />
-                              ) : (
-                                <ArrowUpRight
-                                  className="h-5 w-5 text-purple-600"
-                                />
+                              {getTransactionIcon(
+                                transaction
                               )}
 
                             </div>
 
-                            <div className="min-w-0 flex-1">
+
+                            {/* CONTENT */}
+
+                            <div className="flex-1 min-w-0">
 
                               <div className="flex items-start justify-between gap-3">
 
                                 <div className="min-w-0">
 
-                                  <p className="font-semibold text-gray-900 text-sm truncate">
+                                  <p className="text-sm font-semibold text-gray-900 truncate">
 
-                                    <span className="mr-1">
-                                      {getTransactionTypeIcon(
-                                        type
-                                      )}
-                                    </span>
+                                    {getTransactionTitle(
+                                      transaction
+                                    )}
 
-                                    {moneyIn
-                                      ? `Received from ${counterparty}`
-                                      : `Sent to ${counterparty}`}
                                   </p>
 
-                                  <p className="text-xs text-gray-500 truncate mt-0.5">
+                                  <p className="text-xs text-gray-500 mt-1 truncate">
 
-                                    {getNarration(
+                                    {getTransactionSubtitle(
                                       transaction
                                     )}
 
@@ -1711,59 +2614,72 @@ const TransactionHistory = ({
 
                                 </div>
 
+
+                                {/* AMOUNT */}
+
                                 <div className="text-right shrink-0">
 
                                   <p
                                     className={`
-                                      font-bold text-sm
+                                      text-sm font-bold
                                       ${
                                         moneyIn
-                                          ? "text-green-600"
-                                          : "text-gray-900"
+                                          ? 'text-green-600'
+                                          : 'text-gray-900'
                                       }
                                     `}
                                   >
+
                                     {moneyIn
                                       ? '+'
                                       : '-'}
+
                                     {formatMoney(
                                       transaction.amount
                                     )}
+
                                   </p>
 
                                 </div>
 
                               </div>
 
-                              <div className="flex items-center justify-between gap-2 mt-2">
 
-                                <div className="flex items-center gap-1.5 min-w-0">
+                              {/* DATE + STATUS */}
 
-                                  <span className="text-[11px] text-gray-400 whitespace-nowrap">
+                              <div className="flex items-center justify-between mt-2">
+
+                                <div className="flex items-center gap-1.5">
+
+                                  <span className="text-[11px] text-gray-400">
+
                                     {formatDate(
                                       transaction.created_at
                                     )}
+
                                   </span>
 
                                   <span className="text-gray-300">
                                     •
                                   </span>
 
-                                  <span className="text-[11px] text-gray-400 whitespace-nowrap">
+                                  <span className="text-[11px] text-gray-400">
+
                                     {formatTime(
                                       transaction.created_at
                                     )}
+
                                   </span>
 
                                 </div>
 
+
                                 <span
                                   className={`
                                     inline-flex items-center gap-1
-                                    px-2 py-1 rounded-full
-                                    border text-[10px]
-                                    font-semibold capitalize
-                                    whitespace-nowrap
+                                    px-2 py-0.5 rounded-full
+                                    text-[10px] font-semibold
+                                    capitalize
                                     ${getStatusColor(
                                       transaction.status
                                     )}
@@ -1774,18 +2690,23 @@ const TransactionHistory = ({
                                     transaction.status
                                   )}
 
-                                  {transaction.status}
+                                  {status}
 
                                 </span>
 
                               </div>
 
+
+                              {/* REFERENCE */}
+
                               <div className="flex items-center justify-between mt-2">
 
-                                <p className="text-[10px] text-gray-400 font-mono truncate max-w-[85%]">
-                                  Ref: {getReference(
+                                <p className="text-[10px] text-gray-400 font-mono truncate max-w-[90%]">
+
+                                  {getReference(
                                     transaction
                                   )}
+
                                 </p>
 
                                 <ChevronRight className="h-4 w-4 text-gray-300 shrink-0" />
@@ -1804,15 +2725,18 @@ const TransactionHistory = ({
 
                 </div>
 
-                {/* DESKTOP */}
 
-                <div className="hidden md:block overflow-x-auto">
+                {/* ======================================================
+                    DESKTOP
+                ====================================================== */}
+
+                <div className="hidden md:block">
 
                   <Table>
 
                     <TableHeader>
 
-                      <TableRow>
+                      <TableRow className="bg-gray-50">
 
                         <TableHead>
                           Transaction
@@ -1842,6 +2766,7 @@ const TransactionHistory = ({
 
                     </TableHeader>
 
+
                     <TableBody>
 
                       {filteredTransactions.map(
@@ -1852,10 +2777,6 @@ const TransactionHistory = ({
                               transaction
                             );
 
-                          const type =
-                            getTransactionType(
-                              transaction
-                            );
 
                           return (
 
@@ -1871,40 +2792,45 @@ const TransactionHistory = ({
                               }
                             >
 
+                              {/* TRANSACTION */}
+
                               <TableCell>
 
-                                <div className="flex items-center gap-2">
+                                <div className="flex items-center gap-3">
 
                                   <div
                                     className={`
-                                      h-9 w-9 rounded-full
+                                      h-10 w-10 rounded-full
                                       flex items-center justify-center
-                                      ${
-                                        moneyIn
-                                          ? "bg-green-50"
-                                          : "bg-purple-50"
-                                      }
+                                      ${getTransactionIconBackground(
+                                        transaction
+                                      )}
                                     `}
                                   >
 
-                                    {moneyIn ? (
-                                      <ArrowDownLeft className="h-4 w-4 text-green-600" />
-                                    ) : (
-                                      <ArrowUpRight className="h-4 w-4 text-purple-600" />
+                                    {getTransactionIcon(
+                                      transaction
                                     )}
 
                                   </div>
 
-                                  <div>
 
-                                    <p className="font-medium capitalize">
-                                      {type}
-                                    </p>
+                                  <div className="min-w-0">
 
-                                    <p className="text-xs text-gray-500">
-                                      {getNarration(
+                                    <p className="font-semibold text-gray-900">
+
+                                      {getTransactionTitle(
                                         transaction
                                       )}
+
+                                    </p>
+
+                                    <p className="text-xs text-gray-500 truncate max-w-[240px]">
+
+                                      {getTransactionSubtitle(
+                                        transaction
+                                      )}
+
                                     </p>
 
                                   </div>
@@ -1913,11 +2839,14 @@ const TransactionHistory = ({
 
                               </TableCell>
 
+
+                              {/* FROM / TO */}
+
                               <TableCell>
 
                                 <div>
 
-                                  <p className="font-medium">
+                                  <p className="font-medium text-gray-900">
 
                                     {moneyIn
                                       ? 'From '
@@ -1929,48 +2858,80 @@ const TransactionHistory = ({
 
                                   </p>
 
+
+                                  {getCounterpartyNickname(
+                                    transaction
+                                  ) && (
+
+                                    <p className="text-xs text-gray-500">
+
+                                      {getCounterpartyNickname(
+                                        transaction
+                                      )}
+
+                                    </p>
+
+                                  )}
+
+
                                   {getCounterpartyWallet(
                                     transaction
                                   ) && (
-                                    <p className="text-xs text-gray-400 font-mono">
-                                      Wallet:{" "}
+
+                                    <p className="text-[11px] text-gray-400 font-mono">
+
+                                      Wallet:{' '}
+
                                       {getCounterpartyWallet(
                                         transaction
                                       )}
+
                                     </p>
+
                                   )}
 
                                 </div>
 
                               </TableCell>
 
-                              <TableCell
-                                className={`
-                                  font-bold
-                                  ${
-                                    moneyIn
-                                      ? "text-green-600"
-                                      : ""
-                                  }
-                                `}
-                              >
 
-                                {moneyIn
-                                  ? '+'
-                                  : '-'}
-                                {formatMoney(
-                                  transaction.amount
-                                )}
+                              {/* AMOUNT */}
+
+                              <TableCell>
+
+                                <p
+                                  className={`
+                                    font-bold
+                                    ${
+                                      moneyIn
+                                        ? 'text-green-600'
+                                        : 'text-gray-900'
+                                    }
+                                  `}
+                                >
+
+                                  {moneyIn
+                                    ? '+'
+                                    : '-'}
+
+                                  {formatMoney(
+                                    transaction.amount
+                                  )}
+
+                                </p>
 
                               </TableCell>
+
+
+                              {/* STATUS */}
 
                               <TableCell>
 
                                 <span
                                   className={`
                                     inline-flex items-center gap-1
-                                    px-2 py-1 rounded-full
-                                    border text-xs font-medium
+                                    px-2.5 py-1 rounded-full
+                                    border text-xs font-semibold
                                     capitalize
                                     ${getStatusColor(
                                       transaction.status
@@ -1988,19 +2949,45 @@ const TransactionHistory = ({
 
                               </TableCell>
 
-                              <TableCell className="font-mono text-xs max-w-[180px] truncate">
 
-                                {getReference(
-                                  transaction
-                                )}
+                              {/* REFERENCE */}
+
+                              <TableCell className="font-mono text-xs max-w-[180px]">
+
+                                <span className="block truncate">
+
+                                  {getReference(
+                                    transaction
+                                  )}
+
+                                </span>
 
                               </TableCell>
 
+
+                              {/* DATE */}
+
                               <TableCell>
 
-                                {formatDate(
-                                  transaction.created_at
-                                )}
+                                <div>
+
+                                  <p className="text-sm text-gray-700">
+
+                                    {formatDate(
+                                      transaction.created_at
+                                    )}
+
+                                  </p>
+
+                                  <p className="text-xs text-gray-400">
+
+                                    {formatTime(
+                                      transaction.created_at
+                                    )}
+
+                                  </p>
+
+                                </div>
 
                               </TableCell>
 
@@ -2026,16 +3013,19 @@ const TransactionHistory = ({
 
       </div>
 
-      {/* =========================================================
-          TRANSACTION RECEIPT / DETAILS
-      ========================================================= */}
+
+      {/* ================================================================
+          TRANSACTION DETAILS / RECEIPT
+      ================================================================ */}
 
       {selectedTransaction && (
 
         <div
           className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm p-0 sm:p-4"
           onClick={() =>
-            setSelectedTransaction(null)
+            setSelectedTransaction(
+              null
+            )
           }
         >
 
@@ -2046,7 +3036,7 @@ const TransactionHistory = ({
             }
           >
 
-            {/* RECEIPT HEADER */}
+            {/* HEADER */}
 
             <div className="sticky top-0 z-10 bg-white border-b px-5 py-4 flex items-center justify-between">
 
@@ -2054,11 +3044,24 @@ const TransactionHistory = ({
 
                 <Receipt className="h-5 w-5 text-purple-600" />
 
-                <h2 className="font-bold text-gray-900">
-                  Transaction Details
-                </h2>
+                <div>
+
+                  <h2 className="font-bold text-gray-900">
+
+                    {getTransactionTitle(
+                      selectedTransaction
+                    )}
+
+                  </h2>
+
+                  <p className="text-[11px] text-gray-400">
+                    Transaction Details
+                  </p>
+
+                </div>
 
               </div>
+
 
               <button
                 type="button"
@@ -2069,12 +3072,16 @@ const TransactionHistory = ({
                 }
                 className="h-9 w-9 rounded-full bg-gray-100 flex items-center justify-center hover:bg-gray-200"
               >
+
                 <X className="h-4 w-4" />
+
               </button>
 
             </div>
 
+
             <div className="p-5">
+
 
               {/* SUCCESS ICON */}
 
@@ -2085,11 +3092,22 @@ const TransactionHistory = ({
                     h-20 w-20 rounded-full
                     flex items-center justify-center
                     ${
-                      isMoneyIn(
-                        selectedTransaction
-                      )
-                        ? "bg-green-100"
-                        : "bg-purple-100"
+                      normalizeStatus(
+                        selectedTransaction.status
+                      ) === 'failed'
+                        ? 'bg-red-100'
+                        : normalizeStatus(
+                            selectedTransaction.status
+                          ) === 'pending' ||
+                          normalizeStatus(
+                            selectedTransaction.status
+                          ) === 'processing'
+                        ? 'bg-yellow-100'
+                        : isMoneyIn(
+                            selectedTransaction
+                          )
+                        ? 'bg-green-100'
+                        : 'bg-purple-100'
                     }
                   `}
                 >
@@ -2118,8 +3136,8 @@ const TransactionHistory = ({
                           isMoneyIn(
                             selectedTransaction
                           )
-                            ? "text-green-600"
-                            : "text-purple-600"
+                            ? 'text-green-600'
+                            : 'text-purple-600'
                         }
                       `}
                     />
@@ -2130,9 +3148,10 @@ const TransactionHistory = ({
 
               </div>
 
+
               {/* AMOUNT */}
 
-              <div className="text-center mt-4">
+              <div className="text-center mt-5">
 
                 <p
                   className={`
@@ -2141,8 +3160,8 @@ const TransactionHistory = ({
                       isMoneyIn(
                         selectedTransaction
                       )
-                        ? "text-green-600"
-                        : "text-gray-900"
+                        ? 'text-green-600'
+                        : 'text-gray-900'
                     }
                   `}
                 >
@@ -2159,17 +3178,17 @@ const TransactionHistory = ({
 
                 </p>
 
+
                 <p className="text-sm text-gray-500 mt-1">
 
-                  {isMoneyIn(
+                  {getTransactionSubtitle(
                     selectedTransaction
-                  )
-                    ? 'Money received'
-                    : 'Money sent'}
+                  )}
 
                 </p>
 
               </div>
+
 
               {/* STATUS */}
 
@@ -2197,33 +3216,77 @@ const TransactionHistory = ({
 
               </div>
 
+
               {/* COUNTERPARTY */}
 
               <div className="mt-6 rounded-2xl bg-gray-50 p-4">
 
-                <p className="text-xs text-gray-500 mb-3">
+                <p className="text-[11px] font-semibold tracking-wide text-gray-400 mb-3">
+
                   {isMoneyIn(
                     selectedTransaction
                   )
-                    ? 'FROM'
-                    : 'TO'}
+                    ? 'MONEY RECEIVED FROM'
+                    : 'MONEY SENT TO'}
+
                 </p>
+
 
                 <div className="flex items-center gap-3">
 
-                  <div className="h-11 w-11 rounded-full bg-white flex items-center justify-center border">
+                  <div
+                    className={`
+                      h-12 w-12 rounded-full
+                      flex items-center justify-center
+                      border
+                      ${
+                        isMoneyIn(
+                          selectedTransaction
+                        )
+                          ? 'bg-green-50 border-green-100'
+                          : 'bg-purple-50 border-purple-100'
+                      }
+                    `}
+                  >
 
                     {getBankName(
                       selectedTransaction
                     ) ? (
-                      <Building2 className="h-5 w-5 text-purple-600" />
+
+                      <Building2
+                        className={`
+                          h-5 w-5
+                          ${
+                            isMoneyIn(
+                              selectedTransaction
+                            )
+                              ? 'text-green-600'
+                              : 'text-purple-600'
+                          }
+                        `}
+                      />
+
                     ) : (
-                      <User className="h-5 w-5 text-purple-600" />
+
+                      <User
+                        className={`
+                          h-5 w-5
+                          ${
+                            isMoneyIn(
+                              selectedTransaction
+                            )
+                              ? 'text-green-600'
+                              : 'text-purple-600'
+                          }
+                        `}
+                      />
+
                     )}
 
                   </div>
 
-                  <div className="min-w-0">
+
+                  <div className="min-w-0 flex-1">
 
                     <p className="font-semibold text-gray-900 truncate">
 
@@ -2233,24 +3296,52 @@ const TransactionHistory = ({
 
                     </p>
 
+
+                    {getCounterpartyNickname(
+                      selectedTransaction
+                    ) &&
+                      getCounterpartyNickname(
+                        selectedTransaction
+                      ) !==
+                        getCounterpartyName(
+                          selectedTransaction
+                        ) && (
+
+                        <p className="text-xs text-gray-500">
+
+                          @
+                          {getCounterpartyNickname(
+                            selectedTransaction
+                          )}
+
+                        </p>
+
+                      )}
+
+
                     {getCounterpartyWallet(
                       selectedTransaction
                     ) && (
 
-                      <p className="text-xs text-gray-500 font-mono">
-                        Wallet ID:{" "}
+                      <p className="text-xs text-gray-500 font-mono mt-1">
+
+                        Wallet ID:{' '}
+
                         {getCounterpartyWallet(
                           selectedTransaction
                         )}
+
                       </p>
 
                     )}
+
 
                     {getBankName(
                       selectedTransaction
                     ) && (
 
-                      <p className="text-xs text-gray-500 mt-0.5">
+                      <p className="text-xs text-gray-500 mt-1">
+
                         {getBankName(
                           selectedTransaction
                         )}
@@ -2262,6 +3353,7 @@ const TransactionHistory = ({
                               selectedTransaction
                             )}`
                           : ''}
+
                       </p>
 
                     )}
@@ -2272,9 +3364,13 @@ const TransactionHistory = ({
 
               </div>
 
+
               {/* DETAILS */}
 
               <div className="mt-5 space-y-1">
+
+
+                {/* NARRATION */}
 
                 <div className="flex items-center justify-between py-3 border-b">
 
@@ -2288,6 +3384,7 @@ const TransactionHistory = ({
 
                   </div>
 
+
                   <span className="text-sm font-medium text-gray-900 text-right max-w-[55%]">
 
                     {getNarration(
@@ -2297,6 +3394,9 @@ const TransactionHistory = ({
                   </span>
 
                 </div>
+
+
+                {/* TYPE */}
 
                 <div className="flex items-center justify-between py-3 border-b">
 
@@ -2310,13 +3410,19 @@ const TransactionHistory = ({
 
                   </div>
 
-                  <span className="text-sm font-medium capitalize">
-                    {getTransactionType(
+
+                  <span className="text-sm font-medium capitalize text-right max-w-[60%]">
+
+                    {getTransactionTitle(
                       selectedTransaction
                     )}
+
                   </span>
 
                 </div>
+
+
+                {/* FEE */}
 
                 {getFee(
                   selectedTransaction
@@ -2334,17 +3440,23 @@ const TransactionHistory = ({
 
                     </div>
 
+
                     <span className="text-sm font-medium">
+
                       {formatMoney(
                         getFee(
                           selectedTransaction
                         )
                       )}
+
                     </span>
 
                   </div>
 
                 )}
+
+
+                {/* DATE */}
 
                 <div className="flex items-center justify-between py-3 border-b">
 
@@ -2358,13 +3470,19 @@ const TransactionHistory = ({
 
                   </div>
 
-                  <span className="text-sm font-medium text-right">
+
+                  <span className="text-sm font-medium text-right max-w-[60%]">
+
                     {formatFullDate(
                       selectedTransaction.created_at
                     )}
+
                   </span>
 
                 </div>
+
+
+                {/* REFERENCE */}
 
                 <div className="flex items-center justify-between gap-3 py-3 border-b">
 
@@ -2378,13 +3496,17 @@ const TransactionHistory = ({
 
                   </div>
 
+
                   <div className="flex items-center gap-1 min-w-0">
 
                     <span className="text-xs font-mono truncate">
+
                       {getReference(
                         selectedTransaction
                       )}
+
                     </span>
+
 
                     <button
                       type="button"
@@ -2404,6 +3526,9 @@ const TransactionHistory = ({
 
                 </div>
 
+
+                {/* PROVIDER REFERENCE */}
+
                 {getProviderReference(
                   selectedTransaction
                 ) && (
@@ -2420,17 +3545,45 @@ const TransactionHistory = ({
 
                     </div>
 
+
                     <span className="text-xs font-mono truncate max-w-[55%]">
+
                       {getProviderReference(
                         selectedTransaction
                       )}
+
                     </span>
 
                   </div>
 
                 )}
 
+
+                {/* TRANSACTION ID */}
+
+                <div className="flex items-center justify-between gap-3 py-3">
+
+                  <div className="flex items-center gap-2 text-gray-500">
+
+                    <Hash className="h-4 w-4" />
+
+                    <span className="text-sm">
+                      Transaction ID
+                    </span>
+
+                  </div>
+
+
+                  <span className="text-[10px] font-mono text-gray-400 truncate max-w-[55%]">
+
+                    {selectedTransaction.id}
+
+                  </span>
+
+                </div>
+
               </div>
+
 
               {/* ACTIONS */}
 
@@ -2451,6 +3604,7 @@ const TransactionHistory = ({
                   Copy Ref
 
                 </Button>
+
 
                 <Button
                   onClick={() =>
@@ -2480,5 +3634,6 @@ const TransactionHistory = ({
     </div>
   );
 };
+
 
 export default TransactionHistory;

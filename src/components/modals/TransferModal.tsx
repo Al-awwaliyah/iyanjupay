@@ -83,6 +83,7 @@ type TransferType =
  */
 const IYANJUPAY_TRANSFER_FEE = 0;
 const BANK_TRANSFER_FEE = 10;
+const ELECTRONIC_FEE = 50;
 
 const TransferModal = ({
   isOpen,
@@ -169,11 +170,12 @@ const TransferModal = ({
 
   const transferFee =
     transferType === "iyanjupay"
-      ? ELECTRONIC_FEE
-      : transferAmount > 0
+      
       ? IYANJUPAY_TRANSFER_FEE
       : transferAmount > 0
         ? BANK_TRANSFER_FEE
+        : 0;
+        ? ELECTRONIC_FEE
         : 0;
 
   const totalCharged =

@@ -3,6 +3,12 @@ import {
   flw,
 } from "../_shared/auth.ts";
 
+/*
+ * ============================================================
+ * CONFIG
+ * ============================================================
+ */
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
@@ -13,8 +19,15 @@ const corsHeaders = {
 };
 
 const ELECTRONIC_FEE = 50;
+
 const FLUTTERWAVE_ELECTRONIC_FEE_THRESHOLD =
   5000;
+
+/*
+ * ============================================================
+ * HELPERS
+ * ============================================================
+ */
 
 function jsonResponse(
   body: Record<string, unknown>,
@@ -32,9 +45,7 @@ function jsonResponse(
 function normalizeStatus(
   value: unknown,
 ) {
-  return String(
-    value ?? "",
-  )
+  return String(value ?? "")
     .trim()
     .toUpperCase();
 }
@@ -43,10 +54,7 @@ function safeEqual(
   a: string,
   b: string,
 ) {
-  if (
-    a.length !==
-    b.length
-  ) {
+  if (a.length !== b.length) {
     return false;
   }
 
@@ -111,9 +119,7 @@ async function generateSignature(
   const key =
     await crypto.subtle.importKey(
       "raw",
-      encoder.encode(
-        secretHash,
-      ),
+      encoder.encode(secretHash),
       {
         name: "HMAC",
         hash: "SHA-256",
@@ -141,11 +147,22 @@ function maskAccountNumber(
     String(accountNumber ?? "")
       .replace(/\D/g, "");
 
-  if (value.length < 4) {
+  if (!value) {
+    return "";
+  }
+
+  if (value.length <= 4) {
     return value;
   }
 
   return `xxxxxx${value.slice(-4)}`;
+}
+
+function amountsMatch(
+  a: number,
+  b: number,
+) {
+  return Math.abs(a - b) < 0.01;
 }
 
 /*
@@ -156,34 +173,33 @@ function maskAccountNumber(
 
 Deno.serve(
   async (req) => {
-    if (
-      req.method ===
-      "OPTIONS"
-    ) {
+    if (req.method === "OPTIONS") {
       return new Response(
         "ok",
         {
           status: 200,
-          headers:
-            corsHeaders,
+          headers: corsHeaders,
         },
       );
     }
 
-    if (
-      req.method !==
-      "POST"
-    ) {
+    if (req.method !== "POST") {
       return jsonResponse(
         {
-          error:
-            "Method not allowed",
+          success: false,
+          error: "Method not allowed",
         },
         405,
       );
     }
 
     try {
+      /*
+       * ========================================================
+       * WEBHOOK SECRET
+       * ========================================================
+       */
+
       const webhookSecret =
         Deno.env.get(
           "FLW_SECRET_HASH",
@@ -196,9 +212,9 @@ Deno.serve(
       }
 
       /*
-       * ==========================================================
+       * ========================================================
        * RAW BODY
-       * ==========================================================
+       * ========================================================
        */
 
       const rawBody =
@@ -207,17 +223,17 @@ Deno.serve(
       if (!rawBody) {
         return jsonResponse(
           {
-            error:
-              "Empty webhook body",
+            success: false,
+            error: "Empty webhook body",
           },
           400,
         );
       }
 
       /*
-       * ==========================================================
-       * SIGNATURE
-       * ==========================================================
+       * ========================================================
+       * SIGNATURE VALIDATION
+       * ========================================================
        */
 
       const signature =
@@ -243,25 +259,33 @@ Deno.serve(
             signature,
           )
         ) {
+          console.error(
+            "Invalid Flutterwave signature",
+          );
+
           return jsonResponse(
             {
+              success: false,
               error:
                 "Invalid webhook signature",
             },
             401,
           );
         }
-      } else if (
-        legacyHash
-      ) {
+      } else if (legacyHash) {
         if (
           !safeEqual(
             legacyHash,
             webhookSecret,
           )
         ) {
+          console.error(
+            "Invalid Flutterwave legacy hash",
+          );
+
           return jsonResponse(
             {
+              success: false,
               error:
                 "Invalid webhook signature",
             },
@@ -271,6 +295,7 @@ Deno.serve(
       } else {
         return jsonResponse(
           {
+            success: false,
             error:
               "Missing Flutterwave webhook signature",
           },
@@ -279,9 +304,9 @@ Deno.serve(
       }
 
       /*
-       * ==========================================================
-       * PARSE
-       * ==========================================================
+       * ========================================================
+       * PARSE PAYLOAD
+       * ========================================================
        */
 
       let payload: any;
@@ -292,6 +317,7 @@ Deno.serve(
       } catch {
         return jsonResponse(
           {
+            success: false,
             error:
               "Invalid webhook JSON payload",
           },
@@ -313,9 +339,9 @@ Deno.serve(
         adminClient();
 
       /*
-       * ==========================================================
-       * BANK TRANSFER WEBHOOK
-       * ==========================================================
+       * ========================================================
+       * TRANSFER WEBHOOK
+       * ========================================================
        */
 
       if (
@@ -323,7 +349,8 @@ Deno.serve(
           "transfer.disburse" ||
         event ===
           "transfer.completed" ||
-        event === "Transfer"
+        event ===
+          "Transfer"
       ) {
         return await handleTransferWebhook(
           payload,
@@ -332,15 +359,14 @@ Deno.serve(
       }
 
       /*
-       * ==========================================================
-       * DEPOSIT
-       * ==========================================================
+       * ========================================================
+       * DEPOSIT / WALLET FUNDING
+       * ========================================================
        */
 
       if (
         event &&
-        event !==
-          "charge.completed"
+        event !== "charge.completed"
       ) {
         return jsonResponse({
           success: true,
@@ -405,18 +431,16 @@ async function handleTransferWebhook(
   if (!transferId) {
     return jsonResponse(
       {
-        error:
-          "Transfer ID missing",
+        success: false,
+        error: "Transfer ID missing",
       },
       400,
     );
   }
 
   if (
-    webhookStatus !==
-      "SUCCESSFUL" &&
-    webhookStatus !==
-      "FAILED"
+    webhookStatus !== "SUCCESSFUL" &&
+    webhookStatus !== "FAILED"
   ) {
     return jsonResponse({
       success: true,
@@ -432,11 +456,11 @@ async function handleTransferWebhook(
 
   /*
    * ==========================================================
-   * VERIFY WITH FLUTTERWAVE
+   * VERIFY TRANSFER
    * ==========================================================
    */
 
-  let verifyResponse;
+  let verifyResponse: any;
 
   try {
     verifyResponse =
@@ -458,7 +482,7 @@ async function handleTransferWebhook(
       {
         success: false,
         error:
-          "Unable to verify transfer status.",
+          "Unable to verify transfer status",
       },
       503,
     );
@@ -473,7 +497,7 @@ async function handleTransferWebhook(
       {
         success: false,
         error:
-          "Flutterwave transfer verification failed.",
+          "Flutterwave transfer verification failed",
       },
       503,
     );
@@ -487,7 +511,7 @@ async function handleTransferWebhook(
       {
         success: false,
         error:
-          "Flutterwave verification returned no transfer data.",
+          "Flutterwave verification returned no transfer data",
       },
       503,
     );
@@ -501,6 +525,7 @@ async function handleTransferWebhook(
   const verifiedReference =
     verified?.reference ??
     verified?.tx_ref ??
+    verified?.txRef ??
     null;
 
   const verifiedAmount =
@@ -518,10 +543,8 @@ async function handleTransferWebhook(
     ).toUpperCase();
 
   if (
-    verifiedStatus !==
-      "SUCCESSFUL" &&
-    verifiedStatus !==
-      "FAILED"
+    verifiedStatus !== "SUCCESSFUL" &&
+    verifiedStatus !== "FAILED"
   ) {
     return jsonResponse({
       success: true,
@@ -531,14 +554,12 @@ async function handleTransferWebhook(
     });
   }
 
-  if (
-    verifiedCurrency !==
-    "NGN"
-  ) {
+  if (verifiedCurrency !== "NGN") {
     return jsonResponse(
       {
+        success: false,
         error:
-          "Verified transfer currency is not NGN.",
+          "Verified transfer currency is not NGN",
       },
       409,
     );
@@ -547,17 +568,14 @@ async function handleTransferWebhook(
   if (
     transferReference &&
     verifiedReference &&
-    String(
-      transferReference,
-    ) !==
-      String(
-        verifiedReference,
-      )
+    String(transferReference) !==
+      String(verifiedReference)
   ) {
     return jsonResponse(
       {
+        success: false,
         error:
-          "Transfer reference mismatch.",
+          "Transfer reference mismatch",
       },
       409,
     );
@@ -565,7 +583,7 @@ async function handleTransferWebhook(
 
   /*
    * ==========================================================
-   * FIND TRANSACTION
+   * FIND ORIGINAL TRANSACTION
    * ==========================================================
    */
 
@@ -579,28 +597,24 @@ async function handleTransferWebhook(
       providerLookupError,
   } = await supabase
     .from("transactions")
-    .select(
-      `
-        id,
-        user_id,
-        wallet_id,
-        amount,
-        status,
-        reference_number,
-        provider,
-        provider_reference,
-        metadata
-      `,
-    )
+    .select(`
+      id,
+      user_id,
+      wallet_id,
+      amount,
+      status,
+      reference_number,
+      provider,
+      provider_reference,
+      metadata
+    `)
     .eq(
       "provider_reference",
       transferId,
     )
     .maybeSingle();
 
-  if (
-    providerLookupError
-  ) {
+  if (providerLookupError) {
     throw providerLookupError;
   }
 
@@ -618,24 +632,20 @@ async function handleTransferWebhook(
         referenceError,
     } = await supabase
       .from("transactions")
-      .select(
-        `
-          id,
-          user_id,
-          wallet_id,
-          amount,
-          status,
-          reference_number,
-          provider,
-          provider_reference,
-          metadata
-        `,
-      )
+      .select(`
+        id,
+        user_id,
+        wallet_id,
+        amount,
+        status,
+        reference_number,
+        provider,
+        provider_reference,
+        metadata
+      `)
       .eq(
         "reference_number",
-        String(
-          transferReference,
-        ),
+        String(transferReference),
       )
       .maybeSingle();
 
@@ -652,11 +662,9 @@ async function handleTransferWebhook(
       {
         success: false,
         error:
-          "IyanjuPay transfer transaction not found.",
+          "IyanjuPay transfer transaction not found",
         transfer_id:
           transferId,
-        reference:
-          transferReference,
       },
       404,
     );
@@ -671,8 +679,9 @@ async function handleTransferWebhook(
   ) {
     return jsonResponse(
       {
+        success: false,
         error:
-          "Transaction provider mismatch.",
+          "Transaction provider mismatch",
       },
       409,
     );
@@ -700,21 +709,25 @@ async function handleTransferWebhook(
   ) {
     return jsonResponse(
       {
+        success: false,
         error:
-          "Provider transfer amount is missing from transaction metadata.",
+          "Provider transfer amount is missing",
       },
       409,
     );
   }
 
   if (
-    verifiedAmount !==
-    providerTransferAmount
+    !amountsMatch(
+      verifiedAmount,
+      providerTransferAmount,
+    )
   ) {
     return jsonResponse(
       {
+        success: false,
         error:
-          "Transfer amount mismatch.",
+          "Transfer amount mismatch",
         expected:
           providerTransferAmount,
         verified:
@@ -750,20 +763,13 @@ async function handleTransferWebhook(
       return jsonResponse({
         success: true,
         already_processed: true,
-        status:
-          "successful",
+        status: "successful",
         transaction_id:
           transaction.id,
         transfer_id:
           transferId,
       });
     }
-
-    /*
-     * ----------------------------------------------------------
-     * COMPLETE KYC
-     * ----------------------------------------------------------
-     */
 
     const kycAlreadyCompleted =
       metadata?.kyc_limit_completed ===
@@ -773,9 +779,11 @@ async function handleTransferWebhook(
       ...metadata,
     };
 
-    if (
-      !kycAlreadyCompleted
-    ) {
+    /*
+     * KYC FINALIZATION
+     */
+
+    if (!kycAlreadyCompleted) {
       const {
         data: kycCompletion,
         error:
@@ -794,22 +802,12 @@ async function handleTransferWebhook(
         kycCompletionError ||
         !kycCompletion?.success
       ) {
-        console.error(
-          "KYC completion failed:",
-          kycCompletionError ||
-            kycCompletion,
-        );
-
         return jsonResponse(
           {
             success: false,
             status: "pending",
             error:
-              "Transfer succeeded at Flutterwave, but KYC daily-limit finalization is pending.",
-            transaction_id:
-              transaction.id,
-            transfer_id:
-              transferId,
+              "Transfer succeeded but KYC finalization is pending",
           },
           503,
         );
@@ -817,25 +815,16 @@ async function handleTransferWebhook(
 
       updatedMetadata = {
         ...updatedMetadata,
-
-        kyc_limit_completed:
-          true,
-
+        kyc_limit_completed: true,
         kyc_completed_amount:
           providerTransferAmount,
-
         kyc_completed_at:
           new Date().toISOString(),
       };
     }
 
     /*
-     * ----------------------------------------------------------
      * ELECTRONIC FEE
-     * ----------------------------------------------------------
-     *
-     * Flutterwave:
-     * amount > ₦5,000 = ₦50
      */
 
     const electronicFeeDue =
@@ -852,15 +841,13 @@ async function handleTransferWebhook(
       false;
 
     let electronicFeeError:
-      string | null = null;
+      string | null =
+        null;
 
     if (
       electronicFeeDue > 0 &&
       !electronicFeeCharged
     ) {
-      const feeKey =
-        `ELECTRONIC_FEE_${transaction.id}`;
-
       const {
         data: feeResult,
         error: feeError,
@@ -882,7 +869,7 @@ async function handleTransferWebhook(
             )}`,
 
           _idempotency_key:
-            feeKey,
+            `ELECTRONIC_FEE_${transaction.id}`,
 
           _reference:
             `ELECTRONIC_FEE_${transaction.id}`,
@@ -896,18 +883,13 @@ async function handleTransferWebhook(
           _metadata: {
             original_transaction_id:
               transaction.id,
-
             flutterwave_transfer_id:
               transferId,
-
             transfer_amount:
               providerTransferAmount,
-
             electronic_fee:
               electronicFeeDue,
-
-            currency:
-              "NGN",
+            currency: "NGN",
           },
         },
       );
@@ -921,12 +903,11 @@ async function handleTransferWebhook(
 
         electronicFeeError =
           feeError?.message ??
-          "Electronic transfer fee could not be charged.";
+          "Electronic fee could not be charged";
 
         console.error(
           "Electronic fee debit failed:",
-          feeError ||
-            feeResult,
+          feeError,
         );
       } else {
         electronicFeeCharged =
@@ -940,9 +921,7 @@ async function handleTransferWebhook(
         : 0;
 
     /*
-     * ----------------------------------------------------------
-     * FINAL HISTORY METADATA
-     * ----------------------------------------------------------
+     * HISTORY METADATA
      */
 
     const beneficiaryName =
@@ -1054,22 +1033,18 @@ async function handleTransferWebhook(
       history_amount:
         finalTotalCharged,
 
-      history_sign:
-        "-",
+      history_sign: "-",
 
       history_amount_display:
         `-₦${finalTotalCharged.toLocaleString(
           "en-NG",
           {
-            minimumFractionDigits:
-              2,
-            maximumFractionDigits:
-              2,
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
           },
         )}`,
 
-      status:
-        "successful",
+      status: "successful",
 
       reference,
 
@@ -1107,8 +1082,7 @@ async function handleTransferWebhook(
       refund_required:
         false,
 
-      refunded:
-        false,
+      refunded: false,
 
       kyc_limit_completed:
         true,
@@ -1122,20 +1096,14 @@ async function handleTransferWebhook(
     };
 
     const {
-      error:
-        updateError,
+      error: updateError,
     } = await supabase
       .from("transactions")
       .update({
-        status:
-          "successful",
-
-        provider:
-          "flutterwave",
-
+        status: "successful",
+        provider: "flutterwave",
         provider_reference:
           transferId,
-
         metadata:
           updatedMetadata,
       })
@@ -1145,48 +1113,26 @@ async function handleTransferWebhook(
       );
 
     if (updateError) {
-      console.error(
-        "Failed to update successful transaction:",
-        updateError,
-      );
-
-      return jsonResponse(
-        {
-          success: false,
-          error:
-            "Unable to update transfer transaction.",
-        },
-        503,
-      );
+      throw updateError;
     }
 
     return jsonResponse({
       success: true,
-
-      status:
-        "successful",
-
+      status: "successful",
       transaction_id:
         transaction.id,
-
       transfer_id:
         transferId,
-
       transfer_amount:
         providerTransferAmount,
-
       electronic_fee:
         electronicFeeDue,
-
       electronic_fee_charged:
         electronicFeeCharged,
-
       electronic_fee_pending:
         electronicFeePending,
-
       total_charged:
         finalTotalCharged,
-
       refunded: false,
     });
   }
@@ -1198,8 +1144,7 @@ async function handleTransferWebhook(
    */
 
   if (
-    verifiedStatus ===
-    "FAILED"
+    verifiedStatus === "FAILED"
   ) {
     const existingMetadata =
       transaction.metadata &&
@@ -1209,7 +1154,7 @@ async function handleTransferWebhook(
         : {};
 
     /*
-     * Already refunded.
+     * ALREADY REFUNDED
      */
 
     if (
@@ -1225,8 +1170,7 @@ async function handleTransferWebhook(
         await supabase
           .from("transactions")
           .update({
-            status:
-              "failed",
+            status: "failed",
           })
           .eq(
             "id",
@@ -1236,10 +1180,8 @@ async function handleTransferWebhook(
 
       return jsonResponse({
         success: true,
-        already_processed:
-          true,
-        status:
-          "failed",
+        already_processed: true,
+        status: "failed",
         refunded: true,
         transaction_id:
           transaction.id,
@@ -1251,9 +1193,7 @@ async function handleTransferWebhook(
     }
 
     /*
-     * ----------------------------------------------------------
      * RELEASE KYC RESERVATION
-     * ----------------------------------------------------------
      */
 
     if (
@@ -1264,8 +1204,7 @@ async function handleTransferWebhook(
     ) {
       const {
         data: releaseResult,
-        error:
-          releaseError,
+        error: releaseError,
       } = await supabase.rpc(
         "release_kyc_daily_transfer",
         {
@@ -1282,8 +1221,7 @@ async function handleTransferWebhook(
       ) {
         console.error(
           "KYC release failed:",
-          releaseError ||
-            releaseResult,
+          releaseError,
         );
       } else {
         existingMetadata.kyc_limit_released =
@@ -1298,84 +1236,85 @@ async function handleTransferWebhook(
     }
 
     /*
-     * ----------------------------------------------------------
-     * REFUND
-     * ----------------------------------------------------------
+     * REFUND WALLET
      */
 
-    const refundResult =
-      await supabase.rpc(
-        "wallet_operation",
-        {
-          _user_id:
-            transaction.user_id,
+    const {
+      data: refundData,
+      error: refundError,
+    } = await supabase.rpc(
+      "wallet_operation",
+      {
+        _user_id:
+          transaction.user_id,
 
-          _operation:
-            "REFUND",
+        _operation:
+          "REFUND",
 
-          _amount:
-            totalCharged,
+        _amount:
+          totalCharged,
 
-          _description:
-            "Refund for failed Flutterwave bank transfer",
+        _description:
+          "Refund for failed Flutterwave bank transfer",
 
-          _idempotency_key:
-            `REFUND_${transaction.id}`,
+        _idempotency_key:
+          `REFUND_${transaction.id}`,
 
-          _reference:
-            `REFUND_${transaction.reference_number ?? transferId}`,
+        _reference:
+          `REFUND_${transaction.reference_number ?? transferId}`,
 
-          _provider:
-            "flutterwave",
+        _provider:
+          "flutterwave",
 
-          _provider_reference:
+        _provider_reference:
+          transferId,
+
+        _category:
+          "transfer_refund",
+
+        _metadata: {
+          original_transaction_id:
+            transaction.id,
+
+          original_reference:
+            transaction.reference_number ??
+            transferReference,
+
+          flutterwave_transfer_id:
             transferId,
 
-          _category:
-            "transfer_refund",
+          flutterwave_reference:
+            verifiedReference ??
+            transferReference,
 
-          _metadata: {
-            original_transaction_id:
-              transaction.id,
+          flutterwave_status:
+            verifiedStatus,
 
-            original_reference:
-              transaction.reference_number ??
-              transferReference,
+          original_transfer_amount:
+            providerTransferAmount,
 
-            flutterwave_transfer_id:
-              transferId,
+          original_total_charged:
+            totalCharged,
 
-            flutterwave_reference:
-              verifiedReference ??
-              transferReference,
+          reason:
+            "Flutterwave transfer failed",
 
-            flutterwave_status:
-              verifiedStatus,
-
-            original_transfer_amount:
-              providerTransferAmount,
-
-            original_total_charged:
-              totalCharged,
-
-            reason:
-              "Flutterwave transfer failed",
-
-            refunded_amount:
-              totalCharged,
-          },
+          refunded_amount:
+            totalCharged,
         },
+      },
+    );
+
+    if (refundError) {
+      console.error(
+        "Wallet refund failed:",
+        refundError,
       );
 
-    if (
-      refundResult.error
-    ) {
       await supabase
         .from("transactions")
         .update({
-          status:
-            "pending",
-
+          status: "pending",
           metadata: {
             ...existingMetadata,
 
@@ -1398,7 +1337,7 @@ async function handleTransferWebhook(
               true,
 
             refund_error:
-              refundResult.error.message,
+              refundError.message,
 
             refund_amount:
               totalCharged,
@@ -1412,10 +1351,9 @@ async function handleTransferWebhook(
       return jsonResponse(
         {
           success: false,
-          status:
-            "refund_pending",
+          status: "refund_pending",
           error:
-            "Transfer failed but automatic refund could not be completed.",
+            "Transfer failed but automatic refund could not be completed",
           transaction_id:
             transaction.id,
           transfer_id:
@@ -1427,10 +1365,13 @@ async function handleTransferWebhook(
       );
     }
 
+    console.log(
+      "Refund result:",
+      refundData,
+    );
+
     /*
-     * ----------------------------------------------------------
      * MARK FAILED
-     * ----------------------------------------------------------
      */
 
     const {
@@ -1439,11 +1380,9 @@ async function handleTransferWebhook(
     } = await supabase
       .from("transactions")
       .update({
-        status:
-          "failed",
+        status: "failed",
 
-        provider:
-          "flutterwave",
+        provider: "flutterwave",
 
         provider_reference:
           transferId,
@@ -1459,11 +1398,9 @@ async function handleTransferWebhook(
           transaction_category:
             "transfer",
 
-          direction:
-            "DEBIT",
+          direction: "DEBIT",
 
-          status:
-            "failed",
+          status: "failed",
 
           flutterwave_status:
             verifiedStatus,
@@ -1475,17 +1412,13 @@ async function handleTransferWebhook(
             verifiedReference ??
             transferReference,
 
-          transfer_failed:
-            true,
+          transfer_failed: true,
 
-          refund_required:
-            false,
+          refund_required: false,
 
-          refunded:
-            true,
+          refunded: true,
 
-          refund_pending:
-            false,
+          refund_pending: false,
 
           refund_amount:
             totalCharged,
@@ -1496,17 +1429,14 @@ async function handleTransferWebhook(
           history_amount:
             totalCharged,
 
-          history_sign:
-            "+",
+          history_sign: "+",
 
           history_amount_display:
             `+₦${totalCharged.toLocaleString(
               "en-NG",
               {
-                minimumFractionDigits:
-                  2,
-                maximumFractionDigits:
-                  2,
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
               },
             )}`,
         },
@@ -1516,13 +1446,16 @@ async function handleTransferWebhook(
         transaction.id,
       );
 
-    if (
-      failedUpdateError
-    ) {
+    if (failedUpdateError) {
+      console.error(
+        "Failed transaction update failed:",
+        failedUpdateError,
+      );
+
       return jsonResponse({
         success: true,
         warning:
-          "Refund completed but transaction status requires reconciliation.",
+          "Refund completed but transaction status requires reconciliation",
         refunded: true,
         transaction_id:
           transaction.id,
@@ -1535,21 +1468,14 @@ async function handleTransferWebhook(
 
     return jsonResponse({
       success: true,
-
-      status:
-        "failed",
-
+      status: "failed",
       refunded: true,
-
       transaction_id:
         transaction.id,
-
       transfer_id:
         transferId,
-
       transfer_amount:
         providerTransferAmount,
-
       refund_amount:
         totalCharged,
     });
@@ -1565,7 +1491,7 @@ async function handleTransferWebhook(
 
 /*
  * ============================================================
- * DEPOSIT / FUNDING WEBHOOK
+ * DEPOSIT WEBHOOK
  * ============================================================
  */
 
@@ -1577,9 +1503,11 @@ async function handleDepositWebhook(
     payload?.data ?? {};
 
   const transactionId =
-    data?.id;
+    data?.id
+      ? String(data.id)
+      : null;
 
-  const transactionStatus =
+  const webhookStatus =
     normalizeStatus(
       data?.status,
     );
@@ -1596,15 +1524,14 @@ async function handleDepositWebhook(
         ).toUpperCase()
       : null;
 
-  const webhookTxRef =
-    data?.tx_ref ??
-    data?.txRef ??
-    data?.reference ??
-    null;
+  /*
+   * BASIC VALIDATION
+   */
 
   if (!transactionId) {
     return jsonResponse(
       {
+        success: false,
         error:
           "Missing Flutterwave transaction ID",
       },
@@ -1613,16 +1540,18 @@ async function handleDepositWebhook(
   }
 
   if (
-    transactionStatus !==
-      "SUCCESSFUL" &&
-    transactionStatus !==
-      "SUCCEEDED"
+    webhookStatus !== "SUCCESSFUL" &&
+    webhookStatus !== "SUCCEEDED"
   ) {
     return jsonResponse({
       success: true,
       ignored: true,
       reason:
         "Transaction not successful",
+      transaction_id:
+        transactionId,
+      status:
+        webhookStatus,
     });
   }
 
@@ -1634,6 +1563,7 @@ async function handleDepositWebhook(
   ) {
     return jsonResponse(
       {
+        success: false,
         error:
           "Invalid transaction amount",
       },
@@ -1643,11 +1573,11 @@ async function handleDepositWebhook(
 
   if (
     webhookCurrency &&
-    webhookCurrency !==
-      "NGN"
+    webhookCurrency !== "NGN"
   ) {
     return jsonResponse(
       {
+        success: false,
         error:
           "Unsupported currency",
       },
@@ -1656,28 +1586,50 @@ async function handleDepositWebhook(
   }
 
   /*
-   * ==========================================================
-   * VERIFY
-   * ==========================================================
+   * VERIFY WITH FLUTTERWAVE
    */
 
-  const verifyResponse =
-    await flw(
-      `/transactions/${encodeURIComponent(
-        transactionId,
-      )}/verify`,
-      {
-        method: "GET",
-      },
+  let verifyResponse: any;
+
+  try {
+    verifyResponse =
+      await flw(
+        `/transactions/${encodeURIComponent(
+          transactionId,
+        )}/verify`,
+        {
+          method: "GET",
+        },
+      );
+  } catch (error) {
+    console.error(
+      "Flutterwave verification request failed:",
+      error,
     );
+
+    return jsonResponse(
+      {
+        success: false,
+        error:
+          "Unable to verify Flutterwave transaction",
+      },
+      503,
+    );
+  }
 
   if (
     !verifyResponse.ok ||
     verifyResponse.body?.status !==
       "success"
   ) {
+    console.error(
+      "Flutterwave verification failed:",
+      verifyResponse.body,
+    );
+
     return jsonResponse(
       {
+        success: false,
         error:
           "Flutterwave verification failed",
       },
@@ -1691,12 +1643,17 @@ async function handleDepositWebhook(
   if (!verified) {
     return jsonResponse(
       {
+        success: false,
         error:
           "Missing verified transaction data",
       },
-      400,
+      503,
     );
   }
+
+  /*
+   * VERIFIED VALIDATION
+   */
 
   const verifiedStatus =
     normalizeStatus(
@@ -1710,8 +1667,151 @@ async function handleDepositWebhook(
 
   const verifiedCurrency =
     String(
-      verified?.currency ??
-        "",
+      verified?.currency ?? "",
+    ).toUpperCase();
+
+  if (
+    verifiedStatus !== "SUCCESSFUL" &&
+    verifiedStatus !== "SUCCEEDED"
+  ) {
+    return jsonResponse({
+      success: true,
+      ignored: true,
+      reason:
+        "Verified transaction is not successful",
+      transaction_id:
+        transactionId,
+      status:
+        verifiedStatus,
+    });
+  }
+
+  if (
+    !Number.isFinite(
+      verifiedAmount,
+    ) ||
+    verifiedAmount <= 0
+  ) {
+    return jsonResponse(
+      {
+        success: false,
+        error:
+          "Invalid verified amount",
+      },
+      400,
+    );
+  }
+
+  if (
+    verifiedCurrency !== "NGN"
+  ) {
+    return jsonResponse(
+      {
+        success: false,
+        error:
+          "Verified transaction currency is not NGN",
+      },
+      400,
+    );
+  }
+
+  if (
+    !amountsMatch(
+      verifiedAmount,
+      webhookAmount,
+    )
+  ) {
+    return jsonResponse(
+      {
+        success: false,
+        error:
+          "Transaction amount mismatch",
+        webhook_amount:
+          webhookAmount,
+        verified_amount:
+          verifiedAmount,
+      },
+      409,
+    );
+  }
+
+  /*
+   * PROCESS VERIFIED FUNDING
+   */
+
+  try {
+    const result =
+      await processVerifiedFunding(
+        supabase,
+        {
+          transactionId,
+          verified,
+          webhookData: data,
+        },
+      );
+
+    return jsonResponse(
+      result,
+      200,
+    );
+  } catch (error) {
+    console.error(
+      "Wallet funding processing failed:",
+      error,
+    );
+
+    return jsonResponse(
+      {
+        success: false,
+        error:
+          error instanceof Error
+            ? error.message
+            : "Wallet funding failed",
+        transaction_id:
+          transactionId,
+      },
+      500,
+    );
+  }
+}
+
+/*
+ * ============================================================
+ * PROCESS VERIFIED FUNDING
+ * ============================================================
+ */
+
+async function processVerifiedFunding(
+  supabase: any,
+  params: {
+    transactionId: string;
+    verified: any;
+    webhookData: any;
+  },
+): Promise<Record<string, unknown>> {
+  const {
+    transactionId,
+    verified,
+    webhookData,
+  } = params;
+
+  const data =
+    webhookData ?? {};
+
+  /*
+   * ==========================================================
+   * EXTRACT REFERENCES
+   * ==========================================================
+   */
+
+  const verifiedAmount =
+    Number(
+      verified?.amount ?? 0,
+    );
+
+  const verifiedCurrency =
+    String(
+      verified?.currency ?? "NGN",
     ).toUpperCase();
 
   const verifiedTxRef =
@@ -1725,45 +1825,11 @@ async function handleDepositWebhook(
     verified?.flwRef ??
     null;
 
-  if (
-    verifiedStatus !==
-      "SUCCESSFUL" &&
-    verifiedStatus !==
-      "SUCCEEDED"
-  ) {
-    return jsonResponse({
-      success: true,
-      ignored: true,
-      reason:
-        "Verified transaction is not successful",
-    });
-  }
-
-  if (
-    verifiedCurrency !==
-    "NGN"
-  ) {
-    return jsonResponse(
-      {
-        error:
-          "Verified transaction is not NGN",
-      },
-      400,
-    );
-  }
-
-  if (
-    verifiedAmount <
-    webhookAmount
-  ) {
-    return jsonResponse(
-      {
-        error:
-          "Verified amount mismatch",
-      },
-      400,
-    );
-  }
+  const webhookTxRef =
+    data?.tx_ref ??
+    data?.txRef ??
+    data?.reference ??
+    null;
 
   const finalTxRef =
     String(
@@ -1778,11 +1844,11 @@ async function handleDepositWebhook(
    * ==========================================================
    */
 
-  let virtualAccount:
-    any = null;
+  let virtualAccount: any =
+    null;
 
   /*
-   * Primary lookup from IYJ_VA reference.
+   * LOOKUP FROM REFERENCE
    */
 
   if (
@@ -1792,6 +1858,15 @@ async function handleDepositWebhook(
   ) {
     const parts =
       finalTxRef.split("_");
+
+    /*
+     * Format:
+     * IYJ_VA_<user_id>
+     *
+     * IMPORTANT:
+     * UUID contains hyphens but no underscores,
+     * so index 2 is safe.
+     */
 
     const possibleUserId =
       parts[2];
@@ -1804,21 +1879,19 @@ async function handleDepositWebhook(
         .from(
           "virtual_accounts",
         )
-        .select(
-          `
-            id,
-            user_id,
-            wallet_id,
-            provider,
-            bank_name,
-            account_number,
-            account_name,
-            provider_reference,
-            order_reference,
-            is_permanent,
-            status
-          `,
-        )
+        .select(`
+          id,
+          user_id,
+          wallet_id,
+          provider,
+          bank_name,
+          account_number,
+          account_name,
+          provider_reference,
+          order_reference,
+          is_permanent,
+          status
+        `)
         .eq(
           "user_id",
           possibleUserId,
@@ -1847,25 +1920,27 @@ async function handleDepositWebhook(
   }
 
   /*
-   * Fallback account number search.
+   * FALLBACK:
+   * SEARCH ACCOUNT NUMBER
    */
 
-  if (
-    !virtualAccount
-  ) {
+  if (!virtualAccount) {
     const accountNumbers = [
       data?.account_number,
       data?.accountNumber,
       data?.virtual_account_number,
       data?.virtualAccountNumber,
       data?.destination_account_number,
+
       verified?.account_number,
       verified?.accountNumber,
       verified?.virtual_account_number,
       verified?.virtualAccountNumber,
       verified?.destination_account_number,
+
       data?.meta?.account_number,
       data?.meta?.accountNumber,
+
       verified?.meta?.account_number,
       verified?.meta?.accountNumber,
     ]
@@ -1875,13 +1950,16 @@ async function handleDepositWebhook(
           String(value).trim(),
       );
 
-    for (
-      const accountNumber of
+    const uniqueAccountNumbers =
       [
         ...new Set(
           accountNumbers,
         ),
-      ]
+      ];
+
+    for (
+      const accountNumber of
+      uniqueAccountNumbers
     ) {
       const {
         data: account,
@@ -1890,21 +1968,19 @@ async function handleDepositWebhook(
         .from(
           "virtual_accounts",
         )
-        .select(
-          `
-            id,
-            user_id,
-            wallet_id,
-            provider,
-            bank_name,
-            account_number,
-            account_name,
-            provider_reference,
-            order_reference,
-            is_permanent,
-            status
-          `,
-        )
+        .select(`
+          id,
+          user_id,
+          wallet_id,
+          provider,
+          bank_name,
+          account_number,
+          account_name,
+          provider_reference,
+          order_reference,
+          is_permanent,
+          status
+        `)
         .eq(
           "account_number",
           accountNumber,
@@ -1930,50 +2006,44 @@ async function handleDepositWebhook(
       if (account) {
         virtualAccount =
           account;
+
         break;
       }
     }
   }
 
-  if (
-    !virtualAccount
-  ) {
-    return jsonResponse(
-      {
-        error:
-          "Virtual account not found",
-      },
-      404,
+  if (!virtualAccount) {
+    throw new Error(
+      "Virtual account not found",
     );
   }
 
   if (
     !virtualAccount.wallet_id
   ) {
-    return jsonResponse(
-      {
-        error:
-          "Virtual account has no wallet",
-      },
-      400,
+    throw new Error(
+      "Virtual account has no wallet",
     );
   }
 
   /*
    * ==========================================================
-   * WALLET
+   * FIND WALLET
    * ==========================================================
    */
 
   const {
     data: wallet,
-    error:
-      walletError,
+    error: walletError,
   } = await supabase
     .from("wallets")
-    .select(
-      "id, user_id, balance, currency, status",
-    )
+    .select(`
+      id,
+      user_id,
+      balance,
+      currency,
+      status
+    `)
     .eq(
       "id",
       virtualAccount.wallet_id,
@@ -1985,12 +2055,8 @@ async function handleDepositWebhook(
   }
 
   if (!wallet) {
-    return jsonResponse(
-      {
-        error:
-          "Wallet not found",
-      },
-      404,
+    throw new Error(
+      "Wallet not found",
     );
   }
 
@@ -1998,12 +2064,8 @@ async function handleDepositWebhook(
     wallet.user_id !==
     virtualAccount.user_id
   ) {
-    return jsonResponse(
-      {
-        error:
-          "Virtual account ownership mismatch",
-      },
-      409,
+    throw new Error(
+      "Virtual account ownership mismatch",
     );
   }
 
@@ -2013,25 +2075,19 @@ async function handleDepositWebhook(
     ).toUpperCase() !==
     "NGN"
   ) {
-    return jsonResponse(
-      {
-        error:
-          "Wallet currency mismatch",
-      },
-      400,
+    throw new Error(
+      "Wallet currency mismatch",
     );
   }
 
   if (
-    wallet.status !==
+    String(
+      wallet.status,
+    ).toLowerCase() !==
     "active"
   ) {
-    return jsonResponse(
-      {
-        error:
-          "Wallet is not active",
-      },
-      403,
+    throw new Error(
+      "Wallet is not active",
     );
   }
 
@@ -2039,10 +2095,6 @@ async function handleDepositWebhook(
    * ==========================================================
    * SENDER INFORMATION
    * ==========================================================
-   *
-   * Flutterwave bank-transfer payloads can place sender
-   * information in different fields depending on the
-   * collection channel.
    */
 
   const senderName =
@@ -2086,19 +2138,22 @@ async function handleDepositWebhook(
   /*
    * ==========================================================
    * FUNDING REFERENCE
+   *
+   * Stable and deterministic.
+   *
+   * Same Flutterwave transaction ID
+   * = same funding reference.
    * ==========================================================
    */
 
   const fundingReference =
-    `IYJ-${String(
-      transactionId,
-    )
-      .padStart(8, "0")
-      .slice(-8)}`;
+    `IYJ-FUND-${transactionId}`;
 
   /*
    * ==========================================================
-   * IDEMPOTENCY
+   * IDEMPOTENCY CHECK
+   *
+   * Use Flutterwave transaction ID consistently.
    * ==========================================================
    */
 
@@ -2108,21 +2163,22 @@ async function handleDepositWebhook(
       existingFundingError,
   } = await supabase
     .from("transactions")
-    .select(
-      `
-        id,
-        wallet_id,
-        amount,
-        status,
-        reference_number,
-        provider_reference
-      `,
-    )
+    .select(`
+      id,
+      wallet_id,
+      amount,
+      status,
+      reference_number,
+      provider_reference,
+      metadata
+    `)
     .eq(
       "provider_reference",
-      String(
-        transactionId,
-      ),
+      transactionId,
+    )
+    .eq(
+      "provider",
+      "flutterwave",
     )
     .maybeSingle();
 
@@ -2133,10 +2189,9 @@ async function handleDepositWebhook(
   }
 
   if (existingFunding) {
-    return jsonResponse({
+    return {
       success: true,
-      already_processed:
-        true,
+      already_processed: true,
 
       reference:
         existingFunding.reference_number ??
@@ -2150,19 +2205,78 @@ async function handleDepositWebhook(
 
       wallet_id:
         existingFunding.wallet_id,
-    });
+    };
+  }
+
+  /*
+   * SECOND IDEMPOTENCY CHECK
+   *
+   * This protects against transactions created
+   * with the deterministic reference.
+   */
+
+  const {
+    data:
+      existingByReference,
+    error:
+      existingReferenceError,
+  } = await supabase
+    .from("transactions")
+    .select(`
+      id,
+      wallet_id,
+      amount,
+      status,
+      reference_number,
+      provider_reference
+    `)
+    .eq(
+      "reference_number",
+      fundingReference,
+    )
+    .maybeSingle();
+
+  if (
+    existingReferenceError
+  ) {
+    throw existingReferenceError;
+  }
+
+  if (existingByReference) {
+    return {
+      success: true,
+      already_processed: true,
+
+      reference:
+        fundingReference,
+
+      transaction_id:
+        existingByReference.id,
+
+      amount:
+        existingByReference.amount,
+
+      wallet_id:
+        existingByReference.wallet_id,
+    };
   }
 
   /*
    * ==========================================================
    * CREDIT WALLET
+   *
+   * IMPORTANT:
+   *
+   * provider_reference is ALWAYS Flutterwave
+   * transaction ID.
+   *
+   * This is important for webhook replay safety.
    * ==========================================================
    */
 
   const {
     data: creditResult,
-    error:
-      creditError,
+    error: creditError,
   } = await supabase.rpc(
     "credit_wallet",
     {
@@ -2182,10 +2296,7 @@ async function handleDepositWebhook(
         "flutterwave",
 
       p_provider_reference:
-        String(
-          verifiedFlwRef ??
-            transactionId,
-        ),
+        transactionId,
     },
   );
 
@@ -2200,24 +2311,8 @@ async function handleDepositWebhook(
 
   /*
    * ==========================================================
-   * UPDATE FUNDING HISTORY METADATA
+   * UPDATE TRANSACTION HISTORY
    * ==========================================================
-   *
-   * This is what gives the frontend the Opay-style display:
-   *
-   * Transfer from
-   * John Doe
-   * GTBank xxxxxx5678
-   *
-   * +₦10,000.00
-   *
-   * Successful
-   *
-   * 24 Aug 2026, 12:34 PM
-   *
-   * Amount ₦10,000.00
-   * Reference IYJ-XXXXXXXX
-   * Transaction ID XXXXXXXX
    */
 
   const fundingTransactionId =
@@ -2225,137 +2320,189 @@ async function handleDepositWebhook(
     creditResult?.id ??
     null;
 
-  if (
-    fundingTransactionId
-  ) {
-    await supabase
+  if (fundingTransactionId) {
+    const historyMetadata = {
+      history_version: 1,
+
+      transaction_type:
+        "funding",
+
+      transaction_category:
+        "wallet_funding",
+
+      direction:
+        "CREDIT",
+
+      display_title:
+        `Transfer from ${senderName}`,
+
+      counterparty_type:
+        "bank_account",
+
+      counterparty_name:
+        senderName,
+
+      sender_name:
+        senderName,
+
+      sender_bank:
+        senderBank,
+
+      sender_account:
+        senderAccount,
+
+      sender_account_masked:
+        maskAccountNumber(
+          senderAccount,
+        ),
+
+      account_bank:
+        senderBank,
+
+      account_number:
+        senderAccount,
+
+      account_number_masked:
+        maskAccountNumber(
+          senderAccount,
+        ),
+
+      transfer_amount:
+        verifiedAmount,
+
+      amount:
+        verifiedAmount,
+
+      total_charged:
+        verifiedAmount,
+
+      history_amount:
+        verifiedAmount,
+
+      history_sign: "+",
+
+      history_amount_display:
+        `+₦${verifiedAmount.toLocaleString(
+          "en-NG",
+          {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+          },
+        )}`,
+
+      status:
+        "successful",
+
+      reference:
+        fundingReference,
+
+      transaction_id:
+        fundingTransactionId,
+
+      flutterwave_transaction_id:
+        transactionId,
+
+      flutterwave_reference:
+        verifiedFlwRef,
+
+      flutterwave_tx_ref:
+        verifiedTxRef,
+
+      webhook_tx_ref:
+        webhookTxRef,
+
+      currency:
+        verifiedCurrency,
+
+      funding_source:
+        "flutterwave_virtual_account",
+
+      virtual_account_number:
+        virtualAccount.account_number,
+
+      virtual_account_id:
+        virtualAccount.id,
+
+      created_for_history:
+        true,
+    };
+
+    const {
+      error: historyUpdateError,
+    } = await supabase
       .from("transactions")
       .update({
-        status:
-          "successful",
+        status: "completed",
 
         provider:
           "flutterwave",
 
         provider_reference:
-          String(
-            transactionId,
-          ),
+          transactionId,
 
         reference_number:
           fundingReference,
 
-        metadata: {
-          history_version: 1,
-
-          transaction_type:
-            "funding",
-
-          transaction_category:
-            "wallet_funding",
-
-          direction:
-            "CREDIT",
-
-          display_title:
-            `Transfer from ${senderName}`,
-
-          counterparty_type:
-            "bank_account",
-
-          counterparty_name:
-            senderName,
-
-          sender_name:
-            senderName,
-
-          sender_bank:
-            senderBank,
-
-          sender_account:
-            senderAccount,
-
-          sender_account_masked:
-            maskAccountNumber(
-              senderAccount,
-            ),
-
-          account_bank:
-            senderBank,
-
-          account_number:
-            senderAccount,
-
-          account_number_masked:
-            maskAccountNumber(
-              senderAccount,
-            ),
-
-          transfer_amount:
-            verifiedAmount,
-
-          amount:
-            verifiedAmount,
-
-          total_charged:
-            verifiedAmount,
-
-          history_amount:
-            verifiedAmount,
-
-          history_sign:
-            "+",
-
-          history_amount_display:
-            `+₦${verifiedAmount.toLocaleString(
-              "en-NG",
-              {
-                minimumFractionDigits:
-                  2,
-                maximumFractionDigits:
-                  2,
-              },
-            )}`,
-
-          status:
-            "successful",
-
-          reference:
-            fundingReference,
-
-          transaction_id:
-            fundingTransactionId,
-
-          flutterwave_transaction_id:
-            transactionId,
-
-          flutterwave_reference:
-            verifiedFlwRef,
-
-          currency:
-            "NGN",
-
-          funding_source:
-            "flutterwave_virtual_account",
-
-          virtual_account_number:
-            virtualAccount.account_number,
-
-          created_for_history:
-            true,
-        },
+        metadata:
+          historyMetadata,
       })
       .eq(
         "id",
         fundingTransactionId,
       );
+
+    if (historyUpdateError) {
+      /*
+       * IMPORTANT:
+       *
+       * Wallet was already credited successfully.
+       *
+       * Do not throw and cause Flutterwave replay
+       * to look like the wallet credit failed.
+       *
+       * The transaction can be reconciled later.
+       */
+
+      console.error(
+        "Funding history update failed:",
+        historyUpdateError,
+      );
+
+      return {
+        success: true,
+        credited: true,
+        warning:
+          "Wallet credited but transaction history metadata update requires reconciliation",
+
+        flutterwave_transaction_id:
+          transactionId,
+
+        transaction_id:
+          fundingTransactionId,
+
+        wallet_id:
+          virtualAccount.wallet_id,
+
+        amount:
+          verifiedAmount,
+      };
+    }
   }
 
-  return jsonResponse({
+  /*
+   * ==========================================================
+   * SUCCESS
+   * ==========================================================
+   */
+
+  return {
     success: true,
 
+    already_processed:
+      creditResult?.already_processed ===
+      true,
+
     event:
-      payload?.type ??
       "charge.completed",
 
     flutterwave_transaction_id:
@@ -2406,5 +2553,5 @@ async function handleDepositWebhook(
 
     credit:
       creditResult,
-  });
+  };
 }

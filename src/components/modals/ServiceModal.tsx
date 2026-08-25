@@ -16,33 +16,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-
-import {
   Loader2,
   RefreshCw,
 } from "lucide-react";
 
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-
-// ============================================================
-// CONSTANTS
-// ============================================================
-
-/**
- * IyanjuPay markup added to every bill payment.
- *
- * Example:
- * Flutterwave price = ₦500
- * IyanjuPay price = ₦550
- */
-const BILL_MARKUP = 50;
 
 // ============================================================
 // TYPES
@@ -99,6 +78,10 @@ interface BillItem {
   label_name?: string;
   label_name_2?: string;
 
+  validity?: string | number;
+  duration?: string | number;
+  description?: string;
+
   is_airtime?: boolean;
   country?: string;
 
@@ -106,7 +89,7 @@ interface BillItem {
 }
 
 // ============================================================
-// SERVICE → FLUTTERWAVE CATEGORY
+// CONSTANTS
 // ============================================================
 
 const SERVICE_CATEGORY_MAP: Record<
@@ -119,6 +102,130 @@ const SERVICE_CATEGORY_MAP: Record<
   cable: "CABLEBILLS",
   internet: "INTSERVICE",
 };
+
+const DATA_MARKUP = 50;
+
+// Airtime cards requested by user.
+const AIRTIME_AMOUNTS = [
+  50,
+  100,
+  200,
+  500,
+  1000,
+];
+
+// Common bill-payment amount cards.
+// Customer can always choose "Enter Amount".
+const BILL_AMOUNTS = [
+  50,
+  100,
+  200,
+  500,
+  1000,
+];
+
+// ============================================================
+// HELPERS
+// ============================================================
+
+function numberValue(
+  value: unknown
+): number {
+  const n = Number(value);
+
+  return Number.isFinite(n)
+    ? n
+    : 0;
+}
+
+function formatNaira(
+  value: number
+): string {
+  return `₦${Number(value).toLocaleString(
+    "en-NG"
+  )}`;
+}
+
+function getItemProviderPrice(
+  item: BillItem | null
+): number {
+  return numberValue(
+    item?.amount ??
+      item?.price ??
+      item?.cost ??
+      item?.value
+  );
+}
+
+function getDataSellingPrice(
+  item: BillItem
+): number {
+  return (
+    getItemProviderPrice(item) +
+    DATA_MARKUP
+  );
+}
+
+/**
+ * Try to determine the data-plan validity group.
+ *
+ * Examples:
+ *  - "1 Day 100MB"       => Daily
+ *  - "7 Days 2GB"        => Weekly
+ *  - "30 Days 10GB"      => Monthly
+ *  - "Night Plan"        => Other
+ */
+function getDataGroup(
+  item: BillItem
+): "Daily" | "Weekly" | "Monthly" | "Other" {
+  const text = [
+    item.name,
+    item.short_name,
+    item.description,
+    item.validity,
+    item.duration,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+
+  // Monthly first because "30 days" should be monthly.
+  if (
+    /\b(30|31)\s*(day|days)\b/.test(
+      text
+    ) ||
+    /\bmonthly\b/.test(text) ||
+    /\b1\s*month\b/.test(text) ||
+    /\b2\s*months?\b/.test(text) ||
+    /\b3\s*months?\b/.test(text)
+  ) {
+    return "Monthly";
+  }
+
+  if (
+    /\b(7|14)\s*(day|days)\b/.test(
+      text
+    ) ||
+    /\bweekly\b/.test(text) ||
+    /\b1\s*week\b/.test(text) ||
+    /\b2\s*weeks?\b/.test(text)
+  ) {
+    return "Weekly";
+  }
+
+  if (
+    /\b(1|2|3)\s*(day|days)\b/.test(
+      text
+    ) ||
+    /\bdaily\b/.test(text) ||
+    /\b24\s*hours?\b/.test(text) ||
+    /\bday\b/.test(text)
+  ) {
+    return "Daily";
+  }
+
+  return "Other";
+}
 
 // ============================================================
 // COMPONENT
@@ -135,17 +242,24 @@ const ServiceModal = ({
   // FORM STATE
   // ==========================================================
 
-  const [amount, setAmount] = useState("");
+  const [amount, setAmount] =
+    useState("");
 
-  const [customer, setCustomer] = useState("");
+  const [customer, setCustomer] =
+    useState("");
+
+  const [customAmountMode, setCustomAmountMode] =
+    useState(false);
 
   // ==========================================================
   // FLUTTERWAVE CATALOGUE
   // ==========================================================
 
-  const [billers, setBillers] = useState<Biller[]>([]);
+  const [billers, setBillers] =
+    useState<Biller[]>([]);
 
-  const [items, setItems] = useState<BillItem[]>([]);
+  const [items, setItems] =
+    useState<BillItem[]>([]);
 
   const [
     selectedBillerCode,
@@ -176,9 +290,11 @@ const ServiceModal = ({
     setProcessingPayment,
   ] = useState(false);
 
-  const [error, setError] = useState("");
+  const [error, setError] =
+    useState("");
 
-  const { toast } = useToast();
+  const { toast } =
+    useToast();
 
   // ==========================================================
   // SERVICE
@@ -187,120 +303,127 @@ const ServiceModal = ({
   const serviceType =
     service?.type ?? "";
 
-  const category = useMemo(
-    () =>
-      SERVICE_CATEGORY_MAP[
-        serviceType
-      ] ?? "",
-    [serviceType]
-  );
+  const category =
+    useMemo(
+      () =>
+        SERVICE_CATEGORY_MAP[
+          serviceType
+        ] ?? "",
+      [serviceType]
+    );
+
+  const isData =
+    serviceType === "data";
+
+  const isAirtime =
+    serviceType === "airtime";
 
   // ==========================================================
   // SELECTED BILLER
   // ==========================================================
 
-  const selectedBiller = useMemo(
-    () =>
-      billers.find(
-        (biller) =>
-          String(
-            biller.biller_code ?? ""
-          ) === selectedBillerCode
-      ) ?? null,
-    [
-      billers,
-      selectedBillerCode,
-    ]
-  );
+  const selectedBiller =
+    useMemo(
+      () =>
+        billers.find(
+          (biller) =>
+            String(
+              biller.biller_code ?? ""
+            ) ===
+            selectedBillerCode
+        ) ?? null,
+      [
+        billers,
+        selectedBillerCode,
+      ]
+    );
 
   // ==========================================================
   // SELECTED ITEM
   // ==========================================================
 
-  const selectedItem = useMemo(
-    () =>
-      items.find(
-        (item) =>
-          String(
-            item.item_code ?? ""
-          ) === selectedItemCode
-      ) ?? null,
-    [
-      items,
-      selectedItemCode,
-    ]
-  );
-
-  // ==========================================================
-  // FLUTTERWAVE BASE PRICE
-  // ==========================================================
-
-  const flutterwaveAmount = useMemo(() => {
-    const value = Number(
-      selectedItem?.amount ?? 0
+  const selectedItem =
+    useMemo(
+      () =>
+        items.find(
+          (item) =>
+            String(
+              item.item_code ?? ""
+            ) ===
+            selectedItemCode
+        ) ?? null,
+      [
+        items,
+        selectedItemCode,
+      ]
     );
 
-    if (
-      !Number.isFinite(value) ||
-      value <= 0
-    ) {
-      return 0;
-    }
-
-    return Number(
-      value.toFixed(2)
-    );
-  }, [selectedItem]);
-
   // ==========================================================
-  // IYANJUPAY CUSTOMER PRICE
+  // DATA GROUPS
   // ==========================================================
 
-  const customerAmount = useMemo(() => {
-    if (flutterwaveAmount <= 0) {
-      return 0;
-    }
+  const dataGroups =
+    useMemo(() => {
+      const groups: Record<
+        "Daily" |
+          "Weekly" |
+          "Monthly" |
+          "Other",
+        BillItem[]
+      > = {
+        Daily: [],
+        Weekly: [],
+        Monthly: [],
+        Other: [],
+      };
 
-    return Number(
-      (
-        flutterwaveAmount +
-        BILL_MARKUP
-      ).toFixed(2)
-    );
-  }, [flutterwaveAmount]);
+      items.forEach(
+        (item) => {
+          const group =
+            getDataGroup(item);
+
+          groups[group].push(
+            item
+          );
+        }
+      );
+
+      return groups;
+    }, [items]);
 
   // ==========================================================
   // CUSTOMER LABEL
   // ==========================================================
 
-  const customerLabel = useMemo(() => {
-    if (
-      selectedItem?.label_name
-    ) {
-      return selectedItem.label_name;
-    }
+  const customerLabel =
+    useMemo(() => {
+      if (
+        selectedItem?.label_name
+      ) {
+        return selectedItem.label_name;
+      }
 
-    switch (serviceType) {
-      case "airtime":
-      case "data":
-        return "Phone Number";
+      switch (serviceType) {
+        case "airtime":
+        case "data":
+          return "Phone Number";
 
-      case "electricity":
-        return "Meter Number";
+        case "electricity":
+          return "Meter Number";
 
-      case "cable":
-        return "Smart Card / Decoder Number";
+        case "cable":
+          return "Smart Card / Decoder Number";
 
-      case "internet":
-        return "Account Number";
+        case "internet":
+          return "Account Number";
 
-      default:
-        return "Customer ID";
-    }
-  }, [
-    selectedItem,
-    serviceType,
-  ]);
+        default:
+          return "Customer ID";
+      }
+    }, [
+      selectedItem,
+      serviceType,
+    ]);
 
   // ==========================================================
   // CUSTOMER PLACEHOLDER
@@ -346,6 +469,8 @@ const ServiceModal = ({
 
     setError("");
 
+    setCustomAmountMode(false);
+
     setLoadingBillers(false);
 
     setLoadingItems(false);
@@ -371,6 +496,8 @@ const ServiceModal = ({
     setSelectedItemCode("");
 
     setError("");
+
+    setCustomAmountMode(false);
 
     setLoadingBillers(false);
 
@@ -400,6 +527,8 @@ const ServiceModal = ({
     setItems([]);
 
     setAmount("");
+
+    setCustomAmountMode(false);
 
     try {
       const {
@@ -479,7 +608,9 @@ const ServiceModal = ({
           "destructive",
       });
     } finally {
-      setLoadingBillers(false);
+      setLoadingBillers(
+        false
+      );
     }
   };
 
@@ -529,6 +660,8 @@ const ServiceModal = ({
     setSelectedItemCode("");
 
     setAmount("");
+
+    setCustomAmountMode(false);
 
     try {
       const {
@@ -609,7 +742,9 @@ const ServiceModal = ({
           "destructive",
       });
     } finally {
-      setLoadingItems(false);
+      setLoadingItems(
+        false
+      );
     }
   };
 
@@ -631,11 +766,75 @@ const ServiceModal = ({
         value
       );
 
-      await loadItems(value);
+      await loadItems(
+        value
+      );
     };
 
   // ==========================================================
-  // ITEM CHANGE
+  // DATA PLAN SELECTION
+  // ==========================================================
+
+  const handleDataPlanSelect =
+    (
+      item: BillItem
+    ) => {
+      if (
+        processingPayment
+      ) {
+        return;
+      }
+
+      const code =
+        String(
+          item.item_code ?? ""
+        );
+
+      if (!code) {
+        return;
+      }
+
+      const providerPrice =
+        getItemProviderPrice(
+          item
+        );
+
+      if (
+        providerPrice <= 0
+      ) {
+        toast({
+          title:
+            "Invalid data plan",
+          description:
+            "This data plan does not have a valid price.",
+          variant:
+            "destructive",
+        });
+
+        return;
+      }
+
+      setSelectedItemCode(
+        code
+      );
+
+      setAmount(
+        String(
+          getDataSellingPrice(
+            item
+          )
+        )
+      );
+
+      setCustomAmountMode(
+        false
+      );
+
+      setError("");
+    };
+
+  // ==========================================================
+  // ITEM CHANGE FOR NON-DATA
   // ==========================================================
 
   const handleItemChange = (
@@ -651,57 +850,88 @@ const ServiceModal = ({
       value
     );
 
-    const item =
-      items.find(
-        (entry) =>
-          String(
-            entry.item_code ?? ""
-          ) === value
-      );
+    setError("");
 
-    if (!item) {
-      setAmount("");
-      return;
-    }
+    // Non-data bills don't automatically force a price.
+    // The customer chooses the exact payment amount.
+    setAmount("");
 
-    const itemAmount =
-      Number(
-        item.amount ?? 0
-      );
-
-    if (
-      Number.isFinite(
-        itemAmount
-      ) &&
-      itemAmount > 0
-    ) {
-      /**
-       * Store the CUSTOMER-FACING amount.
-       *
-       * Flutterwave ₦500
-       * IyanjuPay ₦550
-       */
-      setAmount(
-        String(
-          Number(
-            (
-              itemAmount +
-              BILL_MARKUP
-            ).toFixed(2)
-          )
-        )
-      );
-    } else {
-      setAmount("");
-    }
+    setCustomAmountMode(
+      false
+    );
   };
 
   // ==========================================================
-  // DISPLAYED AMOUNT
+  // AMOUNT SELECTION
+  // ==========================================================
+
+  const handleAmountSelect =
+    (
+      value: number
+    ) => {
+      if (
+        processingPayment
+      ) {
+        return;
+      }
+
+      setAmount(
+        String(value)
+      );
+
+      setCustomAmountMode(
+        false
+      );
+
+      setError("");
+    };
+
+  const handleCustomAmount =
+    () => {
+      if (
+        processingPayment
+      ) {
+        return;
+      }
+
+      setCustomAmountMode(
+        true
+      );
+
+      setAmount("");
+
+      setError("");
+    };
+
+  // ==========================================================
+  // AMOUNT RULES
   // ==========================================================
 
   const amountNumber =
     Number(amount);
+
+  const itemMinimum =
+    Number(
+      selectedItem?.minimum ?? 0
+    );
+
+  const itemMaximum =
+    Number(
+      selectedItem?.maximum ?? 0
+    );
+
+  const providerItemAmount =
+    getItemProviderPrice(
+      selectedItem
+    );
+
+  const dataSellingAmount =
+    isData &&
+    selectedItem
+      ? getDataSellingPrice(
+          selectedItem
+        )
+      : 0;
 
   // ==========================================================
   // CUSTOMER NORMALISATION
@@ -856,7 +1086,7 @@ const ServiceModal = ({
           title:
             "Invalid amount",
           description:
-            "Please select a valid bill package.",
+            "Please select or enter a valid amount.",
           variant:
             "destructive",
         });
@@ -865,21 +1095,87 @@ const ServiceModal = ({
       }
 
       // ========================================================
-      // VERIFY DISPLAY PRICE
+      // DATA PRICE
+      // ========================================================
+
+      if (isData) {
+        if (
+          providerItemAmount <= 0
+        ) {
+          toast({
+            title:
+              "Invalid data plan",
+            description:
+              "The selected data plan does not have a valid provider price.",
+            variant:
+              "destructive",
+          });
+
+          return false;
+        }
+
+        if (
+          Math.abs(
+            amountNumber -
+              dataSellingAmount
+          ) > 0.01
+        ) {
+          toast({
+            title:
+              "Invalid data price",
+            description:
+              `This plan costs ${formatNaira(
+                dataSellingAmount
+              )}.`,
+            variant:
+              "destructive",
+          });
+
+          return false;
+        }
+      }
+
+      // ========================================================
+      // NON-DATA MINIMUM
       // ========================================================
 
       if (
-        customerAmount > 0 &&
-        Math.abs(
-          amountNumber -
-            customerAmount
-        ) > 0.01
+        !isData &&
+        itemMinimum > 0 &&
+        amountNumber <
+          itemMinimum
       ) {
         toast({
           title:
-            "Invalid bill amount",
+            "Amount too low",
           description:
-            `This package costs ₦${customerAmount.toLocaleString()} including the ₦${BILL_MARKUP} service markup.`,
+            `Minimum amount is ${formatNaira(
+              itemMinimum
+            )}.`,
+          variant:
+            "destructive",
+        });
+
+        return false;
+      }
+
+      // ========================================================
+      // NON-DATA MAXIMUM
+      // ========================================================
+
+      if (
+        !isData &&
+        itemMaximum > 0 &&
+        amountNumber >
+          itemMaximum
+      ) {
+        toast({
+          title:
+            "Amount too high",
+          description:
+            `Maximum amount is ${formatNaira(
+              itemMaximum
+            )}.`,
           variant:
             "destructive",
         });
@@ -901,7 +1197,7 @@ const ServiceModal = ({
           title:
             "Insufficient Balance",
           description:
-            `You need ₦${amountNumber.toLocaleString()} to complete this payment.`,
+            "Please fund your wallet to continue.",
           variant:
             "destructive",
         });
@@ -935,15 +1231,13 @@ const ServiceModal = ({
       const finalCustomer =
         normaliseCustomer();
 
-      /**
-       * IMPORTANT:
-       *
-       * amount = CUSTOMER PRICE
-       * provider_amount = FLUTTERWAVE PRICE
-       *
-       * The Edge Function will independently verify
-       * the actual Flutterwave amount again.
-       */
+      const providerAmount =
+        isData
+          ? providerItemAmount
+          : amountNumber;
+
+      const sellingAmount =
+        amountNumber;
 
       const details = {
         customer:
@@ -1026,23 +1320,24 @@ const ServiceModal = ({
 
         customerLabel,
 
-        /**
-         * Pricing information.
-         */
-        provider_amount:
-          flutterwaveAmount,
-
-        markup:
-          BILL_MARKUP,
-
-        customer_amount:
-          customerAmount,
-
         item:
           selectedItem,
 
         biller:
           selectedBiller,
+
+        // These are informational.
+        // Backend recalculates the real data selling price.
+        selling_amount:
+          sellingAmount,
+
+        provider_amount:
+          providerAmount,
+
+        data_markup:
+          isData
+            ? DATA_MARKUP
+            : 0,
       };
 
       console.log(
@@ -1051,14 +1346,16 @@ const ServiceModal = ({
           service:
             serviceType,
 
-          customer_amount:
-            customerAmount,
+          selling_amount:
+            sellingAmount,
 
           provider_amount:
-            flutterwaveAmount,
+            providerAmount,
 
-          markup:
-            BILL_MARKUP,
+          data_markup:
+            isData
+              ? DATA_MARKUP
+              : 0,
 
           biller_code:
             selectedBillerCode,
@@ -1080,12 +1377,8 @@ const ServiceModal = ({
 
         setError("");
 
-        /**
-         * onPurchase receives the TOTAL amount that
-         * should be deducted from the user's wallet.
-         */
         await onPurchase(
-          customerAmount,
+          sellingAmount,
           details
         );
 
@@ -1100,7 +1393,9 @@ const ServiceModal = ({
           err?.message ||
           "Unable to complete this payment.";
 
-        setError(message);
+        setError(
+          message
+        );
       } finally {
         setProcessingPayment(
           false
@@ -1165,10 +1460,14 @@ const ServiceModal = ({
 
           <div className="bg-green-50 p-3 rounded-lg">
             <p className="text-sm text-green-700">
-              Wallet Balance: ₦
-              {Number(
-                walletBalance
-              ).toLocaleString()}
+              Wallet Balance:{" "}
+              <strong>
+                {formatNaira(
+                  Number(
+                    walletBalance
+                  )
+                )}
+              </strong>
             </p>
           </div>
 
@@ -1209,12 +1508,14 @@ const ServiceModal = ({
 
             </div>
 
-            <Select
+            <select
               value={
                 selectedBillerCode
               }
-              onValueChange={
-                handleBillerChange
+              onChange={(event) =>
+                handleBillerChange(
+                  event.target.value
+                )
               }
               disabled={
                 loadingBillers ||
@@ -1222,94 +1523,221 @@ const ServiceModal = ({
                 billers.length ===
                   0
               }
+              className="w-full h-10 rounded-md border bg-background px-3 text-sm"
             >
-              <SelectTrigger>
-                <SelectValue
-                  placeholder={
-                    loadingBillers
-                      ? "Loading providers..."
-                      : "Select provider"
-                  }
-                />
-              </SelectTrigger>
+              <option value="">
+                {loadingBillers
+                  ? "Loading providers..."
+                  : "Select provider"}
+              </option>
 
-              <SelectContent>
-
-                {billers.map(
-                  (
-                    biller,
-                    index
-                  ) => {
-                    const code =
-                      String(
-                        biller.biller_code ??
-                          ""
-                      );
-
-                    if (!code) {
-                      return null;
-                    }
-
-                    return (
-                      <SelectItem
-                        key={`${code}-${index}`}
-                        value={code}
-                      >
-                        {biller.name ??
-                          biller.short_name ??
-                          code}
-                      </SelectItem>
+              {billers.map(
+                (
+                  biller,
+                  index
+                ) => {
+                  const code =
+                    String(
+                      biller.biller_code ??
+                        ""
                     );
-                  }
-                )}
 
-              </SelectContent>
-            </Select>
+                  if (!code) {
+                    return null;
+                  }
+
+                  return (
+                    <option
+                      key={`${code}-${index}`}
+                      value={code}
+                    >
+                      {biller.name ??
+                        biller.short_name ??
+                        code}
+                    </option>
+                  );
+                }
+              )}
+            </select>
 
           </div>
 
-          {/* PACKAGE */}
+          {/* ==================================================
+              DATA PLANS
+              ================================================== */}
 
-          <div className="space-y-2">
+          {isData ? (
+            <div className="space-y-3">
 
-            <Label>
-              {serviceType ===
-              "airtime"
-                ? "Airtime Type"
-                : serviceType ===
-                    "data"
-                  ? "Data Package"
-                  : "Bill Package"}
-            </Label>
+              <div className="flex items-center justify-between">
+                <Label>
+                  Data Plan
+                </Label>
 
-            <Select
-              value={
-                selectedItemCode
-              }
-              onValueChange={
-                handleItemChange
-              }
-              disabled={
-                loadingItems ||
-                processingPayment ||
-                !selectedBillerCode ||
-                items.length === 0
-              }
-            >
+                {loadingItems && (
+                  <div className="flex items-center gap-1 text-xs text-gray-500">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    Loading...
+                  </div>
+                )}
+              </div>
 
-              <SelectTrigger>
-                <SelectValue
-                  placeholder={
-                    loadingItems
-                      ? "Loading packages..."
-                      : !selectedBillerCode
-                        ? "Select provider first"
-                        : "Select package"
+              {!selectedBillerCode && (
+                <div className="rounded-lg border border-dashed p-4 text-center text-sm text-gray-500">
+                  Select a provider to view data plans.
+                </div>
+              )}
+
+              {selectedBillerCode &&
+                !loadingItems &&
+                items.length === 0 && (
+                  <div className="rounded-lg border border-dashed p-4 text-center text-sm text-gray-500">
+                    No data plans are currently available.
+                  </div>
+                )}
+
+              {(
+                [
+                  "Daily",
+                  "Weekly",
+                  "Monthly",
+                  "Other",
+                ] as const
+              ).map(
+                (group) => {
+                  const groupItems =
+                    dataGroups[
+                      group
+                    ];
+
+                  if (
+                    groupItems.length ===
+                    0
+                  ) {
+                    return null;
                   }
-                />
-              </SelectTrigger>
 
-              <SelectContent>
+                  return (
+                    <div
+                      key={group}
+                      className="space-y-2"
+                    >
+                      <h3 className="text-sm font-semibold text-gray-700">
+                        {group}
+                      </h3>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        {groupItems.map(
+                          (
+                            item,
+                            index
+                          ) => {
+                            const code =
+                              String(
+                                item.item_code ??
+                                  ""
+                              );
+
+                            if (!code) {
+                              return null;
+                            }
+
+                            const providerPrice =
+                              getItemProviderPrice(
+                                item
+                              );
+
+                            const sellingPrice =
+                              providerPrice +
+                              DATA_MARKUP;
+
+                            const selected =
+                              selectedItemCode ===
+                              code;
+
+                            return (
+                              <button
+                                type="button"
+                                key={`${code}-${index}`}
+                                onClick={() =>
+                                  handleDataPlanSelect(
+                                    item
+                                  )
+                                }
+                                disabled={
+                                  processingPayment
+                                }
+                                className={[
+                                  "text-left rounded-xl border p-3 transition-all",
+                                  "hover:border-green-500 hover:bg-green-50",
+                                  selected
+                                    ? "border-green-600 bg-green-50 ring-1 ring-green-600"
+                                    : "border-gray-200 bg-white",
+                                ].join(
+                                  " "
+                                )}
+                              >
+                                <p className="text-sm font-medium text-gray-900 line-clamp-2">
+                                  {item.name ??
+                                    item.short_name ??
+                                    "Data Plan"}
+                                </p>
+
+                                <div className="mt-2">
+                                  <p className="text-base font-bold text-green-700">
+                                    {formatNaira(
+                                      sellingPrice
+                                    )}
+                                  </p>
+                                </div>
+                              </button>
+                            );
+                          }
+                        )}
+                      </div>
+                    </div>
+                  );
+                }
+              )}
+
+            </div>
+          ) : (
+            /* =================================================
+               NON-DATA PACKAGE / ITEM
+               ================================================= */
+
+            <div className="space-y-2">
+
+              <Label>
+                {isAirtime
+                  ? "Airtime Type"
+                  : "Bill Package"}
+              </Label>
+
+              <select
+                value={
+                  selectedItemCode
+                }
+                onChange={(event) =>
+                  handleItemChange(
+                    event.target.value
+                  )
+                }
+                disabled={
+                  loadingItems ||
+                  processingPayment ||
+                  !selectedBillerCode ||
+                  items.length === 0
+                }
+                className="w-full h-10 rounded-md border bg-background px-3 text-sm"
+              >
+                <option value="">
+                  {loadingItems
+                    ? "Loading packages..."
+                    : !selectedBillerCode
+                      ? "Select provider first"
+                      : "Select package"}
+                </option>
 
                 {items.map(
                   (
@@ -1326,52 +1754,26 @@ const ServiceModal = ({
                       return null;
                     }
 
-                    const itemAmount =
-                      Number(
-                        item.amount ??
-                          0
-                      );
-
-                    const hasAmount =
-                      Number.isFinite(
-                        itemAmount
-                      ) &&
-                      itemAmount > 0;
-
-                    const customerPrice =
-                      hasAmount
-                        ? Number(
-                            (
-                              itemAmount +
-                              BILL_MARKUP
-                            ).toFixed(2)
-                          )
-                        : 0;
-
                     return (
-                      <SelectItem
+                      <option
                         key={`${code}-${index}`}
                         value={code}
                       >
                         {item.name ??
                           item.short_name ??
                           code}
-
-                        {hasAmount
-                          ? ` — ₦${customerPrice.toLocaleString()}`
-                          : ""}
-                      </SelectItem>
+                      </option>
                     );
                   }
                 )}
+              </select>
 
-              </SelectContent>
+            </div>
+          )}
 
-            </Select>
-
-          </div>
-
-          {/* CUSTOMER */}
+          {/* ==================================================
+              CUSTOMER
+              ================================================== */}
 
           <div className="space-y-2">
 
@@ -1411,75 +1813,168 @@ const ServiceModal = ({
 
           </div>
 
-          {/* AMOUNT */}
+          {/* ==================================================
+              DATA SELECTED PRICE
+              ================================================== */}
 
-          <div className="space-y-2">
+          {isData &&
+            selectedItem && (
+              <div className="rounded-lg bg-green-50 border border-green-100 p-3">
 
-            <Label htmlFor="billAmount">
-              Amount (₦)
-            </Label>
-
-            <Input
-              id="billAmount"
-              type="number"
-              min="0"
-              step="0.01"
-              value={amount}
-              readOnly
-              placeholder={
-                customerAmount > 0
-                  ? String(
-                      customerAmount
-                    )
-                  : "Select a package"
-              }
-              disabled={
-                processingPayment ||
-                !selectedItemCode
-              }
-            />
-
-            {flutterwaveAmount >
-              0 && (
-              <div className="rounded-lg bg-gray-50 border p-3 space-y-1">
-                <div className="flex justify-between text-xs text-gray-600">
-                  <span>
-                    Flutterwave price
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-gray-600">
+                    Selected Plan
                   </span>
 
-                  <span>
-                    ₦
-                    {flutterwaveAmount.toLocaleString()}
+                  <span className="text-sm font-medium">
+                    {selectedItem.name ??
+                      selectedItem.short_name}
                   </span>
                 </div>
 
-                <div className="flex justify-between text-xs text-gray-600">
-                  <span>
-                    IyanjuPay service fee
+                <div className="flex items-center justify-between mt-1">
+                  <span className="text-sm text-gray-600">
+                    Price
                   </span>
 
-                  <span>
-                    ₦
-                    {BILL_MARKUP.toLocaleString()}
+                  <span className="font-bold text-green-700">
+                    {formatNaira(
+                      dataSellingAmount
+                    )}
                   </span>
                 </div>
 
-                <div className="flex justify-between font-semibold text-sm pt-1 border-t">
-                  <span>
-                    You pay
-                  </span>
-
-                  <span>
-                    ₦
-                    {customerAmount.toLocaleString()}
-                  </span>
-                </div>
               </div>
             )}
 
-          </div>
+          {/* ==================================================
+              AMOUNT CARDS — NON DATA
+              ================================================== */}
 
-          {/* ERROR */}
+          {!isData && (
+            <div className="space-y-2">
+
+              <Label>
+                Amount (₦)
+              </Label>
+
+              <div className="grid grid-cols-3 gap-2">
+
+                {(isAirtime
+                  ? AIRTIME_AMOUNTS
+                  : BILL_AMOUNTS
+                ).map(
+                  (value) => (
+                    <button
+                      type="button"
+                      key={value}
+                      onClick={() =>
+                        handleAmountSelect(
+                          value
+                        )
+                      }
+                      disabled={
+                        processingPayment
+                      }
+                      className={[
+                        "rounded-xl border p-3 text-center font-semibold transition-all",
+                        "hover:border-green-500 hover:bg-green-50",
+                        amount ===
+                        String(value)
+                          ? "border-green-600 bg-green-50 text-green-700 ring-1 ring-green-600"
+                          : "border-gray-200",
+                      ].join(
+                        " "
+                      )}
+                    >
+                      {formatNaira(
+                        value
+                      )}
+                    </button>
+                  )
+                )}
+
+                <button
+                  type="button"
+                  onClick={
+                    handleCustomAmount
+                  }
+                  disabled={
+                    processingPayment
+                  }
+                  className={[
+                    "rounded-xl border p-3 text-center font-semibold transition-all",
+                    "hover:border-green-500 hover:bg-green-50",
+                    customAmountMode
+                      ? "border-green-600 bg-green-50 text-green-700 ring-1 ring-green-600"
+                      : "border-gray-200",
+                  ].join(
+                    " "
+                  )}
+                >
+                  Enter Amount
+                </button>
+
+              </div>
+
+              {customAmountMode && (
+                <Input
+                  id="billAmount"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={amount}
+                  onChange={(
+                    event
+                  ) =>
+                    setAmount(
+                      event.target.value
+                    )
+                  }
+                  placeholder="Enter exact amount"
+                  disabled={
+                    processingPayment
+                  }
+                  autoFocus
+                />
+              )}
+
+              {(itemMinimum >
+                0 ||
+                itemMaximum >
+                  0) && (
+                <p className="text-xs text-gray-500">
+
+                  {itemMinimum >
+                  0
+                    ? `Minimum: ${formatNaira(
+                        itemMinimum
+                      )}`
+                    : ""}
+
+                  {itemMinimum >
+                    0 &&
+                  itemMaximum >
+                    0
+                    ? " • "
+                    : ""}
+
+                  {itemMaximum >
+                  0
+                    ? `Maximum: ${formatNaira(
+                        itemMaximum
+                      )}`
+                    : ""}
+
+                </p>
+              )}
+
+            </div>
+          )}
+
+          {/* ==================================================
+              ERROR
+              ================================================== */}
 
           {error && (
             <div className="rounded-lg bg-red-50 border border-red-200 p-3">
@@ -1489,7 +1984,9 @@ const ServiceModal = ({
             </div>
           )}
 
-          {/* PURCHASE */}
+          {/* ==================================================
+              PURCHASE
+              ================================================== */}
 
           <Button
             onClick={
@@ -1506,7 +2003,6 @@ const ServiceModal = ({
             }
             className="w-full bg-green-600 hover:bg-green-700"
           >
-
             {processingPayment ? (
               <>
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -1514,13 +2010,10 @@ const ServiceModal = ({
               </>
             ) : (
               <>
-                Pay ₦
-                {customerAmount > 0
-                  ? customerAmount.toLocaleString()
-                  : "0"}
+                Purchase{" "}
+                {service.title}
               </>
             )}
-
           </Button>
 
           {processingPayment && (
@@ -1532,7 +2025,6 @@ const ServiceModal = ({
           )}
 
         </div>
-
       </DialogContent>
     </Dialog>
   );

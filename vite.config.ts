@@ -16,34 +16,85 @@ export default defineConfig(() => ({
     VitePWA({
       registerType: "autoUpdate",
 
+      injectRegister: "auto",
+
+      includeAssets: [
+        "favicon.ico",
+        "icon-180.png",
+        "icon-192.png",
+        "icon-512.png",
+      ],
+
       manifest: {
-        name: "IyanjuPay",
+        name: "IyanjuPay — Airtime, Data, Bills & Transfers",
         short_name: "IyanjuPay",
+
         description:
-          "Your trusted payment solution in Nigeria",
+          "IyanjuPay lets you fund your wallet, send money to any Nigerian bank, buy airtime and data, and pay bills in seconds.",
 
         start_url: "/",
+        scope: "/",
+
         display: "standalone",
+
+        orientation: "portrait",
 
         background_color: "#FFFFFF",
         theme_color: "#082A63",
-
-        orientation: "portrait-primary",
 
         icons: [
           {
             src: "/icon-192.png",
             sizes: "192x192",
             type: "image/png",
-            purpose: "any maskable",
+            purpose: "any",
           },
+
           {
             src: "/icon-512.png",
             sizes: "512x512",
             type: "image/png",
-            purpose: "any maskable",
+            purpose: "any",
+          },
+
+          {
+            src: "/icon-192.png",
+            sizes: "192x192",
+            type: "image/png",
+            purpose: "maskable",
+          },
+
+          {
+            src: "/icon-512.png",
+            sizes: "512x512",
+            type: "image/png",
+            purpose: "maskable",
           },
         ],
+      },
+
+      workbox: {
+        cleanupOutdatedCaches: true,
+
+        navigateFallback: "/index.html",
+
+        runtimeCaching: [
+          {
+            urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
+            handler: "CacheFirst",
+            options: {
+              cacheName: "google-fonts-stylesheets",
+              expiration: {
+                maxEntries: 10,
+                maxAgeSeconds: 60 * 60 * 24 * 365,
+              },
+            },
+          },
+        ],
+      },
+
+      devOptions: {
+        enabled: true,
       },
     }),
   ],

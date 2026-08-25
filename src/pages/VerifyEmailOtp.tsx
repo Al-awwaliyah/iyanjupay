@@ -1,8 +1,13 @@
 import React, { useEffect, useState } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import {
+  useLocation,
+  useNavigate,
+} from "react-router-dom";
+
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+
 import {
   Card,
   CardContent,
@@ -10,6 +15,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 
@@ -20,12 +26,24 @@ const VerifyEmailOtp = () => {
 
   const [email, setEmail] = useState("");
   const [otp, setOtp] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
-  const [resendLoading, setResendLoading] = useState(false);
+
+  const [isLoading, setIsLoading] =
+    useState(false);
+
+  const [resendLoading, setResendLoading] =
+    useState(false);
+
+  // ==========================================================
+  // LOAD EMAIL
+  // ==========================================================
 
   useEffect(() => {
     const stateEmail =
-      (location.state as { email?: string } | null)?.email;
+      (
+        location.state as {
+          email?: string;
+        } | null
+      )?.email;
 
     const storedEmail =
       sessionStorage.getItem(
@@ -33,19 +51,32 @@ const VerifyEmailOtp = () => {
       );
 
     const signupEmail =
-      stateEmail || storedEmail || "";
+      stateEmail ||
+      storedEmail ||
+      "";
 
     if (!signupEmail) {
-      navigate("/", { replace: true });
+      navigate("/", {
+        replace: true,
+      });
+
       return;
     }
 
     setEmail(signupEmail);
+
     sessionStorage.setItem(
       "iyanjupay_signup_email",
       signupEmail,
     );
-  }, [location.state, navigate]);
+  }, [
+    location.state,
+    navigate,
+  ]);
+
+  // ==========================================================
+  // VERIFY EMAIL OTP
+  // ==========================================================
 
   const handleVerifyEmail = async (
     e: React.FormEvent,
@@ -55,45 +86,78 @@ const VerifyEmailOtp = () => {
     const normalizedEmail =
       email.trim().toLowerCase();
 
-    const enteredCode = otp.trim();
+    const enteredCode =
+      otp.trim();
+
+    // --------------------------------------------------------
+    // EMAIL VALIDATION
+    // --------------------------------------------------------
 
     if (!normalizedEmail) {
       toast({
         title: "Email missing",
         description:
           "Please start the verification process again.",
-        variant: "destructive",
+        variant:
+          "destructive",
       });
 
-      navigate("/", { replace: true });
+      navigate("/", {
+        replace: true,
+      });
+
       return;
     }
 
-    if (!/^\d{6}$/.test(enteredCode)) {
+    // --------------------------------------------------------
+    // OTP VALIDATION
+    // --------------------------------------------------------
+
+    if (
+      !/^\d{6}$/.test(
+        enteredCode,
+      )
+    ) {
       toast({
-        title: "Invalid verification code",
+        title:
+          "Invalid verification code",
         description:
           "Enter the 6-digit code sent to your email.",
-        variant: "destructive",
+        variant:
+          "destructive",
       });
+
       return;
     }
 
     setIsLoading(true);
 
     try {
+      // ------------------------------------------------------
+      // VERIFY EMAIL WITH SUPABASE
+      // ------------------------------------------------------
+
       const {
         data,
         error,
-      } = await supabase.auth.verifyOtp({
-        email: normalizedEmail,
-        token: enteredCode,
-        type: "email",
-      });
+      } =
+        await supabase.auth.verifyOtp({
+          email:
+            normalizedEmail,
+
+          token:
+            enteredCode,
+
+          type: "email",
+        });
 
       if (error) {
         throw error;
       }
+
+      // ------------------------------------------------------
+      // MAKE SURE USER SESSION EXISTS
+      // ------------------------------------------------------
 
       if (!data.user) {
         throw new Error(
@@ -101,19 +165,47 @@ const VerifyEmailOtp = () => {
         );
       }
 
+      // ------------------------------------------------------
+      // CLEAR TEMPORARY SIGNUP EMAIL
+      // ------------------------------------------------------
+
       sessionStorage.removeItem(
         "iyanjupay_signup_email",
       );
 
+      // ------------------------------------------------------
+      // SUCCESS MESSAGE
+      // ------------------------------------------------------
+
       toast({
-        title: "Email verified successfully",
+        title:
+          "Email verified successfully",
         description:
-          "Your email address has been verified.",
+          "Your email has been verified. Let's complete your account setup.",
       });
 
-      navigate("/", {
-        replace: true,
-      });
+      // ------------------------------------------------------
+      // IMPORTANT:
+      //
+      // Do NOT send the user directly to the Dashboard.
+      //
+      // New users must complete:
+      //
+      // Email verification
+      //        ↓
+      // Profile
+      //        ↓
+      // BVN
+      //        ↓
+      // Dashboard
+      // ------------------------------------------------------
+
+      navigate(
+        "/onboarding",
+        {
+          replace: true,
+        },
+      );
     } catch (error: any) {
       console.error(
         "Email OTP verification error:",
@@ -121,62 +213,81 @@ const VerifyEmailOtp = () => {
       );
 
       toast({
-        title: "Verification failed",
+        title:
+          "Verification failed",
         description:
-          error.message ||
+          error?.message ||
           "The verification code is incorrect or expired.",
-        variant: "destructive",
+        variant:
+          "destructive",
       });
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleResend = async () => {
-    const normalizedEmail =
-      email.trim().toLowerCase();
+  // ==========================================================
+  // RESEND EMAIL OTP
+  // ==========================================================
 
-    if (!normalizedEmail) {
-      return;
-    }
+  const handleResend =
+    async () => {
+      const normalizedEmail =
+        email.trim().toLowerCase();
 
-    setResendLoading(true);
-
-    try {
-      const { error } =
-        await supabase.auth.resend({
-          type: "signup",
-          email: normalizedEmail,
-        });
-
-      if (error) {
-        throw error;
+      if (!normalizedEmail) {
+        return;
       }
 
-      setOtp("");
+      setResendLoading(true);
 
-      toast({
-        title: "New verification code sent",
-        description:
-          "Check your email for the new 6-digit code.",
-      });
-    } catch (error: any) {
-      console.error(
-        "Email OTP resend error:",
-        error,
-      );
+      try {
+        const {
+          error,
+        } =
+          await supabase.auth.resend({
+            type: "signup",
+            email:
+              normalizedEmail,
+          });
 
-      toast({
-        title: "Unable to resend code",
-        description:
-          error.message ||
-          "Please try again.",
-        variant: "destructive",
-      });
-    } finally {
-      setResendLoading(false);
-    }
-  };
+        if (error) {
+          throw error;
+        }
+
+        setOtp("");
+
+        toast({
+          title:
+            "New verification code sent",
+          description:
+            "Check your email for the new 6-digit code.",
+        });
+      } catch (error: any) {
+        console.error(
+          "Email OTP resend error:",
+          error,
+        );
+
+        toast({
+          title:
+            "Unable to resend code",
+          description:
+            error?.message ||
+            "Please try again.",
+          variant:
+            "destructive",
+        });
+      } finally {
+        setResendLoading(
+          false,
+        );
+      }
+    };
+
+  // ==========================================================
+  // UI
+  // ==========================================================
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-green-50 to-blue-50 p-4">
@@ -197,9 +308,15 @@ const VerifyEmailOtp = () => {
 
         <CardContent>
           <form
-            onSubmit={handleVerifyEmail}
+            onSubmit={
+              handleVerifyEmail
+            }
             className="space-y-5"
           >
+            {/* ==================================================
+                OTP
+            ================================================== */}
+
             <div className="space-y-2">
               <Label htmlFor="email-otp">
                 Verification Code
@@ -215,8 +332,14 @@ const VerifyEmailOtp = () => {
                 onChange={(e) =>
                   setOtp(
                     e.target.value
-                      .replace(/\D/g, "")
-                      .slice(0, 6),
+                      .replace(
+                        /\D/g,
+                        "",
+                      )
+                      .slice(
+                        0,
+                        6,
+                      ),
                   )
                 }
                 placeholder="Enter 6-digit code"
@@ -225,12 +348,18 @@ const VerifyEmailOtp = () => {
               />
             </div>
 
+            {/* ==================================================
+                VERIFY
+            ================================================== */}
+
             <Button
               type="submit"
               className="w-full bg-[#082A63] hover:bg-[#061F49]"
               disabled={
                 isLoading ||
-                !/^\d{6}$/.test(otp)
+                !/^\d{6}$/.test(
+                  otp,
+                )
               }
             >
               {isLoading
@@ -238,13 +367,20 @@ const VerifyEmailOtp = () => {
                 : "Verify Email"}
             </Button>
 
+            {/* ==================================================
+                RESEND
+            ================================================== */}
+
             <Button
               type="button"
               variant="outline"
               className="w-full"
-              onClick={handleResend}
+              onClick={
+                handleResend
+              }
               disabled={
-                isLoading || resendLoading
+                isLoading ||
+                resendLoading
               }
             >
               {resendLoading
@@ -252,17 +388,25 @@ const VerifyEmailOtp = () => {
                 : "Resend Code"}
             </Button>
 
+            {/* ==================================================
+                BACK
+            ================================================== */}
+
             <Button
               type="button"
               variant="ghost"
               className="w-full"
               onClick={() =>
-                navigate("/", {
-                  replace: true,
-                })
+                navigate(
+                  "/",
+                  {
+                    replace: true,
+                  },
+                )
               }
               disabled={
-                isLoading || resendLoading
+                isLoading ||
+                resendLoading
               }
             >
               ← Back

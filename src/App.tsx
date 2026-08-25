@@ -24,7 +24,7 @@ import PWAInstallPrompt from "@/components/PWAInstallPrompt";
 import Index from "./pages/Index";
 import ForgotPassword from "./pages/ForgotPassword";
 import VerifyEmailOtp from "./pages/VerifyEmailOtp";
-import OnboardingPage from "./pages/OnboardingPage";
+import OnboardingPage from "./components/onboarding/OnboardingPage";
 import VerifyRecoveryOtp from "./pages/VerifyRecoveryOtp";
 import ResetPassword from "./pages/ResetPassword";
 import NotFound from "./pages/NotFound";

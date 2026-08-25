@@ -1,14 +1,17 @@
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
+
 import {
   QueryClient,
   QueryClientProvider,
 } from "@tanstack/react-query";
+
 import React, {
   useEffect,
   useState,
 } from "react";
+
 import {
   BrowserRouter,
   Routes,
@@ -17,6 +20,7 @@ import {
 
 import AppSplash from "@/components/AppSplash";
 import PWAInstallPrompt from "@/components/PWAInstallPrompt";
+
 import Index from "./pages/Index";
 import ForgotPassword from "./pages/ForgotPassword";
 import VerifyEmailOtp from "./pages/VerifyEmailOtp";
@@ -61,33 +65,55 @@ const App = () => {
       client={queryClient}
     >
       <TooltipProvider>
-        {/* Toast notifications */}
         <Toaster />
 
-        {/* Sonner notifications */}
         <Sonner />
 
-        {/* Application Router */}
         <BrowserRouter>
           <Routes>
-            {/* Main application */}
+
+            {/* ==================================================
+                MAIN APPLICATION
+            ================================================== */}
+
             <Route
               path="/"
               element={<Index />}
             />
 
-            {/* ---------------------------------- */}
-            {/* SIGNUP EMAIL VERIFICATION          */}
-            {/* ---------------------------------- */}
+            {/* ==================================================
+                SIGNUP
+            ==================================================
+
+                This fixes:
+
+                User attempted to access non-existent route:
+                /signup
+
+                It also allows:
+
+                /signup?ref=ALXXXXXXXX
+
+                AuthForm reads ?ref= automatically.
+            */}
+
+            <Route
+              path="/signup"
+              element={<Index />}
+            />
+
+            {/* ==================================================
+                EMAIL VERIFICATION
+            ================================================== */}
 
             <Route
               path="/verify-email-otp"
               element={<VerifyEmailOtp />}
             />
 
-            {/* ---------------------------------- */}
-            {/* PASSWORD RECOVERY                  */}
-            {/* ---------------------------------- */}
+            {/* ==================================================
+                PASSWORD RECOVERY
+            ================================================== */}
 
             <Route
               path="/forgot-password"
@@ -106,16 +132,23 @@ const App = () => {
               element={<ResetPassword />}
             />
 
-            {/* ---------------------------------- */}
-            {/* 404                                */}
-            {/* ---------------------------------- */}
+            {/* ==================================================
+                404
+            ================================================== */}
 
             <Route
               path="*"
               element={<NotFound />}
             />
+
           </Routes>
+
+          {/* ==================================================
+              PWA INSTALL PROMPT
+          ================================================== */}
+
           <PWAInstallPrompt />
+
         </BrowserRouter>
       </TooltipProvider>
     </QueryClientProvider>

@@ -44,6 +44,8 @@ const OnboardingPage = () => {
   // ==========================================================
 
   useEffect(() => {
+    let mounted = true;
+
     const loadProfile = async () => {
       setLoading(true);
 
@@ -61,6 +63,8 @@ const OnboardingPage = () => {
           navigate("/", { replace: true });
           return;
         }
+
+        if (!mounted) return;
 
         setUserEmail(user.email ?? "");
 
@@ -88,14 +92,62 @@ const OnboardingPage = () => {
           throw profileError;
         }
 
-        if (profile) {
-          setFullName(profile.full_name ?? "");
-          setPhoneNumber(profile.phone_number ?? "");
-          setNickname(profile.nickname ?? "");
-          setGender(profile.gender ?? "");
-          setDateOfBirth(profile.date_of_birth ?? "");
-          setAddress(profile.address ?? "");
-          setNin(profile.nin ?? "");
+        if (!mounted) return;
+
+        if (!profile) {
+          setLoading(false);
+          return;
+        }
+
+        // ------------------------------------------------------
+        // LOAD EXISTING PROFILE VALUES
+        // ------------------------------------------------------
+
+        setFullName(profile.full_name ?? "");
+        setPhoneNumber(profile.phone_number ?? "");
+        setNickname(profile.nickname ?? "");
+        setGender(profile.gender ?? "");
+        setDateOfBirth(profile.date_of_birth ?? "");
+        setAddress(profile.address ?? "");
+        setNin(profile.nin ?? "");
+
+        // ------------------------------------------------------
+        // DETERMINE PROFILE COMPLETION
+        //
+        // IMPORTANT:
+        // nickname is intentionally NOT included.
+        // ------------------------------------------------------
+
+        const profileComplete =
+          String(profile.full_name ?? "").trim().length >= 2 &&
+          String(profile.phone_number ?? "").trim().length >= 7 &&
+          Boolean(profile.gender) &&
+          Boolean(profile.date_of_birth) &&
+          String(profile.address ?? "").trim().length >= 5 &&
+          String(profile.nin ?? "").replace(/\D/g, "").length === 11;
+
+        // ------------------------------------------------------
+        // ONBOARDING ROUTING
+        // ------------------------------------------------------
+
+        if (profileComplete && profile.bvn_verified === true) {
+          // The entire onboarding process is already complete.
+          // Never show personal information or BVN again.
+          navigate("/dashboard", {
+            replace: true,
+          });
+
+          return;
+        }
+
+        if (profileComplete && profile.bvn_verified !== true) {
+          // Personal information is already complete.
+          // Go directly to BVN.
+          navigate("/onboarding/bvn", {
+            replace: true,
+          });
+
+          return;
         }
       } catch (error: any) {
         console.error(
@@ -111,11 +163,17 @@ const OnboardingPage = () => {
           variant: "destructive",
         });
       } finally {
-        setLoading(false);
+        if (mounted) {
+          setLoading(false);
+        }
       }
     };
 
     loadProfile();
+
+    return () => {
+      mounted = false;
+    };
   }, [navigate, toast]);
 
   // ==========================================================
@@ -131,10 +189,11 @@ const OnboardingPage = () => {
   const isValidNin =
     normalizedNin.length === 11;
 
+  // IMPORTANT:
+  // Nickname is OPTIONAL.
   const isProfileComplete =
     normalizedFullName.length >= 2 &&
     normalizedPhone.length >= 7 &&
-    normalizedNickname.length >= 2 &&
     Boolean(gender) &&
     Boolean(dateOfBirth) &&
     normalizedAddress.length >= 5 &&
@@ -183,7 +242,14 @@ const OnboardingPage = () => {
         .update({
           full_name: normalizedFullName,
           phone_number: normalizedPhone,
-          nickname: normalizedNickname,
+
+          // Optional:
+          // save it when provided, otherwise save null.
+          nickname:
+            normalizedNickname.length > 0
+              ? normalizedNickname
+              : null,
+
           gender,
           date_of_birth: dateOfBirth,
           email: user.email ?? userEmail,
@@ -203,8 +269,11 @@ const OnboardingPage = () => {
       });
 
       // ------------------------------------------------------
-      // NEXT PHASE: BVN VERIFICATION
+      // PERSONAL INFORMATION IS NOW COMPLETE.
+      //
+      // Go directly to BVN.
       // ------------------------------------------------------
+
       navigate("/onboarding/bvn", {
         replace: true,
       });
@@ -307,9 +376,7 @@ const OnboardingPage = () => {
                 id="onboarding-phone"
                 value={phoneNumber}
                 onChange={(e) =>
-                  setPhoneNumber(
-                    e.target.value,
-                  )
+                  setPhoneNumber(e.target.value)
                 }
                 placeholder="Enter your phone number"
                 inputMode="tel"
@@ -318,11 +385,14 @@ const OnboardingPage = () => {
               />
             </div>
 
-            {/* NICKNAME */}
+            {/* NICKNAME - OPTIONAL */}
 
             <div className="space-y-2">
               <Label htmlFor="onboarding-nickname">
                 Nickname
+                <span className="ml-1 text-xs font-normal text-gray-500">
+                  (Optional)
+                </span>
               </Label>
 
               <Input
@@ -333,7 +403,6 @@ const OnboardingPage = () => {
                 }
                 placeholder="What should we call you?"
                 autoComplete="nickname"
-                required
               />
             </div>
 
@@ -379,9 +448,7 @@ const OnboardingPage = () => {
                 type="date"
                 value={dateOfBirth}
                 onChange={(e) =>
-                  setDateOfBirth(
-                    e.target.value,
-                  )
+                  setDateOfBirth(e.target.value)
                 }
                 required
               />

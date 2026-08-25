@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -33,48 +33,34 @@ import { useToast } from "@/hooks/use-toast";
 
 type VerificationMethod = "phone" | "email" | null;
 
-const REFERRAL_STORAGE_KEY =
-  "iyanjupay_referral_code";
-
 const AuthForm = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { toast } = useToast();
 
-  const [isLoading, setIsLoading] =
-    useState(false);
+  const [isLoading, setIsLoading] = useState(false);
 
-  // --------------------------------------------------
+  // ============================================================
   // SIGNUP FIELDS
-  // --------------------------------------------------
+  // ============================================================
 
   const [email, setEmail] = useState("");
-  const [password, setPassword] =
-    useState("");
-  const [fullName, setFullName] =
-    useState("");
-  const [phoneNumber, setPhoneNumber] =
-    useState("");
+  const [password, setPassword] = useState("");
+  const [fullName, setFullName] = useState("");
+  const [phoneNumber, setPhoneNumber] = useState("");
 
-  // --------------------------------------------------
-  // REFERRAL
-  // --------------------------------------------------
+  // Referral code entered by user or received from ?ref=
+  const [referralCode, setReferralCode] = useState("");
 
-  const [referralCode, setReferralCode] =
-    useState("");
-
-  const [referralCodeTouched, setReferralCodeTouched] =
-    useState(false);
-
-  // --------------------------------------------------
+  // ============================================================
   // SIGN-IN FIELD
-  // --------------------------------------------------
+  // ============================================================
 
-  const [loginIdentifier, setLoginIdentifier] =
-    useState("");
+  const [loginIdentifier, setLoginIdentifier] = useState("");
 
-  // --------------------------------------------------
+  // ============================================================
   // VERIFICATION STATE
-  // --------------------------------------------------
+  // ============================================================
 
   const [
     verificationDialogOpen,
@@ -87,112 +73,82 @@ const AuthForm = () => {
   ] = useState<VerificationMethod>(null);
 
   const [otp, setOtp] = useState("");
+  const [otpLoading, setOtpLoading] = useState(false);
 
-  const [otpLoading, setOtpLoading] =
-    useState(false);
+  const [phoneOtpSent, setPhoneOtpSent] = useState(false);
 
-  const [phoneOtpSent, setPhoneOtpSent] =
-    useState(false);
+  // ============================================================
+  // DETERMINE INITIAL TAB
+  // ============================================================
 
-  // --------------------------------------------------
-  // LOAD REFERRAL CODE FROM URL / SESSION STORAGE
-  // --------------------------------------------------
+  /*
+   * If the user opens:
+   *
+   * /signup
+   *
+   * or:
+   *
+   * /signup?ref=AL12345678
+   *
+   * automatically show Sign Up.
+   */
+  const initialTab =
+    location.pathname === "/signup"
+      ? "signup"
+      : "signin";
+
+  // ============================================================
+  // READ REFERRAL CODE FROM URL
+  // ============================================================
 
   useEffect(() => {
-    try {
-      const params = new URLSearchParams(
-        window.location.search,
-      );
+    const params = new URLSearchParams(
+      location.search,
+    );
 
-      const urlReferral =
-        params.get("ref");
+    const urlReferral =
+      params.get("ref") ||
+      params.get("referral") ||
+      params.get("referral_code");
 
-      if (urlReferral) {
-        const normalizedReferral =
-          urlReferral
-            .trim()
-            .toUpperCase();
+    if (urlReferral) {
+      const cleanedReferral =
+        urlReferral
+          .trim()
+          .toUpperCase()
+          .slice(0, 32);
 
-        if (
-          /^[A-Z0-9_-]{4,50}$/.test(
-            normalizedReferral,
-          )
-        ) {
-          setReferralCode(
-            normalizedReferral,
-          );
+      setReferralCode(cleanedReferral);
 
-          sessionStorage.setItem(
-            REFERRAL_STORAGE_KEY,
-            normalizedReferral,
-          );
-
-          setReferralCodeTouched(
-            false,
-          );
-        }
-      } else {
-        const savedReferral =
-          sessionStorage.getItem(
-            REFERRAL_STORAGE_KEY,
-          );
-
-        if (savedReferral) {
-          const normalizedReferral =
-            savedReferral
-              .trim()
-              .toUpperCase();
-
-          if (
-            /^[A-Z0-9_-]{4,50}$/.test(
-              normalizedReferral,
-            )
-          ) {
-            setReferralCode(
-              normalizedReferral,
-            );
-          }
-        }
-      }
-    } catch (error) {
-      console.error(
-        "Unable to load referral code:",
-        error,
-      );
-    }
-  }, []);
-
-  // --------------------------------------------------
-  // REFERRAL CODE CHANGE
-  // --------------------------------------------------
-
-  const handleReferralCodeChange = (
-    value: string,
-  ) => {
-    const normalized =
-      value
-        .toUpperCase()
-        .replace(/[^A-Z0-9_-]/g, "")
-        .slice(0, 50);
-
-    setReferralCode(normalized);
-    setReferralCodeTouched(true);
-
-    if (normalized) {
+      /*
+       * Keep referral code available in case the
+       * user refreshes the signup page.
+       */
       sessionStorage.setItem(
-        REFERRAL_STORAGE_KEY,
-        normalized,
+        "iyanjupay_referral_code",
+        cleanedReferral,
       );
     } else {
-      sessionStorage.removeItem(
-        REFERRAL_STORAGE_KEY,
-      );
-    }
-  };
+      /*
+       * If there is no referral in the current URL,
+       * recover a previously captured referral code.
+       */
+      const savedReferral =
+        sessionStorage.getItem(
+          "iyanjupay_referral_code",
+        );
 
-  // --------------------------------------------------
-  // EXTRACT REAL EDGE FUNCTION ERROR
-  // --------------------------------------------------
+      if (savedReferral) {
+        setReferralCode(
+          savedReferral.toUpperCase(),
+        );
+      }
+    }
+  }, [location.pathname, location.search]);
+
+  // ============================================================
+  // EDGE FUNCTION ERROR HANDLER
+  // ============================================================
 
   const getEdgeFunctionErrorMessage =
     async (
@@ -259,9 +215,9 @@ const AuthForm = () => {
       return fallback;
     };
 
-  // --------------------------------------------------
-  // PHONE NUMBER NORMALIZATION
-  // --------------------------------------------------
+  // ============================================================
+  // PHONE NORMALIZATION
+  // ============================================================
 
   const normalizePhoneNumber = (
     phone: string,
@@ -272,9 +228,7 @@ const AuthForm = () => {
 
     // 08012345678 -> +2348012345678
     if (cleaned.startsWith("0")) {
-      cleaned = `+234${cleaned.substring(
-        1,
-      )}`;
+      cleaned = `+234${cleaned.substring(1)}`;
     }
 
     // 2348012345678 -> +2348012345678
@@ -285,9 +239,23 @@ const AuthForm = () => {
     return cleaned;
   };
 
-  // --------------------------------------------------
+  // ============================================================
+  // REFERRAL CODE NORMALIZATION
+  // ============================================================
+
+  const normalizeReferralCode = (
+    code: string,
+  ) => {
+    return code
+      .trim()
+      .toUpperCase()
+      .replace(/\s/g, "")
+      .slice(0, 32);
+  };
+
+  // ============================================================
   // SIGN UP
-  // --------------------------------------------------
+  // ============================================================
 
   const handleSignUp = async (
     e: React.FormEvent,
@@ -306,8 +274,7 @@ const AuthForm = () => {
 
     if (!phoneNumber.trim()) {
       toast({
-        title:
-          "Phone number required",
+        title: "Phone number required",
         description:
           "Please enter your phone number.",
         variant: "destructive",
@@ -335,6 +302,16 @@ const AuthForm = () => {
       return;
     }
 
+    if (password.length < 6) {
+      toast({
+        title: "Password too short",
+        description:
+          "Your password must contain at least 6 characters.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     const normalizedPhone =
       normalizePhoneNumber(
         phoneNumber,
@@ -355,26 +332,34 @@ const AuthForm = () => {
       return;
     }
 
-    // ------------------------------------------------
-    // REFERRAL VALIDATION
-    // ------------------------------------------------
+    const normalizedEmail =
+      email.trim().toLowerCase();
 
     const normalizedReferral =
-      referralCode
-        .trim()
-        .toUpperCase();
+      normalizeReferralCode(
+        referralCode,
+      );
 
+    /*
+     * Basic referral code validation.
+     *
+     * Your generated codes currently look like:
+     *
+     * ALXXXXXXXX
+     *
+     * We allow letters and numbers generally so
+     * this remains compatible with future codes.
+     */
     if (
       normalizedReferral &&
-      !/^[A-Z0-9_-]{4,50}$/.test(
+      !/^[A-Z0-9_-]{4,32}$/.test(
         normalizedReferral,
       )
     ) {
       toast({
-        title:
-          "Invalid referral code",
+        title: "Invalid referral code",
         description:
-          "Please enter a valid referral code.",
+          "Please check the referral code and try again.",
         variant: "destructive",
       });
       return;
@@ -383,14 +368,21 @@ const AuthForm = () => {
     setIsLoading(true);
 
     try {
+      /*
+       * Save referral code locally so it remains available
+       * through the email/phone verification process.
+       */
+      if (normalizedReferral) {
+        sessionStorage.setItem(
+          "iyanjupay_referral_code",
+          normalizedReferral,
+        );
+      }
+
       const { data, error } =
         await supabase.auth.signUp({
-          email: email
-            .trim()
-            .toLowerCase(),
-
+          email: normalizedEmail,
           password,
-
           options: {
             data: {
               full_name:
@@ -400,15 +392,12 @@ const AuthForm = () => {
                 normalizedPhone,
 
               /*
-               * Referral code is passed to
-               * Supabase auth metadata.
-               *
-               * Your backend/database should
-               * validate and process this code.
+               * The referral code is included in auth
+               * metadata so the server-side signup/referral
+               * process can use it.
                */
               referral_code:
-                normalizedReferral ||
-                null,
+                normalizedReferral || null,
             },
           },
         });
@@ -424,40 +413,22 @@ const AuthForm = () => {
       }
 
       /*
-       * The profile is created server-side
-       * by the auth.users -> profiles trigger.
+       * Profile is created server-side by your
+       * auth.users -> profiles trigger.
        *
-       * We intentionally do not insert/update
-       * profiles from the client.
+       * We do NOT insert profiles from the client.
        */
-
-      /*
-       * Keep the referral code available during
-       * the verification process if required.
-       *
-       * Once signup succeeds, the referral code
-       * has already been included in auth metadata.
-       */
-      if (normalizedReferral) {
-        sessionStorage.setItem(
-          REFERRAL_STORAGE_KEY,
-          normalizedReferral,
-        );
-      }
 
       setVerificationMethod(null);
       setOtp("");
       setPhoneOtpSent(false);
-
-      setVerificationDialogOpen(
-        true,
-      );
+      setVerificationDialogOpen(true);
 
       toast({
         title: "Account created",
         description:
           normalizedReferral
-            ? "Your referral code has been recorded. Choose how you want to verify your IyanjuPay account."
+            ? "Your referral code has been saved. Choose how you want to verify your account."
             : "Choose how you want to verify your IyanjuPay account.",
       });
     } catch (error: any) {
@@ -481,9 +452,9 @@ const AuthForm = () => {
     }
   };
 
-  // --------------------------------------------------
-  // PHONE OTP - SEND THROUGH TERMII
-  // --------------------------------------------------
+  // ============================================================
+  // PHONE OTP - SEND
+  // ============================================================
 
   const handleSendPhoneOTP =
     async () => {
@@ -556,14 +527,12 @@ const AuthForm = () => {
           error,
         );
 
-        const message =
-          error?.message ||
-          "Please try again.";
-
         toast({
           title:
             "Unable to send code",
-          description: message,
+          description:
+            error?.message ||
+            "Please try again.",
           variant: "destructive",
         });
       } finally {
@@ -571,9 +540,9 @@ const AuthForm = () => {
       }
     };
 
-  // --------------------------------------------------
-  // PHONE OTP - VERIFY THROUGH TERMII
-  // --------------------------------------------------
+  // ============================================================
+  // PHONE OTP - VERIFY
+  // ============================================================
 
   const handleVerifyPhoneOTP =
     async () => {
@@ -636,14 +605,6 @@ const AuthForm = () => {
           );
         }
 
-        /*
-         * termii-verify handles:
-         *
-         * - OTP verification
-         * - profiles.phone_verified = true
-         * - profiles.phone_verified_at
-         */
-
         setVerificationDialogOpen(
           false,
         );
@@ -652,33 +613,30 @@ const AuthForm = () => {
         setOtp("");
         setPhoneOtpSent(false);
 
-        /*
-         * Referral code is kept until the
-         * backend has processed the signup.
-         *
-         * Do not award rewards here.
-         */
-
         toast({
           title:
             "Phone verified successfully",
           description:
             "Your phone number has been verified. You can now continue.",
         });
+
+        /*
+         * Do not remove referral information here.
+         * It may still be needed by your server-side
+         * referral completion logic.
+         */
       } catch (error: any) {
         console.error(
           "Termii verify OTP error:",
           error,
         );
 
-        const message =
-          error?.message ||
-          "The 8-digit verification code is incorrect.";
-
         toast({
           title:
             "Verification failed",
-          description: message,
+          description:
+            error?.message ||
+            "The 8-digit verification code is incorrect.",
           variant: "destructive",
         });
       } finally {
@@ -686,9 +644,9 @@ const AuthForm = () => {
       }
     };
 
-  // --------------------------------------------------
+  // ============================================================
   // EMAIL OTP - SEND
-  // --------------------------------------------------
+  // ============================================================
 
   const handleSendEmailOTP =
     async () => {
@@ -725,15 +683,17 @@ const AuthForm = () => {
         );
 
         /*
-         * Preserve referral code while
-         * navigating to email verification.
+         * Preserve referral code through email verification.
          */
-        if (referralCode) {
+        const normalizedReferral =
+          normalizeReferralCode(
+            referralCode,
+          );
+
+        if (normalizedReferral) {
           sessionStorage.setItem(
-            REFERRAL_STORAGE_KEY,
-            referralCode
-              .trim()
-              .toUpperCase(),
+            "iyanjupay_referral_code",
+            normalizedReferral,
           );
         }
 
@@ -758,11 +718,8 @@ const AuthForm = () => {
             state: {
               email:
                 normalizedEmail,
-
               referralCode:
-                referralCode
-                  .trim()
-                  .toUpperCase() ||
+                normalizedReferral ||
                 null,
             },
           },
@@ -786,9 +743,9 @@ const AuthForm = () => {
       }
     };
 
-  // --------------------------------------------------
-  // SIGN IN - EMAIL OR PHONE
-  // --------------------------------------------------
+  // ============================================================
+  // SIGN IN
+  // ============================================================
 
   const handleSignIn = async (
     e: React.FormEvent,
@@ -857,10 +814,6 @@ const AuthForm = () => {
         );
       }
 
-      // ------------------------------------------------
-      // SET SUPABASE SESSION
-      // ------------------------------------------------
-
       const {
         error: sessionError,
       } =
@@ -892,14 +845,12 @@ const AuthForm = () => {
         error,
       );
 
-      const message =
-        error?.message ||
-        "Invalid login credentials.";
-
       toast({
         title:
           "Unable to sign in",
-        description: message,
+        description:
+          error?.message ||
+          "Invalid login credentials.",
         variant: "destructive",
       });
     } finally {
@@ -907,9 +858,9 @@ const AuthForm = () => {
     }
   };
 
-  // --------------------------------------------------
+  // ============================================================
   // UI
-  // --------------------------------------------------
+  // ============================================================
 
   return (
     <>
@@ -921,14 +872,14 @@ const AuthForm = () => {
             </CardTitle>
 
             <CardDescription>
-              Your trusted payment solution
-              in Nigeria
+              Your trusted payment solution in Nigeria
             </CardDescription>
           </CardHeader>
 
           <CardContent>
             <Tabs
-              defaultValue="signin"
+              key={initialTab}
+              defaultValue={initialTab}
               className="w-full"
             >
               <TabsList className="grid w-full grid-cols-2">
@@ -941,9 +892,9 @@ const AuthForm = () => {
                 </TabsTrigger>
               </TabsList>
 
-              {/* ==========================================
+              {/* ==================================================
                   SIGN IN
-              ========================================== */}
+              ================================================== */}
 
               <TabsContent value="signin">
                 <form
@@ -1020,9 +971,9 @@ const AuthForm = () => {
                 </form>
               </TabsContent>
 
-              {/* ==========================================
+              {/* ==================================================
                   SIGN UP
-              ========================================== */}
+              ================================================== */}
 
               <TabsContent value="signup">
                 <form
@@ -1044,7 +995,6 @@ const AuthForm = () => {
                         )
                       }
                       autoComplete="name"
-                      placeholder="Enter your full name"
                       required
                     />
                   </div>
@@ -1071,8 +1021,7 @@ const AuthForm = () => {
                     />
 
                     <p className="text-xs text-muted-foreground">
-                      Enter a Nigerian number
-                      such as
+                      Enter a Nigerian number such as
                       +2348012345678.
                     </p>
                   </div>
@@ -1091,7 +1040,6 @@ const AuthForm = () => {
                           e.target.value,
                         )
                       }
-                      placeholder="you@example.com"
                       autoComplete="email"
                       required
                     />
@@ -1111,20 +1059,24 @@ const AuthForm = () => {
                           e.target.value,
                         )
                       }
-                      placeholder="Create a password"
                       autoComplete="new-password"
                       required
                     />
+
+                    <p className="text-xs text-muted-foreground">
+                      Minimum 6 characters.
+                    </p>
                   </div>
 
-                  {/* ======================================
+                  {/* ==================================================
                       REFERRAL CODE
-                  ====================================== */}
+                  ================================================== */}
 
                   <div className="space-y-2">
                     <Label htmlFor="referral-code">
                       Referral Code
-                      <span className="text-muted-foreground font-normal ml-1">
+                      <span className="text-muted-foreground font-normal">
+                        {" "}
                         (Optional)
                       </span>
                     </Label>
@@ -1132,35 +1084,43 @@ const AuthForm = () => {
                     <Input
                       id="referral-code"
                       type="text"
-                      value={referralCode}
+                      value={
+                        referralCode
+                      }
                       onChange={(e) =>
-                        handleReferralCodeChange(
-                          e.target.value,
+                        setReferralCode(
+                          e.target.value
+                            .toUpperCase()
+                            .replace(
+                              /\s/g,
+                              "",
+                            )
+                            .slice(
+                              0,
+                              32,
+                            ),
                         )
                       }
                       placeholder="Enter referral code"
                       autoComplete="off"
-                      maxLength={50}
-                      className="uppercase font-mono"
+                      maxLength={32}
+                      className="font-mono uppercase"
                     />
 
-                    <p className="text-xs text-muted-foreground">
-                      Have a friend's IyanjuPay
-                      referral code? Enter it
-                      here to join through their
-                      invitation.
-                    </p>
-
                     {referralCode && (
-                      <div className="rounded-lg border border-green-200 bg-green-50 px-3 py-2">
-                        <p className="text-xs text-green-700">
-                          ✓ Referral code detected:
-                        </p>
-
-                        <p className="text-sm font-bold text-green-800 font-mono mt-0.5">
+                      <p className="text-xs text-green-600">
+                        Referral code applied:{" "}
+                        <span className="font-semibold">
                           {referralCode}
-                        </p>
-                      </div>
+                        </span>
+                      </p>
+                    )}
+
+                    {!referralCode && (
+                      <p className="text-xs text-muted-foreground">
+                        If someone invited you, enter
+                        their referral code here.
+                      </p>
                     )}
                   </div>
 
@@ -1182,9 +1142,9 @@ const AuthForm = () => {
         </Card>
       </div>
 
-      {/* ==========================================
+      {/* ==========================================================
           VERIFICATION DIALOG
-      ========================================== */}
+      ========================================================== */}
 
       <Dialog
         open={
@@ -1217,14 +1177,13 @@ const AuthForm = () => {
             </DialogTitle>
 
             <DialogDescription>
-              Choose how you want to verify
-              your account.
+              Choose how you want to verify your account.
             </DialogDescription>
           </DialogHeader>
 
-          {/* ========================================
+          {/* ======================================================
               METHOD SELECTION
-          ======================================== */}
+          ====================================================== */}
 
           {!verificationMethod && (
             <div className="space-y-3 pt-4">
@@ -1254,8 +1213,7 @@ const AuthForm = () => {
                   </div>
 
                   <div className="text-xs text-muted-foreground">
-                    Receive an 8-digit
-                    verification code by SMS
+                    Receive an 8-digit verification code by SMS
                   </div>
                 </div>
               </Button>
@@ -1280,17 +1238,16 @@ const AuthForm = () => {
                   </div>
 
                   <div className="text-xs text-muted-foreground">
-                    Receive a verification
-                    code by email
+                    Receive a verification code by email
                   </div>
                 </div>
               </Button>
             </div>
           )}
 
-          {/* ========================================
+          {/* ======================================================
               PHONE VERIFICATION
-          ======================================== */}
+          ====================================================== */}
 
           {verificationMethod ===
             "phone" && (
@@ -1413,31 +1370,22 @@ const AuthForm = () => {
             </div>
           )}
 
-          {/* ========================================
+          {/* ======================================================
               EMAIL VERIFICATION
-          ======================================== */}
+          ====================================================== */}
 
           {verificationMethod ===
             "email" && (
             <div className="space-y-4 pt-4">
               <div className="rounded-lg bg-blue-50 p-4">
                 <p className="text-sm">
-                  We'll send a verification
-                  code to:
+                  We'll send a verification code
+                  to:
                 </p>
 
                 <p className="font-semibold mt-1 break-all">
                   {email.trim()}
                 </p>
-
-                {referralCode && (
-                  <p className="text-xs text-blue-700 mt-2">
-                    Referral code:{" "}
-                    <span className="font-mono font-semibold">
-                      {referralCode}
-                    </span>
-                  </p>
-                )}
               </div>
 
               <Button
@@ -1451,7 +1399,7 @@ const AuthForm = () => {
                 }
               >
                 {otpLoading
-                  ? "Sending Verification Code..."
+                  ? "Sending Code..."
                   : "Send Verification Code"}
               </Button>
 

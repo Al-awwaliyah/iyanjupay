@@ -32,7 +32,9 @@ import {
   FileText,
   Wallet,
   Banknote,
-  ShieldCheck
+  ShieldCheck,
+  Phone,
+  CreditCard
 } from 'lucide-react';
 
 import { useAuth } from '@/hooks/useAuth';
@@ -102,6 +104,7 @@ const safeString = (
   value: any,
   fallback = ''
 ): string => {
+
   if (
     value === null ||
     value === undefined
@@ -110,14 +113,16 @@ const safeString = (
   }
 
   return String(value);
+
 };
 
 
 const firstValue = (
   metadata: TransactionMetadata | null | undefined,
   keys: string[],
-  fallback = ''
+  fallback: any = ''
 ) => {
+
   for (const key of keys) {
 
     const value =
@@ -130,9 +135,11 @@ const firstValue = (
     ) {
       return value;
     }
+
   }
 
   return fallback;
+
 };
 
 
@@ -154,15 +161,18 @@ const formatMoney = (
       maximumFractionDigits: 2
     }
   )}`;
+
 };
 
 
 const normalizeStatus = (
   status?: string
 ) => {
+
   return safeString(
     status
   ).toLowerCase();
+
 };
 
 
@@ -223,43 +233,6 @@ const TransactionHistory = ({
   |--------------------------------------------------------------------------
   */
 
-  useEffect(() => {
-
-    if (!user?.id) {
-      return;
-    }
-
-    fetchTransactions();
-
-    const channel =
-      supabase
-        .channel(
-          `transaction-history-${user.id}`
-        )
-        .on(
-          'postgres_changes',
-          {
-            event: '*',
-            schema: 'public',
-            table: 'transactions',
-            filter:
-              `user_id=eq.${user.id}`
-          },
-          () => {
-            fetchTransactions();
-          }
-        )
-        .subscribe();
-
-    return () => {
-      supabase.removeChannel(
-        channel
-      );
-    };
-
-  }, [user?.id]);
-
-
   const fetchTransactions =
     async () => {
 
@@ -318,7 +291,48 @@ const TransactionHistory = ({
         setLoading(false);
 
       }
+
     };
+
+
+  useEffect(() => {
+
+    if (!user?.id) {
+      setLoading(false);
+      return;
+    }
+
+    fetchTransactions();
+
+    const channel =
+      supabase
+        .channel(
+          `transaction-history-${user.id}`
+        )
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'transactions',
+            filter:
+              `user_id=eq.${user.id}`
+          },
+          () => {
+            fetchTransactions();
+          }
+        )
+        .subscribe();
+
+    return () => {
+
+      supabase.removeChannel(
+        channel
+      );
+
+    };
+
+  }, [user?.id]);
 
 
   /*
@@ -336,6 +350,7 @@ const TransactionHistory = ({
         transaction.metadata ||
         {}
       );
+
     };
 
 
@@ -371,30 +386,72 @@ const TransactionHistory = ({
 
 
       if (
-        rawType ===
-          'internal_transfer' ||
-        rawType ===
-          'wallet_to_wallet' ||
-        rawType ===
+        [
+          'internal_transfer',
+          'wallet_to_wallet',
           'transfer'
+        ].includes(rawType)
       ) {
         return 'transfer';
       }
 
 
       if (
-        rawType ===
-          'virtual_account_funding' ||
-        rawType ===
-          'wallet_funding' ||
-        rawType ===
+        [
+          'virtual_account_funding',
+          'wallet_funding',
           'funding'
+        ].includes(rawType)
       ) {
         return 'funding';
       }
 
 
+      if (
+        [
+          'bill',
+          'bills',
+          'billpayment',
+          'bill_payment'
+        ].includes(rawType)
+      ) {
+        return 'bill_payment';
+      }
+
+
       return rawType;
+
+    };
+
+
+  /*
+  |--------------------------------------------------------------------------
+  | CHECK BILL PAYMENT
+  |--------------------------------------------------------------------------
+  */
+
+  const isBillPayment =
+    (
+      transaction: Transaction
+    ) => {
+
+      const type =
+        getTransactionType(
+          transaction
+        );
+
+      return [
+        'airtime',
+        'data',
+        'electricity',
+        'cable',
+        'cable_tv',
+        'tv',
+        'bill_payment',
+        'bills',
+        'internet'
+      ].includes(type);
+
     };
 
 
@@ -427,28 +484,24 @@ const TransactionHistory = ({
 
 
       if (
-        direction ===
-          'incoming' ||
-        direction ===
-          'in' ||
-        direction ===
-          'credit' ||
-        direction ===
+        [
+          'incoming',
+          'in',
+          'credit',
           'money_in'
+        ].includes(direction)
       ) {
         return true;
       }
 
 
       if (
-        direction ===
-          'outgoing' ||
-        direction ===
-          'out' ||
-        direction ===
-          'debit' ||
-        direction ===
+        [
+          'outgoing',
+          'out',
+          'debit',
           'money_out'
+        ].includes(direction)
       ) {
         return false;
       }
@@ -469,6 +522,7 @@ const TransactionHistory = ({
         'reversal',
         'money_in'
       ].includes(type);
+
     };
 
 
@@ -512,6 +566,7 @@ const TransactionHistory = ({
             metadata.sender_email
         }
       );
+
     };
 
 
@@ -555,6 +610,170 @@ const TransactionHistory = ({
             metadata.recipient_email
         }
       );
+
+    };
+
+
+  /*
+  |--------------------------------------------------------------------------
+  | COUNTERPARTY BANK NAME
+  |--------------------------------------------------------------------------
+  */
+
+  const getCounterpartyBankName =
+    (
+      transaction: Transaction
+    ) => {
+
+      const metadata =
+        getTransactionMetadata(
+          transaction
+        );
+
+      const moneyIn =
+        isMoneyIn(
+          transaction
+        );
+
+      return safeString(
+        firstValue(
+          metadata,
+          moneyIn
+            ? [
+                'sender_bank_name',
+                'senderBankName',
+                'from_bank_name',
+                'fromBankName',
+                'bank_name',
+                'bankName',
+                'funding_bank_name'
+              ]
+            : [
+                'recipient_bank_name',
+                'recipientBankName',
+                'receiver_bank_name',
+                'receiverBankName',
+                'to_bank_name',
+                'toBankName',
+                'bank_name',
+                'bankName'
+              ],
+          ''
+        )
+      );
+
+    };
+
+
+  /*
+  |--------------------------------------------------------------------------
+  | COUNTERPARTY ACCOUNT NAME
+  |--------------------------------------------------------------------------
+  */
+
+  const getCounterpartyAccountName =
+    (
+      transaction: Transaction
+    ) => {
+
+      const metadata =
+        getTransactionMetadata(
+          transaction
+        );
+
+      const moneyIn =
+        isMoneyIn(
+          transaction
+        );
+
+      return safeString(
+        firstValue(
+          metadata,
+          moneyIn
+            ? [
+                'sender_account_name',
+                'senderAccountName',
+                'sender_name',
+                'sender_full_name',
+                'from_account_name',
+                'fromAccountName',
+                'from_name',
+                'from_full_name',
+                'account_name',
+                'accountName',
+                'funding_account_name'
+              ]
+            : [
+                'recipient_account_name',
+                'recipientAccountName',
+                'recipient_name',
+                'recipient_full_name',
+                'receiver_account_name',
+                'receiverAccountName',
+                'receiver_name',
+                'receiver_full_name',
+                'to_account_name',
+                'toAccountName',
+                'to_name',
+                'to_full_name',
+                'account_name',
+                'accountName'
+              ],
+          ''
+        )
+      );
+
+    };
+
+
+  /*
+  |--------------------------------------------------------------------------
+  | COUNTERPARTY ACCOUNT NUMBER
+  |--------------------------------------------------------------------------
+  */
+
+  const getCounterpartyAccountNumber =
+    (
+      transaction: Transaction
+    ) => {
+
+      const metadata =
+        getTransactionMetadata(
+          transaction
+        );
+
+      const moneyIn =
+        isMoneyIn(
+          transaction
+        );
+
+      return safeString(
+        firstValue(
+          metadata,
+          moneyIn
+            ? [
+                'sender_account_number',
+                'senderAccountNumber',
+                'from_account_number',
+                'fromAccountNumber',
+                'account_number',
+                'accountNumber',
+                'funding_account_number'
+              ]
+            : [
+                'recipient_account_number',
+                'recipientAccountNumber',
+                'receiver_account_number',
+                'receiverAccountNumber',
+                'to_account_number',
+                'toAccountNumber',
+                'account_number',
+                'accountNumber'
+              ],
+          ''
+        )
+      );
+
     };
 
 
@@ -604,9 +823,11 @@ const TransactionHistory = ({
           firstValue(
             metadata,
             [
+              'sender_account_name',
               'sender_name',
               'sender_full_name',
               'senderName',
+              'from_account_name',
               'from_name',
               'from_full_name',
               'account_name',
@@ -617,6 +838,7 @@ const TransactionHistory = ({
             'Funding source'
           )
         );
+
       }
 
 
@@ -624,17 +846,21 @@ const TransactionHistory = ({
         firstValue(
           metadata,
           [
+            'recipient_account_name',
             'recipient_name',
             'recipient_full_name',
             'recipientName',
+            'receiver_account_name',
             'receiver_name',
             'receiver_full_name',
+            'to_account_name',
             'to_name',
             'to_full_name'
           ],
           'Recipient'
         )
       );
+
     };
 
 
@@ -658,6 +884,7 @@ const TransactionHistory = ({
         party?.nickname ||
         ''
       );
+
     };
 
 
@@ -688,6 +915,7 @@ const TransactionHistory = ({
         return safeString(
           party.wallet_id
         );
+
       }
 
 
@@ -706,6 +934,7 @@ const TransactionHistory = ({
             ''
           )
         );
+
       }
 
 
@@ -721,16 +950,105 @@ const TransactionHistory = ({
           ''
         )
       );
+
     };
 
 
   /*
   |--------------------------------------------------------------------------
-  | BANK NAME
+  | PHONE NUMBER
   |--------------------------------------------------------------------------
   */
 
-  const getBankName =
+  const getPhoneNumber =
+    (
+      transaction: Transaction
+    ) => {
+
+      const metadata =
+        getTransactionMetadata(
+          transaction
+        );
+
+      const party =
+        isMoneyIn(transaction)
+          ? getSender(transaction)
+          : getRecipient(transaction);
+
+      return safeString(
+        firstValue(
+          metadata,
+          [
+            'phone_number',
+            'phoneNumber',
+            'recipient_phone_number',
+            'recipientPhoneNumber',
+            'sender_phone_number',
+            'senderPhoneNumber',
+            'customer_phone',
+            'customerPhone',
+            'beneficiary_phone',
+            'beneficiaryPhone',
+            'mobile_number',
+            'mobileNumber',
+            'msisdn',
+            'phone'
+          ],
+          party?.phone_number || ''
+        )
+      );
+
+    };
+
+
+  /*
+  |--------------------------------------------------------------------------
+  | BILL PAYMENT AMOUNT
+  |--------------------------------------------------------------------------
+  */
+
+  const getBillPaymentAmount =
+    (
+      transaction: Transaction
+    ) => {
+
+      const metadata =
+        getTransactionMetadata(
+          transaction
+        );
+
+      const value =
+        firstValue(
+          metadata,
+          [
+            'bill_amount',
+            'billAmount',
+            'payment_amount',
+            'paymentAmount',
+            'amount_paid',
+            'amountPaid',
+            'bill_payment_amount',
+            'billPaymentAmount'
+          ],
+          transaction.amount
+        );
+
+      return Number(
+        value ||
+        transaction.amount ||
+        0
+      );
+
+    };
+
+
+  /*
+  |--------------------------------------------------------------------------
+  | BILL PROVIDER
+  |--------------------------------------------------------------------------
+  */
+
+  const getBillProvider =
     (
       transaction: Transaction
     ) => {
@@ -744,26 +1062,32 @@ const TransactionHistory = ({
         firstValue(
           metadata,
           [
-            'sender_bank_name',
-            'bank_name',
-            'bankName',
-            'from_bank_name',
-            'recipient_bank_name',
-            'to_bank_name'
+            'provider_name',
+            'providerName',
+            'biller_name',
+            'billerName',
+            'service_provider',
+            'serviceProvider',
+            'network',
+            'network_name',
+            'networkName',
+            'merchant_name',
+            'merchantName'
           ],
-          ''
+          transaction.provider || ''
         )
       );
+
     };
 
 
   /*
   |--------------------------------------------------------------------------
-  | ACCOUNT NUMBER
+  | BILL CUSTOMER NUMBER
   |--------------------------------------------------------------------------
   */
 
-  const getAccountNumber =
+  const getBillCustomerNumber =
     (
       transaction: Transaction
     ) => {
@@ -777,16 +1101,21 @@ const TransactionHistory = ({
         firstValue(
           metadata,
           [
-            'sender_account_number',
-            'account_number',
-            'accountNumber',
-            'from_account_number',
-            'recipient_account_number',
-            'to_account_number'
+            'customer_number',
+            'customerNumber',
+            'meter_number',
+            'meterNumber',
+            'smartcard_number',
+            'smartcardNumber',
+            'decoder_number',
+            'decoderNumber',
+            'beneficiary_number',
+            'beneficiaryNumber'
           ],
           ''
         )
       );
+
     };
 
 
@@ -819,6 +1148,7 @@ const TransactionHistory = ({
             'Wallet transaction'
         )
       );
+
     };
 
 
@@ -851,6 +1181,7 @@ const TransactionHistory = ({
             transaction.id
         )
       );
+
     };
 
 
@@ -883,6 +1214,7 @@ const TransactionHistory = ({
             ''
         )
       );
+
     };
 
 
@@ -917,12 +1249,13 @@ const TransactionHistory = ({
       return Number(
         fee || 0
       );
+
     };
 
 
   /*
   |--------------------------------------------------------------------------
-  | OPAY STYLE TITLE
+  | TRANSACTION TITLE
   |--------------------------------------------------------------------------
   */
 
@@ -938,6 +1271,11 @@ const TransactionHistory = ({
 
       const moneyIn =
         isMoneyIn(
+          transaction
+        );
+
+      const provider =
+        getBillProvider(
           transaction
         );
 
@@ -973,22 +1311,39 @@ const TransactionHistory = ({
 
         case 'airtime':
 
-          return 'Airtime';
+          return provider
+            ? `${provider} Airtime`
+            : 'Airtime Purchase';
 
 
         case 'data':
 
-          return 'Data';
+          return provider
+            ? `${provider} Data`
+            : 'Data Purchase';
 
 
         case 'electricity':
 
-          return 'Electricity';
+          return provider
+            ? `${provider} Electricity`
+            : 'Electricity Payment';
 
 
         case 'cable':
+        case 'cable_tv':
+        case 'tv':
 
-          return 'Cable TV';
+          return provider
+            ? `${provider} Cable TV`
+            : 'Cable TV Payment';
+
+
+        case 'bill_payment':
+
+          return provider
+            ? `Bill Payment - ${provider}`
+            : 'Bill Payment';
 
 
         case 'withdrawal':
@@ -1001,13 +1356,15 @@ const TransactionHistory = ({
           return moneyIn
             ? `Money received from ${getCounterpartyName(transaction)}`
             : `Money sent to ${getCounterpartyName(transaction)}`;
+
       }
+
     };
 
 
   /*
   |--------------------------------------------------------------------------
-  | SUBTITLE
+  | TRANSACTION SUBTITLE
   |--------------------------------------------------------------------------
   */
 
@@ -1032,25 +1389,86 @@ const TransactionHistory = ({
         return moneyIn
           ? 'Money received'
           : 'Money sent';
+
       }
 
 
       if (type === 'funding') {
 
         const bank =
-          getBankName(
+          getCounterpartyBankName(
             transaction
           );
 
-        return bank
-          ? `Funding via ${bank}`
-          : 'Money added to wallet';
+        const accountName =
+          getCounterpartyAccountName(
+            transaction
+          );
+
+        if (
+          bank &&
+          accountName
+        ) {
+
+          return `Funding from ${accountName} • ${bank}`;
+
+        }
+
+        if (bank) {
+
+          return `Funding via ${bank}`;
+
+        }
+
+        return 'Money added to wallet';
+
+      }
+
+
+      if (
+        isBillPayment(
+          transaction
+        )
+      ) {
+
+        const phone =
+          getPhoneNumber(
+            transaction
+          );
+
+        const provider =
+          getBillProvider(
+            transaction
+          );
+
+        if (
+          provider &&
+          phone
+        ) {
+
+          return `${provider} • ${phone}`;
+
+        }
+
+        if (phone) {
+
+          return phone;
+
+        }
+
+        if (provider) {
+
+          return provider;
+
+        }
+
       }
 
 
       return getNarration(
         transaction
       );
+
     };
 
 
@@ -1079,14 +1497,11 @@ const TransactionHistory = ({
       if (type === 'transfer') {
 
         return moneyIn ? (
-          <ArrowDownLeft
-            className="h-5 w-5 text-green-600"
-          />
+          <ArrowDownLeft className="h-5 w-5 text-green-600" />
         ) : (
-          <ArrowUpRight
-            className="h-5 w-5 text-purple-600"
-          />
+          <ArrowUpRight className="h-5 w-5 text-purple-600" />
         );
+
       }
 
 
@@ -1097,9 +1512,7 @@ const TransactionHistory = ({
         case 'credit':
 
           return (
-            <Banknote
-              className="h-5 w-5 text-green-600"
-            />
+            <Banknote className="h-5 w-5 text-green-600" />
           );
 
 
@@ -1131,6 +1544,8 @@ const TransactionHistory = ({
 
 
         case 'cable':
+        case 'cable_tv':
+        case 'tv':
 
           return (
             <span className="text-lg">
@@ -1139,22 +1554,23 @@ const TransactionHistory = ({
           );
 
 
+        case 'bill_payment':
+
+          return (
+            <CreditCard className="h-5 w-5 text-purple-600" />
+          );
+
+
         default:
 
           return (
-            <Wallet
-              className="h-5 w-5 text-purple-600"
-            />
+            <Wallet className="h-5 w-5 text-purple-600" />
           );
+
       }
+
     };
 
-
-  /*
-  |--------------------------------------------------------------------------
-  | ICON BACKGROUND
-  |--------------------------------------------------------------------------
-  */
 
   const getTransactionIconBackground =
     (
@@ -1164,6 +1580,7 @@ const TransactionHistory = ({
       return isMoneyIn(transaction)
         ? 'bg-green-50'
         : 'bg-purple-50';
+
     };
 
 
@@ -1206,7 +1623,9 @@ const TransactionHistory = ({
         default:
 
           return 'text-gray-700 bg-gray-100 border-gray-200';
+
       }
+
     };
 
 
@@ -1224,9 +1643,7 @@ const TransactionHistory = ({
         case 'success':
 
           return (
-            <CheckCircle2
-              className="h-3.5 w-3.5"
-            />
+            <CheckCircle2 className="h-3.5 w-3.5" />
           );
 
 
@@ -1234,9 +1651,7 @@ const TransactionHistory = ({
         case 'processing':
 
           return (
-            <Clock
-              className="h-3.5 w-3.5"
-            />
+            <Clock className="h-3.5 w-3.5" />
           );
 
 
@@ -1246,20 +1661,18 @@ const TransactionHistory = ({
         case 'reversed':
 
           return (
-            <XCircle
-              className="h-3.5 w-3.5"
-            />
+            <XCircle className="h-3.5 w-3.5" />
           );
 
 
         default:
 
           return (
-            <Clock
-              className="h-3.5 w-3.5"
-            />
+            <Clock className="h-3.5 w-3.5" />
           );
+
       }
+
     };
 
 
@@ -1284,6 +1697,7 @@ const TransactionHistory = ({
           year: 'numeric'
         }
       );
+
     };
 
 
@@ -1301,6 +1715,7 @@ const TransactionHistory = ({
           minute: '2-digit'
         }
       );
+
     };
 
 
@@ -1322,6 +1737,7 @@ const TransactionHistory = ({
           minute: '2-digit'
         }
       );
+
     };
 
 
@@ -1362,7 +1778,9 @@ const TransactionHistory = ({
           variant:
             'destructive'
         });
+
       }
+
     };
 
 
@@ -1378,54 +1796,52 @@ const TransactionHistory = ({
     ) => {
 
       const moneyIn =
-        isMoneyIn(
-          transaction
-        );
+        isMoneyIn(transaction);
 
       const counterparty =
-        getCounterpartyName(
-          transaction
-        );
-
-      const wallet =
-        getCounterpartyWallet(
-          transaction
-        );
+        getCounterpartyName(transaction);
 
       const bank =
-        getBankName(
-          transaction
-        );
+        getCounterpartyBankName(transaction);
 
-      const account =
-        getAccountNumber(
-          transaction
-        );
+      const accountName =
+        getCounterpartyAccountName(transaction);
+
+      const accountNumber =
+        getCounterpartyAccountNumber(transaction);
+
+      const phoneNumber =
+        getPhoneNumber(transaction);
+
+      const billProvider =
+        getBillProvider(transaction);
+
+      const billCustomerNumber =
+        getBillCustomerNumber(transaction);
+
+      const billPaymentAmount =
+        getBillPaymentAmount(transaction);
+
+      const billPayment =
+        isBillPayment(transaction);
+
+      const transactionType =
+        getTransactionType(transaction);
 
       const narration =
-        getNarration(
-          transaction
-        );
+        getNarration(transaction);
 
       const reference =
-        getReference(
-          transaction
-        );
+        getReference(transaction);
 
       const providerReference =
-        getProviderReference(
-          transaction
-        );
+        getProviderReference(transaction);
 
       const fee =
-        getFee(
-          transaction
-        );
+        getFee(transaction);
 
       const title =
-        getTransactionTitle(
-          transaction
-        );
+        getTransactionTitle(transaction);
 
       const status =
         transaction.status ||
@@ -1460,49 +1876,27 @@ const TransactionHistory = ({
         });
 
         return;
+
       }
 
 
       const escaped =
         (value: any) =>
-          String(
-            value ?? ''
-          )
-            .replace(
-              /&/g,
-              '&amp;'
-            )
-            .replace(
-              /</g,
-              '&lt;'
-            )
-            .replace(
-              />/g,
-              '&gt;'
-            )
-            .replace(
-              /"/g,
-              '&quot;'
-            )
-            .replace(
-              /'/g,
-              '&#039;'
-            );
+          String(value ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
 
 
       receiptWindow.document.write(`
         <!DOCTYPE html>
-
         <html>
-
         <head>
-
-          <title>
-            IyanjuPay Transaction Receipt
-          </title>
+          <title>IyanjuPay Transaction Receipt</title>
 
           <style>
-
             * {
               box-sizing: border-box;
             }
@@ -1526,12 +1920,7 @@ const TransactionHistory = ({
               padding: 28px;
               box-shadow:
                 0 10px 30px
-                rgba(
-                  0,
-                  0,
-                  0,
-                  0.08
-                );
+                rgba(0,0,0,0.08);
             }
 
             .brand {
@@ -1557,17 +1946,9 @@ const TransactionHistory = ({
               align-items: center;
               justify-content: center;
               background:
-                ${
-                  moneyIn
-                    ? '#dcfce7'
-                    : '#ede9fe'
-                };
+                ${moneyIn ? '#dcfce7' : '#ede9fe'};
               color:
-                ${
-                  moneyIn
-                    ? '#16a34a'
-                    : '#7c3aed'
-                };
+                ${moneyIn ? '#16a34a' : '#7c3aed'};
               font-size: 36px;
             }
 
@@ -1627,7 +2008,6 @@ const TransactionHistory = ({
             }
 
             @media print {
-
               body {
                 background: white;
                 padding: 0;
@@ -1637,11 +2017,8 @@ const TransactionHistory = ({
                 box-shadow: none;
                 max-width: 100%;
               }
-
             }
-
           </style>
-
         </head>
 
         <body>
@@ -1657,37 +2034,19 @@ const TransactionHistory = ({
             </div>
 
             <div class="status">
-
               ${
-                normalizeStatus(
-                  status
-                ) === 'completed' ||
-                normalizeStatus(
-                  status
-                ) === 'successful' ||
-                normalizeStatus(
-                  status
-                ) === 'success'
+                ['completed', 'successful', 'success']
+                  .includes(normalizeStatus(status))
                   ? '✓'
-                  : normalizeStatus(
-                      status
-                    ) === 'failed'
+                  : normalizeStatus(status) === 'failed'
                     ? '×'
                     : '⋯'
               }
-
             </div>
 
             <div class="amount">
-
-              ${
-                moneyIn
-                  ? '+'
-                  : '-'
-              }
-
+              ${moneyIn ? '+' : '-'}
               ${escaped(currency)}
-
               ${amount.toLocaleString(
                 'en-NG',
                 {
@@ -1695,162 +2054,176 @@ const TransactionHistory = ({
                   maximumFractionDigits: 2
                 }
               )}
-
             </div>
 
             <div class="direction">
-
-              ${
-                moneyIn
-                  ? 'Money received'
-                  : 'Money sent'
-              }
-
+              ${moneyIn ? 'Money received' : 'Money sent'}
             </div>
 
             <div class="divider"></div>
 
-
             <div class="row">
-
-              <span class="label">
-                Status
-              </span>
-
-              <span class="value">
-                ${escaped(status)}
-              </span>
-
+              <span class="label">Status</span>
+              <span class="value">${escaped(status)}</span>
             </div>
 
-
             <div class="row">
-
               <span class="label">
-
-                ${
-                  moneyIn
-                    ? 'From'
-                    : 'To'
-                }
-
+                ${moneyIn ? 'From' : 'To'}
               </span>
-
               <span class="value">
-                ${escaped(counterparty)}
+                ${escaped(accountName || counterparty)}
               </span>
-
             </div>
-
-
-            ${
-              wallet
-                ? `
-                  <div class="row">
-
-                    <span class="label">
-                      Wallet ID
-                    </span>
-
-                    <span class="value">
-                      ${escaped(wallet)}
-                    </span>
-
-                  </div>
-                `
-                : ''
-            }
-
 
             ${
               bank
                 ? `
                   <div class="row">
-
-                    <span class="label">
-                      Bank
-                    </span>
-
-                    <span class="value">
-                      ${escaped(bank)}
-                    </span>
-
+                    <span class="label">Bank</span>
+                    <span class="value">${escaped(bank)}</span>
                   </div>
                 `
                 : ''
             }
-
 
             ${
-              account
+              accountNumber
                 ? `
                   <div class="row">
-
-                    <span class="label">
-                      Account
-                    </span>
-
+                    <span class="label">Account Number</span>
                     <span class="value">
-                      ${escaped(account)}
+                      ${escaped(accountNumber)}
                     </span>
-
                   </div>
                 `
                 : ''
             }
 
+            ${
+              transactionType === 'funding'
+                ? `
+                  <div class="divider"></div>
+
+                  <div class="row">
+                    <span class="label">Funding Bank</span>
+                    <span class="value">
+                      ${escaped(bank || 'N/A')}
+                    </span>
+                  </div>
+
+                  <div class="row">
+                    <span class="label">
+                      Funding Account Name
+                    </span>
+                    <span class="value">
+                      ${escaped(accountName || 'N/A')}
+                    </span>
+                  </div>
+
+                  <div class="row">
+                    <span class="label">
+                      Funding Account Number
+                    </span>
+                    <span class="value">
+                      ${escaped(accountNumber || 'N/A')}
+                    </span>
+                  </div>
+                `
+                : ''
+            }
+
+            ${
+              billPayment
+                ? `
+                  <div class="divider"></div>
+
+                  <div class="row">
+                    <span class="label">
+                      Bill Payment Amount
+                    </span>
+                    <span class="value">
+                      ${formatMoney(billPaymentAmount)}
+                    </span>
+                  </div>
+
+                  ${
+                    billProvider
+                      ? `
+                        <div class="row">
+                          <span class="label">
+                            Provider
+                          </span>
+                          <span class="value">
+                            ${escaped(billProvider)}
+                          </span>
+                        </div>
+                      `
+                      : ''
+                  }
+
+                  ${
+                    phoneNumber
+                      ? `
+                        <div class="row">
+                          <span class="label">
+                            Phone Number
+                          </span>
+                          <span class="value">
+                            ${escaped(phoneNumber)}
+                          </span>
+                        </div>
+                      `
+                      : ''
+                  }
+
+                  ${
+                    billCustomerNumber
+                      ? `
+                        <div class="row">
+                          <span class="label">
+                            Customer / Meter Number
+                          </span>
+                          <span class="value">
+                            ${escaped(billCustomerNumber)}
+                          </span>
+                        </div>
+                      `
+                      : ''
+                  }
+                `
+                : ''
+            }
 
             <div class="row">
-
-              <span class="label">
-                Type
-              </span>
-
+              <span class="label">Type</span>
               <span class="value">
                 ${escaped(title)}
               </span>
-
             </div>
 
-
             <div class="row">
-
-              <span class="label">
-                Narration
-              </span>
-
+              <span class="label">Narration</span>
               <span class="value">
                 ${escaped(narration)}
               </span>
-
             </div>
-
 
             ${
               fee > 0
                 ? `
                   <div class="row">
-
-                    <span class="label">
-                      Fee
-                    </span>
-
+                    <span class="label">Fee</span>
                     <span class="value">
                       ${formatMoney(fee)}
                     </span>
-
                   </div>
                 `
                 : ''
             }
 
-
             <div class="row">
-
-              <span class="label">
-                Date
-              </span>
-
+              <span class="label">Date</span>
               <span class="value">
                 ${escaped(
                   formatFullDate(
@@ -1858,72 +2231,51 @@ const TransactionHistory = ({
                   )
                 )}
               </span>
-
             </div>
 
-
             <div class="row">
-
-              <span class="label">
-                Reference
-              </span>
-
+              <span class="label">Reference</span>
               <span class="value reference">
                 ${escaped(reference)}
               </span>
-
             </div>
-
 
             ${
               providerReference
                 ? `
                   <div class="row">
-
                     <span class="label">
                       Provider Ref.
                     </span>
-
                     <span class="value reference">
-                      ${escaped(
-                        providerReference
-                      )}
+                      ${escaped(providerReference)}
                     </span>
-
                   </div>
                 `
                 : ''
             }
 
-
             <div class="footer">
-
               This is an electronically generated
               transaction receipt from IyanjuPay.
-
               <br />
-
               Keep this receipt for your records.
-
             </div>
 
           </div>
 
-
           <script>
-
             window.onload = function() {
               window.print();
             };
-
           </script>
 
         </body>
-
         </html>
       `);
 
       receiptWindow.document.close();
+
     };
 
 
@@ -1944,10 +2296,32 @@ const TransactionHistory = ({
               transaction.status
             );
 
-
           const matchesFilter =
             filter === 'all' ||
-            status === filter;
+            (
+              filter === 'completed' &&
+              [
+                'completed',
+                'successful',
+                'success'
+              ].includes(status)
+            ) ||
+            (
+              filter === 'pending' &&
+              [
+                'pending',
+                'processing'
+              ].includes(status)
+            ) ||
+            (
+              filter === 'failed' &&
+              [
+                'failed',
+                'cancelled',
+                'canceled',
+                'reversed'
+              ].includes(status)
+            );
 
 
           const searchText =
@@ -1982,6 +2356,10 @@ const TransactionHistory = ({
               transaction
             ),
 
+            getCounterpartyAccountName(
+              transaction
+            ),
+
             getCounterpartyNickname(
               transaction
             ),
@@ -1990,12 +2368,30 @@ const TransactionHistory = ({
               transaction
             ),
 
-            getBankName(
+            getCounterpartyBankName(
               transaction
             ),
 
-            getAccountNumber(
+            getCounterpartyAccountNumber(
               transaction
+            ),
+
+            getPhoneNumber(
+              transaction
+            ),
+
+            getBillProvider(
+              transaction
+            ),
+
+            getBillCustomerNumber(
+              transaction
+            ),
+
+            String(
+              getBillPaymentAmount(
+                transaction
+              )
             ),
 
             getNarration(
@@ -2029,6 +2425,7 @@ const TransactionHistory = ({
             matchesFilter &&
             matchesSearch
           );
+
         }
       );
 
@@ -2047,54 +2444,46 @@ const TransactionHistory = ({
 
   const completedTransactions =
     transactions.filter(
-      (transaction) => {
-
-        const status =
-          normalizeStatus(
-            transaction.status
-          );
-
-        return [
+      (transaction) =>
+        [
           'completed',
           'successful',
           'success'
-        ].includes(status);
-      }
+        ].includes(
+          normalizeStatus(
+            transaction.status
+          )
+        )
     );
 
 
   const pendingTransactions =
     transactions.filter(
-      (transaction) => {
-
-        const status =
-          normalizeStatus(
-            transaction.status
-          );
-
-        return [
+      (transaction) =>
+        [
           'pending',
           'processing'
-        ].includes(status);
-      }
+        ].includes(
+          normalizeStatus(
+            transaction.status
+          )
+        )
     );
 
 
   const failedTransactions =
     transactions.filter(
-      (transaction) => {
-
-        const status =
-          normalizeStatus(
-            transaction.status
-          );
-
-        return [
+      (transaction) =>
+        [
           'failed',
           'cancelled',
-          'canceled'
-        ].includes(status);
-      }
+          'canceled',
+          'reversed'
+        ].includes(
+          normalizeStatus(
+            transaction.status
+          )
+        )
     );
 
 
@@ -2142,7 +2531,9 @@ const TransactionHistory = ({
         </div>
 
       </div>
+
     );
+
   }
 
 
@@ -2180,7 +2571,6 @@ const TransactionHistory = ({
 
             </Button>
 
-
             <h1 className="text-lg sm:text-2xl font-bold text-gray-900 truncate">
               Transaction History
             </h1>
@@ -2194,13 +2584,11 @@ const TransactionHistory = ({
               variant="outline"
               size="sm"
               onClick={() => {
-
                 setFilter(
                   filter === 'all'
                     ? 'completed'
                     : 'all'
                 );
-
               }}
             >
 
@@ -2221,19 +2609,20 @@ const TransactionHistory = ({
                 ) {
 
                   toast({
-                    title:
-                      'No transactions',
+                    title: 'No transactions',
                     description:
                       'There are no transactions to export.'
                   });
 
                   return;
+
                 }
 
 
                 const rows =
                   filteredTransactions.map(
                     (transaction) => ({
+
                       Date:
                         formatFullDate(
                           transaction.created_at
@@ -2256,6 +2645,45 @@ const TransactionHistory = ({
                           transaction
                         ),
 
+                      Bank:
+                        getCounterpartyBankName(
+                          transaction
+                        ),
+
+                      AccountName:
+                        getCounterpartyAccountName(
+                          transaction
+                        ),
+
+                      AccountNumber:
+                        getCounterpartyAccountNumber(
+                          transaction
+                        ),
+
+                      PhoneNumber:
+                        getPhoneNumber(
+                          transaction
+                        ),
+
+                      BillProvider:
+                        getBillProvider(
+                          transaction
+                        ),
+
+                      BillCustomerNumber:
+                        getBillCustomerNumber(
+                          transaction
+                        ),
+
+                      BillPaymentAmount:
+                        isBillPayment(
+                          transaction
+                        )
+                          ? getBillPaymentAmount(
+                              transaction
+                            )
+                          : '',
+
                       Amount:
                         Number(
                           transaction.amount
@@ -2273,6 +2701,7 @@ const TransactionHistory = ({
                         getNarration(
                           transaction
                         )
+
                     })
                   );
 
@@ -2293,9 +2722,7 @@ const TransactionHistory = ({
                         .map(
                           (header) =>
                             `"${String(
-                              (row as any)[
-                                header
-                              ] ?? ''
+                              (row as any)[header] ?? ''
                             ).replace(
                               /"/g,
                               '""'
@@ -2352,26 +2779,6 @@ const TransactionHistory = ({
 
           </div>
 
-
-          <Button
-            variant="outline"
-            size="sm"
-            className="sm:hidden shrink-0"
-            onClick={() => {
-
-              setFilter(
-                filter === 'all'
-                  ? 'completed'
-                  : 'all'
-              );
-
-            }}
-          >
-
-            <Filter className="h-4 w-4" />
-
-          </Button>
-
         </div>
 
 
@@ -2389,7 +2796,7 @@ const TransactionHistory = ({
                 e.target.value
               )
             }
-            placeholder="Search by name, wallet, reference..."
+            placeholder="Search by name, bank, phone, account, reference..."
             className="w-full h-11 rounded-xl border border-gray-200 bg-white pl-10 pr-4 text-sm outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
           />
 
@@ -2456,9 +2863,7 @@ const TransactionHistory = ({
             <CardContent className="p-4 text-center">
 
               <p className="text-xl sm:text-2xl font-bold text-purple-600">
-                {formatMoney(
-                  totalSpent
-                )}
+                {formatMoney(totalSpent)}
               </p>
 
               <p className="text-xs sm:text-sm text-gray-600 mt-1">
@@ -2507,9 +2912,7 @@ const TransactionHistory = ({
 
                 {status === 'all'
                   ? 'All'
-                  : status
-                      .charAt(0)
-                      .toUpperCase() +
+                  : status.charAt(0).toUpperCase() +
                     status.slice(1)}
 
               </Button>
@@ -2549,21 +2952,13 @@ const TransactionHistory = ({
                   No transactions found
                 </p>
 
-                {search && (
-                  <p className="text-xs text-gray-400 mt-1">
-                    Try a different search term
-                  </p>
-                )}
-
               </div>
 
             ) : (
 
               <>
 
-                {/* ======================================================
-                    MOBILE
-                ====================================================== */}
+                {/* MOBILE */}
 
                 <div className="md:hidden divide-y divide-gray-100">
 
@@ -2584,9 +2979,7 @@ const TransactionHistory = ({
                       return (
 
                         <button
-                          key={
-                            transaction.id
-                          }
+                          key={transaction.id}
                           type="button"
                           onClick={() =>
                             setSelectedTransaction(
@@ -2597,8 +2990,6 @@ const TransactionHistory = ({
                         >
 
                           <div className="flex items-center gap-3">
-
-                            {/* ICON */}
 
                             <div
                               className={`
@@ -2618,8 +3009,6 @@ const TransactionHistory = ({
                             </div>
 
 
-                            {/* CONTENT */}
-
                             <div className="flex-1 min-w-0">
 
                               <div className="flex items-start justify-between gap-3">
@@ -2627,25 +3016,19 @@ const TransactionHistory = ({
                                 <div className="min-w-0">
 
                                   <p className="text-sm font-semibold text-gray-900 truncate">
-
                                     {getTransactionTitle(
                                       transaction
                                     )}
-
                                   </p>
 
                                   <p className="text-xs text-gray-500 mt-1 truncate">
-
                                     {getTransactionSubtitle(
                                       transaction
                                     )}
-
                                   </p>
 
                                 </div>
 
-
-                                {/* AMOUNT */}
 
                                 <div className="text-right shrink-0">
 
@@ -2660,9 +3043,7 @@ const TransactionHistory = ({
                                     `}
                                   >
 
-                                    {moneyIn
-                                      ? '+'
-                                      : '-'}
+                                    {moneyIn ? '+' : '-'}
 
                                     {formatMoney(
                                       transaction.amount
@@ -2675,33 +3056,21 @@ const TransactionHistory = ({
                               </div>
 
 
-                              {/* DATE + STATUS */}
-
                               <div className="flex items-center justify-between mt-2">
 
-                                <div className="flex items-center gap-1.5">
+                                <span className="text-[11px] text-gray-400">
 
-                                  <span className="text-[11px] text-gray-400">
+                                  {formatDate(
+                                    transaction.created_at
+                                  )}
 
-                                    {formatDate(
-                                      transaction.created_at
-                                    )}
+                                  {' • '}
 
-                                  </span>
+                                  {formatTime(
+                                    transaction.created_at
+                                  )}
 
-                                  <span className="text-gray-300">
-                                    •
-                                  </span>
-
-                                  <span className="text-[11px] text-gray-400">
-
-                                    {formatTime(
-                                      transaction.created_at
-                                    )}
-
-                                  </span>
-
-                                </div>
+                                </span>
 
 
                                 <span
@@ -2726,23 +3095,6 @@ const TransactionHistory = ({
 
                               </div>
 
-
-                              {/* REFERENCE */}
-
-                              <div className="flex items-center justify-between mt-2">
-
-                                <p className="text-[10px] text-gray-400 font-mono truncate max-w-[90%]">
-
-                                  {getReference(
-                                    transaction
-                                  )}
-
-                                </p>
-
-                                <ChevronRight className="h-4 w-4 text-gray-300 shrink-0" />
-
-                              </div>
-
                             </div>
 
                           </div>
@@ -2750,15 +3102,14 @@ const TransactionHistory = ({
                         </button>
 
                       );
+
                     }
                   )}
 
                 </div>
 
 
-                {/* ======================================================
-                    DESKTOP
-                ====================================================== */}
+                {/* DESKTOP */}
 
                 <div className="hidden md:block">
 
@@ -2811,9 +3162,7 @@ const TransactionHistory = ({
                           return (
 
                             <TableRow
-                              key={
-                                transaction.id
-                              }
+                              key={transaction.id}
                               className="cursor-pointer hover:bg-gray-50"
                               onClick={() =>
                                 setSelectedTransaction(
@@ -2821,8 +3170,6 @@ const TransactionHistory = ({
                                 )
                               }
                             >
-
-                              {/* TRANSACTION */}
 
                               <TableCell>
 
@@ -2845,22 +3192,18 @@ const TransactionHistory = ({
                                   </div>
 
 
-                                  <div className="min-w-0">
+                                  <div>
 
                                     <p className="font-semibold text-gray-900">
-
                                       {getTransactionTitle(
                                         transaction
                                       )}
-
                                     </p>
 
-                                    <p className="text-xs text-gray-500 truncate max-w-[240px]">
-
+                                    <p className="text-xs text-gray-500">
                                       {getTransactionSubtitle(
                                         transaction
                                       )}
-
                                     </p>
 
                                   </div>
@@ -2870,49 +3213,32 @@ const TransactionHistory = ({
                               </TableCell>
 
 
-                              {/* FROM / TO */}
-
                               <TableCell>
 
                                 <div>
 
-                                  <p className="font-medium text-gray-900">
-
+                                  <p className="font-medium">
                                     {moneyIn
                                       ? 'From '
                                       : 'To '}
 
-                                    {getCounterpartyName(
+                                    {getCounterpartyAccountName(
                                       transaction
-                                    )}
+                                    ) ||
+                                      getCounterpartyName(
+                                        transaction
+                                      )}
 
                                   </p>
 
 
-                                  {getCounterpartyNickname(
+                                  {getCounterpartyBankName(
                                     transaction
                                   ) && (
 
                                     <p className="text-xs text-gray-500">
 
-                                      {getCounterpartyNickname(
-                                        transaction
-                                      )}
-
-                                    </p>
-
-                                  )}
-
-
-                                  {getCounterpartyWallet(
-                                    transaction
-                                  ) && (
-
-                                    <p className="text-[11px] text-gray-400 font-mono">
-
-                                      Wallet:{' '}
-
-                                      {getCounterpartyWallet(
+                                      {getCounterpartyBankName(
                                         transaction
                                       )}
 
@@ -2924,8 +3250,6 @@ const TransactionHistory = ({
 
                               </TableCell>
 
-
-                              {/* AMOUNT */}
 
                               <TableCell>
 
@@ -2940,9 +3264,7 @@ const TransactionHistory = ({
                                   `}
                                 >
 
-                                  {moneyIn
-                                    ? '+'
-                                    : '-'}
+                                  {moneyIn ? '+' : '-'}
 
                                   {formatMoney(
                                     transaction.amount
@@ -2952,8 +3274,6 @@ const TransactionHistory = ({
 
                               </TableCell>
 
-
-                              {/* STATUS */}
 
                               <TableCell>
 
@@ -2980,41 +3300,29 @@ const TransactionHistory = ({
                               </TableCell>
 
 
-                              {/* REFERENCE */}
+                              <TableCell className="font-mono text-xs">
 
-                              <TableCell className="font-mono text-xs max-w-[180px]">
-
-                                <span className="block truncate">
-
-                                  {getReference(
-                                    transaction
-                                  )}
-
-                                </span>
+                                {getReference(
+                                  transaction
+                                )}
 
                               </TableCell>
 
-
-                              {/* DATE */}
 
                               <TableCell>
 
                                 <div>
 
-                                  <p className="text-sm text-gray-700">
-
+                                  <p className="text-sm">
                                     {formatDate(
                                       transaction.created_at
                                     )}
-
                                   </p>
 
                                   <p className="text-xs text-gray-400">
-
                                     {formatTime(
                                       transaction.created_at
                                     )}
-
                                   </p>
 
                                 </div>
@@ -3024,6 +3332,7 @@ const TransactionHistory = ({
                             </TableRow>
 
                           );
+
                         }
                       )}
 
@@ -3044,18 +3353,14 @@ const TransactionHistory = ({
       </div>
 
 
-      {/* ================================================================
-          TRANSACTION DETAILS / RECEIPT
-      ================================================================ */}
+      {/* TRANSACTION DETAILS */}
 
       {selectedTransaction && (
 
         <div
           className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm p-0 sm:p-4"
           onClick={() =>
-            setSelectedTransaction(
-              null
-            )
+            setSelectedTransaction(null)
           }
         >
 
@@ -3077,11 +3382,9 @@ const TransactionHistory = ({
                 <div>
 
                   <h2 className="font-bold text-gray-900">
-
                     {getTransactionTitle(
                       selectedTransaction
                     )}
-
                   </h2>
 
                   <p className="text-[11px] text-gray-400">
@@ -3096,11 +3399,9 @@ const TransactionHistory = ({
               <button
                 type="button"
                 onClick={() =>
-                  setSelectedTransaction(
-                    null
-                  )
+                  setSelectedTransaction(null)
                 }
-                className="h-9 w-9 rounded-full bg-gray-100 flex items-center justify-center hover:bg-gray-200"
+                className="h-9 w-9 rounded-full bg-gray-100 flex items-center justify-center"
               >
 
                 <X className="h-4 w-4" />
@@ -3113,34 +3414,11 @@ const TransactionHistory = ({
             <div className="p-5">
 
 
-              {/* SUCCESS ICON */}
+              {/* STATUS ICON */}
 
               <div className="flex justify-center">
 
-                <div
-                  className={`
-                    h-20 w-20 rounded-full
-                    flex items-center justify-center
-                    ${
-                      normalizeStatus(
-                        selectedTransaction.status
-                      ) === 'failed'
-                        ? 'bg-red-100'
-                        : normalizeStatus(
-                            selectedTransaction.status
-                          ) === 'pending' ||
-                          normalizeStatus(
-                            selectedTransaction.status
-                          ) === 'processing'
-                        ? 'bg-yellow-100'
-                        : isMoneyIn(
-                            selectedTransaction
-                          )
-                        ? 'bg-green-100'
-                        : 'bg-purple-100'
-                    }
-                  `}
-                >
+                <div className="h-20 w-20 rounded-full flex items-center justify-center bg-purple-100">
 
                   {normalizeStatus(
                     selectedTransaction.status
@@ -3149,28 +3427,14 @@ const TransactionHistory = ({
                     <XCircle className="h-10 w-10 text-red-600" />
 
                   ) : normalizeStatus(
-                      selectedTransaction.status
-                    ) === 'pending' ||
-                    normalizeStatus(
-                      selectedTransaction.status
-                    ) === 'processing' ? (
+                    selectedTransaction.status
+                  ) === 'pending' ? (
 
                     <Clock className="h-10 w-10 text-yellow-600" />
 
                   ) : (
 
-                    <CheckCircle2
-                      className={`
-                        h-10 w-10
-                        ${
-                          isMoneyIn(
-                            selectedTransaction
-                          )
-                            ? 'text-green-600'
-                            : 'text-purple-600'
-                        }
-                      `}
-                    />
+                    <CheckCircle2 className="h-10 w-10 text-purple-600" />
 
                   )}
 
@@ -3183,18 +3447,7 @@ const TransactionHistory = ({
 
               <div className="text-center mt-5">
 
-                <p
-                  className={`
-                    text-3xl font-bold
-                    ${
-                      isMoneyIn(
-                        selectedTransaction
-                      )
-                        ? 'text-green-600'
-                        : 'text-gray-900'
-                    }
-                  `}
-                >
+                <p className="text-3xl font-bold">
 
                   {isMoneyIn(
                     selectedTransaction
@@ -3208,7 +3461,6 @@ const TransactionHistory = ({
 
                 </p>
 
-
                 <p className="text-sm text-gray-500 mt-1">
 
                   {getTransactionSubtitle(
@@ -3220,187 +3472,191 @@ const TransactionHistory = ({
               </div>
 
 
-              {/* STATUS */}
+              {/* FUNDING DETAILS */}
 
-              <div className="flex justify-center mt-3">
+              {getTransactionType(
+                selectedTransaction
+              ) === 'funding' && (
 
-                <span
-                  className={`
-                    inline-flex items-center gap-1.5
-                    px-3 py-1.5 rounded-full
-                    border text-xs font-semibold
-                    capitalize
-                    ${getStatusColor(
-                      selectedTransaction.status
-                    )}
-                  `}
-                >
+                <div className="mt-6 rounded-2xl border border-green-100 bg-green-50/50 p-4">
 
-                  {getStatusIcon(
-                    selectedTransaction.status
-                  )}
+                  <div className="flex items-center gap-2 mb-3">
 
-                  {selectedTransaction.status}
+                    <Building2 className="h-4 w-4 text-green-600" />
 
-                </span>
-
-              </div>
-
-
-              {/* COUNTERPARTY */}
-
-              <div className="mt-6 rounded-2xl bg-gray-50 p-4">
-
-                <p className="text-[11px] font-semibold tracking-wide text-gray-400 mb-3">
-
-                  {isMoneyIn(
-                    selectedTransaction
-                  )
-                    ? 'MONEY RECEIVED FROM'
-                    : 'MONEY SENT TO'}
-
-                </p>
-
-
-                <div className="flex items-center gap-3">
-
-                  <div
-                    className={`
-                      h-12 w-12 rounded-full
-                      flex items-center justify-center
-                      border
-                      ${
-                        isMoneyIn(
-                          selectedTransaction
-                        )
-                          ? 'bg-green-50 border-green-100'
-                          : 'bg-purple-50 border-purple-100'
-                      }
-                    `}
-                  >
-
-                    {getBankName(
-                      selectedTransaction
-                    ) ? (
-
-                      <Building2
-                        className={`
-                          h-5 w-5
-                          ${
-                            isMoneyIn(
-                              selectedTransaction
-                            )
-                              ? 'text-green-600'
-                              : 'text-purple-600'
-                          }
-                        `}
-                      />
-
-                    ) : (
-
-                      <User
-                        className={`
-                          h-5 w-5
-                          ${
-                            isMoneyIn(
-                              selectedTransaction
-                            )
-                              ? 'text-green-600'
-                              : 'text-purple-600'
-                          }
-                        `}
-                      />
-
-                    )}
+                    <p className="text-xs font-semibold text-green-700 uppercase">
+                      Funding Details
+                    </p>
 
                   </div>
 
 
-                  <div className="min-w-0 flex-1">
+                  <div className="space-y-3">
 
-                    <p className="font-semibold text-gray-900 truncate">
+                    <div className="flex justify-between gap-4">
 
-                      {getCounterpartyName(
-                        selectedTransaction
-                      )}
+                      <span className="text-sm text-gray-500">
+                        Bank Name
+                      </span>
 
-                    </p>
-
-
-                    {getCounterpartyNickname(
-                      selectedTransaction
-                    ) &&
-                      getCounterpartyNickname(
-                        selectedTransaction
-                      ) !==
-                        getCounterpartyName(
+                      <span className="text-sm font-semibold text-right">
+                        {getCounterpartyBankName(
                           selectedTransaction
-                        ) && (
+                        ) || 'N/A'}
+                      </span>
 
-                        <p className="text-xs text-gray-500">
-
-                          @
-                          {getCounterpartyNickname(
-                            selectedTransaction
-                          )}
-
-                        </p>
-
-                      )}
+                    </div>
 
 
-                    {getCounterpartyWallet(
-                      selectedTransaction
-                    ) && (
+                    <div className="flex justify-between gap-4">
 
-                      <p className="text-xs text-gray-500 font-mono mt-1">
+                      <span className="text-sm text-gray-500">
+                        Account Name
+                      </span>
 
-                        Wallet ID:{' '}
-
-                        {getCounterpartyWallet(
+                      <span className="text-sm font-semibold text-right">
+                        {getCounterpartyAccountName(
                           selectedTransaction
-                        )}
+                        ) || 'N/A'}
+                      </span>
 
-                      </p>
-
-                    )}
+                    </div>
 
 
-                    {getBankName(
-                      selectedTransaction
-                    ) && (
+                    <div className="flex justify-between gap-4">
 
-                      <p className="text-xs text-gray-500 mt-1">
+                      <span className="text-sm text-gray-500">
+                        Account Number
+                      </span>
 
-                        {getBankName(
+                      <span className="text-sm font-semibold font-mono text-right">
+                        {getCounterpartyAccountNumber(
                           selectedTransaction
-                        )}
+                        ) || 'N/A'}
+                      </span>
 
-                        {getAccountNumber(
-                          selectedTransaction
-                        )
-                          ? ` • ${getAccountNumber(
-                              selectedTransaction
-                            )}`
-                          : ''}
-
-                      </p>
-
-                    )}
+                    </div>
 
                   </div>
 
                 </div>
 
-              </div>
+              )}
+
+
+              {/* BILL PAYMENT DETAILS */}
+
+              {isBillPayment(
+                selectedTransaction
+              ) && (
+
+                <div className="mt-6 rounded-2xl border border-purple-100 bg-purple-50/50 p-4">
+
+                  <div className="flex items-center gap-2 mb-3">
+
+                    <CreditCard className="h-4 w-4 text-purple-600" />
+
+                    <p className="text-xs font-semibold text-purple-700 uppercase">
+                      Bill Payment Details
+                    </p>
+
+                  </div>
+
+
+                  <div className="space-y-3">
+
+                    {getBillProvider(
+                      selectedTransaction
+                    ) && (
+
+                      <div className="flex justify-between gap-4">
+
+                        <span className="text-sm text-gray-500">
+                          Provider
+                        </span>
+
+                        <span className="text-sm font-semibold text-right">
+                          {getBillProvider(
+                            selectedTransaction
+                          )}
+                        </span>
+
+                      </div>
+
+                    )}
+
+
+                    {getPhoneNumber(
+                      selectedTransaction
+                    ) && (
+
+                      <div className="flex justify-between gap-4">
+
+                        <span className="text-sm text-gray-500">
+                          Phone Number
+                        </span>
+
+                        <span className="text-sm font-semibold text-right">
+                          {getPhoneNumber(
+                            selectedTransaction
+                          )}
+                        </span>
+
+                      </div>
+
+                    )}
+
+
+                    {getBillCustomerNumber(
+                      selectedTransaction
+                    ) && (
+
+                      <div className="flex justify-between gap-4">
+
+                        <span className="text-sm text-gray-500">
+                          Customer / Meter No.
+                        </span>
+
+                        <span className="text-sm font-semibold font-mono text-right">
+                          {getBillCustomerNumber(
+                            selectedTransaction
+                          )}
+                        </span>
+
+                      </div>
+
+                    )}
+
+
+                    <div className="flex justify-between gap-4 pt-2 border-t border-purple-100">
+
+                      <span className="text-sm text-gray-500">
+                        Bill Payment Amount
+                      </span>
+
+                      <span className="text-sm font-bold text-purple-700">
+
+                        {formatMoney(
+                          getBillPaymentAmount(
+                            selectedTransaction
+                          )
+                        )}
+
+                      </span>
+
+                    </div>
+
+                  </div>
+
+                </div>
+
+              )}
 
 
               {/* DETAILS */}
 
-              <div className="mt-5 space-y-1">
+              <div className="mt-6 space-y-1">
 
-
-                {/* NARRATION */}
 
                 <div className="flex items-center justify-between py-3 border-b">
 
@@ -3414,45 +3670,14 @@ const TransactionHistory = ({
 
                   </div>
 
-
-                  <span className="text-sm font-medium text-gray-900 text-right max-w-[55%]">
-
+                  <span className="text-sm font-medium text-right max-w-[55%]">
                     {getNarration(
                       selectedTransaction
                     )}
-
                   </span>
 
                 </div>
 
-
-                {/* TYPE */}
-
-                <div className="flex items-center justify-between py-3 border-b">
-
-                  <div className="flex items-center gap-2 text-gray-500">
-
-                    <Wallet className="h-4 w-4" />
-
-                    <span className="text-sm">
-                      Type
-                    </span>
-
-                  </div>
-
-
-                  <span className="text-sm font-medium capitalize text-right max-w-[60%]">
-
-                    {getTransactionTitle(
-                      selectedTransaction
-                    )}
-
-                  </span>
-
-                </div>
-
-
-                {/* FEE */}
 
                 {getFee(
                   selectedTransaction
@@ -3470,7 +3695,6 @@ const TransactionHistory = ({
 
                     </div>
 
-
                     <span className="text-sm font-medium">
 
                       {formatMoney(
@@ -3486,8 +3710,6 @@ const TransactionHistory = ({
                 )}
 
 
-                {/* DATE */}
-
                 <div className="flex items-center justify-between py-3 border-b">
 
                   <div className="flex items-center gap-2 text-gray-500">
@@ -3500,7 +3722,6 @@ const TransactionHistory = ({
 
                   </div>
 
-
                   <span className="text-sm font-medium text-right max-w-[60%]">
 
                     {formatFullDate(
@@ -3511,8 +3732,6 @@ const TransactionHistory = ({
 
                 </div>
 
-
-                {/* REFERENCE */}
 
                 <div className="flex items-center justify-between gap-3 py-3 border-b">
 
@@ -3526,7 +3745,6 @@ const TransactionHistory = ({
 
                   </div>
 
-
                   <div className="flex items-center gap-1 min-w-0">
 
                     <span className="text-xs font-mono truncate">
@@ -3536,7 +3754,6 @@ const TransactionHistory = ({
                       )}
 
                     </span>
-
 
                     <button
                       type="button"
@@ -3557,8 +3774,6 @@ const TransactionHistory = ({
                 </div>
 
 
-                {/* PROVIDER REFERENCE */}
-
                 {getProviderReference(
                   selectedTransaction
                 ) && (
@@ -3575,7 +3790,6 @@ const TransactionHistory = ({
 
                     </div>
 
-
                     <span className="text-xs font-mono truncate max-w-[55%]">
 
                       {getProviderReference(
@@ -3589,8 +3803,6 @@ const TransactionHistory = ({
                 )}
 
 
-                {/* TRANSACTION ID */}
-
                 <div className="flex items-center justify-between gap-3 py-3">
 
                   <div className="flex items-center gap-2 text-gray-500">
@@ -3602,7 +3814,6 @@ const TransactionHistory = ({
                     </span>
 
                   </div>
-
 
                   <span className="text-[10px] font-mono text-gray-400 truncate max-w-[55%]">
 
@@ -3662,7 +3873,9 @@ const TransactionHistory = ({
       )}
 
     </div>
+
   );
+
 };
 
 

@@ -31,6 +31,7 @@ import {
   Wifi,
   Zap,
   CreditCard,
+  Loader2,
 } from "lucide-react";
 
 import ServiceCard from "./services/ServiceCard";
@@ -103,6 +104,44 @@ type DashboardTransaction = {
 
 /*
  * ============================================================
+ * ONBOARDING PROFILE TYPE
+ * ============================================================
+ *
+ * These are the profile fields used by the dashboard gate.
+ *
+ * Profile completion:
+ *   full_name
+ *   phone_number
+ *   gender
+ *   date_of_birth
+ *   address
+ *
+ * BVN completion:
+ *   bvn_verified === true
+ *
+ * NIN is accepted as an alternative KYC path if it is already
+ * verified/populated in the profile.
+ *
+ * ============================================================
+ */
+
+type OnboardingProfile = {
+  full_name: string | null;
+  phone_number: string | null;
+  gender: string | null;
+  date_of_birth: string | null;
+  address: string | null;
+
+  bvn: string | null;
+  nin: string | null;
+
+  bvn_verified: boolean | null;
+  kyc_status: string | null;
+  kyc_level: number | null;
+};
+
+/*
+ * ============================================================
  * SUPPORTED BILL SERVICES
  * ============================================================
  */
@@ -148,13 +187,6 @@ const FAILED_STATUSES = new Set([
 /*
  * ============================================================
  * MONEY-OUT TRANSACTION TYPES
- *
- * These are the transaction types that should contribute
- * to "Total Spent".
- *
- * The helper also checks metadata/category/description so
- * your existing transaction records remain compatible even
- * if the exact transaction_type naming differs.
  * ============================================================
  */
 
@@ -222,9 +254,6 @@ const isFailedTransaction = (
 /*
  * ============================================================
  * HELPER: IS MONEY OUT
- *
- * This prevents wallet funding/deposit transactions from
- * being counted as "Total Spent".
  * ============================================================
  */
 
@@ -333,6 +362,90 @@ const isMoneyOutTransaction = (
 
 /*
  * ============================================================
+ * HELPER: CHECK PROFILE COMPLETION
+ * ============================================================
+ */
+
+const isProfileComplete = (
+  profile: OnboardingProfile
+): boolean => {
+  const requiredFields = [
+    profile.full_name,
+    profile.phone_number,
+    profile.gender,
+    profile.date_of_birth,
+    profile.address,
+  ];
+
+  return requiredFields.every(
+    value =>
+      typeof value === "string" &&
+      value.trim().length > 0
+  );
+};
+
+/*
+ * ============================================================
+ * HELPER: CHECK KYC COMPLETION
+ * ============================================================
+ *
+ * BVN verification is the normal onboarding KYC path.
+ *
+ * Existing verified NIN users are also allowed through so
+ * previously verified accounts are not unnecessarily blocked.
+ * ============================================================
+ */
+
+const isKycComplete = (
+  profile: OnboardingProfile
+): boolean => {
+  if (
+    profile.bvn_verified === true
+  ) {
+    return true;
+  }
+
+  /*
+   * Existing verified KYC account.
+   */
+
+  const kycStatus =
+    normalizeText(
+      profile.kyc_status
+    );
+
+  if (
+    kycStatus === "verified" &&
+    Boolean(
+      profile.nin?.trim()
+    )
+  ) {
+    return true;
+  }
+
+  /*
+   * If the profile already has a verified KYC
+   * level of 2 or higher and a KYC identifier,
+   * treat it as completed.
+   */
+
+  if (
+    Number(
+      profile.kyc_level ?? 0
+    ) >= 2 &&
+    Boolean(
+      profile.nin?.trim() ||
+        profile.bvn?.trim()
+    )
+  ) {
+    return true;
+  }
+
+  return false;
+};
+
+/*
+ * ============================================================
  * DASHBOARD COMPONENT
  * ============================================================
  */
@@ -340,11 +453,39 @@ const isMoneyOutTransaction = (
 const Dashboard = () => {
   const { user, signOut } = useAuth();
 
+  /*
+   * ==========================================================
+   * ONBOARDING GATE STATE
+   * ==========================================================
+   */
+
+  const [
+    onboardingChecking,
+    setOnboardingChecking,
+  ] = useState(true);
+
+  const [
+    onboardingError,
+    setOnboardingError,
+  ] = useState<string | null>(null);
+
+  /*
+   * ==========================================================
+   * WALLET
+   * ==========================================================
+   */
+
   const {
     wallet,
     loading,
     refreshWallet,
   } = useWallet(user?.id);
+
+  /*
+   * ==========================================================
+   * MODALS
+   * ==========================================================
+   */
 
   const [
     fundModalOpen,
@@ -404,6 +545,249 @@ const Dashboard = () => {
   ] = useState(true);
 
   const { toast } = useToast();
+
+  /*
+   * ==========================================================
+   * ONBOARDING GATE
+   * ==========================================================
+   *
+   * This runs before wallet bootstrap and before the dashboard
+   * is rendered.
+   *
+   * Order:
+   *
+   * 1. No authenticated user -> do nothing.
+   * 2. Load profile.
+   * 3. Profile incomplete -> /onboarding.
+   * 4. Profile complete but KYC incomplete -> /onboarding/bvn.
+   * 5. Everything complete -> allow Dashboard.
+   *
+   * IMPORTANT:
+   * The backend `complete-profile` and `provn-bvn` functions
+   * remain the security authority. This check is an additional
+   * frontend access gate.
+   * ==========================================================
+   */
+
+  useEffect(() => {
+    if (!user?.id) {
+      setOnboardingChecking(false);
+      setOnboardingError(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    const checkOnboarding = async () => {
+      try {
+        setOnboardingChecking(true);
+        setOnboardingError(null);
+
+        /*
+         * Make sure the authenticated session still exists.
+         */
+
+        const {
+          data: {
+            session,
+          },
+          error: sessionError,
+        } =
+          await supabase.auth.getSession();
+
+        if (sessionError) {
+          throw sessionError;
+        }
+
+        if (
+          cancelled
+        ) {
+          return;
+        }
+
+        if (
+          !session?.user
+        ) {
+          window.location.replace("/");
+          return;
+        }
+
+        /*
+         * Load only the profile fields needed for
+         * onboarding enforcement.
+         */
+
+        const {
+          data: profile,
+          error: profileError,
+        } =
+          await supabase
+            .from("profiles")
+            .select(
+              `
+                full_name,
+                phone_number,
+                gender,
+                date_of_birth,
+                address,
+                bvn,
+                nin,
+                bvn_verified,
+                kyc_status,
+                kyc_level
+              `
+            )
+            .eq(
+              "id",
+              user.id
+            )
+            .maybeSingle();
+
+        if (
+          cancelled
+        ) {
+          return;
+        }
+
+        if (profileError) {
+          console.error(
+            "Onboarding profile check failed:",
+            profileError
+          );
+
+          throw new Error(
+            "We could not verify your onboarding status."
+          );
+        }
+
+        /*
+         * No profile record.
+         *
+         * The account exists, but profile setup has not
+         * been completed.
+         */
+
+        if (!profile) {
+          window.location.replace(
+            "/onboarding"
+          );
+
+          return;
+        }
+
+        const onboardingProfile =
+          profile as OnboardingProfile;
+
+        /*
+         * ------------------------------------------------------
+         * STEP 1: PROFILE
+         * ------------------------------------------------------
+         */
+
+        if (
+          !isProfileComplete(
+            onboardingProfile
+          )
+        ) {
+          console.log(
+            "Onboarding gate: profile incomplete."
+          );
+
+          window.location.replace(
+            "/onboarding"
+          );
+
+          return;
+        }
+
+        /*
+         * ------------------------------------------------------
+         * STEP 2: KYC / BVN
+         * ------------------------------------------------------
+         */
+
+        if (
+          !isKycComplete(
+            onboardingProfile
+          )
+        ) {
+          console.log(
+            "Onboarding gate: BVN/KYC incomplete."
+          );
+
+          window.location.replace(
+            "/onboarding/bvn"
+          );
+
+          return;
+        }
+
+        /*
+         * ------------------------------------------------------
+         * STEP 3: COMPLETE
+         * ------------------------------------------------------
+         */
+
+        console.log(
+          "Onboarding gate: completed."
+        );
+
+        setOnboardingChecking(
+          false
+        );
+      } catch (error: any) {
+        if (
+          cancelled
+        ) {
+          return;
+        }
+
+        console.error(
+          "Onboarding gate error:",
+          error
+        );
+
+        setOnboardingError(
+          error?.message ||
+            "We could not verify your onboarding status."
+        );
+
+        setOnboardingChecking(
+          false
+        );
+      }
+    };
+
+    checkOnboarding();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id]);
+
+  /*
+   * ==========================================================
+   * RETRY ONBOARDING CHECK
+   * ==========================================================
+   */
+
+  const retryOnboardingCheck =
+    () => {
+      if (!user?.id) {
+        return;
+      }
+
+      setOnboardingError(null);
+      setOnboardingChecking(true);
+
+      /*
+       * Changing the dependency value is not necessary here.
+       * Reloading the current page is the safest way to
+       * re-establish auth/profile state after a failed check.
+       */
+
+      window.location.reload();
+    };
 
   /*
    * ==========================================================
@@ -544,14 +928,6 @@ const Dashboard = () => {
       try {
         setStatsLoading(true);
 
-        /*
-         * Get all transactions belonging to
-         * the currently authenticated user.
-         *
-         * RLS should restrict this to the user's
-         * own records.
-         */
-
         const {
           data,
           error,
@@ -586,11 +962,6 @@ const Dashboard = () => {
             error
           );
 
-          /*
-           * Do not show fake success data when
-           * the database request fails.
-           */
-
           setStats({
             monthlySpent: 0,
             monthlyTransactions: 0,
@@ -603,12 +974,6 @@ const Dashboard = () => {
         const transactions =
           (data ??
             []) as DashboardTransaction[];
-
-        /*
-         * ======================================================
-         * THIS MONTH
-         * ======================================================
-         */
 
         const now = new Date();
 
@@ -651,14 +1016,6 @@ const Dashboard = () => {
             }
           );
 
-        /*
-         * ======================================================
-         * MONTHLY TOTAL SPENT
-         *
-         * Only successful money-out transactions count.
-         * ======================================================
-         */
-
         const monthlySpent =
           monthlyTransactions
             .filter(
@@ -695,32 +1052,8 @@ const Dashboard = () => {
               0
             );
 
-        /*
-         * ======================================================
-         * MONTHLY TRANSACTION COUNT
-         *
-         * Count every transaction created
-         * during this month.
-         * ======================================================
-         */
-
         const monthlyTransactionCount =
           monthlyTransactions.length;
-
-        /*
-         * ======================================================
-         * ALL-TIME SUCCESS RATE
-         *
-         * Pending transactions are excluded.
-         *
-         * Example:
-         *
-         * 90 successful
-         * 10 failed
-         *
-         * = 90 / 100 = 90%
-         * ======================================================
-         */
 
         const successfulCount =
           transactions.filter(
@@ -750,12 +1083,6 @@ const Dashboard = () => {
                   terminalTransactions) *
                   100
               );
-
-        /*
-         * ======================================================
-         * UPDATE STATE
-         * ======================================================
-         */
 
         setStats({
           monthlySpent,
@@ -787,22 +1114,37 @@ const Dashboard = () => {
    */
 
   useEffect(() => {
+    /*
+     * Don't load wallet/dashboard transaction data while
+     * onboarding is still being checked.
+     */
+
+    if (
+      onboardingChecking ||
+      onboardingError
+    ) {
+      return;
+    }
+
     loadDashboardStats();
   }, [
     loadDashboardStats,
+    onboardingChecking,
+    onboardingError,
   ]);
 
   /*
    * ==========================================================
    * REALTIME TRANSACTION REFRESH
-   *
-   * Whenever a transaction is inserted/updated for this
-   * user, refresh the dashboard statistics.
    * ==========================================================
    */
 
   useEffect(() => {
-    if (!user?.id) {
+    if (
+      !user?.id ||
+      onboardingChecking ||
+      onboardingError
+    ) {
       return;
     }
 
@@ -833,6 +1175,8 @@ const Dashboard = () => {
   }, [
     user?.id,
     loadDashboardStats,
+    onboardingChecking,
+    onboardingError,
   ]);
 
   /*
@@ -842,7 +1186,13 @@ const Dashboard = () => {
    */
 
   useEffect(() => {
-    if (!user) return;
+    if (
+      !user ||
+      onboardingChecking ||
+      onboardingError
+    ) {
+      return;
+    }
 
     let cancelled = false;
 
@@ -880,11 +1230,6 @@ const Dashboard = () => {
 
           await refreshWallet();
 
-          /*
-           * Refresh dashboard statistics
-           * after wallet bootstrap.
-           */
-
           await loadDashboardStats();
         } catch (error) {
           if (cancelled) {
@@ -907,6 +1252,8 @@ const Dashboard = () => {
     user,
     refreshWallet,
     loadDashboardStats,
+    onboardingChecking,
+    onboardingError,
   ]);
 
   /*
@@ -1409,11 +1756,6 @@ const Dashboard = () => {
 
       await refreshWallet();
 
-      /*
-       * Refresh dashboard statistics
-       * immediately after payment.
-       */
-
       await loadDashboardStats();
 
       setServiceModalOpen(
@@ -1678,10 +2020,6 @@ const Dashboard = () => {
 
       await refreshWallet();
 
-      /*
-       * Refresh statistics after transfer.
-       */
-
       await loadDashboardStats();
 
       setTransferModalOpen(
@@ -1741,6 +2079,98 @@ const Dashboard = () => {
 
   /*
    * ==========================================================
+   * ONBOARDING CHECK LOADING SCREEN
+   * ==========================================================
+   *
+   * Important:
+   * Do not initialize/render wallet functionality while the
+   * onboarding decision is still pending.
+   * ==========================================================
+   */
+
+  if (
+    onboardingChecking
+  ) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-50 p-4">
+        <div className="text-center">
+
+          <div className="flex justify-center">
+            <Loader2 className="h-12 w-12 animate-spin text-purple-600" />
+          </div>
+
+          <h2 className="mt-4 text-lg font-semibold text-gray-900">
+            Checking your account...
+          </h2>
+
+          <p className="mt-1 text-sm text-gray-600">
+            Please wait while we verify your onboarding status.
+          </p>
+
+        </div>
+      </div>
+    );
+  }
+
+  /*
+   * ==========================================================
+   * ONBOARDING CHECK ERROR
+   * ==========================================================
+   */
+
+  if (
+    onboardingError
+  ) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-50 p-4">
+        <Card className="w-full max-w-md shadow-lg">
+          <CardContent className="p-6 text-center">
+
+            <div className="mx-auto w-12 h-12 rounded-full bg-red-100 flex items-center justify-center">
+              <Shield className="h-6 w-6 text-red-600" />
+            </div>
+
+            <h2 className="mt-4 text-xl font-bold text-gray-900">
+              Unable to verify your account
+            </h2>
+
+            <p className="mt-2 text-sm text-gray-600">
+              {onboardingError}
+            </p>
+
+            <div className="mt-6 space-y-3">
+
+              <Button
+                type="button"
+                onClick={
+                  retryOnboardingCheck
+                }
+                className="w-full bg-purple-600 hover:bg-purple-700"
+              >
+                Try Again
+              </Button>
+
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() =>
+                  signOut()
+                }
+                className="w-full"
+              >
+                Sign Out
+              </Button>
+
+            </div>
+
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  /*
+   * ==========================================================
    * PAGE ROUTING
    * ==========================================================
    */
@@ -1797,12 +2227,6 @@ const Dashboard = () => {
     );
   }
 
-  /*
-   * ==========================================================
-   * CUSTOMER SERVICE
-   * ==========================================================
-   */
-
   if (
     currentPage ===
     "customer-service"
@@ -1815,12 +2239,6 @@ const Dashboard = () => {
       />
     );
   }
-
-  /*
-   * ==========================================================
-   * SUPPORT
-   * ==========================================================
-   */
 
   if (
     currentPage ===
@@ -1835,12 +2253,6 @@ const Dashboard = () => {
     );
   }
 
-  /*
-   * ==========================================================
-   * TRANSACTION LIMIT
-   * ==========================================================
-   */
-
   if (
     currentPage ===
     "transaction-limit"
@@ -1853,12 +2265,6 @@ const Dashboard = () => {
       />
     );
   }
-
-  /*
-   * ==========================================================
-   * ME
-   * ==========================================================
-   */
 
   if (
     currentPage ===

@@ -24,6 +24,7 @@ import PWAInstallPrompt from "@/components/PWAInstallPrompt";
 import Index from "./pages/Index";
 import ForgotPassword from "./pages/ForgotPassword";
 import VerifyEmailOtp from "./pages/VerifyEmailOtp";
+import OnboardingPage from "./pages/OnboardingPage";
 import VerifyRecoveryOtp from "./pages/VerifyRecoveryOtp";
 import ResetPassword from "./pages/ResetPassword";
 import NotFound from "./pages/NotFound";
@@ -85,12 +86,11 @@ const App = () => {
                 SIGNUP
             ==================================================
 
-                This fixes:
+                This allows:
 
-                User attempted to access non-existent route:
                 /signup
 
-                It also allows:
+                and:
 
                 /signup?ref=ALXXXXXXXX
 
@@ -109,6 +109,28 @@ const App = () => {
             <Route
               path="/verify-email-otp"
               element={<VerifyEmailOtp />}
+            />
+
+            {/* ==================================================
+                PROFILE ONBOARDING
+            ==================================================
+
+                New users are sent here after successful
+                email verification when their profile is
+                incomplete.
+
+                Flow:
+
+                Email verification
+                    ↓
+                Profile completion
+                    ↓
+                BVN verification
+            */}
+
+            <Route
+              path="/onboarding"
+              element={<OnboardingPage />}
             />
 
             {/* ==================================================

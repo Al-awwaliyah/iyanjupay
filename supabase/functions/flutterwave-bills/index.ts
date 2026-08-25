@@ -6,48 +6,7 @@ import {
   flw,
 } from "../_shared/auth.ts";
 
-/**
- * IyanjuPay — Flutterwave Bills
- *
- * Production bill-payment Edge Function.
- *
- * SUPPORTED:
- *   - Airtime
- *   - Data
- *   - Electricity
- *   - Cable
- *   - Internet
- *
- * ACTIONS:
- *   - categories
- *   - billers
- *   - items
- *   - validate
- *   - status
- *   - pay
- *   - service
- *
- * PRICING:
- *
- *   Flutterwave price = provider amount
- *   IyanjuPay price   = provider amount + ₦50
- *
- * Example:
- *
- *   Flutterwave: ₦500
- *   User pays:   ₦550
- *   Flutterwave receives: ₦500
- *   IyanjuPay markup: ₦50
- *
- * IMPORTANT:
- *   - Pricing is verified server-side.
- *   - Client cannot remove the ₦50 markup.
- *   - Wallet is debited for the CUSTOMER amount.
- *   - Flutterwave receives only the PROVIDER amount.
- *   - Definitive Flutterwave rejection => automatic refund.
- *   - Network/timeout/5xx/ambiguous response => PENDING.
- *   - Airtime/Data do NOT require customer validation.
- */
+
 
 type ServiceType =
   | "airtime"
@@ -64,11 +23,6 @@ const SUPPORTED_SERVICES: ServiceType[] = [
   "internet",
 ];
 
-/**
- * IyanjuPay markup.
- */
-const BILL_MARKUP = 50;
-
 const SERVICE_CATEGORY_MAP: Record<
   ServiceType,
   string
@@ -79,6 +33,16 @@ const SERVICE_CATEGORY_MAP: Record<
   cable: "CABLEBILLS",
   internet: "INTSERVICE",
 };
+
+// ============================================================
+// DATA MARKUP
+// ============================================================
+
+const DATA_MARKUP = 50;
+
+// ============================================================
+// STATUS
+// ============================================================
 
 const SUCCESS_STATUSES = new Set([
   "successful",
@@ -165,22 +129,6 @@ function isFailedStatus(
   );
 }
 
-function isPendingStatus(
-  value: unknown,
-): boolean {
-  const status =
-    normalizeStatus(
-      value,
-    );
-
-  return (
-    !status ||
-    PENDING_STATUSES.has(
-      status,
-    )
-  );
-}
-
 function normalizeAmount(
   value: unknown,
 ): number | null {
@@ -198,28 +146,6 @@ function normalizeAmount(
 
   return Number(
     amount.toFixed(2),
-  );
-}
-
-function addMarkup(
-  amount: number,
-): number {
-  return Number(
-    (
-      amount +
-      BILL_MARKUP
-    ).toFixed(2),
-  );
-}
-
-function removeMarkup(
-  customerAmount: number,
-): number {
-  return Number(
-    (
-      customerAmount -
-      BILL_MARKUP
-    ).toFixed(2),
   );
 }
 
@@ -289,10 +215,7 @@ function extractProviderReference(
         "",
     );
 
-  return (
-    reference ||
-    null
-  );
+  return reference || null;
 }
 
 function extractProviderStatus(
@@ -315,10 +238,7 @@ function extractProviderStatus(
 function getProviderData(
   body: any,
 ): any {
-  return (
-    body?.data ??
-    null
-  );
+  return body?.data ?? null;
 }
 
 function getProviderMessage(
@@ -338,7 +258,10 @@ function getProviderMessage(
 
 function getTransactionMetadata(
   txn: any,
-): Record<string, unknown> {
+): Record<
+  string,
+  unknown
+> {
   if (
     txn?.metadata &&
     typeof txn.metadata ===
@@ -365,7 +288,7 @@ function shouldValidateCustomer(
 }
 
 // ============================================================
-// TRANSACTION UPDATE
+// TRANSACTION HELPERS
 // ============================================================
 
 async function updateTransaction(
@@ -427,10 +350,6 @@ async function updateTransaction(
   }
 }
 
-// ============================================================
-// GET LOCAL TRANSACTION
-// ============================================================
-
 async function getLocalTransaction(
   admin: any,
   userId: string,
@@ -469,10 +388,6 @@ async function getLocalTransaction(
     error,
   };
 }
-
-// ============================================================
-// REFUND
-// ============================================================
 
 async function refundBillTransaction(
   admin: any,
@@ -539,19 +454,16 @@ async function refundBillTransaction(
     );
 
     return {
-      success:
-        false,
-
+      success: false,
       reference:
         refundReference,
-
       error,
     };
   }
 }
 
 // ============================================================
-// FLUTTERWAVE BILL HELPERS
+// FLUTTERWAVE HELPERS
 // ============================================================
 
 async function fetchBillItems(
@@ -641,9 +553,7 @@ Deno.serve(
     ) {
       return json(
         {
-          success:
-            false,
-
+          success: false,
           error:
             "Method not allowed",
         },
@@ -664,9 +574,7 @@ Deno.serve(
       if (!user) {
         return json(
           {
-            success:
-              false,
-
+            success: false,
             error:
               "Unauthorized",
           },
@@ -695,9 +603,7 @@ Deno.serve(
       ) {
         return json(
           {
-            success:
-              false,
-
+            success: false,
             error:
               "Invalid request body",
           },
@@ -718,26 +624,18 @@ Deno.serve(
         "Flutterwave bills request:",
         JSON.stringify({
           action,
-
           user_id:
             user.id,
-
           service:
             body?.service,
-
           amount:
             body?.amount,
-
           biller_code:
             body?.biller_code ??
             body?.billerCode,
-
           item_code:
             body?.item_code ??
             body?.itemCode,
-
-          country:
-            body?.country,
         }),
       );
 
@@ -761,9 +659,7 @@ Deno.serve(
         ) {
           return json(
             {
-              success:
-                false,
-
+              success: false,
               error:
                 result.body
                   ?.message ??
@@ -781,14 +677,14 @@ Deno.serve(
         }
 
         return json({
-          success:
-            true,
+          success: true,
 
           categories:
             Array.isArray(
               result.body?.data,
             )
-              ? result.body.data
+              ? result.body
+                  .data
               : [],
         });
       }
@@ -809,9 +705,7 @@ Deno.serve(
         if (!category) {
           return json(
             {
-              success:
-                false,
-
+              success: false,
               error:
                 "category is required",
             },
@@ -833,8 +727,7 @@ Deno.serve(
         ) {
           return json(
             {
-              success:
-                false,
+              success: false,
 
               error:
                 result.body
@@ -855,8 +748,7 @@ Deno.serve(
         }
 
         return json({
-          success:
-            true,
+          success: true,
 
           category,
 
@@ -864,7 +756,8 @@ Deno.serve(
             Array.isArray(
               result.body?.data,
             )
-              ? result.body.data
+              ? result.body
+                  .data
               : [],
         });
       }
@@ -886,9 +779,7 @@ Deno.serve(
         if (!billerCode) {
           return json(
             {
-              success:
-                false,
-
+              success: false,
               error:
                 "biller_code is required",
             },
@@ -908,8 +799,7 @@ Deno.serve(
         ) {
           return json(
             {
-              success:
-                false,
+              success: false,
 
               error:
                 result.body
@@ -931,8 +821,7 @@ Deno.serve(
         }
 
         return json({
-          success:
-            true,
+          success: true,
 
           biller_code:
             billerCode,
@@ -941,7 +830,8 @@ Deno.serve(
             Array.isArray(
               result.body?.data,
             )
-              ? result.body.data
+              ? result.body
+                  .data
               : [],
         });
       }
@@ -970,9 +860,7 @@ Deno.serve(
         if (!itemCode) {
           return json(
             {
-              success:
-                false,
-
+              success: false,
               error:
                 "item_code is required",
             },
@@ -983,9 +871,7 @@ Deno.serve(
         if (!customer) {
           return json(
             {
-              success:
-                false,
-
+              success: false,
               error:
                 "customer is required",
             },
@@ -1006,11 +892,11 @@ Deno.serve(
         ) {
           return json(
             {
-              success:
-                false,
+              success: false,
 
               error:
-                validation.body
+                validation
+                  .body
                   ?.message ??
                 "Unable to validate customer details.",
 
@@ -1018,7 +904,8 @@ Deno.serve(
                 validation.status,
 
               data:
-                validation.body
+                validation
+                  .body
                   ?.data ??
                 null,
 
@@ -1031,23 +918,24 @@ Deno.serve(
         }
 
         return json({
-          success:
-            true,
+          success: true,
 
           message:
-            validation.body
+            validation
+              .body
               ?.message ??
             "Customer validated successfully.",
 
           data:
-            validation.body
+            validation
+              .body
               ?.data ??
             null,
         });
       }
 
       // ======================================================
-      // STATUS
+      // STATUS / RECONCILIATION
       // ======================================================
 
       if (
@@ -1063,9 +951,7 @@ Deno.serve(
         if (!reference) {
           return json(
             {
-              success:
-                false,
-
+              success: false,
               error:
                 "reference is required",
             },
@@ -1087,9 +973,7 @@ Deno.serve(
         if (txnError) {
           return json(
             {
-              success:
-                false,
-
+              success: false,
               error:
                 "Unable to retrieve transaction",
             },
@@ -1100,9 +984,7 @@ Deno.serve(
         if (!txn) {
           return json(
             {
-              success:
-                false,
-
+              success: false,
               error:
                 "Transaction not found",
             },
@@ -1117,8 +999,7 @@ Deno.serve(
           "successful"
         ) {
           return json({
-            success:
-              true,
+            success: true,
 
             reference,
 
@@ -1154,8 +1035,7 @@ Deno.serve(
           !providerResult.ok
         ) {
           return json({
-            success:
-              true,
+            success: true,
 
             reference,
 
@@ -1172,7 +1052,8 @@ Deno.serve(
               txn,
 
             provider_response:
-              providerResult.body ??
+              providerResult
+                .body ??
               null,
           });
         }
@@ -1233,7 +1114,8 @@ Deno.serve(
                   providerBody,
 
                 reconciled_at:
-                  new Date().toISOString(),
+                  new Date()
+                    .toISOString(),
 
                 reconciliation_required:
                   false,
@@ -1242,8 +1124,7 @@ Deno.serve(
           );
 
           return json({
-            success:
-              true,
+            success: true,
 
             reference,
 
@@ -1255,7 +1136,6 @@ Deno.serve(
 
             transaction: {
               ...txn,
-
               status:
                 "successful",
             },
@@ -1285,8 +1165,7 @@ Deno.serve(
           ) {
             return json(
               {
-                success:
-                  false,
+                success: false,
 
                 error:
                   "Provider failed the bill payment, but the refund requires manual review.",
@@ -1325,19 +1204,8 @@ Deno.serve(
                 status:
                   "failed",
 
-                provider:
-                  "flutterwave",
-
-                provider_reference:
-                  newProviderReference ||
-                  providerReference ||
-                  null,
-
                 metadata: {
                   ...metadata,
-
-                  flutterwave_status:
-                    providerBody,
 
                   refund_required:
                     true,
@@ -1350,8 +1218,7 @@ Deno.serve(
 
             return json(
               {
-                success:
-                  false,
+                success: false,
 
                 error:
                   "Bill payment failed and automatic refund could not be completed. Please contact support.",
@@ -1399,14 +1266,14 @@ Deno.serve(
                   false,
 
                 reconciled_at:
-                  new Date().toISOString(),
+                  new Date()
+                    .toISOString(),
               },
             },
           );
 
           return json({
-            success:
-              true,
+            success: true,
 
             reference,
 
@@ -1424,7 +1291,6 @@ Deno.serve(
 
             transaction: {
               ...txn,
-
               status:
                 "failed",
             },
@@ -1464,14 +1330,14 @@ Deno.serve(
                 true,
 
               last_checked_at:
-                new Date().toISOString(),
+                new Date()
+                  .toISOString(),
             },
           },
         );
 
         return json({
-          success:
-            true,
+          success: true,
 
           reference,
 
@@ -1487,7 +1353,6 @@ Deno.serve(
 
           transaction: {
             ...txn,
-
             status:
               "pending",
           },
@@ -1498,7 +1363,7 @@ Deno.serve(
       }
 
       // ======================================================
-      // NORMAL PAYMENT
+      // PAY / SERVICE
       // ======================================================
 
       if (
@@ -1509,8 +1374,7 @@ Deno.serve(
       ) {
         return json(
           {
-            success:
-              false,
+            success: false,
 
             error:
               `Unsupported action: ${action}`,
@@ -1529,10 +1393,6 @@ Deno.serve(
         );
       }
 
-      // ======================================================
-      // SERVICE
-      // ======================================================
-
       const service =
         normalizeService(
           body?.service,
@@ -1541,8 +1401,7 @@ Deno.serve(
       if (!service) {
         return json(
           {
-            success:
-              false,
+            success: false,
 
             error:
               `The ${
@@ -1574,21 +1433,6 @@ Deno.serve(
         )
           ? body.details
           : {};
-
-      /**
-       * The frontend amount is the CUSTOMER amount.
-       *
-       * Example:
-       *
-       * frontend amount = 550
-       * provider amount = 500
-       */
-      const suppliedCustomerAmount =
-        normalizeAmount(
-          body?.amount ??
-            details?.customer_amount ??
-            details?.amount,
-        );
 
       const country =
         cleanString(
@@ -1632,11 +1476,6 @@ Deno.serve(
             details?.account_number,
         );
 
-      const expectedCategory =
-        SERVICE_CATEGORY_MAP[
-          service
-        ];
-
       // ======================================================
       // COUNTRY
       // ======================================================
@@ -1647,8 +1486,7 @@ Deno.serve(
       ) {
         return json(
           {
-            success:
-              false,
+            success: false,
 
             error:
               "Flutterwave bill payments currently support NG billers only.",
@@ -1664,8 +1502,7 @@ Deno.serve(
       if (!billerCode) {
         return json(
           {
-            success:
-              false,
+            success: false,
 
             error:
               "Please select a valid bill provider.",
@@ -1673,7 +1510,9 @@ Deno.serve(
             service,
 
             category:
-              expectedCategory,
+              SERVICE_CATEGORY_MAP[
+                service
+              ],
           },
           400,
         );
@@ -1686,8 +1525,7 @@ Deno.serve(
       if (!itemCode) {
         return json(
           {
-            success:
-              false,
+            success: false,
 
             error:
               "Please select a valid bill package.",
@@ -1695,7 +1533,9 @@ Deno.serve(
             service,
 
             category:
-              expectedCategory,
+              SERVICE_CATEGORY_MAP[
+                service
+              ],
 
             biller_code:
               billerCode,
@@ -1711,8 +1551,7 @@ Deno.serve(
       if (!customer) {
         return json(
           {
-            success:
-              false,
+            success: false,
 
             error:
               "Customer identifier is required.",
@@ -1744,8 +1583,7 @@ Deno.serve(
         ) {
           return json(
             {
-              success:
-                false,
+              success: false,
 
               error:
                 "Please provide a valid Nigerian phone number.",
@@ -1763,8 +1601,7 @@ Deno.serve(
       ) {
         return json(
           {
-            success:
-              false,
+            success: false,
 
             error:
               "Please provide a valid meter number.",
@@ -1781,8 +1618,7 @@ Deno.serve(
       ) {
         return json(
           {
-            success:
-              false,
+            success: false,
 
             error:
               "Please provide a valid smartcard or decoder number.",
@@ -1799,8 +1635,7 @@ Deno.serve(
       ) {
         return json(
           {
-            success:
-              false,
+            success: false,
 
             error:
               "Please provide a valid internet account number.",
@@ -1810,30 +1645,13 @@ Deno.serve(
       }
 
       // ======================================================
-      // FETCH FRESH FLUTTERWAVE ITEMS
+      // FETCH ITEMS
       // ======================================================
 
       const itemsResult =
         await fetchBillItems(
           billerCode,
         );
-
-      console.log(
-        "Selected biller items:",
-        JSON.stringify({
-          biller_code:
-            billerCode,
-
-          ok:
-            itemsResult.ok,
-
-          status:
-            itemsResult.status,
-
-          body:
-            itemsResult.body,
-        }),
-      );
 
       if (
         !itemsResult.ok ||
@@ -1842,8 +1660,7 @@ Deno.serve(
       ) {
         return json(
           {
-            success:
-              false,
+            success: false,
 
             error:
               itemsResult.body
@@ -1865,26 +1682,23 @@ Deno.serve(
         Array.isArray(
           itemsResult.body?.data,
         )
-          ? itemsResult.body.data
+          ? itemsResult.body
+              .data
           : [];
-
-      // ======================================================
-      // FIND SELECTED ITEM
-      // ======================================================
 
       const selectedItem =
         billItems.find(
           (item: any) =>
             extractItemCode(
               item,
-            ) === itemCode,
+            ) ===
+            itemCode,
         );
 
       if (!selectedItem) {
         return json(
           {
-            success:
-              false,
+            success: false,
 
             error:
               "The selected bill package is not available for this provider.",
@@ -1900,7 +1714,7 @@ Deno.serve(
       }
 
       // ======================================================
-      // VERIFY ITEM BELONGS TO BILLER
+      // VERIFY ITEM BILLER
       // ======================================================
 
       const itemBiller =
@@ -1915,8 +1729,7 @@ Deno.serve(
       ) {
         return json(
           {
-            success:
-              false,
+            success: false,
 
             error:
               "The selected bill package does not belong to the selected provider.",
@@ -1935,113 +1748,176 @@ Deno.serve(
       }
 
       // ======================================================
-      // GET TRUE FLUTTERWAVE PRICE
+      // PROVIDER AMOUNT
       // ======================================================
 
-      const providerAmount =
+      const itemAmount =
         extractAmount(
           selectedItem,
         );
 
+      // ======================================================
+      // PRICING
+      // ======================================================
+
+      let providerAmount:
+        number | null =
+        null;
+
+      let sellingAmount:
+        number | null =
+        null;
+
+      /**
+       * DATA:
+       *
+       * Flutterwave item amount is the provider cost.
+       *
+       * Customer pays:
+       *
+       * provider cost + ₦50
+       */
       if (
-        providerAmount ===
-        null
+        service ===
+        "data"
       ) {
-        return json(
+        if (
+          itemAmount ===
+          null
+        ) {
+          return json(
+            {
+              success: false,
+
+              error:
+                "The selected data plan does not have a valid provider price.",
+
+              item_code:
+                itemCode,
+            },
+            400,
+          );
+        }
+
+        providerAmount =
+          itemAmount;
+
+        sellingAmount =
+          Number(
+            (
+              providerAmount +
+              DATA_MARKUP
+            ).toFixed(2),
+          );
+
+        console.log(
+          "Data pricing:",
           {
-            success:
-              false,
-
-            error:
-              "Flutterwave did not return a valid price for the selected package.",
-
-            biller_code:
-              billerCode,
-
-            item_code:
-              itemCode,
-          },
-          400,
-        );
-      }
-
-      // ======================================================
-      // CALCULATE CUSTOMER PRICE
-      // ======================================================
-
-      const customerAmount =
-        addMarkup(
-          providerAmount,
-        );
-
-      console.log(
-        "Bill pricing:",
-        JSON.stringify({
-          provider_amount:
-            providerAmount,
-
-          markup:
-            BILL_MARKUP,
-
-          customer_amount:
-            customerAmount,
-        }),
-      );
-
-      // ======================================================
-      // VERIFY FRONTEND AMOUNT
-      // ======================================================
-
-      if (
-        suppliedCustomerAmount ===
-        null
-      ) {
-        return json(
-          {
-            success:
-              false,
-
-            error:
-              "A valid bill amount is required.",
-
-            expected_amount:
-              customerAmount,
-          },
-          400,
-        );
-      }
-
-      if (
-        Math.abs(
-          suppliedCustomerAmount -
-            customerAmount,
-        ) >
-        0.009
-      ) {
-        return json(
-          {
-            success:
-              false,
-
-            error:
-              `The selected bill package costs ₦${customerAmount.toFixed(
-                2,
-              )} including the ₦${BILL_MARKUP} service markup.`,
-
             provider_amount:
               providerAmount,
 
             markup:
-              BILL_MARKUP,
+              DATA_MARKUP,
 
-            expected_amount:
-              customerAmount,
-
-            supplied_amount:
-              suppliedCustomerAmount,
+            selling_amount:
+              sellingAmount,
           },
-          400,
         );
+      } else {
+        /**
+         * ALL OTHER SERVICES:
+         *
+         * No markup.
+         *
+         * The customer's entered amount is exactly
+         * what gets sent to Flutterwave.
+         */
+
+        const suppliedAmount =
+          normalizeAmount(
+            body?.amount ??
+              details?.amount,
+          );
+
+        if (
+          suppliedAmount ===
+          null
+        ) {
+          return json(
+            {
+              success: false,
+
+              error:
+                "A valid amount is required.",
+            },
+            400,
+          );
+        }
+
+        providerAmount =
+          suppliedAmount;
+
+        sellingAmount =
+          suppliedAmount;
+      }
+
+      // ======================================================
+      // NON-DATA MIN/MAX
+      // ======================================================
+
+      if (
+        service !==
+        "data"
+      ) {
+        const minimum =
+          Number(
+            selectedItem?.minimum ??
+              0,
+          );
+
+        const maximum =
+          Number(
+            selectedItem?.maximum ??
+              0,
+          );
+
+        if (
+          minimum >
+            0 &&
+          sellingAmount <
+            minimum
+        ) {
+          return json(
+            {
+              success: false,
+
+              error:
+                `Minimum amount is ₦${minimum.toLocaleString()}.`,
+
+              minimum,
+            },
+            400,
+          );
+        }
+
+        if (
+          maximum >
+            0 &&
+          sellingAmount >
+            maximum
+        ) {
+          return json(
+            {
+              success: false,
+
+              error:
+                `Maximum amount is ₦${maximum.toLocaleString()}.`,
+
+              maximum,
+            },
+            400,
+          );
+        }
       }
 
       // ======================================================
@@ -2062,30 +1938,6 @@ Deno.serve(
             customer,
           );
 
-        console.log(
-          "Flutterwave validation:",
-          JSON.stringify({
-            service,
-
-            biller_code:
-              billerCode,
-
-            item_code:
-              itemCode,
-
-            customer,
-
-            ok:
-              validation.ok,
-
-            status:
-              validation.status,
-
-            body:
-              validation.body,
-          }),
-        );
-
         if (
           !validation.ok ||
           validation.body?.status !==
@@ -2093,11 +1945,11 @@ Deno.serve(
         ) {
           return json(
             {
-              success:
-                false,
+              success: false,
 
               error:
-                validation.body
+                validation
+                  .body
                   ?.message ??
                 "Unable to validate customer details.",
 
@@ -2105,7 +1957,8 @@ Deno.serve(
                 validation.status,
 
               validation_data:
-                validation.body
+                validation
+                  .body
                   ?.data ??
                 null,
 
@@ -2123,11 +1976,10 @@ Deno.serve(
           null;
       } else {
         console.log(
-          "Skipping Flutterwave customer validation for Airtime/Data:",
+          "Skipping customer validation:",
           {
             service,
-            item_code:
-              itemCode,
+            itemCode,
             customer,
           },
         );
@@ -2146,7 +1998,7 @@ Deno.serve(
           )}`;
 
       // ======================================================
-      // DEBIT USER FOR CUSTOMER AMOUNT
+      // DEBIT CUSTOMER WALLET
       // ======================================================
 
       const {
@@ -2163,10 +2015,16 @@ Deno.serve(
             /**
              * IMPORTANT:
              *
-             * Debit ₦550, not ₦500.
+             * This is the customer selling price.
+             *
+             * For data:
+             * provider + ₦50.
+             *
+             * For everything else:
+             * exact entered amount.
              */
             _amount:
-              customerAmount,
+              sellingAmount,
 
             _description:
               `Bill payment (${service})`,
@@ -2184,7 +2042,9 @@ Deno.serve(
               service,
 
               category:
-                expectedCategory,
+                SERVICE_CATEGORY_MAP[
+                  service
+                ],
 
               biller_code:
                 billerCode,
@@ -2196,17 +2056,17 @@ Deno.serve(
 
               country,
 
-              /**
-               * Pricing breakdown.
-               */
               provider_amount:
                 providerAmount,
 
-              markup:
-                BILL_MARKUP,
+              selling_amount:
+                sellingAmount,
 
-              customer_amount:
-                customerAmount,
+              data_markup:
+                service ===
+                "data"
+                  ? DATA_MARKUP
+                  : 0,
 
               validation:
                 validationData,
@@ -2228,8 +2088,7 @@ Deno.serve(
 
         return json(
           {
-            success:
-              false,
+            success: false,
 
             error:
               message.includes(
@@ -2247,44 +2106,23 @@ Deno.serve(
       }
 
       console.log(
-        "Wallet debited for bill:",
-        JSON.stringify({
+        "Wallet debited:",
+        {
           reference,
 
-          debit,
+          selling_amount:
+            sellingAmount,
 
           provider_amount:
             providerAmount,
 
-          markup:
-            BILL_MARKUP,
-
-          customer_amount:
-            customerAmount,
-
           service,
-        }),
+        },
       );
 
       // ======================================================
-      // FLUTTERWAVE PAYMENT BODY
+      // PROVIDER PAYMENT BODY
       // ======================================================
-
-      /**
-       * VERY IMPORTANT:
-       *
-       * Flutterwave receives providerAmount.
-       *
-       * It does NOT receive customerAmount.
-       *
-       * Example:
-       *
-       * User wallet:
-       *   ₦550
-       *
-       * Flutterwave:
-       *   ₦500
-       */
 
       const providerPath =
         `/billers/${encodeURIComponent(
@@ -2293,10 +2131,22 @@ Deno.serve(
           itemCode,
         )}/payment`;
 
-      const paymentBody: Record<
-        string,
-        unknown
-      > = {
+      /**
+       * IMPORTANT:
+       *
+       * For DATA:
+       *   customer pays ₦550
+       *   Flutterwave receives ₦500
+       *
+       * For OTHER:
+       *   customer pays ₦500
+       *   Flutterwave receives ₦500
+       */
+      const paymentBody:
+        Record<
+          string,
+          unknown
+        > = {
         country,
 
         customer_id:
@@ -2329,21 +2179,22 @@ Deno.serve(
           body:
             paymentBody,
 
-          pricing: {
-            provider_amount:
-              providerAmount,
+          customer_selling_amount:
+            sellingAmount,
 
-            markup:
-              BILL_MARKUP,
+          provider_amount:
+            providerAmount,
 
-            customer_amount:
-              customerAmount,
-          },
+          data_markup:
+            service ===
+            "data"
+              ? DATA_MARKUP
+              : 0,
         }),
       );
 
       // ======================================================
-      // FLUTTERWAVE PAYMENT
+      // CALL FLUTTERWAVE
       // ======================================================
 
       let providerResult:
@@ -2367,13 +2218,13 @@ Deno.serve(
         providerError
       ) {
         /**
-         * Network errors are ambiguous.
+         * Network failure is ambiguous.
          *
-         * DO NOT refund automatically.
+         * DO NOT refund.
          */
 
         console.error(
-          "Flutterwave payment request exception:",
+          "Flutterwave payment exception:",
           providerError,
         );
 
@@ -2391,9 +2242,6 @@ Deno.serve(
             metadata: {
               service,
 
-              category:
-                expectedCategory,
-
               biller_code:
                 billerCode,
 
@@ -2405,11 +2253,14 @@ Deno.serve(
               provider_amount:
                 providerAmount,
 
-              markup:
-                BILL_MARKUP,
+              selling_amount:
+                sellingAmount,
 
-              customer_amount:
-                customerAmount,
+              data_markup:
+                service ===
+                "data"
+                  ? DATA_MARKUP
+                  : 0,
 
               provider_error:
                 providerError instanceof
@@ -2421,17 +2272,13 @@ Deno.serve(
 
               reconciliation_required:
                 true,
-
-              created_at:
-                new Date().toISOString(),
             },
           },
         );
 
         return json(
           {
-            success:
-              true,
+            success: true,
 
             message:
               "Bill payment is being verified. Your wallet has been debited and the transaction will be reconciled.",
@@ -2443,26 +2290,15 @@ Deno.serve(
               null,
 
             amount:
-              customerAmount,
+              sellingAmount,
 
             provider_amount:
               providerAmount,
-
-            markup:
-              BILL_MARKUP,
 
             currency:
               "NGN",
 
             service,
-
-            biller_code:
-              billerCode,
-
-            item_code:
-              itemCode,
-
-            customer,
 
             status:
               "pending",
@@ -2473,6 +2309,10 @@ Deno.serve(
           202,
         );
       }
+
+      // ======================================================
+      // PROVIDER RESPONSE
+      // ======================================================
 
       const providerBody =
         providerResult?.body ??
@@ -2494,15 +2334,22 @@ Deno.serve(
         );
 
       console.log(
-        "Flutterwave bill payment response:",
+        "Flutterwave response:",
         JSON.stringify({
           reference,
+
+          provider_status:
+            providerStatus,
+
+          provider_http_status:
+            providerResult?.status ??
+            null,
 
           provider_amount:
             providerAmount,
 
-          customer_amount:
-            customerAmount,
+          selling_amount:
+            sellingAmount,
 
           ...providerDebug(
             providerResult,
@@ -2538,7 +2385,9 @@ Deno.serve(
               service,
 
               category:
-                expectedCategory,
+                SERVICE_CATEGORY_MAP[
+                  service
+                ],
 
               biller_code:
                 billerCode,
@@ -2551,11 +2400,14 @@ Deno.serve(
               provider_amount:
                 providerAmount,
 
-              markup:
-                BILL_MARKUP,
+              selling_amount:
+                sellingAmount,
 
-              customer_amount:
-                customerAmount,
+              data_markup:
+                service ===
+                "data"
+                  ? DATA_MARKUP
+                  : 0,
 
               flutterwave:
                 providerBody,
@@ -2564,14 +2416,14 @@ Deno.serve(
                 false,
 
               completed_at:
-                new Date().toISOString(),
+                new Date()
+                  .toISOString(),
             },
           },
         );
 
         return json({
-          success:
-            true,
+          success: true,
 
           message:
             getProviderMessage(
@@ -2588,20 +2440,11 @@ Deno.serve(
           provider_reference:
             providerReference,
 
-          /**
-           * Amount shown to user.
-           */
           amount:
-            customerAmount,
+            sellingAmount,
 
-          /**
-           * Actual Flutterwave amount.
-           */
           provider_amount:
             providerAmount,
-
-          markup:
-            BILL_MARKUP,
 
           currency:
             "NGN",
@@ -2647,8 +2490,8 @@ Deno.serve(
         definitiveHttpFailure
       ) {
         console.error(
-          "Flutterwave bill payment definitively failed:",
-          JSON.stringify({
+          "Definitive Flutterwave failure:",
+          {
             reference,
 
             provider_status:
@@ -2656,33 +2499,32 @@ Deno.serve(
 
             provider_http_status:
               providerHttpStatus,
-
-            provider_body:
-              providerBody,
-          }),
+          },
         );
 
         /**
-         * Refund the FULL customer amount.
+         * IMPORTANT:
          *
-         * Example:
+         * Refund the amount actually debited from
+         * the customer.
          *
-         * User was debited ₦550.
-         * Flutterwave failed.
-         * Refund = ₦550.
+         * For DATA this is:
+         *
+         *   provider price + ₦50
          */
-
         const refund =
           await refundBillTransaction(
             admin,
             user.id,
-            customerAmount,
+            sellingAmount,
             reference,
             {
               service,
 
               category:
-                expectedCategory,
+                SERVICE_CATEGORY_MAP[
+                  service
+                ],
 
               biller_code:
                 billerCode,
@@ -2695,11 +2537,14 @@ Deno.serve(
               provider_amount:
                 providerAmount,
 
-              markup:
-                BILL_MARKUP,
+              selling_amount:
+                sellingAmount,
 
-              customer_amount:
-                customerAmount,
+              data_markup:
+                service ===
+                "data"
+                  ? DATA_MARKUP
+                  : 0,
 
               flutterwave:
                 providerBody,
@@ -2731,9 +2576,6 @@ Deno.serve(
               metadata: {
                 service,
 
-                category:
-                  expectedCategory,
-
                 biller_code:
                   billerCode,
 
@@ -2745,11 +2587,14 @@ Deno.serve(
                 provider_amount:
                   providerAmount,
 
-                markup:
-                  BILL_MARKUP,
+                selling_amount:
+                  sellingAmount,
 
-                customer_amount:
-                  customerAmount,
+                data_markup:
+                  service ===
+                  "data"
+                    ? DATA_MARKUP
+                    : 0,
 
                 flutterwave:
                   providerBody,
@@ -2768,8 +2613,7 @@ Deno.serve(
 
           return json(
             {
-              success:
-                false,
+              success: false,
 
               error:
                 "Bill payment failed and automatic refund could not be completed. Please contact support.",
@@ -2777,7 +2621,7 @@ Deno.serve(
               reference,
 
               amount:
-                customerAmount,
+                sellingAmount,
 
               refund_required:
                 true,
@@ -2810,7 +2654,9 @@ Deno.serve(
               service,
 
               category:
-                expectedCategory,
+                SERVICE_CATEGORY_MAP[
+                  service
+                ],
 
               biller_code:
                 billerCode,
@@ -2823,11 +2669,14 @@ Deno.serve(
               provider_amount:
                 providerAmount,
 
-              markup:
-                BILL_MARKUP,
+              selling_amount:
+                sellingAmount,
 
-              customer_amount:
-                customerAmount,
+              data_markup:
+                service ===
+                "data"
+                  ? DATA_MARKUP
+                  : 0,
 
               flutterwave:
                 providerBody,
@@ -2842,15 +2691,15 @@ Deno.serve(
                 false,
 
               completed_at:
-                new Date().toISOString(),
+                new Date()
+                  .toISOString(),
             },
           },
         );
 
         return json(
           {
-            success:
-              false,
+            success: false,
 
             error:
               getProviderMessage(
@@ -2867,13 +2716,10 @@ Deno.serve(
             reference,
 
             amount:
-              customerAmount,
+              sellingAmount,
 
             provider_amount:
               providerAmount,
-
-            markup:
-              BILL_MARKUP,
 
             service,
 
@@ -2893,9 +2739,6 @@ Deno.serve(
 
             provider_http_status:
               providerHttpStatus,
-
-            provider_response:
-              providerBody,
           },
           400,
         );
@@ -2904,6 +2747,17 @@ Deno.serve(
       // ======================================================
       // PENDING / AMBIGUOUS
       // ======================================================
+
+      /**
+       * Never refund:
+       *
+       * - HTTP 5xx
+       * - timeout
+       * - processing
+       * - queued
+       * - initiated
+       * - unknown provider state
+       */
 
       await updateTransaction(
         admin,
@@ -2923,7 +2777,9 @@ Deno.serve(
             service,
 
             category:
-              expectedCategory,
+              SERVICE_CATEGORY_MAP[
+                service
+              ],
 
             biller_code:
               billerCode,
@@ -2936,11 +2792,14 @@ Deno.serve(
             provider_amount:
               providerAmount,
 
-            markup:
-              BILL_MARKUP,
+            selling_amount:
+              sellingAmount,
 
-            customer_amount:
-              customerAmount,
+            data_markup:
+              service ===
+              "data"
+                ? DATA_MARKUP
+                : 0,
 
             flutterwave:
               providerBody,
@@ -2955,15 +2814,15 @@ Deno.serve(
               providerHttpStatus,
 
             last_checked_at:
-              new Date().toISOString(),
+              new Date()
+                .toISOString(),
           },
         },
       );
 
       return json(
         {
-          success:
-            true,
+          success: true,
 
           message:
             getProviderMessage(
@@ -2981,13 +2840,10 @@ Deno.serve(
             providerReference,
 
           amount:
-            customerAmount,
+            sellingAmount,
 
           provider_amount:
             providerAmount,
-
-          markup:
-            BILL_MARKUP,
 
           currency:
             "NGN",
@@ -3024,8 +2880,7 @@ Deno.serve(
 
       return json(
         {
-          success:
-            false,
+          success: false,
 
           error:
             error?.message ??

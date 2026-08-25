@@ -32,6 +32,19 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 
 // ============================================================
+// CONSTANTS
+// ============================================================
+
+/**
+ * IyanjuPay markup added to every bill payment.
+ *
+ * Example:
+ * Flutterwave price = ₦500
+ * IyanjuPay price = ₦550
+ */
+const BILL_MARKUP = 50;
+
+// ============================================================
 // TYPES
 // ============================================================
 
@@ -122,21 +135,17 @@ const ServiceModal = ({
   // FORM STATE
   // ==========================================================
 
-  const [amount, setAmount] =
-    useState("");
+  const [amount, setAmount] = useState("");
 
-  const [customer, setCustomer] =
-    useState("");
+  const [customer, setCustomer] = useState("");
 
   // ==========================================================
   // FLUTTERWAVE CATALOGUE
   // ==========================================================
 
-  const [billers, setBillers] =
-    useState<Biller[]>([]);
+  const [billers, setBillers] = useState<Biller[]>([]);
 
-  const [items, setItems] =
-    useState<BillItem[]>([]);
+  const [items, setItems] = useState<BillItem[]>([]);
 
   const [
     selectedBillerCode,
@@ -167,11 +176,9 @@ const ServiceModal = ({
     setProcessingPayment,
   ] = useState(false);
 
-  const [error, setError] =
-    useState("");
+  const [error, setError] = useState("");
 
-  const { toast } =
-    useToast();
+  const { toast } = useToast();
 
   // ==========================================================
   // SERVICE
@@ -180,88 +187,120 @@ const ServiceModal = ({
   const serviceType =
     service?.type ?? "";
 
-  const category =
-    useMemo(
-      () =>
-        SERVICE_CATEGORY_MAP[
-          serviceType
-        ] ?? "",
-      [serviceType]
-    );
+  const category = useMemo(
+    () =>
+      SERVICE_CATEGORY_MAP[
+        serviceType
+      ] ?? "",
+    [serviceType]
+  );
 
   // ==========================================================
   // SELECTED BILLER
   // ==========================================================
 
-  const selectedBiller =
-    useMemo(
-      () =>
-        billers.find(
-          (biller) =>
-            String(
-              biller.biller_code ?? ""
-            ) ===
-            selectedBillerCode
-        ) ?? null,
-      [
-        billers,
-        selectedBillerCode,
-      ]
-    );
+  const selectedBiller = useMemo(
+    () =>
+      billers.find(
+        (biller) =>
+          String(
+            biller.biller_code ?? ""
+          ) === selectedBillerCode
+      ) ?? null,
+    [
+      billers,
+      selectedBillerCode,
+    ]
+  );
 
   // ==========================================================
   // SELECTED ITEM
   // ==========================================================
 
-  const selectedItem =
-    useMemo(
-      () =>
-        items.find(
-          (item) =>
-            String(
-              item.item_code ?? ""
-            ) ===
-            selectedItemCode
-        ) ?? null,
-      [
-        items,
-        selectedItemCode,
-      ]
+  const selectedItem = useMemo(
+    () =>
+      items.find(
+        (item) =>
+          String(
+            item.item_code ?? ""
+          ) === selectedItemCode
+      ) ?? null,
+    [
+      items,
+      selectedItemCode,
+    ]
+  );
+
+  // ==========================================================
+  // FLUTTERWAVE BASE PRICE
+  // ==========================================================
+
+  const flutterwaveAmount = useMemo(() => {
+    const value = Number(
+      selectedItem?.amount ?? 0
     );
+
+    if (
+      !Number.isFinite(value) ||
+      value <= 0
+    ) {
+      return 0;
+    }
+
+    return Number(
+      value.toFixed(2)
+    );
+  }, [selectedItem]);
+
+  // ==========================================================
+  // IYANJUPAY CUSTOMER PRICE
+  // ==========================================================
+
+  const customerAmount = useMemo(() => {
+    if (flutterwaveAmount <= 0) {
+      return 0;
+    }
+
+    return Number(
+      (
+        flutterwaveAmount +
+        BILL_MARKUP
+      ).toFixed(2)
+    );
+  }, [flutterwaveAmount]);
 
   // ==========================================================
   // CUSTOMER LABEL
   // ==========================================================
 
-  const customerLabel =
-    useMemo(() => {
-      if (
-        selectedItem?.label_name
-      ) {
-        return selectedItem.label_name;
-      }
+  const customerLabel = useMemo(() => {
+    if (
+      selectedItem?.label_name
+    ) {
+      return selectedItem.label_name;
+    }
 
-      switch (serviceType) {
-        case "airtime":
-        case "data":
-          return "Phone Number";
+    switch (serviceType) {
+      case "airtime":
+      case "data":
+        return "Phone Number";
 
-        case "electricity":
-          return "Meter Number";
+      case "electricity":
+        return "Meter Number";
 
-        case "cable":
-          return "Smart Card / Decoder Number";
+      case "cable":
+        return "Smart Card / Decoder Number";
 
-        case "internet":
-          return "Account Number";
+      case "internet":
+        return "Account Number";
 
-        default:
-          return "Customer ID";
-      }
-    }, [
-      selectedItem,
-      serviceType,
-    ]);
+      default:
+        return "Customer ID";
+    }
+  }, [
+    selectedItem,
+    serviceType,
+  ]);
 
   // ==========================================================
   // CUSTOMER PLACEHOLDER
@@ -372,9 +411,7 @@ const ServiceModal = ({
           {
             body: {
               action: "billers",
-
               category,
-
               country: "NG",
             },
           }
@@ -442,9 +479,7 @@ const ServiceModal = ({
           "destructive",
       });
     } finally {
-      setLoadingBillers(
-        false
-      );
+      setLoadingBillers(false);
     }
   };
 
@@ -505,10 +540,8 @@ const ServiceModal = ({
           {
             body: {
               action: "items",
-
               biller_code:
                 cleanBillerCode,
-
               country: "NG",
             },
           }
@@ -576,9 +609,7 @@ const ServiceModal = ({
           "destructive",
       });
     } finally {
-      setLoadingItems(
-        false
-      );
+      setLoadingItems(false);
     }
   };
 
@@ -600,9 +631,7 @@ const ServiceModal = ({
         value
       );
 
-      await loadItems(
-        value
-      );
+      await loadItems(value);
     };
 
   // ==========================================================
@@ -646,8 +675,21 @@ const ServiceModal = ({
       ) &&
       itemAmount > 0
     ) {
+      /**
+       * Store the CUSTOMER-FACING amount.
+       *
+       * Flutterwave ₦500
+       * IyanjuPay ₦550
+       */
       setAmount(
-        String(itemAmount)
+        String(
+          Number(
+            (
+              itemAmount +
+              BILL_MARKUP
+            ).toFixed(2)
+          )
+        )
       );
     } else {
       setAmount("");
@@ -655,32 +697,11 @@ const ServiceModal = ({
   };
 
   // ==========================================================
-  // AMOUNT RULES
+  // DISPLAYED AMOUNT
   // ==========================================================
 
   const amountNumber =
     Number(amount);
-
-  const itemMinimum =
-    Number(
-      selectedItem?.minimum ?? 0
-    );
-
-  const itemMaximum =
-    Number(
-      selectedItem?.maximum ?? 0
-    );
-
-  const fixedItemAmount =
-    Number(
-      selectedItem?.amount ?? 0
-    );
-
-  const isFixedAmount =
-    Number.isFinite(
-      fixedItemAmount
-    ) &&
-    fixedItemAmount > 0;
 
   // ==========================================================
   // CUSTOMER NORMALISATION
@@ -703,7 +724,6 @@ const ServiceModal = ({
             ""
           );
 
-        // 08012345678
         if (
           /^0\d{10}$/.test(
             value
@@ -714,7 +734,6 @@ const ServiceModal = ({
           )}`;
         }
 
-        // 8012345678
         if (
           /^\d{10}$/.test(
             value
@@ -723,7 +742,6 @@ const ServiceModal = ({
           return `+234${value}`;
         }
 
-        // 2348012345678
         if (
           /^234\d{10}$/.test(
             value
@@ -732,7 +750,6 @@ const ServiceModal = ({
           return `+${value}`;
         }
 
-        // +2348012345678
         if (
           /^\+234\d{10}$/.test(
             value
@@ -839,7 +856,7 @@ const ServiceModal = ({
           title:
             "Invalid amount",
           description:
-            "Please enter a valid amount.",
+            "Please select a valid bill package.",
           variant:
             "destructive",
         });
@@ -848,63 +865,21 @@ const ServiceModal = ({
       }
 
       // ========================================================
-      // FIXED AMOUNT
+      // VERIFY DISPLAY PRICE
       // ========================================================
 
       if (
-        isFixedAmount &&
+        customerAmount > 0 &&
         Math.abs(
           amountNumber -
-            fixedItemAmount
+            customerAmount
         ) > 0.01
       ) {
         toast({
           title:
-            "Invalid amount",
+            "Invalid bill amount",
           description:
-            `This package costs ₦${fixedItemAmount.toLocaleString()}.`,
-          variant:
-            "destructive",
-        });
-
-        return false;
-      }
-
-      // ========================================================
-      // MINIMUM
-      // ========================================================
-
-      if (
-        itemMinimum > 0 &&
-        amountNumber <
-          itemMinimum
-      ) {
-        toast({
-          title:
-            "Amount too low",
-          description:
-            `Minimum amount is ₦${itemMinimum.toLocaleString()}.`,
-          variant:
-            "destructive",
-        });
-
-        return false;
-      }
-
-      // ========================================================
-      // MAXIMUM
-      // ========================================================
-
-      if (
-        itemMaximum > 0 &&
-        amountNumber >
-          itemMaximum
-      ) {
-        toast({
-          title:
-            "Amount too high",
-          description:
-            `Maximum amount is ₦${itemMaximum.toLocaleString()}.`,
+            `This package costs ₦${customerAmount.toLocaleString()} including the ₦${BILL_MARKUP} service markup.`,
           variant:
             "destructive",
         });
@@ -926,7 +901,7 @@ const ServiceModal = ({
           title:
             "Insufficient Balance",
           description:
-            "Please fund your wallet to continue.",
+            `You need ₦${amountNumber.toLocaleString()} to complete this payment.`,
           variant:
             "destructive",
         });
@@ -960,9 +935,15 @@ const ServiceModal = ({
       const finalCustomer =
         normaliseCustomer();
 
-      // ========================================================
-      // BUILD DETAILS
-      // ========================================================
+      /**
+       * IMPORTANT:
+       *
+       * amount = CUSTOMER PRICE
+       * provider_amount = FLUTTERWAVE PRICE
+       *
+       * The Edge Function will independently verify
+       * the actual Flutterwave amount again.
+       */
 
       const details = {
         customer:
@@ -1045,6 +1026,18 @@ const ServiceModal = ({
 
         customerLabel,
 
+        /**
+         * Pricing information.
+         */
+        provider_amount:
+          flutterwaveAmount,
+
+        markup:
+          BILL_MARKUP,
+
+        customer_amount:
+          customerAmount,
+
         item:
           selectedItem,
 
@@ -1052,21 +1045,20 @@ const ServiceModal = ({
           selectedBiller,
       };
 
-      // ========================================================
-      // IMPORTANT DEBUG LOG
-      // ========================================================
-
       console.log(
         "Sending bill purchase details:",
         {
           service:
             serviceType,
 
-          amount:
-            amountNumber,
+          customer_amount:
+            customerAmount,
 
-          country:
-            "NG",
+          provider_amount:
+            flutterwaveAmount,
+
+          markup:
+            BILL_MARKUP,
 
           biller_code:
             selectedBillerCode,
@@ -1076,11 +1068,6 @@ const ServiceModal = ({
 
           customer:
             finalCustomer,
-
-          provider:
-            selectedBiller?.name ??
-            selectedBiller?.short_name ??
-            "",
 
           details,
         }
@@ -1093,8 +1080,12 @@ const ServiceModal = ({
 
         setError("");
 
+        /**
+         * onPurchase receives the TOTAL amount that
+         * should be deducted from the user's wallet.
+         */
         await onPurchase(
-          amountNumber,
+          customerAmount,
           details
         );
 
@@ -1109,9 +1100,7 @@ const ServiceModal = ({
           err?.message ||
           "Unable to complete this payment.";
 
-        setError(
-          message
-        );
+        setError(message);
       } finally {
         setProcessingPayment(
           false
@@ -1349,6 +1338,16 @@ const ServiceModal = ({
                       ) &&
                       itemAmount > 0;
 
+                    const customerPrice =
+                      hasAmount
+                        ? Number(
+                            (
+                              itemAmount +
+                              BILL_MARKUP
+                            ).toFixed(2)
+                          )
+                        : 0;
+
                     return (
                       <SelectItem
                         key={`${code}-${index}`}
@@ -1359,7 +1358,7 @@ const ServiceModal = ({
                           code}
 
                         {hasAmount
-                          ? ` — ₦${itemAmount.toLocaleString()}`
+                          ? ` — ₦${customerPrice.toLocaleString()}`
                           : ""}
                       </SelectItem>
                     );
@@ -1426,57 +1425,56 @@ const ServiceModal = ({
               min="0"
               step="0.01"
               value={amount}
-              onChange={(
-                event
-              ) =>
-                setAmount(
-                  event.target.value
-                )
-              }
+              readOnly
               placeholder={
-                isFixedAmount
+                customerAmount > 0
                   ? String(
-                      fixedItemAmount
+                      customerAmount
                     )
-                  : "Enter amount"
+                  : "Select a package"
               }
               disabled={
-                isFixedAmount ||
-                processingPayment
+                processingPayment ||
+                !selectedItemCode
               }
             />
 
-            {(itemMinimum >
-              0 ||
-              itemMaximum >
-                0) && (
-              <p className="text-xs text-gray-500">
+            {flutterwaveAmount >
+              0 && (
+              <div className="rounded-lg bg-gray-50 border p-3 space-y-1">
+                <div className="flex justify-between text-xs text-gray-600">
+                  <span>
+                    Flutterwave price
+                  </span>
 
-                {itemMinimum >
-                0
-                  ? `Minimum: ₦${itemMinimum.toLocaleString()}`
-                  : ""}
+                  <span>
+                    ₦
+                    {flutterwaveAmount.toLocaleString()}
+                  </span>
+                </div>
 
-                {itemMinimum >
-                  0 &&
-                itemMaximum >
-                  0
-                  ? " • "
-                  : ""}
+                <div className="flex justify-between text-xs text-gray-600">
+                  <span>
+                    IyanjuPay service fee
+                  </span>
 
-                {itemMaximum >
-                0
-                  ? `Maximum: ₦${itemMaximum.toLocaleString()}`
-                  : ""}
+                  <span>
+                    ₦
+                    {BILL_MARKUP.toLocaleString()}
+                  </span>
+                </div>
 
-              </p>
-            )}
+                <div className="flex justify-between font-semibold text-sm pt-1 border-t">
+                  <span>
+                    You pay
+                  </span>
 
-            {isFixedAmount && (
-              <p className="text-xs text-gray-500">
-                Fixed package price: ₦
-                {fixedItemAmount.toLocaleString()}
-              </p>
+                  <span>
+                    ₦
+                    {customerAmount.toLocaleString()}
+                  </span>
+                </div>
+              </div>
             )}
 
           </div>
@@ -1516,8 +1514,10 @@ const ServiceModal = ({
               </>
             ) : (
               <>
-                Purchase{" "}
-                {service.title}
+                Pay ₦
+                {customerAmount > 0
+                  ? customerAmount.toLocaleString()
+                  : "0"}
               </>
             )}
 

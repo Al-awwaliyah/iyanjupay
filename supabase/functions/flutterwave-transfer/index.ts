@@ -34,6 +34,150 @@ function maskAccountNumber(accountNumber: string): string {
   return `xxxxxx${clean.slice(-4)}`;
 }
 
+
+// ============================================================
+// NOTIFICATION HELPER
+// ============================================================
+//
+// Creates a transaction notification safely.
+//
+// Duplicate protection:
+//   user_id + transaction_id + type
+//
+// We intentionally do not make notification failure break
+// the financial transaction.
+//
+async function createTransactionNotification(
+  supabase: ReturnType<typeof adminClient>,
+  params: {
+    userId: string;
+    transactionId: string | null;
+    type: string;
+    title: string;
+    message: string;
+    amount?: number | null;
+    metadata?: Record<string, any>;
+  },
+) {
+  const {
+    userId,
+    transactionId,
+    type,
+    title,
+    message,
+    amount = null,
+    metadata = {},
+  } = params;
+
+  try {
+    /*
+     * ==========================================================
+     * DUPLICATE PROTECTION
+     * ==========================================================
+     *
+     * This prevents the same transaction notification from
+     * being inserted more than once if an Edge Function is
+     * retried.
+     */
+    if (transactionId) {
+      const {
+        data: existingNotification,
+        error: existingError,
+      } = await supabase
+        .from("notifications")
+        .select("id")
+        .eq("user_id", userId)
+        .eq("transaction_id", transactionId)
+        .eq("type", type)
+        .limit(1)
+        .maybeSingle();
+
+      if (existingError) {
+        console.error(
+          "Notification duplicate check failed:",
+          existingError,
+        );
+      }
+
+      if (existingNotification) {
+        console.log(
+          "Transaction notification already exists:",
+          {
+            user_id: userId,
+            transaction_id: transactionId,
+            type,
+          },
+        );
+
+        return;
+      }
+    }
+
+    /*
+     * ==========================================================
+     * INSERT NOTIFICATION
+     * ==========================================================
+     */
+    const {
+      error,
+    } = await supabase
+      .from("notifications")
+      .insert({
+        user_id: userId,
+        transaction_id: transactionId,
+        type,
+        title,
+        message,
+        amount,
+        is_read: false,
+        metadata,
+      });
+
+    if (error) {
+      /*
+       * Notification failure must NEVER reverse, interrupt,
+       * or fail the financial transaction.
+       */
+      console.error(
+        "Transaction notification insert failed:",
+        {
+          error,
+          user_id: userId,
+          transaction_id: transactionId,
+          type,
+        },
+      );
+
+      return;
+    }
+
+    console.log(
+      "Transaction notification created:",
+      {
+        user_id: userId,
+        transaction_id: transactionId,
+        type,
+      },
+    );
+  } catch (error) {
+    /*
+     * Notifications are secondary to the financial operation.
+     *
+     * Never throw notification errors back into the transfer
+     * flow.
+     */
+    console.error(
+      "Unexpected notification error:",
+      error,
+    );
+  }
+}
+
+
+// ============================================================
+// HISTORY METADATA
+// ============================================================
+
 function createHistoryMetadata(params: {
   transactionId: string | number;
   reference: string;
@@ -124,6 +268,11 @@ function createHistoryMetadata(params: {
     created_for_history: true,
   };
 }
+
+
+// ============================================================
+// MAIN
+// ============================================================
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -850,6 +999,55 @@ Deno.serve(async (req) => {
             transactionId,
           );
 
+        /*
+         * ========================================================
+         * NOTIFICATION
+         * ========================================================
+         *
+         * The financial operation requires reconciliation,
+         * therefore notify the user that the transfer requires
+         * attention rather than falsely saying it succeeded.
+         */
+
+        await createTransactionNotification(
+          supabase,
+          {
+            userId: user.id,
+            transactionId,
+            type: "transfer_refund_pending",
+            title:
+              "Transfer refund pending",
+            message:
+              `Your transfer of ₦${totalCharged.toLocaleString(
+                "en-NG",
+                {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                },
+              )} to ${beneficiaryName} failed. Your refund requires reconciliation.`,
+            amount: totalCharged,
+            metadata: {
+              reference,
+              beneficiary_name:
+                beneficiaryName,
+              account_number:
+                maskAccountNumber(
+                  accountNumber,
+                ),
+              transfer_amount:
+                amount,
+              iyanjupay_fee:
+                iyanjupayFee,
+              electronic_fee:
+                electronicFee,
+              total_charged:
+                totalCharged,
+              refund_pending: true,
+              refund_required: true,
+            },
+          },
+        );
+
         return json(
           {
             success: false,
@@ -893,6 +1091,59 @@ Deno.serve(async (req) => {
           "id",
           transactionId,
         );
+
+      /*
+       * ========================================================
+       * NOTIFICATION — FAILED + REFUNDED
+       * ========================================================
+       */
+
+      await createTransactionNotification(
+        supabase,
+        {
+          userId: user.id,
+          transactionId,
+          type: "transfer_failed",
+          title:
+            "Bank transfer failed",
+          message:
+            `Your transfer of ₦${totalCharged.toLocaleString(
+              "en-NG",
+              {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              },
+            )} to ${beneficiaryName} failed. ₦${totalCharged.toLocaleString(
+              "en-NG",
+              {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              },
+            )} has been refunded to your wallet.`,
+          amount: totalCharged,
+          metadata: {
+            reference,
+            beneficiary_name:
+              beneficiaryName,
+            account_number:
+              maskAccountNumber(
+                accountNumber,
+              ),
+            transfer_amount:
+              amount,
+            iyanjupay_fee:
+              iyanjupayFee,
+            electronic_fee:
+              electronicFee,
+            total_charged:
+              totalCharged,
+            refunded: true,
+            refund_amount:
+              totalCharged,
+            status: "failed",
+          },
+        },
+      );
 
       return json({
         success: false,
@@ -1010,6 +1261,53 @@ Deno.serve(async (req) => {
             transactionId,
           );
 
+        /*
+         * ========================================================
+         * NOTIFICATION — REFUND PENDING
+         * ========================================================
+         */
+
+        await createTransactionNotification(
+          supabase,
+          {
+            userId: user.id,
+            transactionId,
+            type: "transfer_refund_pending",
+            title:
+              "Transfer refund pending",
+            message:
+              `Your transfer of ₦${totalCharged.toLocaleString(
+                "en-NG",
+                {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                },
+              )} to ${beneficiaryName} was rejected. Your refund requires reconciliation.`,
+            amount: totalCharged,
+            metadata: {
+              reference,
+              beneficiary_name:
+                beneficiaryName,
+              account_number:
+                maskAccountNumber(
+                  accountNumber,
+                ),
+              transfer_amount:
+                amount,
+              iyanjupay_fee:
+                iyanjupayFee,
+              electronic_fee:
+                electronicFee,
+              total_charged:
+                totalCharged,
+              provider_error:
+                providerError,
+              refund_pending: true,
+              refund_required: true,
+            },
+          },
+        );
+
         return json(
           {
             success: false,
@@ -1056,6 +1354,61 @@ Deno.serve(async (req) => {
           "id",
           transactionId,
         );
+
+      /*
+       * ========================================================
+       * NOTIFICATION — PROVIDER REJECTED + REFUNDED
+       * ========================================================
+       */
+
+      await createTransactionNotification(
+        supabase,
+        {
+          userId: user.id,
+          transactionId,
+          type: "transfer_failed",
+          title:
+            "Bank transfer failed",
+          message:
+            `Your transfer of ₦${totalCharged.toLocaleString(
+              "en-NG",
+              {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              },
+            )} to ${beneficiaryName} was rejected. ₦${totalCharged.toLocaleString(
+              "en-NG",
+              {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              },
+            )} has been refunded to your wallet.`,
+          amount: totalCharged,
+          metadata: {
+            reference,
+            beneficiary_name:
+              beneficiaryName,
+            account_number:
+              maskAccountNumber(
+                accountNumber,
+              ),
+            transfer_amount:
+              amount,
+            iyanjupay_fee:
+              iyanjupayFee,
+            electronic_fee:
+              electronicFee,
+            total_charged:
+              totalCharged,
+            provider_error:
+              providerError,
+            refunded: true,
+            refund_amount:
+              totalCharged,
+            status: "failed",
+          },
+        },
+      );
 
       return json({
         success: false,
@@ -1144,6 +1497,60 @@ Deno.serve(async (req) => {
         "id",
         transactionId,
       );
+
+    /*
+     * ============================================================
+     * NOTIFICATION — TRANSFER PENDING
+     * ============================================================
+     *
+     * This is NOT a success notification.
+     *
+     * Flutterwave has only accepted/queued the request.
+     */
+
+    await createTransactionNotification(
+      supabase,
+      {
+        userId: user.id,
+        transactionId,
+        type: "transfer_pending",
+        title:
+          "Bank transfer processing",
+        message:
+          `Your transfer of ₦${totalCharged.toLocaleString(
+            "en-NG",
+            {
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 2,
+            },
+          )} to ${beneficiaryName} is being processed.`,
+        amount: totalCharged,
+        metadata: {
+          reference,
+          beneficiary_name:
+            beneficiaryName,
+          account_number:
+            maskAccountNumber(
+              accountNumber,
+            ),
+          account_bank:
+            accountBank,
+          transfer_amount:
+            amount,
+          iyanjupay_fee:
+            iyanjupayFee,
+          electronic_fee:
+            electronicFee,
+          total_charged:
+            totalCharged,
+          flutterwave_transfer_id:
+            flutterwaveTransferId,
+          flutterwave_status:
+            transferStatus,
+          status: "pending",
+        },
+      },
+    );
 
     return json({
       success: true,

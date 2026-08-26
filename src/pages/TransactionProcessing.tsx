@@ -1,787 +1,1180 @@
-import React, { useEffect, useRef, useState } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import React, {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
+
 import {
+  ArrowLeft,
   CheckCircle2,
   XCircle,
   Clock3,
   Loader2,
-  ArrowLeft,
-  ReceiptText,
+  RefreshCw,
+  Send,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+
+import { useToast } from "@/hooks/use-toast";
 
 import { supabase } from "@/integrations/supabase/client";
 
+type TransferType =
+  | "iyanjupay"
+  | "bank";
+
 type TransactionStatus =
   | "processing"
+  | "success"
   | "pending"
-  | "successful"
   | "failed";
 
-type TransactionState = {
-  transaction_id?: string;
-  reference?: string;
+interface TransactionProcessingPageProps {
+  transferType: TransferType;
+
+  amount: number;
+
+  details: any;
+
+  idempotencyKey: string;
+
+  onDone: () =>
+    | Promise<void>
+    | void;
+
+  onBack: () =>
+    | Promise<void>
+    | void;
+}
+
+interface TransferResult {
+  success?: boolean;
+
   status?: string;
-  amount?: number;
-  total_charged?: number;
-  service?: string;
-  beneficiary_name?: string;
-  account_number?: string;
-  account_bank?: string;
+
   message?: string;
+
   error?: string;
-};
 
-const POLL_INTERVAL = 3000;
-const MAX_POLL_TIME = 120000;
+  reference?: string;
 
-const normalizeStatus = (
-  value: unknown
-): TransactionStatus => {
-  const status = String(value ?? "")
-    .toLowerCase()
-    .trim();
+  transaction_id?: string;
 
-  if (
-    status === "successful" ||
-    status === "success" ||
-    status === "completed" ||
-    status === "complete"
-  ) {
-    return "successful";
-  }
+  transactionId?: string;
 
-  if (
-    status === "failed" ||
-    status === "failure" ||
-    status === "cancelled" ||
-    status === "canceled"
-  ) {
-    return "failed";
-  }
+  transfer_id?: string;
 
-  if (
-    status === "pending" ||
-    status === "queued" ||
-    status === "processing" ||
-    status === "new"
-  ) {
-    return "pending";
-  }
+  transferId?: string;
 
-  return "processing";
-};
+  credit_transaction_id?: string;
 
-const formatNaira = (
-  amount: number | undefined
-) => {
-  if (
-    typeof amount !== "number" ||
-    Number.isNaN(amount)
-  ) {
-    return "₦0.00";
-  }
+  amount?: number;
 
-  return new Intl.NumberFormat("en-NG", {
-    style: "currency",
-    currency: "NGN",
-    minimumFractionDigits: 2,
-  }).format(amount);
-};
+  fee?: number;
 
-const TransactionProcessing = () => {
-  const navigate = useNavigate();
-  const location = useLocation();
+  total_charged?: number;
 
-  const initialState =
-    (location.state as TransactionState | null) ??
-    null;
+  recipient_name?: string;
 
-  const [
-    transaction,
-    setTransaction,
-  ] = useState<TransactionState>(
-    initialState ?? {}
-  );
+  recipient_wallet_id?: string;
 
-  const [
-    status,
-    setStatus,
-  ] = useState<TransactionStatus>(
-    normalizeStatus(
-      initialState?.status
-    )
-  );
+  data?: any;
+}
 
-  const [
-    errorMessage,
-    setErrorMessage,
-  ] = useState(
-    initialState?.error ??
-      initialState?.message ??
-      ""
-  );
+/**
+ * ============================================================
+ * TRANSACTION PROCESSING PAGE
+ * ============================================================
+ *
+ * This page is responsible for EXECUTING the already
+ * PIN-authorized transfer.
+ *
+ * SendMoneyPage:
+ *
+ * Recipient
+ *    ↓
+ * Amount
+ *    ↓
+ * Review
+ *    ↓
+ * Payment PIN
+ *    ↓
+ * THIS PAGE
+ *    ↓
+ * Edge Function
+ *    ↓
+ * Success / Pending / Failed
+ *
+ * Important:
+ *
+ * PaymentPinModal has already authorized the transaction
+ * before this page is reached.
+ *
+ * This page therefore does NOT ask for the PIN again.
+ */
+const TransactionProcessingPage = ({
+  transferType,
+  amount,
+  details,
+  idempotencyKey,
+  onDone,
+  onBack,
+}: TransactionProcessingPageProps) => {
+  const { toast } = useToast();
 
-  const [
-    elapsed,
-    setElapsed,
-  ] = useState(0);
+  const [status, setStatus] =
+    useState<TransactionStatus>(
+      "processing"
+    );
 
-  const pollingRef =
+  const [result, setResult] =
+    useState<TransferResult | null>(
+      null
+    );
+
+  const [errorMessage, setErrorMessage] =
+    useState("");
+
+  const [retrying, setRetrying] =
+    useState(false);
+
+  /*
+   * Prevent duplicate execution caused by:
+   *
+   * - React re-render
+   * - StrictMode
+   * - multiple callbacks
+   * - accidental double click
+   */
+  const executionStartedRef =
     useRef(false);
 
-  const transactionId =
-    transaction.transaction_id;
-
-  /*
-   * ============================================================
-   * REDIRECT IF TRANSACTION DATA IS MISSING
-   * ============================================================
-   */
+  const mountedRef =
+    useRef(true);
 
   useEffect(() => {
-    if (!transactionId) {
-      navigate(
-        "/dashboard",
-        {
-          replace: true,
-        }
-      );
-    }
-  }, [
-    transactionId,
-    navigate,
-  ]);
-
-  /*
-   * ============================================================
-   * POLLING TIMER
-   * ============================================================
-   */
-
-  useEffect(() => {
-    if (
-      status === "successful" ||
-      status === "failed"
-    ) {
-      return;
-    }
-
-    const timer =
-      window.setInterval(() => {
-        setElapsed(
-          current => current + 1000
-        );
-      }, 1000);
-
     return () => {
-      window.clearInterval(
-        timer
-      );
+      mountedRef.current = false;
     };
-  }, [status]);
+  }, []);
 
-  /*
-   * ============================================================
-   * TRANSACTION STATUS
-   *
-   * The processing page checks the database transaction.
-   *
-   * The Flutterwave webhook remains the authority that updates
-   * the final transaction state.
-   * ============================================================
-   */
+  // ==========================================================
+  // EXTRACT ERROR MESSAGE
+  // ==========================================================
 
-  useEffect(() => {
-    if (!transactionId) {
-      return;
+  const extractFunctionError =
+    async (
+      error: any,
+      fallback: string
+    ): Promise<string> => {
+      let message =
+        error?.message ||
+        fallback;
+
+      try {
+        if (
+          error?.context &&
+          typeof error.context
+            .json === "function"
+        ) {
+          const payload =
+            await error.context.json();
+
+          message =
+            payload?.error ||
+            payload?.message ||
+            payload?.details ||
+            message;
+        }
+      } catch {
+        // Keep original error.
+      }
+
+      return message;
+    };
+
+  // ==========================================================
+  // NORMALIZE STATUS
+  // ==========================================================
+
+  const normalizeStatus = (
+    response: TransferResult
+  ): TransactionStatus => {
+    const rawStatus =
+      String(
+        response?.status ||
+          response?.data?.status ||
+          ""
+      )
+        .trim()
+        .toLowerCase();
+
+    if (
+      [
+        "success",
+        "successful",
+        "completed",
+        "complete",
+        "succeeded",
+      ].includes(rawStatus)
+    ) {
+      return "success";
     }
 
     if (
-      status === "successful" ||
-      status === "failed"
+      [
+        "pending",
+        "processing",
+        "queued",
+        "new",
+        "initiated",
+        "awaiting",
+      ].includes(rawStatus)
     ) {
-      return;
+      return "pending";
     }
 
-    if (pollingRef.current) {
-      return;
+    if (
+      [
+        "failed",
+        "failure",
+        "cancelled",
+        "canceled",
+        "reversed",
+        "rejected",
+      ].includes(rawStatus)
+    ) {
+      return "failed";
     }
 
-    pollingRef.current = true;
+    /*
+     * Existing IyanjuPay function uses
+     * success: true for successful transfers.
+     */
+    if (
+      response?.success === true
+    ) {
+      return "success";
+    }
 
-    let cancelled = false;
+    if (
+      response?.success === false
+    ) {
+      return "failed";
+    }
 
-    const checkStatus =
-      async () => {
+    /*
+     * If the Edge Function returned without
+     * a clear status, treat it as pending rather
+     * than falsely telling the user the transfer
+     * succeeded.
+     */
+    return "pending";
+  };
+
+  // ==========================================================
+  // EXECUTE TRANSFER
+  // ==========================================================
+
+  const executeTransfer =
+    useCallback(
+      async (
+        allowDuplicateGuard = false
+      ) => {
+        /*
+         * Duplicate protection.
+         */
+        if (
+          executionStartedRef.current &&
+          !allowDuplicateGuard
+        ) {
+          return;
+        }
+
+        executionStartedRef.current =
+          true;
+
+        if (mountedRef.current) {
+          setStatus("processing");
+          setErrorMessage("");
+          setResult(null);
+        }
+
         try {
+          let functionName = "";
+
+          let body: Record<
+            string,
+            any
+          > = {};
+
+          // ==================================================
+          // IYANJUPAY
+          // ==================================================
+
+          if (
+            transferType ===
+            "iyanjupay"
+          ) {
+            functionName =
+              "iyanjuPay-transfer";
+
+            body = {
+              wallet_id:
+                details?.wallet_id ||
+                details?.recipientWalletId,
+
+              amount,
+
+              narration:
+                details?.narration ||
+                "IyanjuPay transfer",
+
+              idempotency_key:
+                idempotencyKey,
+            };
+          }
+
+          // ==================================================
+          // BANK
+          // ==================================================
+
+          if (
+            transferType === "bank"
+          ) {
+            functionName =
+              "flutterwave-transfer";
+
+            body = {
+              amount,
+
+              account_number:
+                details?.accountNumber,
+
+              account_bank:
+                details?.bankCode,
+
+              bank_code:
+                details?.bankCode,
+
+              account_name:
+                details?.recipient,
+
+              narration:
+                details?.narration ||
+                "Bank transfer",
+
+              idempotency_key:
+                idempotencyKey,
+            };
+          }
+
+          if (!functionName) {
+            throw new Error(
+              "Invalid transfer type."
+            );
+          }
+
+          console.log(
+            "Executing authorized transfer:",
+            {
+              functionName,
+              transferType,
+              amount,
+              idempotencyKey,
+            }
+          );
+
           const {
             data,
             error,
           } =
-            await supabase
-              .from("transactions")
-              .select(
-                `
-                  id,
-                  reference_number,
-                  status,
-                  amount,
-                  metadata
-                `
-              )
-              .eq(
-                "id",
-                transactionId
-              )
-              .maybeSingle();
+            await supabase.functions.invoke(
+              functionName,
+              {
+                body,
+              }
+            );
 
-          if (
-            cancelled
-          ) {
-            return;
-          }
+          console.log(
+            "Transfer Edge Function response:",
+            data
+          );
 
           if (error) {
-            console.error(
-              "Transaction status lookup error:",
-              error
-            );
+            const message =
+              await extractFunctionError(
+                error,
+                "Unable to process this transfer."
+              );
 
-            return;
+            throw new Error(message);
           }
 
+          /*
+           * The Edge Function must return an object.
+           */
           if (!data) {
+            throw new Error(
+              "No response was received from the transfer service."
+            );
+          }
+
+          /*
+           * Some Supabase functions return:
+           *
+           * {
+           *   success: true,
+           *   ...
+           * }
+           *
+           * Others may return:
+           *
+           * {
+           *   success: true,
+           *   data: {...}
+           * }
+           *
+           * Preserve the complete response.
+           */
+          const response =
+            data as TransferResult;
+
+          /*
+           * Explicit backend error.
+           */
+          if (
+            response.success ===
+              false &&
+            !response.status
+          ) {
+            throw new Error(
+              response.error ||
+                response.message ||
+                "Transfer failed."
+            );
+          }
+
+          const normalizedStatus =
+            normalizeStatus(
+              response
+            );
+
+          if (
+            !mountedRef.current
+          ) {
             return;
           }
 
-          const metadata =
-            (
-              data.metadata ??
-              {}
-            ) as Record<
-              string,
-              unknown
-            >;
-
-          const normalized =
-            normalizeStatus(
-              data.status
-            );
-
-          setTransaction(
-            current => ({
-              ...current,
-
-              transaction_id:
-                data.id,
-
-              reference:
-                data.reference_number,
-
-              status:
-                data.status,
-
-              amount:
-                Number(
-                  metadata.transfer_amount ??
-                    metadata.amount ??
-                    data.amount ??
-                    current.amount ??
-                    0
-                ),
-
-              total_charged:
-                Number(
-                  metadata.total_charged ??
-                    metadata.totalCharged ??
-                    data.amount ??
-                    current.total_charged ??
-                    0
-                ),
-
-              service:
-                String(
-                  metadata.service ??
-                    metadata.service_type ??
-                    current.service ??
-                    "Transaction"
-                ),
-
-              beneficiary_name:
-                String(
-                  metadata.beneficiary_name ??
-                    metadata.customer_name ??
-                    current.beneficiary_name ??
-                    ""
-                ),
-
-              account_number:
-                String(
-                  metadata.account_number ??
-                    current.account_number ??
-                    ""
-                ),
-
-              account_bank:
-                String(
-                  metadata.account_bank ??
-                    current.account_bank ??
-                    ""
-                ),
-
-              message:
-                String(
-                  metadata.message ??
-                    current.message ??
-                    ""
-                ),
-
-              error:
-                String(
-                  metadata.error ??
-                    current.error ??
-                    ""
-                ),
-            })
-          );
-
+          setResult(response);
           setStatus(
-            normalized
+            normalizedStatus
           );
 
           if (
-            normalized ===
-            "failed"
+            normalizedStatus ===
+            "success"
           ) {
-            setErrorMessage(
-              String(
-                metadata.error ??
-                  metadata.message ??
-                  "The transaction could not be completed."
-              )
-            );
+            toast({
+              title:
+                "Transfer Successful",
+              description:
+                response.message ||
+                `₦${amount.toLocaleString(
+                  "en-NG"
+                )} transfer completed successfully.`,
+            });
+
+            return;
           }
 
           if (
-            normalized ===
-            "successful"
+            normalizedStatus ===
+            "pending"
           ) {
-            setErrorMessage("");
+            toast({
+              title:
+                "Transfer Pending",
+              description:
+                response.message ||
+                "Your transfer has been submitted and is awaiting final confirmation.",
+            });
+
+            return;
           }
-        } catch (error) {
+
+          /*
+           * Failed status returned normally
+           * by backend.
+           */
+          setErrorMessage(
+            response.error ||
+              response.message ||
+              "The transfer could not be completed."
+          );
+        } catch (error: any) {
           console.error(
-            "Transaction status polling error:",
+            "Transaction processing error:",
             error
           );
+
+          if (
+            !mountedRef.current
+          ) {
+            return;
+          }
+
+          setResult(null);
+
+          setStatus("failed");
+
+          setErrorMessage(
+            error?.message ||
+              "Unable to complete this transfer."
+          );
+
+          toast({
+            title:
+              "Transfer Failed",
+            description:
+              error?.message ||
+              "Unable to complete this transfer.",
+            variant:
+              "destructive",
+          });
         }
-      };
+      },
+      [
+        amount,
+        details,
+        idempotencyKey,
+        toast,
+        transferType,
+      ]
+    );
 
-    checkStatus();
-
-    const interval =
-      window.setInterval(
-        checkStatus,
-        POLL_INTERVAL
-      );
-
-    return () => {
-      cancelled = true;
-
-      window.clearInterval(
-        interval
-      );
-
-      pollingRef.current =
-        false;
-    };
-  }, [
-    transactionId,
-    status,
-  ]);
-
-  /*
-   * ============================================================
-   * SAFETY TIMEOUT
-   *
-   * We never falsely say "failed" simply because polling took
-   * longer than expected.
-   *
-   * The user remains in pending state.
-   * ============================================================
-   */
+  // ==========================================================
+  // INITIAL EXECUTION
+  // ==========================================================
 
   useEffect(() => {
     if (
-      elapsed <
-      MAX_POLL_TIME
+      executionStartedRef.current
     ) {
       return;
     }
 
-    if (
-      status === "processing"
-    ) {
-      setStatus("pending");
+    void executeTransfer();
+  }, [executeTransfer]);
+
+  // ==========================================================
+  // RETRY
+  // ==========================================================
+
+  const handleRetry = async () => {
+    /*
+     * VERY IMPORTANT:
+     *
+     * Do NOT generate a new idempotency key
+     * during retry.
+     *
+     * Reusing the same key protects against
+     * accidentally charging the wallet twice
+     * if the first request actually reached
+     * the backend but the frontend timed out.
+     */
+    if (retrying) {
+      return;
     }
-  }, [
-    elapsed,
-    status,
-  ]);
 
-  /*
-   * ============================================================
-   * DONE
-   * ============================================================
-   */
+    setRetrying(true);
 
-  const handleDone =
-    () => {
-      navigate(
-        "/dashboard",
-        {
-          replace: true,
-        }
-      );
-    };
+    /*
+     * Permit one retry execution.
+     */
+    executionStartedRef.current =
+      false;
 
-  /*
-   * ============================================================
-   * STATUS CONTENT
-   * ============================================================
-   */
-
-  const renderStatusIcon =
-    () => {
-      if (
-        status ===
-        "successful"
-      ) {
-        return (
-          <div className="mx-auto flex h-24 w-24 items-center justify-center rounded-full bg-green-100">
-            <CheckCircle2 className="h-14 w-14 text-green-600" />
-          </div>
-        );
+    try {
+      await executeTransfer();
+    } finally {
+      if (mountedRef.current) {
+        setRetrying(false);
       }
+    }
+  };
 
-      if (
-        status ===
-        "failed"
-      ) {
-        return (
-          <div className="mx-auto flex h-24 w-24 items-center justify-center rounded-full bg-red-100">
-            <XCircle className="h-14 w-14 text-red-600" />
-          </div>
-        );
-      }
+  // ==========================================================
+  // DISPLAY HELPERS
+  // ==========================================================
 
-      if (
-        status ===
-        "pending"
-      ) {
-        return (
-          <div className="mx-auto flex h-24 w-24 items-center justify-center rounded-full bg-amber-100">
-            <Clock3 className="h-14 w-14 text-amber-600" />
-          </div>
-        );
-      }
+  const reference =
+    result?.reference ||
+    result?.data?.reference ||
+    result?.transaction_id ||
+    result?.transactionId ||
+    result?.transfer_id ||
+    result?.transferId ||
+    result?.data?.transaction_id ||
+    result?.data?.transfer_id ||
+    "";
 
-      return (
-        <div className="mx-auto flex h-24 w-24 items-center justify-center rounded-full bg-blue-100">
-          <Loader2 className="h-14 w-14 animate-spin text-blue-600" />
-        </div>
-      );
-    };
+  const transactionId =
+    result?.transaction_id ||
+    result?.transactionId ||
+    result?.data?.transaction_id ||
+    result?.credit_transaction_id ||
+    "";
 
-  const getTitle =
-    () => {
-      switch (status) {
-        case "successful":
-          return "Transaction Successful";
+  const recipient =
+    details?.recipient ||
+    details?.recipientName ||
+    result?.recipient_name ||
+    result?.data?.recipient_name ||
+    "Recipient";
 
-        case "pending":
-          return "Transaction Pending";
+  const bank =
+    details?.bank ||
+    "";
 
-        case "failed":
-          return "Transaction Failed";
+  const accountNumber =
+    details?.accountNumber ||
+    "";
 
-        default:
-          return "Processing Transaction";
-      }
-    };
+  // ==========================================================
+  // PROCESSING UI
+  // ==========================================================
 
-  const getDescription =
-    () => {
-      switch (status) {
-        case "successful":
-          return (
-            "Your transaction was completed successfully."
-          );
+  if (
+    status === "processing"
+  ) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-50">
 
-        case "pending":
-          return (
-            "Your transaction is still being processed. Please wait for the final status."
-          );
+        <header className="bg-gradient-to-r from-purple-600 to-blue-600 text-white sticky top-0 z-30 shadow-md">
 
-        case "failed":
-          return (
-            errorMessage ||
-            "Your transaction could not be completed."
-          );
+          <div className="max-w-3xl mx-auto px-4 sm:px-6">
 
-        default:
-          return (
-            "Please wait while we process your transaction."
-          );
-      }
-    };
+            <div className="flex items-center h-16">
 
-  const title =
-    getTitle();
+              <div className="flex items-center gap-2">
+                <Send className="h-5 w-5" />
 
-  const description =
-    getDescription();
+                <h1 className="text-lg sm:text-xl font-bold">
+                  Transaction Processing
+                </h1>
+              </div>
 
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-50 px-4 py-8">
-
-      <div className="mx-auto max-w-md">
-
-        <Button
-          variant="ghost"
-          onClick={handleDone}
-          className="mb-6 text-purple-600"
-        >
-          <ArrowLeft className="mr-2 h-4 w-4" />
-          Dashboard
-        </Button>
-
-        <Card className="overflow-hidden shadow-xl">
-
-          <CardHeader className="text-center">
-
-            <div className="mb-5">
-              {renderStatusIcon()}
             </div>
 
-            <CardTitle className="text-2xl">
-              {title}
-            </CardTitle>
+          </div>
 
-            <p className="mt-2 text-sm text-gray-600">
-              {description}
+        </header>
+
+        <main className="max-w-2xl mx-auto px-4 py-10">
+
+          <div className="bg-white rounded-2xl shadow-sm border p-6 sm:p-8 text-center">
+
+            <div className="mx-auto w-16 h-16 rounded-full bg-blue-50 flex items-center justify-center mb-5">
+
+              <Loader2 className="h-8 w-8 text-blue-600 animate-spin" />
+
+            </div>
+
+            <h2 className="text-2xl font-bold text-gray-900">
+              Processing Transfer
+            </h2>
+
+            <p className="text-gray-600 mt-2">
+              Please wait while we securely process your transfer.
             </p>
 
-          </CardHeader>
+            <p className="text-sm text-gray-500 mt-5">
+              Do not close this page or submit the transfer again.
+            </p>
 
-          <CardContent className="space-y-5">
+            <div className="mt-7 rounded-xl bg-gray-50 border p-4 text-left space-y-3">
 
-            {status ===
-              "processing" && (
-              <div className="rounded-lg border border-blue-100 bg-blue-50 p-4 text-center">
+              <div className="flex justify-between gap-4">
+                <span className="text-gray-500">
+                  Recipient
+                </span>
 
-                <div className="flex items-center justify-center gap-2 text-sm font-medium text-blue-800">
-
-                  <Loader2 className="h-4 w-4 animate-spin" />
-
-                  Processing your transaction...
-
-                </div>
-
-                <p className="mt-2 text-xs text-blue-700">
-                  Please do not close the app.
-                </p>
-
-              </div>
-            )}
-
-            {status ===
-              "pending" && (
-              <div className="rounded-lg border border-amber-100 bg-amber-50 p-4 text-center">
-
-                <div className="flex items-center justify-center gap-2 text-sm font-medium text-amber-800">
-
-                  <Clock3 className="h-4 w-4" />
-
-                  Awaiting final confirmation
-
-                </div>
-
-                <p className="mt-2 text-xs text-amber-700">
-                  Flutterwave is still processing this transaction.
-                </p>
-
-              </div>
-            )}
-
-            {status ===
-              "failed" && (
-              <div className="rounded-lg border border-red-100 bg-red-50 p-4">
-
-                <p className="text-sm font-medium text-red-800">
-                  Transaction failed
-                </p>
-
-                <p className="mt-1 text-sm text-red-700">
-                  {errorMessage ||
-                    "The transaction could not be completed."}
-                </p>
-
-              </div>
-            )}
-
-            {status ===
-              "successful" && (
-              <div className="rounded-lg border border-green-100 bg-green-50 p-4 text-center">
-
-                <p className="text-sm font-medium text-green-800">
-                  Transaction completed successfully.
-                </p>
-
-              </div>
-            )}
-
-            <div className="rounded-xl border bg-white">
-
-              <div className="flex items-center gap-3 border-b p-4">
-
-                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-purple-100">
-                  <ReceiptText className="h-5 w-5 text-purple-600" />
-                </div>
-
-                <div>
-                  <p className="text-sm text-gray-500">
-                    Transaction
-                  </p>
-
-                  <p className="font-semibold text-gray-900">
-                    {transaction.service ||
-                      "IyanjuPay Transaction"}
-                  </p>
-                </div>
-
+                <span className="font-semibold text-gray-900 text-right">
+                  {recipient}
+                </span>
               </div>
 
-              <div className="space-y-3 p-4">
-
-                {transaction.amount !==
-                  undefined && (
+              {transferType ===
+                "bank" && (
+                <>
                   <div className="flex justify-between gap-4">
-
-                    <span className="text-sm text-gray-500">
-                      Amount
+                    <span className="text-gray-500">
+                      Bank
                     </span>
 
-                    <span className="font-semibold">
-                      {formatNaira(
-                        transaction.amount
-                      )}
+                    <span className="font-semibold text-gray-900 text-right">
+                      {bank}
                     </span>
-
                   </div>
-                )}
 
-                {transaction.total_charged !==
-                  undefined && (
                   <div className="flex justify-between gap-4">
-
-                    <span className="text-sm text-gray-500">
-                      Total charged
-                    </span>
-
-                    <span className="font-semibold">
-                      {formatNaira(
-                        transaction.total_charged
-                      )}
-                    </span>
-
-                  </div>
-                )}
-
-                {transaction.beneficiary_name && (
-                  <div className="flex justify-between gap-4">
-
-                    <span className="text-sm text-gray-500">
-                      Recipient
-                    </span>
-
-                    <span className="max-w-[60%] text-right font-medium">
-                      {
-                        transaction.beneficiary_name
-                      }
-                    </span>
-
-                  </div>
-                )}
-
-                {transaction.account_number && (
-                  <div className="flex justify-between gap-4">
-
-                    <span className="text-sm text-gray-500">
+                    <span className="text-gray-500">
                       Account
                     </span>
 
-                    <span className="font-medium">
-                      {
-                        transaction.account_number
-                      }
+                    <span className="font-semibold text-gray-900">
+                      {accountNumber}
                     </span>
-
                   </div>
-                )}
+                </>
+              )}
 
-                {transaction.reference && (
-                  <div className="flex justify-between gap-4">
+              <div className="border-t pt-3 flex justify-between gap-4">
 
-                    <span className="text-sm text-gray-500">
-                      Reference
-                    </span>
+                <span className="font-semibold">
+                  Amount
+                </span>
 
-                    <span className="max-w-[60%] break-all text-right text-xs font-medium">
-                      {
-                        transaction.reference
-                      }
-                    </span>
-
-                  </div>
-                )}
+                <span className="font-bold text-green-700">
+                  ₦
+                  {amount.toLocaleString(
+                    "en-NG",
+                    {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    }
+                  )}
+                </span>
 
               </div>
 
             </div>
 
-            {(status ===
-              "successful" ||
-              status ===
-                "pending" ||
-              status ===
-                "failed") && (
-              <Button
-                type="button"
-                onClick={
-                  handleDone
-                }
-                className="w-full bg-purple-600 hover:bg-purple-700"
-              >
-                Done
-              </Button>
+          </div>
+
+        </main>
+      </div>
+    );
+  }
+
+  // ==========================================================
+  // SUCCESS UI
+  // ==========================================================
+
+  if (status === "success") {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-green-50 via-blue-50 to-indigo-50">
+
+        <header className="bg-gradient-to-r from-green-600 to-blue-600 text-white sticky top-0 z-30 shadow-md">
+
+          <div className="max-w-3xl mx-auto px-4 sm:px-6">
+
+            <div className="flex items-center h-16">
+
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="h-5 w-5" />
+
+                <h1 className="text-lg sm:text-xl font-bold">
+                  Transfer Successful
+                </h1>
+              </div>
+
+            </div>
+
+          </div>
+
+        </header>
+
+        <main className="max-w-2xl mx-auto px-4 py-10">
+
+          <div className="bg-white rounded-2xl shadow-sm border p-6 sm:p-8">
+
+            <div className="text-center">
+
+              <div className="mx-auto w-20 h-20 rounded-full bg-green-100 flex items-center justify-center mb-5">
+
+                <CheckCircle2 className="h-11 w-11 text-green-600" />
+
+              </div>
+
+              <h2 className="text-2xl font-bold text-gray-900">
+                Transfer Successful
+              </h2>
+
+              <p className="text-gray-600 mt-2">
+                Your transfer has been completed successfully.
+              </p>
+
+              <p className="text-4xl font-bold text-green-700 mt-6">
+                ₦
+                {amount.toLocaleString(
+                  "en-NG",
+                  {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  }
+                )}
+              </p>
+
+            </div>
+
+            <div className="mt-8 rounded-xl bg-gray-50 border p-4 space-y-4">
+
+              <div className="flex justify-between gap-4">
+
+                <span className="text-gray-500">
+                  Recipient
+                </span>
+
+                <span className="font-semibold text-gray-900 text-right">
+                  {recipient}
+                </span>
+
+              </div>
+
+              {transferType ===
+                "bank" && (
+                <>
+                  <div className="flex justify-between gap-4">
+
+                    <span className="text-gray-500">
+                      Bank
+                    </span>
+
+                    <span className="font-semibold text-gray-900 text-right">
+                      {bank}
+                    </span>
+
+                  </div>
+
+                  <div className="flex justify-between gap-4">
+
+                    <span className="text-gray-500">
+                      Account
+                    </span>
+
+                    <span className="font-semibold text-gray-900">
+                      {accountNumber}
+                    </span>
+
+                  </div>
+                </>
+              )}
+
+              {reference && (
+                <div className="border-t pt-4 flex justify-between gap-4">
+
+                  <span className="text-gray-500">
+                    Reference
+                  </span>
+
+                  <span className="font-mono text-sm font-semibold text-gray-900 text-right break-all">
+                    {reference}
+                  </span>
+
+                </div>
+              )}
+
+              {transactionId && (
+                <div className="flex justify-between gap-4">
+
+                  <span className="text-gray-500">
+                    Transaction ID
+                  </span>
+
+                  <span className="font-mono text-xs text-gray-700 text-right break-all">
+                    {transactionId}
+                  </span>
+
+                </div>
+              )}
+
+            </div>
+
+            <Button
+              type="button"
+              onClick={() =>
+                void onDone()
+              }
+              className="w-full h-12 mt-7 bg-green-600 hover:bg-green-700 text-base font-semibold"
+            >
+              Done
+            </Button>
+
+          </div>
+
+        </main>
+      </div>
+    );
+  }
+
+  // ==========================================================
+  // PENDING UI
+  // ==========================================================
+
+  if (status === "pending") {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-yellow-50 via-blue-50 to-indigo-50">
+
+        <header className="bg-gradient-to-r from-yellow-600 to-blue-600 text-white sticky top-0 z-30 shadow-md">
+
+          <div className="max-w-3xl mx-auto px-4 sm:px-6">
+
+            <div className="flex items-center h-16">
+
+              <div className="flex items-center gap-2">
+                <Clock3 className="h-5 w-5" />
+
+                <h1 className="text-lg sm:text-xl font-bold">
+                  Transfer Pending
+                </h1>
+              </div>
+
+            </div>
+
+          </div>
+
+        </header>
+
+        <main className="max-w-2xl mx-auto px-4 py-10">
+
+          <div className="bg-white rounded-2xl shadow-sm border p-6 sm:p-8">
+
+            <div className="text-center">
+
+              <div className="mx-auto w-20 h-20 rounded-full bg-yellow-100 flex items-center justify-center mb-5">
+
+                <Clock3 className="h-11 w-11 text-yellow-600" />
+
+              </div>
+
+              <h2 className="text-2xl font-bold text-gray-900">
+                Transfer Pending
+              </h2>
+
+              <p className="text-gray-600 mt-2">
+                Your transfer has been submitted but is still awaiting final confirmation.
+              </p>
+
+              <p className="text-4xl font-bold text-gray-900 mt-6">
+                ₦
+                {amount.toLocaleString(
+                  "en-NG",
+                  {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  }
+                )}
+              </p>
+
+            </div>
+
+            <div className="mt-8 rounded-xl bg-yellow-50 border border-yellow-200 p-4">
+
+              <p className="text-sm text-yellow-800">
+                Please do not submit the same transfer again. The existing transaction is being processed using the same transaction reference.
+              </p>
+
+            </div>
+
+            {reference && (
+              <div className="mt-5 rounded-xl bg-gray-50 border p-4">
+
+                <p className="text-xs text-gray-500">
+                  Transaction Reference
+                </p>
+
+                <p className="font-mono text-sm font-semibold text-gray-900 mt-1 break-all">
+                  {reference}
+                </p>
+
+              </div>
             )}
 
-          </CardContent>
+            <Button
+              type="button"
+              onClick={() =>
+                void onDone()
+              }
+              className="w-full h-12 mt-7 bg-green-600 hover:bg-green-700 text-base font-semibold"
+            >
+              Done
+            </Button>
 
-        </Card>
+          </div>
 
+        </main>
       </div>
+    );
+  }
 
+  // ==========================================================
+  // FAILED UI
+  // ==========================================================
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-red-50 via-blue-50 to-indigo-50">
+
+      <header className="bg-gradient-to-r from-red-600 to-blue-600 text-white sticky top-0 z-30 shadow-md">
+
+        <div className="max-w-3xl mx-auto px-4 sm:px-6">
+
+          <div className="flex items-center h-16">
+
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() =>
+                void onBack()
+              }
+              className="text-white hover:bg-white/20 mr-2"
+            >
+              <ArrowLeft className="h-5 w-5 mr-2" />
+              Back
+            </Button>
+
+            <div className="flex items-center gap-2">
+
+              <XCircle className="h-5 w-5" />
+
+              <h1 className="text-lg sm:text-xl font-bold">
+                Transfer Failed
+              </h1>
+
+            </div>
+
+          </div>
+
+        </div>
+
+      </header>
+
+      <main className="max-w-2xl mx-auto px-4 py-10">
+
+        <div className="bg-white rounded-2xl shadow-sm border p-6 sm:p-8">
+
+          <div className="text-center">
+
+            <div className="mx-auto w-20 h-20 rounded-full bg-red-100 flex items-center justify-center mb-5">
+
+              <XCircle className="h-11 w-11 text-red-600" />
+
+            </div>
+
+            <h2 className="text-2xl font-bold text-gray-900">
+              Transfer Failed
+            </h2>
+
+            <p className="text-gray-600 mt-2">
+              We could not complete this transfer.
+            </p>
+
+          </div>
+
+          <div className="mt-7 rounded-xl border border-red-200 bg-red-50 p-4">
+
+            <p className="text-sm font-medium text-red-800">
+              {errorMessage ||
+                "The transfer could not be completed."}
+            </p>
+
+          </div>
+
+          <div className="mt-5 rounded-xl bg-gray-50 border p-4 space-y-3">
+
+            <div className="flex justify-between gap-4">
+
+              <span className="text-gray-500">
+                Recipient
+              </span>
+
+              <span className="font-semibold text-gray-900 text-right">
+                {recipient}
+              </span>
+
+            </div>
+
+            <div className="flex justify-between gap-4">
+
+              <span className="text-gray-500">
+                Amount
+              </span>
+
+              <span className="font-bold text-gray-900">
+                ₦
+                {amount.toLocaleString(
+                  "en-NG",
+                  {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  }
+                )}
+              </span>
+
+            </div>
+
+            {reference && (
+              <div className="border-t pt-3 flex justify-between gap-4">
+
+                <span className="text-gray-500">
+                  Reference
+                </span>
+
+                <span className="font-mono text-xs text-gray-700 text-right break-all">
+                  {reference}
+                </span>
+
+              </div>
+            )}
+
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-7">
+
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() =>
+                void onBack()
+              }
+              className="h-12"
+              disabled={retrying}
+            >
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              Back
+            </Button>
+
+            <Button
+              type="button"
+              onClick={
+                handleRetry
+              }
+              disabled={retrying}
+              className="h-12 bg-green-600 hover:bg-green-700"
+            >
+              {retrying ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Retrying...
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                  Retry
+                </>
+              )}
+            </Button>
+
+          </div>
+
+        </div>
+
+      </main>
     </div>
   );
 };
 
-export default TransactionProcessing;
+export default TransactionProcessingPage;

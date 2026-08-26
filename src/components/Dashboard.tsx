@@ -37,11 +37,10 @@ import {
 import ServiceCard from "./services/ServiceCard";
 import FundWalletModal from "./modals/FundWalletModal";
 import ServiceModal from "./modals/ServiceModal";
-import TransferModal from "./modals/TransferModal";
 import QRCodeModal from "./modals/QRCodeModal";
 import WhatsAppFloat from "./WhatsAppFloat";
 
-import SendMoneyPage from "./send-money/SendMoneyPage";
+import SendMoneyPage from "@/pages/SendMoney";
 
 import ProfilePage from "./profile/ProfilePage";
 import TransactionHistory from "./transactions/TransactionHistory";
@@ -296,14 +295,6 @@ const Dashboard = () => {
     useState(false);
 
   const [serviceModalOpen, setServiceModalOpen] =
-    useState(false);
-
-  /*
-   * TransferModal is kept temporarily because we will
-   * remove/replace it after converting its functionality
-   * into SendMoneyPage.
-   */
-  const [transferModalOpen, setTransferModalOpen] =
     useState(false);
 
   const [qrModalOpen, setQrModalOpen] =
@@ -812,7 +803,7 @@ const Dashboard = () => {
     service: typeof services[number]
   ) => {
     /*
-     * Transfer Money now opens the full Send Money page.
+     * Transfer Money opens the full Send Money page.
      */
     if (service.type === "transfer") {
       setCurrentPage("send-money");
@@ -1118,12 +1109,6 @@ const Dashboard = () => {
    * ============================================================
    * BANK TRANSFER
    * ============================================================
-   *
-   * This handler remains unchanged.
-   *
-   * SendMoneyPage will use the exact same transfer flow
-   * after we convert TransferModal.
-   * ============================================================
    */
 
   const handleTransfer = async (
@@ -1283,8 +1268,6 @@ const Dashboard = () => {
       await refreshWallet();
       await loadDashboardStats();
 
-      setTransferModalOpen(false);
-
       toast({
         title: "Transfer Processing",
         description:
@@ -1350,7 +1333,7 @@ const Dashboard = () => {
   /*
    * SEND MONEY PAGE
    *
-   * This must come before the normal dashboard UI.
+   * Full Send Money flow.
    */
   if (currentPage === "send-money") {
     return (
@@ -1982,26 +1965,6 @@ const Dashboard = () => {
           wallet?.balance ?? 0
         )}
         onPurchase={handlePurchase}
-      />
-
-      {/* ========================================================
-          OLD TRANSFER MODAL
-
-          Temporarily retained.
-
-          Once we finish converting TransferModal.tsx into
-          SendMoneyPage.tsx, this entire section can be removed.
-          ======================================================== */}
-
-      <TransferModal
-        isOpen={transferModalOpen}
-        onClose={() =>
-          setTransferModalOpen(false)
-        }
-        walletBalance={Number(
-          wallet?.balance ?? 0
-        )}
-        onTransfer={handleTransfer}
       />
 
       {/* QR */}

@@ -1,236 +1,160 @@
 import {
   corsHeaders,
   json,
-  adminClient,
   getUser,
 } from "../_shared/auth.ts";
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-/**
- * IyanjuPay — Internal Wallet Transfer
- *
- * Flow:
- *
- * 1. Receive authenticated user's JWT.
- * 2. Authenticate the user.
- * 3. Create a USER-SCOPED Supabase client using that JWT.
- * 4. Call execute_internal_transfer() through that client.
- *
- * IMPORTANT:
- *
- * The internal-transfer RPC uses auth.uid().
- *
- * Therefore the RPC MUST NOT be called using the service-role
- * client because auth.uid() would be NULL.
- *
- * adminClient is only used for trusted server-side operations
- * where appropriate. The transfer RPC itself is called using
- * the authenticated user's JWT.
- */
 
-const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
+// ============================================================
+// ENVIRONMENT
+// ============================================================
+
+const SUPABASE_URL =
+  Deno.env.get("SUPABASE_URL")!;
 
 const SUPABASE_ANON_KEY =
-  Deno.env.get("SUPABASE_ANON_KEY") ??
-  Deno.env.get("SUPABASE_PUBLISHABLE_KEY") ??
-  "";
+  Deno.env.get("SUPABASE_ANON_KEY")!;
 
-function errorMessage(error: unknown): string {
-  if (error instanceof Error) {
-    return error.message;
-  }
 
-  if (
-    typeof error === "object" &&
-    error !== null &&
-    "message" in error
-  ) {
-    return String(
-      (error as { message?: unknown }).message ?? "Unknown error",
-    );
-  }
+// ============================================================
+// SUPABASE CLIENT
+// ============================================================
+//
+// IMPORTANT:
+//
+// This client uses the authenticated user's JWT.
+//
+// The RPC therefore sees:
+//
+// auth.uid() = actual logged-in user
+//
+// Do NOT use the service-role key for the RPC call.
+// ============================================================
 
-  return String(error);
+function createUserClient(
+  accessToken: string
+) {
+  return createClient(
+    SUPABASE_URL,
+    SUPABASE_ANON_KEY,
+    {
+      global: {
+        headers: {
+          Authorization:
+            `Bearer ${accessToken}`,
+        },
+      },
+    }
+  );
 }
 
-function isValidUuid(value: string): boolean {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
-    .test(value);
-}
 
-function isValidWalletId(value: string): boolean {
-  /**
-   * IyanjuPay public wallet IDs are 8 digits.
-   *
-   * Keep this validation aligned with the wallets.wallet_id
-   * format used by the application.
-   */
-  return /^\d{8}$/.test(value);
-}
+// ============================================================
+// MAIN
+// ============================================================
 
-function isValidIdempotencyKey(value: string): boolean {
-  return value.length >= 1 && value.length <= 255;
-}
+Deno.serve(async (req) => {
 
-Deno.serve(async (req: Request): Promise<Response> => {
-  /**
-   * ============================================================
-   * CORS
-   * ============================================================
-   */
+  // ==========================================================
+  // CORS
+  // ==========================================================
 
   if (req.method === "OPTIONS") {
-    return new Response("ok", {
-      headers: corsHeaders,
-    });
-  }
-
-  if (req.method !== "POST") {
-    return json(
+    return new Response(
+      "ok",
       {
-        success: false,
-        error: "Method not allowed",
-      },
-      405,
+        headers: corsHeaders,
+      }
     );
   }
 
+
   try {
-    /**
-     * ==========================================================
-     * 1. READ AUTHORIZATION HEADER
-     * ==========================================================
-     */
 
-    const authorization =
-      req.headers.get("Authorization") ??
-      req.headers.get("authorization");
+    // ========================================================
+    // 1. METHOD
+    // ========================================================
 
-    if (!authorization) {
-      console.error(
-        "IyanjuPay transfer rejected: Authorization header missing",
-      );
-
+    if (req.method !== "POST") {
       return json(
         {
           success: false,
-          error: "Authentication required",
+          error:
+            "Method not allowed",
         },
-        401,
+        405
       );
     }
 
-    if (!authorization.startsWith("Bearer ")) {
-      console.error(
-        "IyanjuPay transfer rejected: Invalid Authorization header",
-      );
 
-      return json(
-        {
-          success: false,
-          error: "Invalid authorization token",
-        },
-        401,
-      );
-    }
+    // ========================================================
+    // 2. AUTHENTICATION
+    // ========================================================
 
-    const accessToken = authorization.substring("Bearer ".length).trim();
-
-    if (!accessToken) {
-      return json(
-        {
-          success: false,
-          error: "Authentication token is missing",
-        },
-        401,
-      );
-    }
-
-    /**
-     * ==========================================================
-     * 2. AUTHENTICATE USER
-     * ==========================================================
-     *
-     * getUser() is responsible for validating the JWT.
-     *
-     * We intentionally do NOT trust a user_id sent by the
-     * frontend.
+    /*
+     * getUser() must validate the user's
+     * Supabase access token.
      */
 
     const user = await getUser(req);
 
     if (!user) {
-      console.error(
-        "IyanjuPay transfer rejected: User authentication failed",
-      );
-
       return json(
         {
           success: false,
-          error: "Authentication required",
+          error:
+            "Authentication required",
         },
-        401,
+        401
       );
     }
 
-    const authenticatedUserId = user.id;
 
-    console.log(
-      "IyanjuPay transfer authenticated user:",
-      authenticatedUserId,
-    );
+    // ========================================================
+    // 3. GET ACCESS TOKEN
+    // ========================================================
 
-    /**
-     * ==========================================================
-     * 3. CREATE USER-SCOPED SUPABASE CLIENT
-     * ==========================================================
-     *
-     * THIS IS THE IMPORTANT FIX.
-     *
-     * Do NOT use adminClient.rpc() for execute_internal_transfer().
-     *
-     * The RPC contains:
-     *
-     *     auth.uid()
-     *
-     * and therefore must receive the user's JWT.
-     */
+    const authHeader =
+      req.headers.get(
+        "Authorization"
+      );
 
-    if (!SUPABASE_URL) {
-      throw new Error("SUPABASE_URL is not configured");
-    }
-
-    if (!SUPABASE_ANON_KEY) {
-      throw new Error(
-        "SUPABASE_ANON_KEY/SUPABASE_PUBLISHABLE_KEY is not configured",
+    if (!authHeader) {
+      return json(
+        {
+          success: false,
+          error:
+            "Authorization header is required",
+        },
+        401
       );
     }
 
-    const userClient = createClient(
-      SUPABASE_URL,
-      SUPABASE_ANON_KEY,
-      {
-        auth: {
-          autoRefreshToken: false,
-          persistSession: false,
+    const accessToken =
+      authHeader.replace(
+        /^Bearer\s+/i,
+        ""
+      ).trim();
+
+    if (!accessToken) {
+      return json(
+        {
+          success: false,
+          error:
+            "Invalid authorization token",
         },
+        401
+      );
+    }
 
-        global: {
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-          },
-        },
-      },
-    );
 
-    /**
-     * ==========================================================
-     * 4. READ REQUEST BODY
-     * ==========================================================
-     */
+    // ========================================================
+    // 4. PARSE REQUEST
+    // ========================================================
 
-    let body: Record<string, unknown>;
+    let body: any;
 
     try {
       body = await req.json();
@@ -238,389 +162,535 @@ Deno.serve(async (req: Request): Promise<Response> => {
       return json(
         {
           success: false,
-          error: "Invalid JSON request body",
+          error:
+            "Invalid JSON request body",
         },
-        400,
+        400
       );
     }
 
-    /**
-     * ==========================================================
-     * 5. EXTRACT INPUT
-     * ==========================================================
+
+    // ========================================================
+    // 5. REQUEST VALUES
+    // ========================================================
+
+    /*
+     * Frontend sends:
      *
-     * Supported frontend names:
-     *
-     * recipient_wallet_id
-     * recipientWalletId
-     *
+     * wallet_id
      * amount
-     *
      * narration
-     *
      * idempotency_key
-     * idempotencyKey
      */
 
-    const recipientWalletId = String(
-      body.recipient_wallet_id ??
-        body.recipientWalletId ??
-        "",
-    ).trim();
+    const recipientWalletId =
+      String(
+        body?.wallet_id ??
+        body?.recipient_wallet_id ??
+        ""
+      ).trim();
 
-    const narration = String(
-      body.narration ??
-        body.description ??
-        "",
-    ).trim();
 
     const rawAmount =
-      body.amount;
+      body?.amount;
 
-    const rawIdempotencyKey =
-      body.idempotency_key ??
-      body.idempotencyKey ??
-      crypto.randomUUID();
 
-    const idempotencyKey = String(
-      rawIdempotencyKey,
-    ).trim();
+    const narration =
+      body?.narration == null
+        ? ""
+        : String(
+            body.narration
+          ).trim();
 
-    /**
-     * ==========================================================
-     * 6. VALIDATE RECIPIENT WALLET
-     * ==========================================================
-     */
+
+    const idempotencyKey =
+      body?.idempotency_key == null
+        ? null
+        : String(
+            body.idempotency_key
+          ).trim();
+
+
+    // ========================================================
+    // 6. VALIDATE WALLET ID
+    // ========================================================
 
     if (!recipientWalletId) {
       return json(
         {
           success: false,
-          error: "Recipient wallet ID is required",
+          error:
+            "Recipient wallet ID is required",
         },
-        400,
+        400
       );
     }
 
-    if (!isValidWalletId(recipientWalletId)) {
+    if (
+      !/^\d{8}$/.test(
+        recipientWalletId
+      )
+    ) {
       return json(
         {
           success: false,
           error:
-            "Invalid recipient wallet ID. Enter the 8-digit IyanjuPay wallet ID.",
+            "Recipient Wallet ID must be exactly 8 digits",
         },
-        400,
+        400
       );
     }
 
-    /**
-     * ==========================================================
-     * 7. VALIDATE AMOUNT
-     * ==========================================================
-     */
+
+    // ========================================================
+    // 7. VALIDATE AMOUNT
+    // ========================================================
 
     const amount =
       typeof rawAmount === "number"
         ? rawAmount
         : Number(rawAmount);
 
-    if (!Number.isFinite(amount)) {
-      return json(
-        {
-          success: false,
-          error: "Invalid transfer amount",
-        },
-        400,
-      );
-    }
-
-    if (amount <= 0) {
+    if (
+      !Number.isFinite(amount) ||
+      amount <= 0
+    ) {
       return json(
         {
           success: false,
           error:
             "Transfer amount must be greater than zero",
         },
-        400,
+        400
       );
     }
 
-    /**
-     * Monetary precision.
-     *
-     * Prevent values such as:
-     *
-     * 100.123
+
+    /*
+     * Prevent more than 2 decimal places.
      */
 
-    const roundedAmount =
-      Math.round((amount + Number.EPSILON) * 100) / 100;
+    if (
+      Math.round(
+        amount * 100
+      ) !==
+      Math.round(amount) * 100
+    ) {
 
-    if (Math.abs(amount - roundedAmount) > 0.00000001) {
+      /*
+       * The check above would reject many valid
+       * decimal amounts incorrectly.
+       *
+       * Use the string representation instead.
+       */
+    }
+
+    const amountString =
+      String(rawAmount);
+
+    if (
+      amountString.includes(".") &&
+      amountString.split(".")[1].length > 2
+    ) {
       return json(
         {
           success: false,
           error:
             "Transfer amount cannot have more than 2 decimal places",
         },
-        400,
+        400
       );
     }
 
-    /**
-     * ==========================================================
-     * 8. VALIDATE IDEMPOTENCY KEY
-     * ==========================================================
-     */
 
-    if (!isValidIdempotencyKey(idempotencyKey)) {
-      return json(
-        {
-          success: false,
-          error: "Invalid idempotency key",
-        },
-        400,
-      );
-    }
+    // ========================================================
+    // 8. IDEMPOTENCY KEY
+    // ========================================================
 
-    /**
-     * ==========================================================
-     * 9. OPTIONAL NARRATION LIMIT
-     * ==========================================================
-     */
-
-    if (narration.length > 500) {
+    if (
+      idempotencyKey &&
+      idempotencyKey.length > 200
+    ) {
       return json(
         {
           success: false,
           error:
-            "Narration cannot exceed 500 characters",
+            "Idempotency key is too long",
         },
-        400,
+        400
       );
     }
 
-    /**
-     * ==========================================================
-     * 10. LOG REQUEST
-     * ==========================================================
+
+    // ========================================================
+    // 9. CREATE AUTHENTICATED CLIENT
+    // ========================================================
+
+    const supabase =
+      createUserClient(
+        accessToken
+      );
+
+
+    // ========================================================
+    // 10. EXECUTE INTERNAL TRANSFER RPC
+    // ========================================================
+
+    /*
+     * VERY IMPORTANT:
      *
-     * Never log access tokens, passwords, PINs, or sensitive
-     * authentication data.
+     * The RPC parameter names must match
+     * the SQL function exactly.
+     *
+     * Frontend:
+     *
+     * wallet_id
+     *
+     * becomes:
+     *
+     * _recipient_wallet_id
+     *
+     * and the authenticated user becomes:
+     *
+     * _sender_user_id
      */
 
-    console.log(
-      "Calling execute_internal_transfer:",
-      {
-        sender_user_id: authenticatedUserId,
-        recipient_wallet_id: recipientWalletId,
-        amount: roundedAmount,
-      },
-    );
-
-    /**
-     * ==========================================================
-     * 11. CALL INTERNAL TRANSFER RPC
-     * ==========================================================
-     *
-     * CRITICAL:
-     *
-     * userClient.rpc()
-     *
-     * NOT:
-     *
-     * adminClient.rpc()
-     *
-     * Because execute_internal_transfer() uses auth.uid().
-     */
-
-    const { data, error } =
-      await userClient.rpc(
+    const {
+      data,
+      error,
+    } =
+      await supabase.rpc(
         "execute_internal_transfer",
         {
-          _sender_user_id: authenticatedUserId,
+          _sender_user_id:
+            user.id,
 
           _recipient_wallet_id:
             recipientWalletId,
 
-          _amount: roundedAmount,
+          _amount:
+            amount,
 
           _narration:
-            narration || null,
+            narration,
 
           _idempotency_key:
             idempotencyKey,
-        },
+        }
       );
 
-    /**
-     * ==========================================================
-     * 12. HANDLE RPC ERROR
-     * ==========================================================
-     */
+
+    // ========================================================
+    // 11. RPC ERROR
+    // ========================================================
 
     if (error) {
+
       console.error(
-        "Internal transfer RPC failed:",
+        "execute_internal_transfer RPC error:",
         {
-          code: error.code,
-          details: error.details,
-          hint: error.hint,
-          message: error.message,
-        },
+          message:
+            error.message,
+
+          code:
+            error.code,
+
+          details:
+            error.details,
+
+          hint:
+            error.hint,
+
+          user_id:
+            user.id,
+
+          recipient_wallet_id:
+            recipientWalletId,
+
+          amount,
+        }
       );
 
-      /**
-       * Authentication errors
+
+      /*
+       * PostgreSQL errors normally arrive through
+       * error.message.
+       */
+
+      let message =
+        error.message ||
+        "Unable to process IyanjuPay transfer.";
+
+
+      /*
+       * Convert common database errors into
+       * user-friendly messages.
        */
 
       if (
-        error.message ===
-          "Authentication required" ||
-        error.message ===
+        message.includes(
+          "Recipient wallet not found"
+        )
+      ) {
+        message =
+          "Recipient Wallet ID was not found.";
+      }
+
+      if (
+        message.includes(
+          "Recipient wallet ID is required"
+        )
+      ) {
+        message =
+          "Recipient Wallet ID is required.";
+      }
+
+      if (
+        message.includes(
+          "Recipient Wallet ID must be exactly 8 digits"
+        )
+      ) {
+        message =
+          "Recipient Wallet ID must be exactly 8 digits.";
+      }
+
+      if (
+        message.includes(
+          "You cannot transfer money to yourself"
+        )
+      ) {
+        message =
+          "You cannot transfer money to yourself.";
+      }
+
+      if (
+        message.includes(
+          "Insufficient wallet balance"
+        )
+      ) {
+        message =
+          "Insufficient wallet balance.";
+      }
+
+      if (
+        message.includes(
+          "Sender wallet not found"
+        )
+      ) {
+        message =
+          "Your IyanjuPay wallet could not be found.";
+      }
+
+      if (
+        message.includes(
+          "Sender wallet is not active"
+        )
+      ) {
+        message =
+          "Your wallet is not active.";
+      }
+
+      if (
+        message.includes(
+          "Recipient wallet is not active"
+        )
+      ) {
+        message =
+          "The recipient wallet is not active.";
+      }
+
+      if (
+        message.includes(
+          "Only NGN wallet transfers are supported"
+        )
+      ) {
+        message =
+          "Only NGN wallet transfers are supported.";
+      }
+
+      if (
+        message.includes(
           "Unauthorized transfer request"
+        )
       ) {
-        return json(
-          {
-            success: false,
-            error:
-              "Your authentication session is invalid or expired. Please sign in again.",
-          },
-          401,
-        );
+        message =
+          "Unauthorized transfer request.";
       }
 
-      /**
-       * Common user-facing validation errors.
-       *
-       * These originate from the secure RPC.
-       */
-
-      const knownUserErrors = [
-        "Sender wallet not found",
-        "Recipient wallet not found",
-        "You cannot transfer money to yourself",
-        "Sender wallet is not active",
-        "Recipient wallet is not active",
-        "Only NGN wallet transfers are supported",
-        "Insufficient wallet balance",
-        "Transfer amount must be greater than zero",
-        "Transfer amount cannot have more than 2 decimal places",
-        "Recipient wallet is required",
-        "Sender user ID is required",
-        "Unable to debit sender wallet",
-        "Unable to credit recipient wallet",
-      ];
-
-      if (
-        knownUserErrors.includes(error.message)
-      ) {
-        return json(
-          {
-            success: false,
-            error: error.message,
-          },
-          400,
-        );
-      }
-
-      /**
-       * Do not expose internal database details to the
-       * frontend.
-       */
 
       return json(
         {
           success: false,
-          error:
-            "Unable to complete the wallet transfer",
+          error: message,
+          code:
+            error.code ?? null,
         },
-        500,
+        400
       );
     }
 
-    /**
-     * ==========================================================
-     * 13. VALIDATE RPC RESULT
-     * ==========================================================
-     */
 
-    if (!data) {
+    // ========================================================
+    // 12. INVALID RPC RESPONSE
+    // ========================================================
+
+    if (
+      !data ||
+      data.success !== true
+    ) {
+
       console.error(
-        "Internal transfer RPC returned no data",
+        "Invalid internal transfer RPC response:",
+        data
       );
 
       return json(
         {
           success: false,
           error:
-            "Transfer could not be completed",
+            data?.error ||
+            data?.message ||
+            "IyanjuPay transfer failed.",
         },
-        500,
+        400
       );
     }
 
-    /**
-     * ==========================================================
-     * 14. NORMALIZE RESULT
-     * ==========================================================
-     */
 
-    const result =
-      typeof data === "object" &&
-      data !== null
-        ? data as Record<string, unknown>
-        : {
-            result: data,
-          };
-
-    /**
-     * ==========================================================
-     * 15. SUCCESS RESPONSE
-     * ==========================================================
-     */
+    // ========================================================
+    // 13. SUCCESS
+    // ========================================================
 
     console.log(
-      "IyanjuPay internal transfer completed:",
+      "IyanjuPay transfer successful:",
       {
-        sender_user_id:
-          authenticatedUserId,
+        user_id:
+          user.id,
 
-        recipient_wallet_id:
-          recipientWalletId,
+        transaction_id:
+          data.transaction_id,
 
-        amount:
-          roundedAmount,
+        credit_transaction_id:
+          data.credit_transaction_id,
 
         reference:
-          result.reference ?? null,
+          data.reference,
+
+        amount:
+          data.amount,
+
+        fee:
+          data.fee,
+
+        total_charged:
+          data.total_charged,
+
+        recipient_wallet_id:
+          data.recipient_wallet_id,
+
+        recipient_name:
+          data.recipient_name,
 
         already_processed:
-          result.already_processed ?? false,
-      },
+          data.already_processed,
+      }
     );
+
+
+    // ========================================================
+    // 14. RETURN FRONTEND RESPONSE
+    // ========================================================
 
     return json(
       {
         success: true,
 
-        ...result,
+        already_processed:
+          data.already_processed ??
+          false,
+
+        message:
+          data.already_processed
+            ? "This transfer has already been processed."
+            : "IyanjuPay transfer successful.",
+
+        transaction_id:
+          data.transaction_id,
+
+        credit_transaction_id:
+          data.credit_transaction_id ??
+          data.recipient_transaction_id ??
+          null,
+
+        reference:
+          data.reference,
+
+        status:
+          data.status,
+
+        transaction_type:
+          data.transaction_type,
+
+        transaction_category:
+          data.transaction_category,
+
+        direction:
+          data.direction,
+
+        amount:
+          data.amount,
+
+        fee:
+          data.fee,
+
+        total_charged:
+          data.total_charged,
+
+        currency:
+          data.currency,
+
+        narration:
+          data.narration,
+
+        sender:
+          data.sender,
+
+        recipient:
+          data.recipient,
+
+        recipient_wallet_id:
+          data.recipient_wallet_id ??
+          data.recipient?.wallet_id ??
+          recipientWalletId,
+
+        recipient_name:
+          data.recipient_name ??
+          data.recipient?.name ??
+          null,
+
+        receipt:
+          data.receipt,
       },
-      200,
+      200
     );
+
   } catch (error) {
+
     console.error(
       "IyanjuPay transfer unexpected error:",
-      errorMessage(error),
+      error
     );
 
     return json(
       {
         success: false,
         error:
-          "An unexpected error occurred while processing the transfer",
+          error instanceof Error
+            ? error.message
+            : "Unexpected transfer error.",
       },
-      500,
+      500
     );
   }
+
 });

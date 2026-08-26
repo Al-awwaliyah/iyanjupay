@@ -12,7 +12,6 @@ import {
   User,
   Building2,
   Search,
-  ShieldCheck,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -26,15 +25,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 
 import { useToast } from "@/hooks/use-toast";
 
@@ -101,12 +91,6 @@ type TransferType =
 const IYANJUPAY_TRANSFER_FEE = 0;
 const BANK_TRANSFER_FEE = 10;
 
-/**
- * ============================================================
- * SEND MONEY PAGE
- * ============================================================
- */
-
 const SendMoneyPage = ({
   onBack,
   walletBalance,
@@ -147,46 +131,6 @@ const SendMoneyPage = ({
     pendingBankTransfer,
     setPendingBankTransfer,
   ] = useState<PendingBankTransfer | null>(null);
-
-  /**
-   * Whether the authenticated user has a Payment PIN.
-   */
-  const [hasPaymentPin, setHasPaymentPin] =
-    useState<boolean | null>(null);
-
-  /**
-   * Loading state while checking PIN existence.
-   */
-  const [checkingPaymentPin, setCheckingPaymentPin] =
-    useState(false);
-
-  /**
-   * Create Payment PIN dialog.
-   */
-  const [createPinOpen, setCreatePinOpen] =
-    useState(false);
-
-  const [newPin, setNewPin] =
-    useState("");
-
-  const [confirmPin, setConfirmPin] =
-    useState("");
-
-  const [createPinError, setCreatePinError] =
-    useState("");
-
-  const [creatingPin, setCreatingPin] =
-    useState(false);
-
-  /**
-   * This stores the transfer action that was waiting
-   * for the user to create a PIN.
-   */
-  const [pendingPinAction, setPendingPinAction] =
-    useState(false);
-
-  const createPinInputRef =
-    useRef<HTMLInputElement>(null);
 
   // ==========================================================
   // IYANJUPAY
@@ -239,99 +183,6 @@ const SendMoneyPage = ({
     useState(false);
 
   const resolveRequestRef = useRef(0);
-
-  // ==========================================================
-  // CHECK PAYMENT PIN
-  // ==========================================================
-
-  const checkPaymentPin = async (): Promise<boolean> => {
-    setCheckingPaymentPin(true);
-
-    try {
-      const {
-        data,
-        error,
-      } = await supabase.rpc(
-        "has_payment_pin"
-      );
-
-      if (error) {
-        console.error(
-          "Payment PIN status check failed:",
-          error
-        );
-
-        toast({
-          title: "Unable to check Payment PIN",
-          description:
-            error.message ||
-            "Please try again.",
-          variant: "destructive",
-        });
-
-        return false;
-      }
-
-      /**
-       * Supabase RPC may return:
-       *
-       * true
-       *
-       * or:
-       *
-       * { has_payment_pin: true }
-       *
-       * Support both formats.
-       */
-      const exists =
-        typeof data === "boolean"
-          ? data
-          : Boolean(
-              data?.has_payment_pin
-            );
-
-      setHasPaymentPin(exists);
-
-      return exists;
-    } catch (error: any) {
-      console.error(
-        "Unexpected Payment PIN status error:",
-        error
-      );
-
-      toast({
-        title: "Unable to check Payment PIN",
-        description:
-          error?.message ||
-          "Please try again.",
-        variant: "destructive",
-      });
-
-      return false;
-    } finally {
-      setCheckingPaymentPin(false);
-    }
-  };
-
-  /**
-   * Check Payment PIN when the page loads.
-   */
-  useEffect(() => {
-    checkPaymentPin();
-  }, []);
-
-  /**
-   * Focus create-PIN input when dialog opens.
-   */
-  useEffect(() => {
-    if (!createPinOpen) {
-      return;
-    }
-
-    setTimeout(() => {
-      createPinInputRef.current?.focus();
-    }, 100);
-  }, [createPinOpen]);
 
   // ==========================================================
   // FILTER BANKS
@@ -769,142 +620,6 @@ const SendMoneyPage = ({
   };
 
   // ==========================================================
-  // CREATE PAYMENT PIN
-  // ==========================================================
-
-  const handleCreatePin = async () => {
-    setCreatePinError("");
-
-    if (!/^\d{4}$/.test(newPin)) {
-      setCreatePinError(
-        "Payment PIN must be exactly 4 digits."
-      );
-
-      return;
-    }
-
-    if (!/^\d{4}$/.test(confirmPin)) {
-      setCreatePinError(
-        "Confirm your 4-digit Payment PIN."
-      );
-
-      return;
-    }
-
-    if (newPin !== confirmPin) {
-      setCreatePinError(
-        "Payment PINs do not match."
-      );
-
-      return;
-    }
-
-    setCreatingPin(true);
-
-    try {
-      const {
-        data,
-        error,
-      } = await supabase.rpc(
-        "create_payment_pin",
-        {
-          _pin: newPin,
-        }
-      );
-
-      if (error) {
-        console.error(
-          "Create Payment PIN error:",
-          error
-        );
-
-        setCreatePinError(
-          error.message ||
-            "Unable to create Payment PIN."
-        );
-
-        return;
-      }
-
-      if (
-        data &&
-        typeof data === "object" &&
-        data.success === false
-      ) {
-        setCreatePinError(
-          data.message ||
-            "Unable to create Payment PIN."
-        );
-
-        return;
-      }
-
-      /**
-       * PIN successfully created.
-       */
-      setHasPaymentPin(true);
-
-      setNewPin("");
-      setConfirmPin("");
-      setCreatePinError("");
-
-      setCreatePinOpen(false);
-
-      toast({
-        title: "Payment PIN created",
-        description:
-          "Your Payment PIN has been created successfully.",
-      });
-
-      /**
-       * If a transfer was waiting for PIN creation,
-       * immediately continue to PIN authorization.
-       */
-      if (pendingPinAction) {
-        setPendingPinAction(false);
-
-        setTimeout(() => {
-          setPaymentPinOpen(true);
-        }, 150);
-      }
-    } catch (error: any) {
-      console.error(
-        "Unexpected create Payment PIN error:",
-        error
-      );
-
-      setCreatePinError(
-        error?.message ||
-          "Something went wrong while creating your Payment PIN."
-      );
-    } finally {
-      setCreatingPin(false);
-    }
-  };
-
-  // ==========================================================
-  // CREATE PIN CANCEL
-  // ==========================================================
-
-  const handleCreatePinCancel = () => {
-    if (creatingPin) {
-      return;
-    }
-
-    setCreatePinOpen(false);
-
-    setNewPin("");
-    setConfirmPin("");
-    setCreatePinError("");
-
-    /**
-     * The transfer is cancelled if the user
-     * chooses not to create a PIN.
-     */
-    setPendingPinAction(false);
-  };
-
-  // ==========================================================
   // PREPARE TRANSFER
   // ==========================================================
 
@@ -980,40 +695,11 @@ const SendMoneyPage = ({
         return;
       }
 
-      /**
-       * ======================================================
-       * PAYMENT PIN CHECK
-       * ======================================================
+      /*
+       * IMPORTANT:
+       * Do NOT execute the transfer here.
        *
-       * Before opening the PIN verification modal,
-       * verify that the user actually has a PIN.
-       */
-
-      const pinExists =
-        hasPaymentPin !== null
-          ? hasPaymentPin
-          : await checkPaymentPin();
-
-      if (!pinExists) {
-        /**
-         * Store the fact that this transfer should continue
-         * after PIN creation.
-         */
-        setPendingPinAction(true);
-
-        setCreatePinError("");
-        setNewPin("");
-        setConfirmPin("");
-
-        setCreatePinOpen(true);
-
-        return;
-      }
-
-      /**
-       * PIN exists.
-       *
-       * Ask the user to authorize the transfer.
+       * Payment PIN is required first.
        */
       setPaymentPinOpen(true);
 
@@ -1088,8 +774,8 @@ const SendMoneyPage = ({
       totalCharged: total,
     };
 
-    /**
-     * Store the validated bank transfer.
+    /*
+     * Store the validated transfer.
      * Nothing is executed yet.
      */
     setPendingBankTransfer({
@@ -1098,32 +784,6 @@ const SendMoneyPage = ({
       details,
     });
 
-    /**
-     * ======================================================
-     * PAYMENT PIN CHECK
-     * ======================================================
-     */
-
-    const pinExists =
-      hasPaymentPin !== null
-        ? hasPaymentPin
-        : await checkPaymentPin();
-
-    if (!pinExists) {
-      setPendingPinAction(true);
-
-      setCreatePinError("");
-      setNewPin("");
-      setConfirmPin("");
-
-      setCreatePinOpen(true);
-
-      return;
-    }
-
-    /**
-     * PIN exists.
-     */
     setPaymentPinOpen(true);
   };
 
@@ -1133,12 +793,12 @@ const SendMoneyPage = ({
 
   const handlePaymentPinVerified =
     async () => {
-      /**
+      /*
        * Close PIN modal immediately.
        */
       setPaymentPinOpen(false);
 
-      /**
+      /*
        * Prevent accidental second submission.
        */
       if (processingTransfer) {
@@ -1204,11 +864,11 @@ const SendMoneyPage = ({
             transferAmountValue,
         };
 
-        /**
+        /*
          * Move to processing page.
          *
-         * TransactionProcessingPage executes
-         * the actual Edge Function.
+         * The actual Edge Function is executed
+         * by TransactionProcessingPage.
          */
         setProcessingTransfer({
           transferType:
@@ -1239,14 +899,17 @@ const SendMoneyPage = ({
         const idempotencyKey =
           `bank_${crypto.randomUUID()}`;
 
-        /**
-         * Clear immediately so the same
+        /*
+         * Clear it immediately so the same
          * transfer cannot be submitted twice.
          */
         setPendingBankTransfer(null);
 
-        /**
+        /*
          * Move to processing page.
+         *
+         * TransactionProcessingPage will execute
+         * flutterwave-transfer.
          */
         setProcessingTransfer({
           transferType:
@@ -1270,7 +933,6 @@ const SendMoneyPage = ({
     () => {
       setPaymentPinOpen(false);
       setPendingBankTransfer(null);
-      setPendingPinAction(false);
     };
 
   // ==========================================================
@@ -1281,7 +943,7 @@ const SendMoneyPage = ({
     async () => {
       setProcessingTransfer(null);
 
-      /**
+      /*
        * Refresh wallet/dashboard data.
        */
       if (onTransferSuccess) {
@@ -1295,7 +957,7 @@ const SendMoneyPage = ({
         }
       }
 
-      /**
+      /*
        * Return to Dashboard.
        */
       handleBack();
@@ -1319,11 +981,7 @@ const SendMoneyPage = ({
     iyanjuPayResolveRequestRef.current++;
 
     setPaymentPinOpen(false);
-    setCreatePinOpen(false);
-
     setPendingBankTransfer(null);
-    setPendingPinAction(false);
-
     setProcessingTransfer(null);
 
     setTransferType("iyanjupay");
@@ -1392,8 +1050,6 @@ const SendMoneyPage = ({
     hasInsufficientBalance ||
     iyanjupayTransferring ||
     paymentPinOpen ||
-    createPinOpen ||
-    checkingPaymentPin ||
     (transferType ===
       "iyanjupay" &&
       (
@@ -2026,12 +1682,7 @@ const SendMoneyPage = ({
               }
               className="w-full h-12 bg-green-600 hover:bg-green-700 text-base font-semibold"
             >
-              {checkingPaymentPin ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Checking Payment PIN...
-                </>
-              ) : iyanjupayTransferring ? (
+              {iyanjupayTransferring ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                   Processing transfer...
@@ -2054,174 +1705,7 @@ const SendMoneyPage = ({
         </main>
       </div>
 
-      {/* ======================================================
-          CREATE PAYMENT PIN
-          ====================================================== */}
-
-      <Dialog
-        open={createPinOpen}
-        onOpenChange={(open) => {
-          if (!open && !creatingPin) {
-            handleCreatePinCancel();
-          }
-        }}
-      >
-        <DialogContent
-          className="sm:max-w-md"
-          onInteractOutside={(event) => {
-            if (creatingPin) {
-              event.preventDefault();
-            }
-          }}
-          onEscapeKeyDown={(event) => {
-            if (creatingPin) {
-              event.preventDefault();
-            }
-          }}
-        >
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <ShieldCheck className="h-5 w-5 text-green-600" />
-              Create Payment PIN
-            </DialogTitle>
-
-            <DialogDescription>
-              You need a 4-digit Payment PIN before you can make payments or transfers.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4">
-
-            <div className="rounded-lg border border-blue-200 bg-blue-50 p-3">
-              <p className="text-sm text-blue-800">
-                Your Payment PIN is used to authorize transactions securely. Do not share it with anyone.
-              </p>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="newPaymentPin">
-                Create 4-digit PIN
-              </Label>
-
-              <Input
-                ref={createPinInputRef}
-                id="newPaymentPin"
-                type="password"
-                inputMode="numeric"
-                autoComplete="new-password"
-                maxLength={4}
-                value={newPin}
-                onChange={(e) => {
-                  const value =
-                    e.target.value
-                      .replace(/\D/g, "")
-                      .slice(0, 4);
-
-                  setNewPin(value);
-
-                  if (createPinError) {
-                    setCreatePinError("");
-                  }
-                }}
-                placeholder="••••"
-                disabled={creatingPin}
-                className="text-center text-2xl tracking-[0.5em]"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="confirmPaymentPin">
-                Confirm Payment PIN
-              </Label>
-
-              <Input
-                id="confirmPaymentPin"
-                type="password"
-                inputMode="numeric"
-                autoComplete="new-password"
-                maxLength={4}
-                value={confirmPin}
-                onChange={(e) => {
-                  const value =
-                    e.target.value
-                      .replace(/\D/g, "")
-                      .slice(0, 4);
-
-                  setConfirmPin(value);
-
-                  if (createPinError) {
-                    setCreatePinError("");
-                  }
-                }}
-                onKeyDown={(e) => {
-                  if (
-                    e.key === "Enter" &&
-                    !creatingPin
-                  ) {
-                    e.preventDefault();
-                    handleCreatePin();
-                  }
-                }}
-                placeholder="••••"
-                disabled={creatingPin}
-                className="text-center text-2xl tracking-[0.5em]"
-              />
-            </div>
-
-            {createPinError && (
-              <div
-                className="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive"
-                role="alert"
-              >
-                {createPinError}
-              </div>
-            )}
-
-          </div>
-
-          <DialogFooter className="flex gap-2 sm:gap-2">
-
-            <Button
-              type="button"
-              variant="outline"
-              className="flex-1"
-              onClick={
-                handleCreatePinCancel
-              }
-              disabled={creatingPin}
-            >
-              Cancel
-            </Button>
-
-            <Button
-              type="button"
-              className="flex-1 bg-green-600 hover:bg-green-700"
-              onClick={
-                handleCreatePin
-              }
-              disabled={
-                creatingPin ||
-                newPin.length !== 4 ||
-                confirmPin.length !== 4
-              }
-            >
-              {creatingPin ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Creating...
-                </>
-              ) : (
-                "Create PIN"
-              )}
-            </Button>
-
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* ======================================================
-          PAYMENT PIN VERIFICATION
-          ====================================================== */}
+      {/* PAYMENT PIN */}
 
       <PaymentPinModal
         open={paymentPinOpen}

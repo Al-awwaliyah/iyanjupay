@@ -209,14 +209,24 @@ const ServicePayment = ({
     useState(false);
 
   // ==========================================================
-  // PAYMENT PIN
+  // PAYMENT PIN FLOW
   // ==========================================================
 
-  const [showPinPrompt, setShowPinPrompt] =
-    useState(false);
+  const [pinStep, setPinStep] = useState<
+    "none" | "create" | "confirm" | "authorize"
+  >("none");
+
+  const [newPin, setNewPin] = useState("");
+  const [confirmPin, setConfirmPin] = useState("");
 
   const [paymentPin, setPaymentPin] =
     useState("");
+
+  const [checkingPinStatus, setCheckingPinStatus] =
+    useState(false);
+
+  const [creatingPin, setCreatingPin] =
+    useState(false);
 
   const [verifyingPin, setVerifyingPin] =
     useState(false);
@@ -419,8 +429,14 @@ const ServicePayment = ({
     setLoadingItems(false);
     setProcessingPayment(false);
 
-    setShowPinPrompt(false);
+    setPinStep("none");
+
+    setNewPin("");
+    setConfirmPin("");
     setPaymentPin("");
+
+    setCheckingPinStatus(false);
+    setCreatingPin(false);
     setVerifyingPin(false);
   };
 
@@ -647,7 +663,9 @@ const ServicePayment = ({
   ) => {
     if (
       processingPayment ||
-      verifyingPin
+      verifyingPin ||
+      creatingPin ||
+      checkingPinStatus
     ) {
       return;
     }
@@ -666,7 +684,9 @@ const ServicePayment = ({
   ) => {
     if (
       processingPayment ||
-      verifyingPin
+      verifyingPin ||
+      creatingPin ||
+      checkingPinStatus
     ) {
       return;
     }
@@ -715,7 +735,9 @@ const ServicePayment = ({
   ) => {
     if (
       processingPayment ||
-      verifyingPin
+      verifyingPin ||
+      creatingPin ||
+      checkingPinStatus
     ) {
       return;
     }
@@ -735,7 +757,9 @@ const ServicePayment = ({
   ) => {
     if (
       processingPayment ||
-      verifyingPin
+      verifyingPin ||
+      creatingPin ||
+      checkingPinStatus
     ) {
       return;
     }
@@ -748,7 +772,9 @@ const ServicePayment = ({
   const handleCustomAmount = () => {
     if (
       processingPayment ||
-      verifyingPin
+      verifyingPin ||
+      creatingPin ||
+      checkingPinStatus
     ) {
       return;
     }
@@ -1089,7 +1115,220 @@ const ServicePayment = ({
   };
 
   // ==========================================================
-  // SHOW PIN
+  // CHECK PAYMENT PIN STATUS
+  // ==========================================================
+
+  const checkPaymentPinStatus =
+    async (): Promise<boolean> => {
+      try {
+        setCheckingPinStatus(true);
+        setError("");
+
+        /*
+         * Expected RPC result:
+         *
+         * {
+         *   has_payment_pin: true
+         * }
+         *
+         * or:
+         *
+         * {
+         *   has_payment_pin: false
+         * }
+         */
+
+        const {
+          data,
+          error: rpcError,
+        } =
+          await supabase.rpc(
+            "get_payment_pin_status"
+          );
+
+        if (rpcError) {
+          console.error(
+            "Payment PIN status error:",
+            rpcError
+          );
+
+          throw new Error(
+            rpcError.message ||
+              "Unable to check Payment PIN status."
+          );
+        }
+
+        const hasPaymentPin =
+          Boolean(
+            data?.has_payment_pin ??
+              data?.hasPaymentPin ??
+              data?.has_pin ??
+              data?.hasPin ??
+              false
+          );
+
+        return hasPaymentPin;
+      } catch (err: any) {
+        console.error(
+          "Failed to check Payment PIN status:",
+          err
+        );
+
+        const message =
+          err?.message ||
+          "Unable to check your Payment PIN.";
+
+        setError(message);
+
+        toast({
+          title:
+            "Payment PIN check failed",
+          description: message,
+          variant: "destructive",
+        });
+
+        return false;
+      } finally {
+        setCheckingPinStatus(false);
+      }
+    };
+
+  // ==========================================================
+  // CREATE PAYMENT PIN
+  // ==========================================================
+
+  const handleCreatePaymentPin =
+    async () => {
+      if (
+        creatingPin ||
+        verifyingPin ||
+        processingPayment
+      ) {
+        return;
+      }
+
+      if (
+        !/^\d{4}$/.test(newPin)
+      ) {
+        toast({
+          title: "Invalid PIN",
+          description:
+            "Create a 4-digit Payment PIN.",
+          variant: "destructive",
+        });
+
+        return;
+      }
+
+      if (
+        !/^\d{4}$/.test(confirmPin)
+      ) {
+        toast({
+          title: "Invalid PIN",
+          description:
+            "Confirm your 4-digit Payment PIN.",
+          variant: "destructive",
+        });
+
+        return;
+      }
+
+      if (newPin !== confirmPin) {
+        setConfirmPin("");
+
+        toast({
+          title: "PIN mismatch",
+          description:
+            "The Payment PINs do not match.",
+          variant: "destructive",
+        });
+
+        return;
+      }
+
+      try {
+        setCreatingPin(true);
+        setError("");
+
+        const {
+          data,
+          error: rpcError,
+        } =
+          await supabase.rpc(
+            "create_payment_pin",
+            {
+              _pin: newPin,
+            }
+          );
+
+        if (rpcError) {
+          console.error(
+            "Create Payment PIN error:",
+            rpcError
+          );
+
+          throw new Error(
+            rpcError.message ||
+              "Unable to create Payment PIN."
+          );
+        }
+
+        if (
+          !data ||
+          data.success !== true
+        ) {
+          throw new Error(
+            data?.message ||
+              data?.error ||
+              "Unable to create Payment PIN."
+          );
+        }
+
+        setNewPin("");
+        setConfirmPin("");
+
+        toast({
+          title:
+            "Payment PIN created",
+          description:
+            "Your Payment PIN has been created successfully.",
+        });
+
+        /*
+         * Immediately continue to authorization.
+         *
+         * The newly created PIN is NOT automatically
+         * accepted as authorization. The user must
+         * explicitly enter it again.
+         */
+
+        setPaymentPin("");
+        setPinStep("authorize");
+      } catch (err: any) {
+        console.error(
+          "Payment PIN creation failed:",
+          err
+        );
+
+        const message =
+          err?.message ||
+          "Unable to create Payment PIN.";
+
+        setError(message);
+
+        toast({
+          title:
+            "Unable to create Payment PIN",
+          description: message,
+          variant: "destructive",
+        });
+      } finally {
+        setCreatingPin(false);
+      }
+    };
+
+  // ==========================================================
+  // SHOW PIN CREATION / AUTHORIZATION
   // ==========================================================
 
   const handlePurchase = async () => {
@@ -1099,18 +1338,50 @@ const ServicePayment = ({
 
     if (
       processingPayment ||
-      verifyingPin
+      verifyingPin ||
+      creatingPin ||
+      checkingPinStatus
     ) {
       return;
     }
 
+    /*
+     * 1. Validate payment details first.
+     */
     if (!validateForm()) {
       return;
     }
 
+    /*
+     * 2. Check whether the user has a Payment PIN.
+     */
+    const hasPaymentPin =
+      await checkPaymentPinStatus();
+
+    if (!hasPaymentPin) {
+      /*
+       * No PIN exists.
+       *
+       * Show PIN creation screen.
+       */
+      setNewPin("");
+      setConfirmPin("");
+      setPaymentPin("");
+      setError("");
+
+      setPinStep("create");
+
+      return;
+    }
+
+    /*
+     * PIN already exists.
+     *
+     * Ask user to authorize the payment.
+     */
     setPaymentPin("");
     setError("");
-    setShowPinPrompt(true);
+    setPinStep("authorize");
   };
 
   // ==========================================================
@@ -1125,7 +1396,8 @@ const ServicePayment = ({
 
       if (
         processingPayment ||
-        verifyingPin
+        verifyingPin ||
+        creatingPin
       ) {
         return;
       }
@@ -1138,7 +1410,7 @@ const ServicePayment = ({
         toast({
           title: "Invalid PIN",
           description:
-            "Enter your 4-digit payment PIN.",
+            "Enter your 4-digit Payment PIN.",
           variant: "destructive",
         });
 
@@ -1149,6 +1421,9 @@ const ServicePayment = ({
         setVerifyingPin(true);
         setError("");
 
+        /*
+         * Verify the Payment PIN.
+         */
         const {
           data,
           error: pinError,
@@ -1168,7 +1443,7 @@ const ServicePayment = ({
 
           throw new Error(
             pinError.message ||
-              "Unable to verify payment PIN."
+              "Unable to verify Payment PIN."
           );
         }
 
@@ -1178,7 +1453,7 @@ const ServicePayment = ({
         ) {
           const message =
             data?.message ||
-            "Invalid payment PIN.";
+            "Invalid Payment PIN.";
 
           setPaymentPin("");
 
@@ -1191,13 +1466,19 @@ const ServicePayment = ({
           return;
         }
 
+        /*
+         * PIN is valid.
+         *
+         * Build the purchase details only after
+         * successful authorization.
+         */
         const details =
           buildPurchaseDetails();
 
         const sellingAmount =
           amountNumber;
 
-        setShowPinPrompt(false);
+        setPinStep("none");
         setPaymentPin("");
         setProcessingPayment(true);
 
@@ -1221,6 +1502,15 @@ const ServicePayment = ({
           }
         );
 
+        /*
+         * IMPORTANT:
+         *
+         * The actual wallet debit/provider payment
+         * remains inside onPurchase / the
+         * flutterwave-bills Edge Function.
+         *
+         * This component only authorizes the payment.
+         */
         await onPurchase(
           sellingAmount,
           details
@@ -1251,13 +1541,36 @@ const ServicePayment = ({
     };
 
   // ==========================================================
+  // BACK FROM PIN FLOW
+  // ==========================================================
+
+  const handlePinBack = () => {
+    if (
+      processingPayment ||
+      verifyingPin ||
+      creatingPin
+    ) {
+      return;
+    }
+
+    setNewPin("");
+    setConfirmPin("");
+    setPaymentPin("");
+    setError("");
+
+    setPinStep("none");
+  };
+
+  // ==========================================================
   // BACK
   // ==========================================================
 
   const handleBack = () => {
     if (
       processingPayment ||
-      verifyingPin
+      verifyingPin ||
+      creatingPin ||
+      checkingPinStatus
     ) {
       return;
     }
@@ -1304,10 +1617,16 @@ const ServicePayment = ({
               type="button"
               variant="ghost"
               size="sm"
-              onClick={handleBack}
+              onClick={
+                pinStep !== "none"
+                  ? handlePinBack
+                  : handleBack
+              }
               disabled={
                 processingPayment ||
-                verifyingPin
+                verifyingPin ||
+                creatingPin ||
+                checkingPinStatus
               }
               className="text-white hover:bg-white/20"
             >
@@ -1315,7 +1634,11 @@ const ServicePayment = ({
             </Button>
 
             <h1 className="text-lg font-bold">
-              {service.title}
+              {pinStep === "create"
+                ? "Create Payment PIN"
+                : pinStep === "authorize"
+                  ? "Authorize Payment"
+                  : service.title}
             </h1>
 
           </div>
@@ -1327,9 +1650,203 @@ const ServicePayment = ({
 
       <main className="max-w-3xl mx-auto px-4 sm:px-6 py-6">
 
-        {/* PIN SCREEN */}
+        {/* ==================================================
+            CREATE PAYMENT PIN
+        ================================================== */}
 
-        {showPinPrompt ? (
+        {pinStep === "create" ? (
+          <div className="bg-white rounded-2xl shadow-sm border p-5 sm:p-6">
+
+            <div className="text-center mb-6">
+
+              <div className="w-14 h-14 rounded-full bg-blue-100 flex items-center justify-center mx-auto mb-3">
+                <span className="text-2xl">
+                  🔐
+                </span>
+              </div>
+
+              <h2 className="text-xl font-bold text-gray-900">
+                Create Payment PIN
+              </h2>
+
+              <p className="text-sm text-gray-500 mt-2">
+                You need a Payment PIN to
+                authorize payments from your
+                wallet.
+              </p>
+
+            </div>
+
+            {/* PAYMENT SUMMARY */}
+
+            <div className="rounded-xl bg-blue-50 border border-blue-100 p-4 space-y-3 mb-6">
+
+              <div className="flex items-center justify-between gap-4">
+                <span className="text-sm text-gray-600">
+                  Service
+                </span>
+
+                <span className="text-sm font-semibold text-gray-900">
+                  {service.title}
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between gap-4">
+                <span className="text-sm text-gray-600">
+                  Amount
+                </span>
+
+                <span className="font-bold text-blue-700">
+                  {formatNaira(
+                    amountNumber
+                  )}
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between gap-4">
+                <span className="text-sm text-gray-600">
+                  {customerLabel}
+                </span>
+
+                <span className="text-sm font-medium text-gray-900 text-right break-all">
+                  {normaliseCustomer()}
+                </span>
+              </div>
+
+            </div>
+
+            {/* NEW PIN */}
+
+            <div className="space-y-2 mb-5">
+
+              <Label htmlFor="newPaymentPin">
+                Create 4-digit Payment PIN
+              </Label>
+
+              <Input
+                id="newPaymentPin"
+                type="password"
+                inputMode="numeric"
+                autoComplete="new-password"
+                maxLength={4}
+                value={newPin}
+                onChange={(event) => {
+                  const value =
+                    event.target.value
+                      .replace(/\D/g, "")
+                      .slice(0, 4);
+
+                  setNewPin(value);
+                  setError("");
+                }}
+                placeholder="••••"
+                disabled={creatingPin}
+                autoFocus
+                className="text-center text-2xl tracking-[0.5em]"
+              />
+
+            </div>
+
+            {/* CONFIRM PIN */}
+
+            <div className="space-y-2 mb-5">
+
+              <Label htmlFor="confirmPaymentPin">
+                Confirm Payment PIN
+              </Label>
+
+              <Input
+                id="confirmPaymentPin"
+                type="password"
+                inputMode="numeric"
+                autoComplete="new-password"
+                maxLength={4}
+                value={confirmPin}
+                onChange={(event) => {
+                  const value =
+                    event.target.value
+                      .replace(/\D/g, "")
+                      .slice(0, 4);
+
+                  setConfirmPin(value);
+                  setError("");
+                }}
+                onKeyDown={(event) => {
+                  if (
+                    event.key === "Enter" &&
+                    newPin.length === 4 &&
+                    confirmPin.length === 4 &&
+                    !creatingPin
+                  ) {
+                    handleCreatePaymentPin();
+                  }
+                }}
+                placeholder="••••"
+                disabled={creatingPin}
+                className="text-center text-2xl tracking-[0.5em]"
+              />
+
+            </div>
+
+            {error && (
+              <div className="rounded-lg bg-red-50 border border-red-200 p-3 mb-5">
+                <p className="text-sm text-red-700">
+                  {error}
+                </p>
+              </div>
+            )}
+
+            <div className="space-y-3">
+
+              <Button
+                type="button"
+                onClick={
+                  handleCreatePaymentPin
+                }
+                disabled={
+                  creatingPin ||
+                  newPin.length !== 4 ||
+                  confirmPin.length !== 4
+                }
+                className="w-full bg-blue-600 hover:bg-blue-700 h-11"
+              >
+                {creatingPin ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Creating PIN...
+                  </>
+                ) : (
+                  "Create PIN"
+                )}
+              </Button>
+
+              <Button
+                type="button"
+                variant="outline"
+                onClick={
+                  handlePinBack
+                }
+                disabled={creatingPin}
+                className="w-full"
+              >
+                Cancel
+              </Button>
+
+            </div>
+
+            <p className="text-xs text-gray-500 text-center mt-5">
+              Never share your Payment PIN
+              with anyone.
+            </p>
+
+          </div>
+
+        ) : pinStep === "authorize" ? (
+
+          /* ==================================================
+             AUTHORIZE PAYMENT
+          ================================================== */
+
           <div className="bg-white rounded-2xl shadow-sm border p-5 sm:p-6">
 
             <div className="text-center mb-6">
@@ -1341,12 +1858,12 @@ const ServicePayment = ({
               </div>
 
               <h2 className="text-xl font-bold text-gray-900">
-                Confirm Payment
+                Authorize Payment
               </h2>
 
               <p className="text-sm text-gray-500 mt-1">
                 Enter your 4-digit Payment PIN
-                to confirm this payment.
+                to authorize this payment.
               </p>
 
               <p className="text-lg font-semibold text-green-700 mt-2">
@@ -1486,7 +2003,7 @@ const ServicePayment = ({
                     Verifying PIN...
                   </>
                 ) : (
-                  "Confirm Payment"
+                  "Authorize Payment"
                 )}
               </Button>
 
@@ -1503,7 +2020,7 @@ const ServicePayment = ({
 
                   setPaymentPin("");
                   setError("");
-                  setShowPinPrompt(false);
+                  setPinStep("none");
                 }}
                 disabled={verifyingPin}
                 className="w-full"
@@ -1514,11 +2031,12 @@ const ServicePayment = ({
             </div>
 
           </div>
+
         ) : (
 
           /* ==================================================
              NORMAL FORM
-             ================================================== */
+          ================================================== */
 
           <div className="bg-white rounded-2xl shadow-sm border p-5 sm:p-6">
 
@@ -1558,7 +2076,9 @@ const ServicePayment = ({
 
                 {!loadingBillers &&
                   !processingPayment &&
-                  !verifyingPin && (
+                  !verifyingPin &&
+                  !creatingPin &&
+                  !checkingPinStatus && (
                     <Button
                       type="button"
                       variant="ghost"
@@ -1588,6 +2108,8 @@ const ServicePayment = ({
                   loadingBillers ||
                   processingPayment ||
                   verifyingPin ||
+                  creatingPin ||
+                  checkingPinStatus ||
                   billers.length === 0
                 }
                 className="w-full h-11 rounded-md border bg-background px-3 text-sm"
@@ -1735,7 +2257,9 @@ const ServicePayment = ({
                                 }
                                 disabled={
                                   processingPayment ||
-                                  verifyingPin
+                                  verifyingPin ||
+                                  creatingPin ||
+                                  checkingPinStatus
                                 }
                                 className={[
                                   "text-left rounded-xl border p-3 transition-all",
@@ -1774,7 +2298,7 @@ const ServicePayment = ({
 
               /* =================================================
                  NON-DATA PACKAGE
-                 ================================================= */
+              ================================================= */
 
               <div className="space-y-2 mb-5">
 
@@ -1797,6 +2321,8 @@ const ServicePayment = ({
                     loadingItems ||
                     processingPayment ||
                     verifyingPin ||
+                    creatingPin ||
+                    checkingPinStatus ||
                     !selectedBillerCode ||
                     items.length === 0
                   }
@@ -1865,7 +2391,9 @@ const ServicePayment = ({
                 }
                 disabled={
                   processingPayment ||
-                  verifyingPin
+                  verifyingPin ||
+                  creatingPin ||
+                  checkingPinStatus
                 }
                 inputMode={
                   serviceType ===
@@ -1943,7 +2471,9 @@ const ServicePayment = ({
                       }
                       disabled={
                         processingPayment ||
-                        verifyingPin
+                        verifyingPin ||
+                        creatingPin ||
+                        checkingPinStatus
                       }
                       className={[
                         "rounded-xl border p-3 text-center font-semibold transition-all",
@@ -1965,7 +2495,9 @@ const ServicePayment = ({
                     }
                     disabled={
                       processingPayment ||
-                      verifyingPin
+                      verifyingPin ||
+                      creatingPin ||
+                      checkingPinStatus
                     }
                     className={[
                       "rounded-xl border p-3 text-center font-semibold transition-all",
@@ -1995,7 +2527,9 @@ const ServicePayment = ({
                     placeholder="Enter exact amount"
                     disabled={
                       processingPayment ||
-                      verifyingPin
+                      verifyingPin ||
+                      creatingPin ||
+                      checkingPinStatus
                     }
                     autoFocus
                   />
@@ -2050,6 +2584,8 @@ const ServicePayment = ({
                 loadingItems ||
                 processingPayment ||
                 verifyingPin ||
+                creatingPin ||
+                checkingPinStatus ||
                 !selectedBillerCode ||
                 !selectedItemCode ||
                 !customer.trim() ||
@@ -2058,7 +2594,12 @@ const ServicePayment = ({
               className="w-full bg-green-600 hover:bg-green-700 h-11"
             >
 
-              {processingPayment ? (
+              {checkingPinStatus ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Checking Payment PIN...
+                </>
+              ) : processingPayment ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                   Processing...

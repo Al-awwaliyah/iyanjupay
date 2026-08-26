@@ -50,6 +50,7 @@ import MePage from "./me/MePage";
 import CustomerServicePage from "./me/CustomerServicePage";
 import SupportPage from "./me/SupportPage";
 import TransactionLimitPage from "./me/TransactionLimitPage";
+import PaymentPinPage from "./me/PaymentPinPage";
 
 import { useAuth } from "@/hooks/useAuth";
 import { useWallet } from "@/hooks/useWallet";
@@ -72,7 +73,8 @@ type CurrentPage =
   | "history"
   | "customer-service"
   | "support"
-  | "transaction-limit";
+  | "transaction-limit"
+  | "payment-pin";
 
 type SelectedService = {
   title: string;
@@ -1418,36 +1420,53 @@ const Dashboard = () => {
       />
     );
   }
+  if (currentPage === "payment-pin") {
+      return (
+        <PaymentPinPage
+          onBack={() =>
+            setCurrentPage("me")
+          }
+        />
+      );
+    }
 
   if (currentPage === "me") {
-    return (
-      <MePage
-        onBack={() =>
-          setCurrentPage("home")
-        }
-        onProfileClick={() =>
-          setCurrentPage("profile")
-        }
-        onHistoryClick={() =>
-          setCurrentPage("history")
-        }
-        onCustomerServiceClick={() =>
-          setCurrentPage(
-            "customer-service"
-          )
-        }
-        onSupportClick={() =>
-          setCurrentPage("support")
-        }
-        onTransactionLimitClick={() =>
-          setCurrentPage(
-            "transaction-limit"
-          )
-        }
-      />
-    );
-  }
+  return (
+    <MePage
+      onBack={() =>
+        setCurrentPage("home")
+      }
 
+      onProfileClick={() =>
+        setCurrentPage("profile")
+      }
+
+      onHistoryClick={() =>
+        setCurrentPage("history")
+      }
+
+      onCustomerServiceClick={() =>
+        setCurrentPage(
+          "customer-service"
+        )
+      }
+
+      onSupportClick={() =>
+        setCurrentPage("support")
+      }
+
+      onTransactionLimitClick={() =>
+        setCurrentPage(
+          "transaction-limit"
+        )
+      }
+
+      onPaymentPinClick={() =>
+        setCurrentPage("payment-pin")
+      }
+    />
+  );
+}
   /*
    * ============================================================
    * WALLET LOADING

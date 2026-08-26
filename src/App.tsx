@@ -26,6 +26,7 @@ import ForgotPassword from "./pages/ForgotPassword";
 import VerifyEmailOtp from "./pages/VerifyEmailOtp";
 import OnboardingPage from "@/components/onboarding/OnboardingPage";
 import OnboardingBvnPage from "@/components/onboarding/OnboardingBvnPage";
+import Dashboard from "@/components/Dashboard";
 import VerifyRecoveryOtp from "./pages/VerifyRecoveryOtp";
 import ResetPassword from "./pages/ResetPassword";
 import NotFound from "./pages/NotFound";
@@ -87,20 +88,16 @@ const App = () => {
                 SIGNUP
             ==================================================
 
-                This allows:
-
-                /signup
-
-                and:
-
-                /signup?ref=ALXXXXXXXX
-
-                AuthForm reads ?ref= automatically.
             */}
 
             <Route
               path="/signup"
               element={<Index />}
+            />
+            
+            <Route
+              path="/dashboard"
+              element={<Dashboard />}
             />
 
             {/* ==================================================

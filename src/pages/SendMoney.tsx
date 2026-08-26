@@ -6,37 +6,17 @@ import React, {
 
 import {
   ArrowLeft,
-  Building2,
+  Send,
   CheckCircle2,
   Loader2,
-  Search,
-  Send,
   User,
+  Building2,
+  Search,
 } from "lucide-react";
 
-import {
-  useNavigate,
-} from "react-router-dom";
-
-import {
-  Button,
-} from "@/components/ui/button";
-
-import {
-  Input,
-} from "@/components/ui/input";
-
-import {
-  Label,
-} from "@/components/ui/label";
-
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 import {
   Select,
@@ -46,20 +26,26 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-import {
-  useToast,
-} from "@/hooks/use-toast";
+import { useToast } from "@/hooks/use-toast";
 
-import {
-  supabase,
-} from "@/integrations/supabase/client";
+import { supabase } from "@/integrations/supabase/client";
 
 import PaymentPinModal from "@/components/security/PaymentPinModal";
 
+interface SendMoneyPageProps {
+  onBack: () => void;
 
-// ============================================================
-// TYPES
-// ============================================================
+  walletBalance: number;
+
+  onTransfer: (
+    amount: number,
+    details: any
+  ) => Promise<void>;
+
+  onTransferSuccess?: () =>
+    | Promise<void>
+    | void;
+}
 
 interface Bank {
   name: string;
@@ -79,71 +65,70 @@ interface ResolvedIyanjuPayRecipient {
   nickname?: string | null;
 }
 
+interface PendingBankTransfer {
+  amount: number;
+  details: any;
+}
+
 type TransferType =
   | "iyanjupay"
   | "bank";
 
-
-// ============================================================
-// FEES
-// ============================================================
-
+/**
+ * ============================================================
+ * TRANSFER FEES
+ * ============================================================
+ *
+ * IyanjuPay → IyanjuPay
+ * Fee = ₦0
+ *
+ * Bank transfer
+ * Fee = ₦10
+ */
 const IYANJUPAY_TRANSFER_FEE = 0;
 const BANK_TRANSFER_FEE = 10;
 
-
-// ============================================================
-// SEND MONEY PAGE
-// ============================================================
-
-const SendMoney = () => {
-
-  const navigate = useNavigate();
-
+const SendMoneyPage = ({
+  onBack,
+  walletBalance,
+  onTransfer,
+  onTransferSuccess,
+}: SendMoneyPageProps) => {
   const { toast } = useToast();
-
 
   // ==========================================================
   // TRANSFER TYPE
   // ==========================================================
 
-  const [
-    transferType,
-    setTransferType,
-  ] = useState<TransferType>(
-    "iyanjupay"
-  );
-
+  const [transferType, setTransferType] =
+    useState<TransferType>(
+      "iyanjupay"
+    );
 
   // ==========================================================
-  // WALLET BALANCE
+  // GENERAL TRANSFER
   // ==========================================================
 
-  const [
-    walletBalance,
-    setWalletBalance,
-  ] = useState(0);
+  const [amount, setAmount] =
+    useState("");
 
-  const [
-    balanceLoading,
-    setBalanceLoading,
-  ] = useState(true);
-
+  const [narration, setNarration] =
+    useState("");
 
   // ==========================================================
-  // FORM
+  // PAYMENT PIN
   // ==========================================================
 
-  const [
-    amount,
-    setAmount,
-  ] = useState("");
+  const [paymentPinOpen, setPaymentPinOpen] =
+    useState(false);
 
   const [
-    narration,
-    setNarration,
-  ] = useState("");
-
+    pendingBankTransfer,
+    setPendingBankTransfer,
+  ] =
+    useState<PendingBankTransfer | null>(
+      null
+    );
 
   // ==========================================================
   // IYANJUPAY
@@ -153,6 +138,11 @@ const SendMoney = () => {
     iyanjupayWalletId,
     setIyanjuPayWalletId,
   ] = useState("");
+
+  const [
+    iyanjupayTransferring,
+    setIyanjuPayTransferring,
+  ] = useState(false);
 
   const [
     resolvedIyanjuPayRecipient,
@@ -167,288 +157,162 @@ const SendMoney = () => {
     setResolvingIyanjuPayRecipient,
   ] = useState(false);
 
-
   const iyanjuPayResolveRequestRef =
     useRef(0);
-
 
   // ==========================================================
   // BANK
   // ==========================================================
 
-  const [
-    bank,
-    setBank,
-  ] = useState("");
+  const [bank, setBank] =
+    useState("");
 
-  const [
-    bankSearch,
-    setBankSearch,
-  ] = useState("");
+  const [bankSearch, setBankSearch] =
+    useState("");
 
-  const [
-    accountNumber,
-    setAccountNumber,
-  ] = useState("");
+  const [accountNumber, setAccountNumber] =
+    useState("");
 
-  const [
-    banks,
-    setBanks,
-  ] = useState<Bank[]>([]);
+  const [banks, setBanks] =
+    useState<Bank[]>([]);
 
-  const [
-    banksLoading,
-    setBanksLoading,
-  ] = useState(false);
+  const [banksLoading, setBanksLoading] =
+    useState(false);
 
   const [
     resolvedAccount,
     setResolvedAccount,
-  ] =
-    useState<ResolvedAccount | null>(
-      null
-    );
+  ] = useState<ResolvedAccount | null>(
+    null
+  );
 
-  const [
-    resolving,
-    setResolving,
-  ] = useState(false);
+  const [resolving, setResolving] =
+    useState(false);
 
   const resolveRequestRef =
     useRef(0);
 
-
   // ==========================================================
-  // PAYMENT PIN
-  // ==========================================================
-
-  const [
-    paymentPinOpen,
-    setPaymentPinOpen,
-  ] = useState(false);
-
-
-  // ==========================================================
-  // PROCESSING
+  // FILTER BANKS
   // ==========================================================
 
-  const [
-    processing,
-    setProcessing,
-  ] = useState(false);
-
+  const filteredBanks = banks.filter(
+    (bankItem) =>
+      bankItem.name
+        .toLowerCase()
+        .includes(
+          bankSearch
+            .trim()
+            .toLowerCase()
+        )
+  );
 
   // ==========================================================
-  // LOAD WALLET BALANCE
+  // TRANSFER PRICING
   // ==========================================================
 
-  useEffect(() => {
+  const transferAmount =
+    Number(amount) || 0;
 
-    let mounted = true;
+  const transferFee =
+    transferType === "iyanjupay"
+      ? IYANJUPAY_TRANSFER_FEE
+      : transferAmount > 0
+        ? BANK_TRANSFER_FEE
+        : 0;
 
-    const loadBalance =
-      async () => {
+  const totalCharged =
+    transferAmount +
+    transferFee;
 
-        try {
-
-          setBalanceLoading(true);
-
-          const {
-            data: {
-              user,
-            },
-            error: userError,
-          } =
-            await supabase.auth.getUser();
-
-          if (
-            userError ||
-            !user
-          ) {
-            throw new Error(
-              "Your login session has expired."
-            );
-          }
-
-
-          const {
-            data,
-            error,
-          } =
-            await supabase
-              .from("wallets")
-              .select("balance")
-              .eq(
-                "user_id",
-                user.id
-              )
-              .maybeSingle();
-
-
-          if (error) {
-            throw error;
-          }
-
-
-          if (mounted) {
-
-            setWalletBalance(
-              Number(
-                data?.balance ?? 0
-              )
-            );
-
-          }
-
-        } catch (error: any) {
-
-          console.error(
-            "Wallet balance loading error:",
-            error
-          );
-
-          if (mounted) {
-
-            toast({
-              title:
-                "Unable to load wallet balance",
-              description:
-                error?.message ||
-                "Please try again.",
-              variant:
-                "destructive",
-            });
-
-          }
-
-        } finally {
-
-          if (mounted) {
-            setBalanceLoading(false);
-          }
-
-        }
-
-      };
-
-
-    loadBalance();
-
-
-    return () => {
-      mounted = false;
-    };
-
-  }, [toast]);
-
+  const hasInsufficientBalance =
+    transferAmount > 0 &&
+    totalCharged >
+      walletBalance;
 
   // ==========================================================
   // LOAD BANKS
   // ==========================================================
 
   useEffect(() => {
+    let cancelled = false;
 
-    const loadBanks =
-      async () => {
+    const loadBanks = async () => {
+      setBanksLoading(true);
 
-        setBanksLoading(true);
-
-        try {
-
-          const {
-            data,
-            error,
-          } =
-            await supabase.functions.invoke(
-              "flutterwave-banks"
-            );
-
-
-          if (error) {
-            throw error;
-          }
-
-
-          if (
-            !data?.success ||
-            !Array.isArray(
-              data?.banks
-            )
-          ) {
-
-            throw new Error(
-              data?.error ||
-              "Unable to load banks."
-            );
-
-          }
-
-
-          setBanks(
-            data.banks
+      try {
+        const {
+          data,
+          error,
+        } =
+          await supabase.functions.invoke(
+            "flutterwave-banks"
           );
 
-        } catch (error: any) {
-
-          console.error(
-            "Bank loading error:",
-            error
-          );
-
-          toast({
-            title:
-              "Unable to load banks",
-            description:
-              error?.message ||
-              "Please try again later.",
-            variant:
-              "destructive",
-          });
-
-        } finally {
-
-          setBanksLoading(false);
-
+        if (cancelled) {
+          return;
         }
 
-      };
+        if (error) {
+          throw error;
+        }
 
+        if (
+          !data?.success ||
+          !Array.isArray(data?.banks)
+        ) {
+          throw new Error(
+            data?.error ||
+              "Unable to load banks."
+          );
+        }
+
+        setBanks(data.banks);
+      } catch (error: any) {
+        if (cancelled) {
+          return;
+        }
+
+        console.error(
+          "Bank loading error:",
+          error
+        );
+
+        toast({
+          title:
+            "Unable to load banks",
+
+          description:
+            error?.message ||
+            "Please try again later.",
+
+          variant:
+            "destructive",
+        });
+      } finally {
+        if (!cancelled) {
+          setBanksLoading(false);
+        }
+      }
+    };
 
     loadBanks();
 
+    return () => {
+      cancelled = true;
+    };
   }, [toast]);
-
-
-  // ==========================================================
-  // FILTER BANKS
-  // ==========================================================
-
-  const filteredBanks =
-    banks.filter(
-      (bankItem) =>
-        bankItem.name
-          .toLowerCase()
-          .includes(
-            bankSearch
-              .trim()
-              .toLowerCase()
-          )
-    );
-
 
   // ==========================================================
   // RESOLVE BANK ACCOUNT
   // ==========================================================
 
   useEffect(() => {
-
     if (
-      transferType !==
-      "bank"
+      transferType !== "bank"
     ) {
       return;
     }
-
 
     const cleanAccountNumber =
       accountNumber.replace(
@@ -456,36 +320,28 @@ const SendMoney = () => {
         ""
       );
 
-
     if (
       !bank ||
       !/^\d{10}$/.test(
         cleanAccountNumber
       )
     ) {
-
       setResolvedAccount(null);
       setResolving(false);
 
       return;
-
     }
-
 
     const requestId =
       ++resolveRequestRef.current;
 
-
     const timeout =
       window.setTimeout(
         async () => {
-
           setResolving(true);
           setResolvedAccount(null);
 
-
           try {
-
             const {
               data,
               error,
@@ -503,7 +359,6 @@ const SendMoney = () => {
                 }
               );
 
-
             if (
               requestId !==
               resolveRequestRef.current
@@ -511,22 +366,18 @@ const SendMoney = () => {
               return;
             }
 
-
             if (error) {
-
               let message =
                 error.message ||
                 "Unable to verify bank account.";
 
               try {
-
                 if (
                   error.context &&
                   typeof error.context
                     .json ===
                     "function"
                 ) {
-
                   const payload =
                     await error.context.json();
 
@@ -534,33 +385,25 @@ const SendMoney = () => {
                     payload?.error ||
                     payload?.message ||
                     message;
-
                 }
-
               } catch {
                 // Keep original error.
               }
 
-
               throw new Error(
                 message
               );
-
             }
-
 
             if (
               !data?.success ||
               !data?.account
             ) {
-
               throw new Error(
                 data?.error ||
-                "Bank account could not be verified."
+                  "Bank account could not be verified."
               );
-
             }
-
 
             setResolvedAccount({
               account_number:
@@ -576,17 +419,15 @@ const SendMoney = () => {
                   .bank_code,
             });
 
-
             toast({
               title:
                 "Account verified",
+
               description:
                 data.account
                   .account_name,
             });
-
           } catch (error: any) {
-
             if (
               requestId !==
               resolveRequestRef.current
@@ -594,48 +435,39 @@ const SendMoney = () => {
               return;
             }
 
-
             console.error(
               "Account resolution failed:",
               error
             );
 
-
             setResolvedAccount(null);
-
 
             toast({
               title:
                 "Account verification failed",
+
               description:
                 error?.message ||
                 "We could not verify this bank account.",
+
               variant:
                 "destructive",
             });
-
           } finally {
-
             if (
               requestId ===
               resolveRequestRef.current
             ) {
               setResolving(false);
             }
-
           }
-
         },
         600
       );
 
-
     return () => {
-      window.clearTimeout(
-        timeout
-      );
+      window.clearTimeout(timeout);
     };
-
   }, [
     accountNumber,
     bank,
@@ -643,20 +475,16 @@ const SendMoney = () => {
     toast,
   ]);
 
-
   // ==========================================================
   // RESOLVE IYANJUPAY RECIPIENT
   // ==========================================================
 
   useEffect(() => {
-
     if (
-      transferType !==
-      "iyanjupay"
+      transferType !== "iyanjupay"
     ) {
       return;
     }
-
 
     const cleanWalletId =
       iyanjupayWalletId.replace(
@@ -664,13 +492,11 @@ const SendMoney = () => {
         ""
       );
 
-
     if (
       !/^\d{8}$/.test(
         cleanWalletId
       )
     ) {
-
       iyanjuPayResolveRequestRef.current++;
 
       setResolvedIyanjuPayRecipient(
@@ -682,18 +508,14 @@ const SendMoney = () => {
       );
 
       return;
-
     }
-
 
     const requestId =
       ++iyanjuPayResolveRequestRef.current;
 
-
     const timeout =
       window.setTimeout(
         async () => {
-
           setResolvingIyanjuPayRecipient(
             true
           );
@@ -702,9 +524,7 @@ const SendMoney = () => {
             null
           );
 
-
           try {
-
             const {
               data,
               error,
@@ -719,7 +539,6 @@ const SendMoney = () => {
                 }
               );
 
-
             if (
               requestId !==
               iyanjuPayResolveRequestRef.current
@@ -727,22 +546,18 @@ const SendMoney = () => {
               return;
             }
 
-
             if (error) {
-
               let message =
                 error.message ||
                 "Unable to verify recipient.";
 
               try {
-
                 if (
                   error.context &&
                   typeof error.context
                     .json ===
                     "function"
                 ) {
-
                   const payload =
                     await error.context.json();
 
@@ -750,66 +565,58 @@ const SendMoney = () => {
                     payload?.error ||
                     payload?.message ||
                     message;
-
                 }
-
               } catch {
                 // Keep original error.
               }
 
-
               throw new Error(
                 message
               );
-
             }
-
 
             if (
               !data?.success ||
               !data?.recipient
             ) {
-
               throw new Error(
                 data?.error ||
-                data?.message ||
-                "IyanjuPay Wallet ID could not be verified."
+                  data?.message ||
+                  "IyanjuPay Wallet ID could not be verified."
               );
-
             }
 
+            setResolvedIyanjuPayRecipient(
+              {
+                wallet_id:
+                  data.recipient
+                    .wallet_id,
 
-            setResolvedIyanjuPayRecipient({
-              wallet_id:
-                data.recipient
-                  .wallet_id,
+                name:
+                  data.recipient
+                    .name,
 
-              name:
-                data.recipient
-                  .name,
+                full_name:
+                  data.recipient
+                    .full_name ??
+                  null,
 
-              full_name:
-                data.recipient
-                  .full_name ??
-                null,
-
-              nickname:
-                data.recipient
-                  .nickname ??
-                null,
-            });
-
+                nickname:
+                  data.recipient
+                    .nickname ??
+                  null,
+              }
+            );
 
             toast({
               title:
                 "Recipient verified",
+
               description:
                 data.recipient
                   .name,
             });
-
           } catch (error: any) {
-
             if (
               requestId !==
               iyanjuPayResolveRequestRef.current
@@ -817,152 +624,116 @@ const SendMoney = () => {
               return;
             }
 
-
             console.error(
               "IyanjuPay recipient verification failed:",
               error
             );
 
-
             setResolvedIyanjuPayRecipient(
               null
             );
 
-
             toast({
               title:
                 "Wallet ID verification failed",
+
               description:
                 error?.message ||
                 "We could not find this IyanjuPay Wallet ID.",
+
               variant:
                 "destructive",
             });
-
           } finally {
-
             if (
               requestId ===
               iyanjuPayResolveRequestRef.current
             ) {
-
               setResolvingIyanjuPayRecipient(
                 false
               );
-
             }
-
           }
-
         },
         500
       );
 
-
     return () => {
-      window.clearTimeout(
-        timeout
-      );
+      window.clearTimeout(timeout);
     };
-
   }, [
     iyanjupayWalletId,
     transferType,
     toast,
   ]);
 
-
-  // ==========================================================
-  // TRANSFER AMOUNT / FEES
-  // ==========================================================
-
-  const transferAmount =
-    Number(amount) || 0;
-
-
-  const transferFee =
-    transferType ===
-    "iyanjupay"
-      ? IYANJUPAY_TRANSFER_FEE
-      : transferAmount > 0
-        ? BANK_TRANSFER_FEE
-        : 0;
-
-
-  const totalCharged =
-    transferAmount +
-    transferFee;
-
-
-  const hasInsufficientBalance =
-    transferAmount > 0 &&
-    totalCharged >
-      walletBalance;
-
-
   // ==========================================================
   // CHANGE TRANSFER TYPE
   // ==========================================================
 
-  const handleTransferTypeChange =
-    (
-      type: TransferType
+  const handleTransferTypeChange = (
+    type: TransferType
+  ) => {
+    resolveRequestRef.current++;
+
+    iyanjuPayResolveRequestRef.current++;
+
+    setTransferType(type);
+
+    setAmount("");
+    setNarration("");
+
+    // IyanjuPay
+    setIyanjuPayWalletId("");
+
+    setResolvedIyanjuPayRecipient(
+      null
+    );
+
+    setResolvingIyanjuPayRecipient(
+      false
+    );
+
+    setIyanjuPayTransferring(
+      false
+    );
+
+    // Bank
+    setBank("");
+    setBankSearch("");
+    setAccountNumber("");
+
+    setResolvedAccount(null);
+    setResolving(false);
+
+    // Payment PIN
+    setPaymentPinOpen(false);
+    setPendingBankTransfer(null);
+  };
+
+  // ==========================================================
+  // IYANJUPAY TRANSFER
+  // ==========================================================
+
+  const handleIyanjuPayTransfer =
+    async (
+      transferAmountValue: number
     ) => {
-
-      resolveRequestRef.current++;
-
-      iyanjuPayResolveRequestRef.current++;
-
-
-      setTransferType(type);
-
-      setAmount("");
-      setNarration("");
-
-
-      setIyanjuPayWalletId("");
-
-      setResolvedIyanjuPayRecipient(
-        null
-      );
-
-      setResolvingIyanjuPayRecipient(
-        false
-      );
-
-
-      setBank("");
-      setBankSearch("");
-      setAccountNumber("");
-
-      setResolvedAccount(null);
-      setResolving(false);
-
-
-      setPaymentPinOpen(false);
-
-    };
-
-
-  // ==========================================================
-  // VALIDATE TRANSFER
-  // ==========================================================
-
-  const handleTransfer =
-    () => {
+      const walletId =
+        iyanjupayWalletId.trim();
 
       if (
-        !Number.isFinite(
-          transferAmount
-        ) ||
-        transferAmount <= 0
+        !/^\d{8}$/.test(
+          walletId
+        )
       ) {
-
         toast({
           title:
-            "Invalid amount",
+            "Invalid Wallet ID",
+
           description:
-            "Please enter a valid transfer amount.",
+            "IyanjuPay Wallet ID must be exactly 8 digits.",
+
           variant:
             "destructive",
         });
@@ -970,38 +741,282 @@ const SendMoney = () => {
         return;
       }
 
+      if (
+        !resolvedIyanjuPayRecipient ||
+        resolvedIyanjuPayRecipient
+          .wallet_id !== walletId
+      ) {
+        toast({
+          title:
+            "Recipient not verified",
 
-      // ------------------------------------------------------
-      // IYANJUPAY
-      // ------------------------------------------------------
+          description:
+            "Please enter a valid IyanjuPay Wallet ID and wait for the recipient name to be verified.",
+
+          variant:
+            "destructive",
+        });
+
+        return;
+      }
+
+      if (
+        !Number.isFinite(
+          transferAmountValue
+        ) ||
+        transferAmountValue <= 0
+      ) {
+        toast({
+          title:
+            "Invalid amount",
+
+          description:
+            "Please enter a valid transfer amount.",
+
+          variant:
+            "destructive",
+        });
+
+        return;
+      }
+
+      if (
+        transferAmountValue >
+        walletBalance
+      ) {
+        toast({
+          title:
+            "Insufficient Balance",
+
+          description:
+            `You need ₦${transferAmountValue.toLocaleString()} to complete this transfer.`,
+
+          variant:
+            "destructive",
+        });
+
+        return;
+      }
+
+      try {
+        setIyanjuPayTransferring(
+          true
+        );
+
+        const idempotencyKey =
+          `iyanjupay_${crypto.randomUUID()}`;
+
+        toast({
+          title:
+            "Processing transfer",
+
+          description:
+            `Sending ₦${transferAmountValue.toLocaleString()} to ${resolvedIyanjuPayRecipient.name}.`,
+        });
+
+        // ======================================================
+        // IYANJUPAY EDGE FUNCTION
+        // ======================================================
+
+        const {
+          data,
+          error,
+        } =
+          await supabase.functions.invoke(
+            "iyanjuPay-transfer",
+            {
+              body: {
+                wallet_id:
+                  walletId,
+
+                amount:
+                  transferAmountValue,
+
+                narration:
+                  narration.trim() ||
+                  "IyanjuPay transfer",
+
+                idempotency_key:
+                  idempotencyKey,
+              },
+            }
+          );
+
+        console.log(
+          "IyanjuPay transfer response:",
+          data
+        );
+
+        if (error) {
+          console.error(
+            "IyanjuPay transfer function error:",
+            error
+          );
+
+          let message =
+            error.message ||
+            "Unable to process IyanjuPay transfer.";
+
+          try {
+            if (
+              error.context &&
+              typeof error.context
+                .json ===
+                "function"
+            ) {
+              const payload =
+                await error.context.json();
+
+              message =
+                payload?.error ||
+                payload?.message ||
+                message;
+            }
+          } catch {
+            // Keep original message.
+          }
+
+          throw new Error(
+            message
+          );
+        }
+
+        if (
+          !data ||
+          data.success !== true
+        ) {
+          throw new Error(
+            data?.error ||
+              data?.message ||
+              "IyanjuPay transfer failed."
+          );
+        }
+
+        if (onTransferSuccess) {
+          await onTransferSuccess();
+        }
+
+        toast({
+          title:
+            "Transfer Successful",
+
+          description:
+            data?.message ||
+            `₦${transferAmountValue.toLocaleString()} sent successfully to ${resolvedIyanjuPayRecipient.name}.`,
+        });
+
+        console.log(
+          "IyanjuPay transfer completed:",
+          {
+            reference:
+              data?.reference,
+
+            transaction_id:
+              data?.transaction_id,
+
+            credit_transaction_id:
+              data?.credit_transaction_id,
+
+            amount:
+              data?.amount,
+
+            fee:
+              data?.fee,
+
+            total_charged:
+              data?.total_charged,
+
+            recipient_wallet_id:
+              data?.recipient_wallet_id,
+
+            recipient_name:
+              resolvedIyanjuPayRecipient.name,
+          }
+        );
+
+        handleBack();
+      } catch (error: any) {
+        console.error(
+          "IyanjuPay transfer failed:",
+          error
+        );
+
+        toast({
+          title:
+            "Transfer Failed",
+
+          description:
+            error?.message ||
+            "Unable to complete IyanjuPay transfer.",
+
+          variant:
+            "destructive",
+        });
+      } finally {
+        setIyanjuPayTransferring(
+          false
+        );
+      }
+    };
+
+  // ==========================================================
+  // PREPARE TRANSFER
+  // ==========================================================
+
+  const handleTransfer =
+    async () => {
+      const transferAmountValue =
+        Number(amount);
+
+      if (
+        !Number.isFinite(
+          transferAmountValue
+        ) ||
+        transferAmountValue <= 0
+      ) {
+        toast({
+          title:
+            "Invalid amount",
+
+          description:
+            "Please enter a valid transfer amount.",
+
+          variant:
+            "destructive",
+        });
+
+        return;
+      }
+
+      // --------------------------------------------------------
+      // IYANJUPAY VALIDATION
+      // --------------------------------------------------------
 
       if (
         transferType ===
         "iyanjupay"
       ) {
-
         const walletId =
           iyanjupayWalletId.trim();
-
 
         if (
           !/^\d{8}$/.test(
             walletId
           )
         ) {
-
           toast({
             title:
               "Invalid Wallet ID",
+
             description:
               "IyanjuPay Wallet ID must be exactly 8 digits.",
+
             variant:
               "destructive",
           });
 
           return;
         }
-
 
         if (
           !resolvedIyanjuPayRecipient ||
@@ -1009,40 +1024,31 @@ const SendMoney = () => {
             .wallet_id !==
             walletId
         ) {
-
           toast({
             title:
               "Recipient not verified",
+
             description:
-              "Please enter a valid IyanjuPay Wallet ID and wait for verification.",
+              "Please enter a valid IyanjuPay Wallet ID and wait for the recipient name to be verified.",
+
             variant:
               "destructive",
           });
 
           return;
         }
-
-      }
-
-
-      // ------------------------------------------------------
-      // BANK
-      // ------------------------------------------------------
-
-      if (
-        transferType ===
-        "bank"
-      ) {
 
         if (
-          !resolvedAccount
+          transferAmountValue >
+          walletBalance
         ) {
-
           toast({
             title:
-              "Account not verified",
+              "Insufficient Balance",
+
             description:
-              "Please enter a valid bank account and wait for verification.",
+              `You need ₦${transferAmountValue.toLocaleString()} to complete this transfer.`,
+
             variant:
               "destructive",
           });
@@ -1050,23 +1056,39 @@ const SendMoney = () => {
           return;
         }
 
+        /*
+         * Everything is valid.
+         *
+         * Do not execute the transfer yet.
+         * Ask for Payment PIN first.
+         */
+        setPaymentPinOpen(true);
+
+        return;
       }
 
+      // --------------------------------------------------------
+      // BANK BALANCE
+      // --------------------------------------------------------
 
-      // ------------------------------------------------------
-      // BALANCE
-      // ------------------------------------------------------
+      const fee =
+        BANK_TRANSFER_FEE;
+
+      const total =
+        transferAmountValue +
+        fee;
 
       if (
-        totalCharged >
+        total >
         walletBalance
       ) {
-
         toast({
           title:
             "Insufficient Balance",
+
           description:
-            `You need ₦${totalCharged.toLocaleString()} to complete this transfer.`,
+            `You need ₦${total.toLocaleString()} to complete this transfer.`,
+
           variant:
             "destructive",
         });
@@ -1074,326 +1096,155 @@ const SendMoney = () => {
         return;
       }
 
+      // --------------------------------------------------------
+      // BANK ACCOUNT
+      // --------------------------------------------------------
 
-      // ------------------------------------------------------
-      // REQUEST PAYMENT PIN
-      // ------------------------------------------------------
+      if (!resolvedAccount) {
+        toast({
+          title:
+            "Account not verified",
 
+          description:
+            "Please enter a valid 10-digit account number and wait for verification.",
+
+          variant:
+            "destructive",
+        });
+
+        return;
+      }
+
+      const selectedBank =
+        banks.find(
+          (item) =>
+            item.code ===
+            resolvedAccount.bank_code
+        );
+
+      const details = {
+        recipient:
+          resolvedAccount.account_name,
+
+        bank:
+          selectedBank?.name ||
+          "Bank",
+
+        bankCode:
+          resolvedAccount.bank_code,
+
+        accountNumber:
+          resolvedAccount.account_number,
+
+        narration,
+
+        type:
+          "transfer",
+
+        transferAmount:
+          transferAmountValue,
+
+        fee,
+
+        totalCharged:
+          total,
+      };
+
+      /*
+       * Store the validated bank transfer.
+       *
+       * Do not execute onTransfer() yet.
+       */
+      setPendingBankTransfer({
+        amount:
+          transferAmountValue,
+
+        details,
+      });
+
+      /*
+       * Ask for Payment PIN.
+       */
       setPaymentPinOpen(true);
-
     };
 
-
   // ==========================================================
-  // EXECUTE TRANSFER AFTER PIN
+  // PAYMENT PIN VERIFIED
   // ==========================================================
 
   const handlePaymentPinVerified =
     async () => {
-
       setPaymentPinOpen(false);
 
+      // --------------------------------------------------------
+      // IYANJUPAY TRANSFER
+      // --------------------------------------------------------
 
-      if (processing) {
+      if (
+        transferType ===
+        "iyanjupay"
+      ) {
+        const transferAmountValue =
+          Number(amount);
+
+        await handleIyanjuPayTransfer(
+          transferAmountValue
+        );
+
         return;
       }
 
-
-      setProcessing(true);
-
-
-      try {
-
-        let response: any;
-
-
-        // ====================================================
-        // IYANJUPAY TRANSFER
-        // ====================================================
-
-        if (
-          transferType ===
-          "iyanjupay"
-        ) {
-
-          const walletId =
-            iyanjupayWalletId.trim();
-
-
-          const idempotencyKey =
-            `iyanjupay_${crypto.randomUUID()}`;
-
-
-          const {
-            data,
-            error,
-          } =
-            await supabase.functions.invoke(
-              "iyanjuPay-transfer",
-              {
-                body: {
-
-                  wallet_id:
-                    walletId,
-
-                  amount:
-                    transferAmount,
-
-                  narration:
-                    narration.trim() ||
-                    "IyanjuPay transfer",
-
-                  idempotency_key:
-                    idempotencyKey,
-
-                },
-              }
-            );
-
-
-          if (error) {
-
-            let message =
-              error.message ||
-              "Unable to process transfer.";
-
-            try {
-
-              if (
-                error.context &&
-                typeof error.context
-                  .json ===
-                  "function"
-              ) {
-
-                const payload =
-                  await error.context.json();
-
-                message =
-                  payload?.error ||
-                  payload?.message ||
-                  message;
-
-              }
-
-            } catch {
-              // Keep original error.
-            }
-
-
-            throw new Error(
-              message
-            );
-
-          }
-
-
-          response =
-            data;
-
-        }
-
-
-        // ====================================================
-        // BANK TRANSFER
-        // ====================================================
-
-        if (
-          transferType ===
-          "bank"
-        ) {
-
-          if (
-            !resolvedAccount
-          ) {
-
-            throw new Error(
-              "Bank account verification is required."
-            );
-
-          }
-
-
-          const idempotencyKey =
-            `bank_${crypto.randomUUID()}`;
-
-
-          /*
-           * IMPORTANT:
-           *
-           * Keep this function name identical
-           * to the Edge Function already used
-           * by your Dashboard.
-           *
-           * If your existing Dashboard uses a
-           * different function name, we will use
-           * that exact function.
-           */
-
-          const {
-            data,
-            error,
-          } =
-            await supabase.functions.invoke(
-              "flutterwave-transfer",
-              {
-                body: {
-
-                  amount:
-                    transferAmount,
-
-                  account_number:
-                    resolvedAccount
-                      .account_number,
-
-                  account_bank:
-                    resolvedAccount
-                      .bank_code,
-
-                  narration:
-                    narration.trim() ||
-                    "Bank transfer",
-
-                  idempotency_key:
-                    idempotencyKey,
-
-                },
-              }
-            );
-
-
-          if (error) {
-
-            let message =
-              error.message ||
-              "Unable to process bank transfer.";
-
-            try {
-
-              if (
-                error.context &&
-                typeof error.context
-                  .json ===
-                  "function"
-              ) {
-
-                const payload =
-                  await error.context.json();
-
-                message =
-                  payload?.error ||
-                  payload?.message ||
-                  message;
-
-              }
-
-            } catch {
-              // Keep original error.
-            }
-
-
-            throw new Error(
-              message
-            );
-
-          }
-
-
-          response =
-            data;
-
-        }
-
-
-        // ====================================================
-        // CHECK RESULT
-        // ====================================================
-
-        if (
-          !response
-        ) {
-
-          throw new Error(
-            "No response was received from the transfer service."
-          );
-
-        }
-
-
-        console.log(
-          "Transfer response:",
-          response
-        );
-
+      // --------------------------------------------------------
+      // BANK TRANSFER
+      // --------------------------------------------------------
+
+      if (pendingBankTransfer) {
+        const {
+          amount:
+            transferAmountValue,
+          details,
+        } =
+          pendingBankTransfer;
 
         /*
-         * We will connect this to the
-         * transaction-status page next.
-         *
-         * For now, navigate to the
-         * dashboard after successful
-         * execution.
+         * Clear the pending transfer BEFORE
+         * executing it.
          */
+        setPendingBankTransfer(
+          null
+        );
 
-        if (
-          response.success ===
-          true
-        ) {
+        try {
+          await onTransfer(
+            transferAmountValue,
+            details
+          );
+
+          if (onTransferSuccess) {
+            await onTransferSuccess();
+          }
+
+          handleBack();
+        } catch (error: any) {
+          console.error(
+            "Bank transfer failed:",
+            error
+          );
 
           toast({
             title:
-              "Transfer Successful",
+              "Transfer Failed",
+
             description:
-              response.message ||
-              `₦${transferAmount.toLocaleString()} transfer completed successfully.`,
+              error?.message ||
+              "Unable to complete bank transfer.",
+
+            variant:
+              "destructive",
           });
-
-
-          navigate(
-            "/dashboard",
-            {
-              replace: true,
-            }
-          );
-
-
-          return;
-
         }
-
-
-        throw new Error(
-          response.error ||
-          response.message ||
-          "Transfer could not be completed."
-        );
-
-      } catch (error: any) {
-
-        console.error(
-          "Transfer execution failed:",
-          error
-        );
-
-
-        toast({
-          title:
-            "Transfer Failed",
-          description:
-            error?.message ||
-            "Unable to complete the transfer.",
-          variant:
-            "destructive",
-        });
-
-      } finally {
-
-        setProcessing(false);
-
       }
-
     };
-
 
   // ==========================================================
   // PAYMENT PIN CANCEL
@@ -1401,267 +1252,267 @@ const SendMoney = () => {
 
   const handlePaymentPinCancel =
     () => {
-
-      if (processing) {
-        return;
-      }
-
       setPaymentPinOpen(false);
-
+      setPendingBankTransfer(null);
     };
-
 
   // ==========================================================
   // BACK
   // ==========================================================
 
-  const handleBack =
-    () => {
+  const handleBack = () => {
+    resolveRequestRef.current++;
 
-      if (processing) {
-        return;
-      }
+    iyanjuPayResolveRequestRef.current++;
 
+    setPaymentPinOpen(false);
+    setPendingBankTransfer(null);
 
-      navigate(
-        "/dashboard"
-      );
+    setTransferType(
+      "iyanjupay"
+    );
 
-    };
+    setAmount("");
+    setNarration("");
 
+    // IyanjuPay
+    setIyanjuPayWalletId("");
+
+    setResolvedIyanjuPayRecipient(
+      null
+    );
+
+    setResolvingIyanjuPayRecipient(
+      false
+    );
+
+    setIyanjuPayTransferring(
+      false
+    );
+
+    // Bank
+    setBank("");
+    setBankSearch("");
+    setAccountNumber("");
+
+    setResolvedAccount(null);
+    setResolving(false);
+
+    onBack();
+  };
 
   // ==========================================================
   // DISABLED
   // ==========================================================
 
-  const transferDisabled =
-    balanceLoading ||
-    banksLoading ||
-    processing ||
+  const isTransferDisabled =
     !amount ||
     transferAmount <= 0 ||
     hasInsufficientBalance ||
-    (
-      transferType ===
+    iyanjupayTransferring ||
+    paymentPinOpen ||
+    (transferType ===
       "iyanjupay" &&
       (
         !/^\d{8}$/.test(
-          iyanjupayWalletId
+          iyanjupayWalletId.trim()
         ) ||
         resolvingIyanjuPayRecipient ||
         !resolvedIyanjuPayRecipient
-      )
-    ) ||
-    (
-      transferType ===
-      "bank" &&
+      )) ||
+    (transferType === "bank" &&
       (
-        !bank ||
         !resolvedAccount ||
         resolving
-      )
-    );
-
+      ));
 
   // ==========================================================
   // UI
   // ==========================================================
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-50">
-
-      <div className="max-w-md mx-auto px-4 py-8">
-
-        {/* ================================================== */}
-        {/* BACK */}
-        {/* ================================================== */}
-
-        <Button
-          variant="ghost"
-          onClick={handleBack}
-          disabled={processing}
-          className="mb-6 text-purple-600"
-        >
-          <ArrowLeft className="h-4 w-4 mr-2" />
-          Back
-        </Button>
-
+    <>
+      <div className="min-h-screen bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-50">
 
         {/* ================================================== */}
-        {/* CARD */}
+        {/* HEADER */}
         {/* ================================================== */}
 
-        <Card className="shadow-lg">
+        <header className="bg-gradient-to-r from-purple-600 to-blue-600 text-white sticky top-0 z-30 shadow-md">
+          <div className="max-w-3xl mx-auto px-4 sm:px-6">
 
-          <CardHeader>
+            <div className="flex items-center h-16">
 
-            <div className="flex items-center gap-3">
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={handleBack}
+                className="text-white hover:bg-white/20 mr-2"
+              >
+                <ArrowLeft className="h-5 w-5 mr-2" />
 
-              <div className="w-11 h-11 rounded-full bg-green-100 flex items-center justify-center">
+                Back
+              </Button>
 
-                <Send className="h-6 w-6 text-green-600" />
+              <div className="flex items-center gap-2">
 
-              </div>
+                <Send className="h-5 w-5" />
 
-
-              <div>
-
-                <CardTitle>
+                <h1 className="text-lg sm:text-xl font-bold">
                   Send Money
-                </CardTitle>
-
-                <CardDescription>
-                  Send money to an IyanjuPay user or bank account.
-                </CardDescription>
+                </h1>
 
               </div>
 
             </div>
 
-          </CardHeader>
+          </div>
+        </header>
 
+        {/* ================================================== */}
+        {/* CONTENT */}
+        {/* ================================================== */}
 
-          <CardContent className="space-y-6">
+        <main className="max-w-3xl mx-auto px-4 sm:px-6 py-6 pb-12">
 
-            {/* ================================================== */}
-            {/* BALANCE */}
-            {/* ================================================== */}
+          {/* ================================================== */}
+          {/* TITLE */}
+          {/* ================================================== */}
 
-            <div className="rounded-lg bg-green-50 border border-green-100 p-4">
+          <div className="mb-6">
 
-              <p className="text-sm text-green-700">
-                Wallet Balance
-              </p>
+            <h2 className="text-2xl font-bold text-gray-900">
+              Send Money
+            </h2>
 
-              {balanceLoading ? (
+            <p className="text-gray-600 mt-1">
+              Send money securely to an IyanjuPay user or bank account.
+            </p>
 
-                <div className="flex items-center gap-2 mt-1">
+          </div>
 
-                  <Loader2 className="h-4 w-4 animate-spin text-green-600" />
+          {/* ================================================== */}
+          {/* MAIN CARD */}
+          {/* ================================================== */}
 
-                  <span className="text-sm text-green-700">
-                    Loading balance...
-                  </span>
-
-                </div>
-
-              ) : (
-
-                <p className="text-xl font-bold text-green-800">
-
-                  ₦
-                  {walletBalance.toLocaleString(
-                    undefined,
-                    {
-                      minimumFractionDigits: 2,
-                      maximumFractionDigits: 2,
-                    }
-                  )}
-
-                </p>
-
-              )}
-
-            </div>
-
+          <div className="bg-white rounded-2xl shadow-sm border p-5 sm:p-6 space-y-6">
 
             {/* ================================================== */}
             {/* TRANSFER TYPE */}
             {/* ================================================== */}
 
-            <div className="grid grid-cols-2 gap-2 p-1 bg-gray-100 rounded-lg">
+            <div className="space-y-2">
 
-              <Button
-                type="button"
-                variant={
-                  transferType ===
-                  "iyanjupay"
-                    ? "default"
-                    : "ghost"
-                }
-                onClick={() =>
-                  handleTransferTypeChange(
+              <Label>
+                Send Money To
+              </Label>
+
+              <div className="grid grid-cols-2 gap-2 p-1 bg-gray-100 rounded-lg">
+
+                <Button
+                  type="button"
+                  variant={
+                    transferType ===
                     "iyanjupay"
-                  )
-                }
-                disabled={processing}
-                className={
-                  transferType ===
-                  "iyanjupay"
-                    ? "bg-green-600 hover:bg-green-700"
-                    : ""
-                }
-              >
+                      ? "default"
+                      : "ghost"
+                  }
+                  onClick={() =>
+                    handleTransferTypeChange(
+                      "iyanjupay"
+                    )
+                  }
+                  className={
+                    transferType ===
+                    "iyanjupay"
+                      ? "bg-green-600 hover:bg-green-700"
+                      : ""
+                  }
+                >
+                  <User className="h-4 w-4 mr-2" />
 
-                <User className="h-4 w-4 mr-2" />
+                  IyanjuPay User
+                </Button>
 
-                IyanjuPay User
-
-              </Button>
-
-
-              <Button
-                type="button"
-                variant={
-                  transferType ===
-                  "bank"
-                    ? "default"
-                    : "ghost"
-                }
-                onClick={() =>
-                  handleTransferTypeChange(
+                <Button
+                  type="button"
+                  variant={
+                    transferType ===
                     "bank"
-                  )
-                }
-                disabled={processing}
-                className={
-                  transferType ===
-                  "bank"
-                    ? "bg-green-600 hover:bg-green-700"
-                    : ""
-                }
-              >
+                      ? "default"
+                      : "ghost"
+                  }
+                  onClick={() =>
+                    handleTransferTypeChange(
+                      "bank"
+                    )
+                  }
+                  className={
+                    transferType ===
+                    "bank"
+                      ? "bg-green-600 hover:bg-green-700"
+                      : ""
+                  }
+                >
+                  <Building2 className="h-4 w-4 mr-2" />
 
-                <Building2 className="h-4 w-4 mr-2" />
+                  Bank Account
+                </Button>
 
-                Bank Account
-
-              </Button>
+              </div>
 
             </div>
 
+            {/* ================================================== */}
+            {/* WALLET BALANCE */}
+            {/* ================================================== */}
+
+            <div className="bg-green-50 border border-green-100 p-4 rounded-xl">
+
+              <p className="text-sm text-green-700">
+                Available Wallet Balance
+              </p>
+
+              <p className="text-2xl font-bold text-green-800 mt-1">
+                ₦
+                {walletBalance.toLocaleString(
+                  "en-NG",
+                  {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  }
+                )}
+              </p>
+
+            </div>
 
             {/* ================================================== */}
-            {/* IYANJUPAY */}
+            {/* IYANJUPAY USER */}
             {/* ================================================== */}
 
             {transferType ===
               "iyanjupay" && (
-
               <div className="space-y-4">
 
                 <div className="space-y-2">
 
-                  <Label>
+                  <Label htmlFor="iyanjupayWalletId">
                     Recipient Wallet ID
                   </Label>
 
                   <Input
+                    id="iyanjupayWalletId"
                     value={
                       iyanjupayWalletId
                     }
                     onChange={(e) => {
-
                       const value =
-                        e.target.value
-                          .replace(
-                            /\D/g,
-                            ""
-                          );
-
+                        e.target.value.replace(
+                          /\D/g,
+                          ""
+                        );
 
                       iyanjuPayResolveRequestRef.current++;
-
 
                       setIyanjuPayWalletId(
                         value.slice(
@@ -1670,29 +1521,39 @@ const SendMoney = () => {
                         )
                       );
 
-
                       setResolvedIyanjuPayRecipient(
                         null
                       );
 
+                      setResolvingIyanjuPayRecipient(
+                        false
+                      );
                     }}
                     placeholder="Enter 8-digit Wallet ID"
+                    autoComplete="off"
                     inputMode="numeric"
                     maxLength={8}
-                    disabled={processing}
                   />
-
 
                   <p className="text-xs text-gray-500">
                     Enter the recipient's 8-digit IyanjuPay Wallet ID.
                   </p>
 
+                  {iyanjupayWalletId.length >
+                    0 &&
+                    iyanjupayWalletId.length <
+                      8 && (
+                    <p className="text-xs text-orange-600">
+                      Wallet ID must contain exactly 8 digits.
+                    </p>
+                  )}
+
+                  {/* VERIFYING */}
 
                   {resolvingIyanjuPayRecipient &&
                     iyanjupayWalletId.length ===
                       8 && (
-
-                    <div className="rounded-lg border border-blue-200 bg-blue-50 p-3">
+                    <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
 
                       <div className="flex items-center gap-2">
 
@@ -1705,25 +1566,25 @@ const SendMoney = () => {
                       </div>
 
                     </div>
-
                   )}
 
+                  {/* VERIFIED */}
 
-                  {resolvedIyanjuPayRecipient && (
-
+                  {!resolvingIyanjuPayRecipient &&
+                    resolvedIyanjuPayRecipient && (
                     <div className="rounded-lg border border-green-200 bg-green-50 p-4">
 
                       <div className="flex items-start gap-3">
 
                         <CheckCircle2 className="h-5 w-5 text-green-600 mt-0.5 shrink-0" />
 
-                        <div>
+                        <div className="min-w-0">
 
                           <p className="text-xs text-green-700 font-medium">
                             VERIFIED RECIPIENT
                           </p>
 
-                          <p className="font-semibold mt-1">
+                          <p className="font-semibold text-gray-900 mt-1 break-words">
                             {
                               resolvedIyanjuPayRecipient.name
                             }
@@ -1741,35 +1602,47 @@ const SendMoney = () => {
                       </div>
 
                     </div>
+                  )}
 
+                  {/* FAILED */}
+
+                  {!resolvingIyanjuPayRecipient &&
+                    iyanjupayWalletId.length ===
+                      8 &&
+                    !resolvedIyanjuPayRecipient && (
+                    <div className="rounded-lg border border-red-200 bg-red-50 p-3">
+
+                      <p className="text-sm text-red-700">
+                        Wallet ID could not be verified. Please check the recipient's Wallet ID.
+                      </p>
+
+                    </div>
                   )}
 
                 </div>
 
               </div>
-
             )}
 
-
             {/* ================================================== */}
-            {/* BANK */}
+            {/* BANK TRANSFER */}
             {/* ================================================== */}
 
             {transferType ===
               "bank" && (
+              <div className="space-y-5">
 
-              <div className="space-y-4">
+                {/* BANK */}
 
                 <div className="space-y-2">
 
-                  <Label>
+                  <Label htmlFor="bank">
                     Recipient Bank
                   </Label>
 
                   <Select
                     value={bank}
                     onValueChange={(value) => {
-
                       resolveRequestRef.current++;
 
                       setBank(value);
@@ -1781,16 +1654,13 @@ const SendMoney = () => {
                       setResolving(false);
 
                       setBankSearch("");
-
                     }}
                     disabled={
-                      banksLoading ||
-                      processing
+                      banksLoading
                     }
                   >
 
-                    <SelectTrigger>
-
+                    <SelectTrigger id="bank">
                       <SelectValue
                         placeholder={
                           banksLoading
@@ -1798,11 +1668,11 @@ const SendMoney = () => {
                             : "Select bank"
                         }
                       />
-
                     </SelectTrigger>
 
-
                     <SelectContent>
+
+                      {/* SEARCH */}
 
                       <div
                         className="sticky top-0 z-10 bg-white p-2 border-b"
@@ -1813,7 +1683,6 @@ const SendMoney = () => {
                           e.stopPropagation()
                         }
                       >
-
                         <div className="relative">
 
                           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
@@ -1836,16 +1705,24 @@ const SendMoney = () => {
                           />
 
                         </div>
-
                       </div>
 
+                      {/* RESULTS */}
 
-                      {filteredBanks.length >
-                      0 ? (
+                      {banksLoading ? (
+                        <div className="flex items-center justify-center gap-2 p-4 text-sm text-gray-500">
 
+                          <Loader2 className="h-4 w-4 animate-spin" />
+
+                          Loading banks...
+
+                        </div>
+                      ) : filteredBanks.length >
+                        0 ? (
                         filteredBanks.map(
-                          (bankItem) => (
-
+                          (
+                            bankItem
+                          ) => (
                             <SelectItem
                               key={
                                 bankItem.code
@@ -1858,49 +1735,57 @@ const SendMoney = () => {
                                 bankItem.name
                               }
                             </SelectItem>
-
                           )
                         )
-
                       ) : (
-
                         <div className="p-4 text-center text-sm text-gray-500">
-
                           No bank found.
-
                         </div>
-
                       )}
 
                     </SelectContent>
 
                   </Select>
 
+                  {bankSearch.trim() &&
+                    !bank && (
+                    <p className="text-xs text-gray-500">
+                      Search results:{" "}
+                      {
+                        filteredBanks.length
+                      }{" "}
+                      bank
+                      {filteredBanks.length ===
+                      1
+                        ? ""
+                        : "s"}{" "}
+                      found.
+                    </p>
+                  )}
+
                 </div>
 
+                {/* ACCOUNT NUMBER */}
 
                 <div className="space-y-2">
 
-                  <Label>
+                  <Label htmlFor="accountNumber">
                     Account Number
                   </Label>
 
                   <Input
+                    id="accountNumber"
                     value={
                       accountNumber
                     }
                     onChange={(e) => {
-
                       const value =
-                        e.target.value
-                          .replace(
-                            /\D/g,
-                            ""
-                          );
-
+                        e.target.value.replace(
+                          /\D/g,
+                          ""
+                        );
 
                       resolveRequestRef.current++;
-
 
                       setAccountNumber(
                         value.slice(
@@ -1909,49 +1794,57 @@ const SendMoney = () => {
                         )
                       );
 
-
                       setResolvedAccount(
                         null
                       );
 
+                      setResolving(false);
                     }}
                     placeholder="Enter 10-digit account number"
-                    inputMode="numeric"
                     maxLength={10}
-                    disabled={processing}
+                    inputMode="numeric"
                   />
 
-
                   {resolving && (
-
                     <div className="flex items-center gap-2 text-sm text-blue-600">
 
                       <Loader2 className="h-4 w-4 animate-spin" />
 
-                      Verifying account...
+                      <span>
+                        Verifying account...
+                      </span>
 
                     </div>
+                  )}
 
+                  {!resolving &&
+                    accountNumber.length >
+                      0 &&
+                    accountNumber.length <
+                      10 && (
+                    <p className="text-xs text-gray-500">
+                      Enter all 10 digits to automatically verify the account.
+                    </p>
                   )}
 
                 </div>
 
+                {/* VERIFIED ACCOUNT */}
 
                 {resolvedAccount && (
-
                   <div className="rounded-lg border border-green-200 bg-green-50 p-4">
 
                     <div className="flex items-start gap-3">
 
-                      <CheckCircle2 className="h-5 w-5 text-green-600 mt-0.5" />
+                      <CheckCircle2 className="h-5 w-5 text-green-600 mt-0.5 shrink-0" />
 
-                      <div>
+                      <div className="min-w-0">
 
                         <p className="text-xs text-green-700 font-medium">
                           VERIFIED ACCOUNT
                         </p>
 
-                        <p className="font-semibold mt-1">
+                        <p className="font-semibold text-gray-900 mt-1 break-words">
                           {
                             resolvedAccount.account_name
                           }
@@ -1968,13 +1861,10 @@ const SendMoney = () => {
                     </div>
 
                   </div>
-
                 )}
 
               </div>
-
             )}
-
 
             {/* ================================================== */}
             {/* AMOUNT */}
@@ -1982,11 +1872,12 @@ const SendMoney = () => {
 
             <div className="space-y-2">
 
-              <Label>
+              <Label htmlFor="amount">
                 Amount (₦)
               </Label>
 
               <Input
+                id="amount"
                 type="number"
                 value={amount}
                 onChange={(e) =>
@@ -1997,19 +1888,16 @@ const SendMoney = () => {
                 placeholder="Enter amount"
                 min="1"
                 step="0.01"
-                disabled={processing}
               />
 
             </div>
 
-
             {/* ================================================== */}
-            {/* FEES */}
+            {/* FEE SUMMARY */}
             {/* ================================================== */}
 
             {transferAmount > 0 && (
-
-              <div className="rounded-lg border bg-gray-50 p-4 space-y-3">
+              <div className="rounded-xl border bg-gray-50 p-4 space-y-3">
 
                 <div className="flex justify-between text-sm">
 
@@ -2018,20 +1906,17 @@ const SendMoney = () => {
                   </span>
 
                   <span className="font-medium">
-
                     ₦
                     {transferAmount.toLocaleString(
-                      undefined,
+                      "en-NG",
                       {
                         minimumFractionDigits: 2,
                         maximumFractionDigits: 2,
                       }
                     )}
-
                   </span>
 
                 </div>
-
 
                 <div className="flex justify-between text-sm">
 
@@ -2040,20 +1925,17 @@ const SendMoney = () => {
                   </span>
 
                   <span className="font-medium">
-
                     ₦
                     {transferFee.toLocaleString(
-                      undefined,
+                      "en-NG",
                       {
                         minimumFractionDigits: 2,
                         maximumFractionDigits: 2,
                       }
                     )}
-
                   </span>
 
                 </div>
-
 
                 <div className="border-t pt-3 flex justify-between">
 
@@ -2062,52 +1944,69 @@ const SendMoney = () => {
                   </span>
 
                   <span className="font-bold text-green-700">
-
                     ₦
                     {totalCharged.toLocaleString(
-                      undefined,
+                      "en-NG",
                       {
                         minimumFractionDigits: 2,
                         maximumFractionDigits: 2,
                       }
                     )}
-
                   </span>
 
                 </div>
 
+                {/* BANK FEE */}
+
+                {transferType ===
+                  "bank" && (
+                  <div className="rounded-md bg-yellow-50 border border-yellow-200 p-3">
+
+                    <p className="text-xs text-yellow-800">
+                      A ₦10 IyanjuPay transfer fee will be deducted from your wallet in addition to the transfer amount.
+                    </p>
+
+                  </div>
+                )}
+
+                {/* IYANJUPAY FREE */}
+
+                {transferType ===
+                  "iyanjupay" && (
+                  <div className="rounded-md bg-green-50 border border-green-200 p-3">
+
+                    <p className="text-xs text-green-800">
+                      IyanjuPay-to-IyanjuPay transfers are completely free. No transfer fee will be deducted.
+                    </p>
+
+                  </div>
+                )}
+
               </div>
-
             )}
-
 
             {/* ================================================== */}
             {/* INSUFFICIENT BALANCE */}
             {/* ================================================== */}
 
             {hasInsufficientBalance && (
-
               <div className="rounded-md bg-red-50 border border-red-200 p-3">
 
                 <p className="text-sm text-red-700">
-
                   Insufficient wallet balance.
                   You need ₦
                   {totalCharged.toLocaleString(
-                    undefined,
+                    "en-NG",
                     {
                       minimumFractionDigits: 2,
                       maximumFractionDigits: 2,
                     }
                   )}{" "}
                   to complete this transfer.
-
                 </p>
 
               </div>
-
             )}
-
 
             {/* ================================================== */}
             {/* NARRATION */}
@@ -2115,11 +2014,12 @@ const SendMoney = () => {
 
             <div className="space-y-2">
 
-              <Label>
+              <Label htmlFor="narration">
                 Narration (Optional)
               </Label>
 
               <Input
+                id="narration"
                 value={narration}
                 onChange={(e) =>
                   setNarration(
@@ -2127,11 +2027,9 @@ const SendMoney = () => {
                   )
                 }
                 placeholder="Enter transaction description"
-                disabled={processing}
               />
 
             </div>
-
 
             {/* ================================================== */}
             {/* SEND BUTTON */}
@@ -2143,58 +2041,44 @@ const SendMoney = () => {
                 handleTransfer
               }
               disabled={
-                transferDisabled
+                isTransferDisabled
               }
-              className="w-full bg-green-600 hover:bg-green-700"
+              className="w-full h-12 bg-green-600 hover:bg-green-700 text-base font-semibold"
             >
 
-              {processing ? (
-
+              {iyanjupayTransferring ? (
                 <>
-
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
 
                   Processing transfer...
-
                 </>
-
               ) : (
-
                 <>
-
                   <Send className="h-4 w-4 mr-2" />
 
                   Send ₦
                   {transferAmount > 0
-                    ? transferAmount.toLocaleString()
+                    ? transferAmount.toLocaleString(
+                        "en-NG"
+                      )
                     : "Money"}
-
                 </>
-
               )}
 
             </Button>
 
+          </div>
 
-            <p className="text-xs text-gray-500 text-center">
-              You will be asked to enter your Payment PIN before the transfer is processed.
-            </p>
-
-          </CardContent>
-
-        </Card>
+        </main>
 
       </div>
-
 
       {/* ====================================================== */}
       {/* PAYMENT PIN */}
       {/* ====================================================== */}
 
       <PaymentPinModal
-        open={
-          paymentPinOpen
-        }
+        open={paymentPinOpen}
         onCancel={
           handlePaymentPinCancel
         }
@@ -2204,10 +2088,8 @@ const SendMoney = () => {
         title="Authorize Transfer"
         description="Enter your 4-digit Payment PIN to authorize this transfer."
       />
-
-    </div>
+    </>
   );
 };
 
-
-export default SendMoney;
+export default SendMoneyPage;

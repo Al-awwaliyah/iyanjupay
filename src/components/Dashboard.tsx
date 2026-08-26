@@ -41,6 +41,8 @@ import TransferModal from "./modals/TransferModal";
 import QRCodeModal from "./modals/QRCodeModal";
 import WhatsAppFloat from "./WhatsAppFloat";
 
+import SendMoneyPage from "./send-money/SendMoneyPage";
+
 import ProfilePage from "./profile/ProfilePage";
 import TransactionHistory from "./transactions/TransactionHistory";
 import RewardsPage from "./rewards/RewardsPage";
@@ -74,7 +76,8 @@ type CurrentPage =
   | "customer-service"
   | "support"
   | "transaction-limit"
-  | "payment-pin";
+  | "payment-pin"
+  | "send-money";
 
 type SelectedService = {
   title: string;
@@ -295,6 +298,11 @@ const Dashboard = () => {
   const [serviceModalOpen, setServiceModalOpen] =
     useState(false);
 
+  /*
+   * TransferModal is kept temporarily because we will
+   * remove/replace it after converting its functionality
+   * into SendMoneyPage.
+   */
   const [transferModalOpen, setTransferModalOpen] =
     useState(false);
 
@@ -326,16 +334,6 @@ const Dashboard = () => {
   /*
    * ============================================================
    * AUTH REDIRECT
-   * ============================================================
-   *
-   * IMPORTANT:
-   *
-   * There is NO onboarding check here.
-   *
-   * BVN onboarding is completed before navigating to this page.
-   * The dashboard must therefore NOT query profiles and wait for
-   * onboarding verification again.
-   *
    * ============================================================
    */
 
@@ -645,11 +643,6 @@ const Dashboard = () => {
    * ============================================================
    * WALLET BOOTSTRAP
    * ============================================================
-   *
-   * Only runs after authentication.
-   *
-   * No onboarding dependency.
-   * ============================================================
    */
 
   useEffect(() => {
@@ -818,8 +811,11 @@ const Dashboard = () => {
   const handleServiceClick = (
     service: typeof services[number]
   ) => {
+    /*
+     * Transfer Money now opens the full Send Money page.
+     */
     if (service.type === "transfer") {
-      setTransferModalOpen(true);
+      setCurrentPage("send-money");
       return;
     }
 
@@ -1122,6 +1118,12 @@ const Dashboard = () => {
    * ============================================================
    * BANK TRANSFER
    * ============================================================
+   *
+   * This handler remains unchanged.
+   *
+   * SendMoneyPage will use the exact same transfer flow
+   * after we convert TransferModal.
+   * ============================================================
    */
 
   const handleTransfer = async (
@@ -1345,6 +1347,25 @@ const Dashboard = () => {
    * ============================================================
    */
 
+  /*
+   * SEND MONEY PAGE
+   *
+   * This must come before the normal dashboard UI.
+   */
+  if (currentPage === "send-money") {
+    return (
+      <SendMoneyPage
+        onBack={() =>
+          setCurrentPage("home")
+        }
+        walletBalance={Number(
+          wallet?.balance ?? 0
+        )}
+        onTransfer={handleTransfer}
+      />
+    );
+  }
+
   if (currentPage === "profile") {
     return (
       <ProfilePage
@@ -1420,53 +1441,49 @@ const Dashboard = () => {
       />
     );
   }
+
   if (currentPage === "payment-pin") {
-      return (
-        <PaymentPinPage
-          onBack={() =>
-            setCurrentPage("me")
-          }
-        />
-      );
-    }
+    return (
+      <PaymentPinPage
+        onBack={() =>
+          setCurrentPage("me")
+        }
+      />
+    );
+  }
 
   if (currentPage === "me") {
-  return (
-    <MePage
-      onBack={() =>
-        setCurrentPage("home")
-      }
+    return (
+      <MePage
+        onBack={() =>
+          setCurrentPage("home")
+        }
+        onProfileClick={() =>
+          setCurrentPage("profile")
+        }
+        onHistoryClick={() =>
+          setCurrentPage("history")
+        }
+        onCustomerServiceClick={() =>
+          setCurrentPage(
+            "customer-service"
+          )
+        }
+        onSupportClick={() =>
+          setCurrentPage("support")
+        }
+        onTransactionLimitClick={() =>
+          setCurrentPage(
+            "transaction-limit"
+          )
+        }
+        onPaymentPinClick={() =>
+          setCurrentPage("payment-pin")
+        }
+      />
+    );
+  }
 
-      onProfileClick={() =>
-        setCurrentPage("profile")
-      }
-
-      onHistoryClick={() =>
-        setCurrentPage("history")
-      }
-
-      onCustomerServiceClick={() =>
-        setCurrentPage(
-          "customer-service"
-        )
-      }
-
-      onSupportClick={() =>
-        setCurrentPage("support")
-      }
-
-      onTransactionLimitClick={() =>
-        setCurrentPage(
-          "transaction-limit"
-        )
-      }
-
-      onPaymentPinClick={() =>
-        setCurrentPage("payment-pin")
-      }
-    />
-  );
-}
   /*
    * ============================================================
    * WALLET LOADING
@@ -1775,9 +1792,7 @@ const Dashboard = () => {
 
                 <Button
                   onClick={() =>
-                    setTransferModalOpen(
-                      true
-                    )
+                    setCurrentPage("send-money")
                   }
                   variant="outline"
                   className="flex-1 bg-white text-purple-600 hover:bg-gray-100 font-semibold"
@@ -1969,7 +1984,14 @@ const Dashboard = () => {
         onPurchase={handlePurchase}
       />
 
-      {/* TRANSFER */}
+      {/* ========================================================
+          OLD TRANSFER MODAL
+
+          Temporarily retained.
+
+          Once we finish converting TransferModal.tsx into
+          SendMoneyPage.tsx, this entire section can be removed.
+          ======================================================== */}
 
       <TransferModal
         isOpen={transferModalOpen}

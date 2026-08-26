@@ -27,6 +27,7 @@ import VerifyEmailOtp from "./pages/VerifyEmailOtp";
 import OnboardingPage from "@/components/onboarding/OnboardingPage";
 import OnboardingBvnPage from "@/components/onboarding/OnboardingBvnPage";
 import Dashboard from "@/components/Dashboard";
+import PaymentPinPage from "@/components/onboarding/PaymentPinPage";
 import VerifyRecoveryOtp from "./pages/VerifyRecoveryOtp";
 import ResetPassword from "./pages/ResetPassword";
 import NotFound from "./pages/NotFound";
@@ -93,6 +94,11 @@ const App = () => {
             <Route
               path="/signup"
               element={<Index />}
+            />
+
+            <Route
+              path="/payment-pin"
+              element={<PaymentPinPage />}
             />
             
             <Route

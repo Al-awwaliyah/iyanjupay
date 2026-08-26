@@ -3,17 +3,17 @@ import React, {
   useState,
 } from "react";
 
-import { useNavigate } from "react-router-dom";
-
 import {
   ArrowLeft,
   Eye,
   EyeOff,
   LockKeyhole,
-  Loader2,
   ShieldCheck,
+  Loader2,
   CheckCircle2,
 } from "lucide-react";
+
+import { useNavigate } from "react-router-dom";
 
 import { Button } from "@/components/ui/button";
 
@@ -33,7 +33,14 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 
 
-type PinInputProps = {
+const AUTHORIZATION_KEY =
+  "iyanjupay_payment_pin_reset_authorization";
+
+const AUTHORIZATION_EXPIRES_KEY =
+  "iyanjupay_payment_pin_reset_authorization_expires_at";
+
+
+type PinFieldProps = {
   label: string;
   value: string;
   onChange: (value: string) => void;
@@ -41,39 +48,38 @@ type PinInputProps = {
 };
 
 
-const PinInput = ({
+const PinField = ({
   label,
   value,
   onChange,
   disabled = false,
-}: PinInputProps) => {
+}: PinFieldProps) => {
 
-  const [visible, setVisible] =
-    useState(false);
+  const [
+    visible,
+    setVisible,
+  ] = useState(false);
 
 
-  const handleChange = (
-    event: React.ChangeEvent<HTMLInputElement>
-  ) => {
+  const handleChange =
+    (
+      event:
+        React.ChangeEvent<HTMLInputElement>
+    ) => {
 
-    const nextValue =
-      event.target.value
-        .replace(/\D/g, "")
-        .slice(0, 4);
+      const value =
+        event.target.value
+          .replace(/\D/g, "")
+          .slice(0, 4);
 
-    onChange(nextValue);
-
-  };
+      onChange(value);
+    };
 
 
   return (
-
     <div className="space-y-2">
 
-      <Label>
-        {label}
-      </Label>
-
+      <Label>{label}</Label>
 
       <div className="relative">
 
@@ -84,809 +90,553 @@ const PinInput = ({
               : "password"
           }
           inputMode="numeric"
-          autoComplete="new-password"
+          autoComplete="off"
           maxLength={4}
           value={value}
           onChange={handleChange}
           disabled={disabled}
           placeholder="••••"
-          className="pr-12 text-center text-2xl tracking-[0.5em]"
+          className="pr-12 text-center text-lg tracking-[0.5em]"
         />
-
 
         <button
           type="button"
           tabIndex={-1}
           onClick={() =>
             setVisible(
-              (current) =>
-                !current
+              current => !current
             )
           }
           disabled={disabled}
-          className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700 disabled:opacity-50"
-          aria-label={
-            visible
-              ? "Hide PIN"
-              : "Show PIN"
-          }
+          className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
         >
-
           {visible ? (
             <EyeOff className="h-5 w-5" />
           ) : (
             <Eye className="h-5 w-5" />
           )}
-
         </button>
 
       </div>
 
-
       <p className="text-xs text-gray-500">
-
         Enter exactly 4 digits.
-
       </p>
 
     </div>
-
   );
-
 };
 
 
-const ResetPaymentPin = () => {
+const ResetPaymentPin =
+  () => {
 
-  const navigate =
-    useNavigate();
+    const navigate =
+      useNavigate();
 
-  const { toast } =
-    useToast();
-
-
-  const [newPin, setNewPin] =
-    useState("");
-
-  const [confirmPin, setConfirmPin] =
-    useState("");
-
-  const [authorization, setAuthorization] =
-    useState("");
-
-  const [checkingSession, setCheckingSession] =
-    useState(true);
-
-  const [isLoading, setIsLoading] =
-    useState(false);
-
-  const [success, setSuccess] =
-    useState(false);
+    const { toast } =
+      useToast();
 
 
-  /*
-   * ==========================================================
-   * LOAD RESET AUTHORIZATION
-   * ==========================================================
-   */
-
-  useEffect(() => {
-
-    let mounted = true;
+    const [
+      authorization,
+      setAuthorization,
+    ] = useState("");
 
 
-    const loadAuthorization =
+    const [
+      newPin,
+      setNewPin,
+    ] = useState("");
+
+
+    const [
+      confirmPin,
+      setConfirmPin,
+    ] = useState("");
+
+
+    const [
+      processing,
+      setProcessing,
+    ] = useState(false);
+
+
+    const [
+      success,
+      setSuccess,
+    ] = useState(false);
+
+
+    // ========================================================
+    // LOAD AUTHORIZATION
+    // ========================================================
+
+    useEffect(() => {
+
+      const token =
+        sessionStorage.getItem(
+          AUTHORIZATION_KEY
+        );
+
+
+      if (!token) {
+
+        toast({
+          title:
+            "Reset authorization missing",
+          description:
+            "Please verify your recovery code again.",
+          variant:
+            "destructive",
+        });
+
+        navigate(
+          "/payment-pin",
+          {
+            replace: true,
+          }
+        );
+
+        return;
+      }
+
+
+      const expiresAt =
+        sessionStorage.getItem(
+          AUTHORIZATION_EXPIRES_KEY
+        );
+
+
+      if (
+        expiresAt &&
+        new Date(
+          expiresAt
+        ).getTime() <= Date.now()
+      ) {
+
+        sessionStorage.removeItem(
+          AUTHORIZATION_KEY
+        );
+
+        sessionStorage.removeItem(
+          AUTHORIZATION_EXPIRES_KEY
+        );
+
+        toast({
+          title:
+            "Reset authorization expired",
+          description:
+            "Please request a new Payment PIN reset code.",
+          variant:
+            "destructive",
+        });
+
+        navigate(
+          "/payment-pin",
+          {
+            replace: true,
+          }
+        );
+
+        return;
+      }
+
+
+      setAuthorization(
+        token
+      );
+
+    }, [
+      navigate,
+      toast,
+    ]);
+
+
+    // ========================================================
+    // RESET PIN
+    // ========================================================
+
+    const handleReset =
       async () => {
+
+        if (processing) {
+          return;
+        }
+
+
+        if (
+          !authorization
+        ) {
+
+          toast({
+            title:
+              "Authorization missing",
+            description:
+              "Please verify your recovery code again.",
+            variant:
+              "destructive",
+          });
+
+          return;
+        }
+
+
+        if (
+          !/^\d{4}$/.test(
+            newPin
+          )
+        ) {
+
+          toast({
+            title:
+              "Invalid Payment PIN",
+            description:
+              "Your new Payment PIN must contain exactly 4 digits.",
+            variant:
+              "destructive",
+          });
+
+          return;
+        }
+
+
+        if (
+          newPin !== confirmPin
+        ) {
+
+          toast({
+            title:
+              "PINs do not match",
+            description:
+              "The new PIN and confirmation PIN must match.",
+            variant:
+              "destructive",
+          });
+
+          return;
+        }
+
 
         try {
 
-          /*
-           * ----------------------------------------------------
-           * Check normal authenticated session.
-           * ----------------------------------------------------
-           */
+          setProcessing(true);
+
+
+          // ----------------------------------------------------
+          // Verify current authentication
+          // ----------------------------------------------------
 
           const {
             data: {
               user,
             },
-            error,
+            error:
+              userError,
           } =
             await supabase.auth.getUser();
 
 
           if (
-            error ||
+            userError ||
             !user
           ) {
 
             throw new Error(
               "Your login session has expired. Please sign in again."
             );
-
           }
 
 
-          /*
-           * ----------------------------------------------------
-           * Get authorization generated by
-           * payment-pin-reset-verify.
-           * ----------------------------------------------------
-           */
+          // ----------------------------------------------------
+          // Call secure RPC
+          // ----------------------------------------------------
 
-          const token =
-            sessionStorage.getItem(
-              "iyanjupay_payment_pin_reset_authorization"
+          const {
+            data,
+            error,
+          } =
+            await supabase.rpc(
+              "reset_payment_pin",
+              {
+                _authorization:
+                  authorization,
+
+                _new_pin:
+                  newPin,
+              }
             );
 
 
+          if (error) {
+
+            console.error(
+              "Payment PIN reset RPC error:",
+              error
+            );
+
+            throw new Error(
+              error.message ||
+                "Unable to reset Payment PIN."
+            );
+          }
+
+
           if (
-            !token
+            !data ||
+            data.success !== true
           ) {
 
             throw new Error(
-              "Payment PIN reset authorization is missing. Please verify your recovery code again."
+              data?.message ||
+                "Unable to reset Payment PIN."
             );
-
           }
 
 
-          if (
-            mounted
-          ) {
+          // ----------------------------------------------------
+          // Clear sensitive values
+          // ----------------------------------------------------
 
-            setAuthorization(
-              token
-            );
+          setNewPin("");
+          setConfirmPin("");
 
-          }
+          sessionStorage.removeItem(
+            AUTHORIZATION_KEY
+          );
+
+          sessionStorage.removeItem(
+            AUTHORIZATION_EXPIRES_KEY
+          );
+
+
+          setAuthorization("");
+          setSuccess(true);
+
+
+          toast({
+            title:
+              "Payment PIN reset successfully",
+            description:
+              "Your new Payment PIN is now active.",
+          });
 
         } catch (error: any) {
 
           console.error(
-            "Payment PIN reset authorization verification failed:",
+            "Payment PIN reset failed:",
             error
           );
 
-
-          if (
-            mounted
-          ) {
-
-            toast({
-              title:
-                "Reset authorization unavailable",
-              description:
-                error?.message ||
-                "Please verify your recovery code again.",
-              variant:
-                "destructive",
-            });
-
-
-            /*
-             * Remove potentially stale
-             * authorization.
-             */
-
-            sessionStorage.removeItem(
-              "iyanjupay_payment_pin_reset_authorization"
-            );
-
-
-            navigate(
-              "/payment-pin",
-              {
-                replace: true,
-              }
-            );
-
-          }
+          toast({
+            title:
+              "Payment PIN reset failed",
+            description:
+              error?.message ||
+              "Unable to reset your Payment PIN.",
+            variant:
+              "destructive",
+          });
 
         } finally {
 
-          if (
-            mounted
-          ) {
-
-            setCheckingSession(
-              false
-            );
-
-          }
+          setProcessing(false);
 
         }
-
       };
 
 
-    loadAuthorization();
+    // ========================================================
+    // BACK
+    // ========================================================
 
+    const handleBack =
+      () => {
 
-    return () => {
-
-      mounted = false;
-
-    };
-
-  }, [
-    navigate,
-    toast,
-  ]);
-
-
-  /*
-   * ==========================================================
-   * RESET PAYMENT PIN
-   * ==========================================================
-   */
-
-  const handleReset = async (
-    event: React.FormEvent
-  ) => {
-
-    event.preventDefault();
-
-
-    if (
-      isLoading ||
-      checkingSession
-    ) {
-      return;
-    }
-
-
-    /*
-     * --------------------------------------------------------
-     * Validate authorization.
-     * --------------------------------------------------------
-     */
-
-    if (
-      !authorization
-    ) {
-
-      toast({
-        title:
-          "Reset authorization missing",
-        description:
-          "Please verify the recovery code again.",
-        variant:
-          "destructive",
-      });
-
-      navigate(
-        "/verify-payment-pin-reset",
-        {
-          replace: true,
+        if (processing) {
+          return;
         }
-      );
 
-      return;
-
-    }
-
-
-    /*
-     * --------------------------------------------------------
-     * Validate new PIN.
-     * --------------------------------------------------------
-     */
-
-    if (
-      !/^\d{4}$/.test(
-        newPin
-      )
-    ) {
-
-      toast({
-        title:
-          "Invalid PIN",
-        description:
-          "Payment PIN must contain exactly 4 digits.",
-        variant:
-          "destructive",
-      });
-
-      return;
-
-    }
-
-
-    /*
-     * --------------------------------------------------------
-     * Confirm PIN.
-     * --------------------------------------------------------
-     */
-
-    if (
-      newPin !==
-      confirmPin
-    ) {
-
-      toast({
-        title:
-          "PINs do not match",
-        description:
-          "The new PIN and confirmation PIN must be identical.",
-        variant:
-          "destructive",
-      });
-
-      return;
-
-    }
-
-
-    setIsLoading(
-      true
-    );
-
-
-    try {
-
-      /*
-       * --------------------------------------------------------
-       * Call secure reset RPC.
-       *
-       * IMPORTANT:
-       *
-       * The database must verify the authorization token.
-       *
-       * The browser does not get to decide whether
-       * OTP verification happened.
-       * --------------------------------------------------------
-       */
-
-      const {
-        data,
-        error,
-      } =
-        await supabase.rpc(
-          "reset_payment_pin",
+        navigate(
+          "/payment-pin",
           {
-            _new_pin:
-              newPin,
-
-            _authorization:
-              authorization,
+            replace: true,
           }
         );
+      };
 
-
-      if (error) {
-
-        console.error(
-          "Payment PIN reset RPC error:",
-          error
-        );
-
-        throw new Error(
-          error.message ||
-            "Unable to reset Payment PIN."
-        );
-
-      }
-
-
-      if (
-        !data ||
-        data.success !== true
-      ) {
-
-        throw new Error(
-          data?.message ||
-            "Unable to reset Payment PIN."
-        );
-
-      }
-
-
-      /*
-       * --------------------------------------------------------
-       * Clear sensitive values immediately.
-       * --------------------------------------------------------
-       */
-
-      setNewPin("");
-      setConfirmPin("");
-      setAuthorization("");
-
-
-      sessionStorage.removeItem(
-        "iyanjupay_payment_pin_reset_authorization"
-      );
-
-      sessionStorage.removeItem(
-        "iyanjupay_payment_pin_reset_email"
-      );
-
-      sessionStorage.removeItem(
-        "iyanjupay_payment_pin_reset_challenge_id"
-      );
-
-
-      setSuccess(
-        true
-      );
-
-
-      toast({
-        title:
-          "Payment PIN reset successfully",
-        description:
-          "Your new Payment PIN is now active.",
-      });
-
-
-    } catch (error: any) {
-
-      console.error(
-        "Payment PIN reset failed:",
-        error
-      );
-
-
-      /*
-       * If authorization has expired or
-       * already been consumed, remove it.
-       */
-
-      const message =
-        String(
-          error?.message ||
-          ""
-        ).toLowerCase();
-
-
-      if (
-        message.includes(
-          "authorization"
-        ) ||
-        message.includes(
-          "expired"
-        ) ||
-        message.includes(
-          "used"
-        )
-      ) {
-
-        sessionStorage.removeItem(
-          "iyanjupay_payment_pin_reset_authorization"
-        );
-
-        setAuthorization("");
-
-      }
-
-
-      toast({
-        title:
-          "Payment PIN reset failed",
-        description:
-          error?.message ||
-          "Unable to reset your Payment PIN.",
-        variant:
-          "destructive",
-      });
-
-    } finally {
-
-      setIsLoading(
-        false
-      );
-
-    }
-
-  };
-
-
-  /*
-   * ==========================================================
-   * RETURN TO PAYMENT PIN
-   * ==========================================================
-   */
-
-  const handleBack = () => {
-
-    if (
-      isLoading
-    ) {
-      return;
-    }
-
-
-    navigate(
-      "/payment-pin",
-      {
-        replace: true,
-      }
-    );
-
-  };
-
-
-  /*
-   * ==========================================================
-   * SUCCESS SCREEN
-   * ==========================================================
-   */
-
-  if (
-    success
-  ) {
 
     return (
-
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-green-50 to-blue-50 p-4">
-
-        <Card className="w-full max-w-md shadow-lg">
-
-          <CardHeader className="text-center">
-
-            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-green-100">
-
-              <CheckCircle2 className="h-8 w-8 text-green-600" />
-
-            </div>
-
-
-            <CardTitle className="text-2xl font-bold text-green-700">
-
-              Payment PIN Reset Successfully
-
-            </CardTitle>
-
-
-            <CardDescription>
-
-              Your new Payment PIN is now active.
-
-            </CardDescription>
-
-          </CardHeader>
-
-
-          <CardContent>
-
-            <Button
-              type="button"
-              className="w-full bg-[#082A63] hover:bg-[#061F49]"
-              onClick={() =>
-                navigate(
-                  "/payment-pin",
-                  {
-                    replace: true,
-                  }
-                )
-              }
-            >
-
-              Continue
-
-            </Button>
-
-          </CardContent>
-
-        </Card>
-
-      </div>
-
-    );
-
-  }
-
-
-  /*
-   * ==========================================================
-   * LOADING AUTHORIZATION
-   * ==========================================================
-   */
-
-  if (
-    checkingSession
-  ) {
-
-    return (
-
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-green-50 to-blue-50 p-4">
-
-        <Card className="w-full max-w-md">
-
-          <CardContent className="py-10">
-
-            <div className="flex flex-col items-center gap-4">
-
-              <Loader2 className="h-8 w-8 animate-spin text-[#082A63]" />
-
-              <p className="text-sm text-gray-600 text-center">
-
-                Verifying your Payment PIN reset authorization...
-
-              </p>
-
-            </div>
-
-          </CardContent>
-
-        </Card>
-
-      </div>
-
-    );
-
-  }
-
-
-  /*
-   * ==========================================================
-   * MAIN UI
-   * ==========================================================
-   */
-
-  return (
-
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-green-50 to-blue-50 p-4">
-
-      <Card className="w-full max-w-md shadow-lg">
-
-        <CardHeader className="text-center">
-
-          <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-blue-100">
-
-            <ShieldCheck className="h-6 w-6 text-blue-700" />
-
-          </div>
-
-
-          <CardTitle className="text-2xl font-bold text-[#082A63]">
-
-            Reset Payment PIN
-
-          </CardTitle>
-
-
-          <CardDescription>
-
-            Create a new secure 4-digit Payment PIN.
-
-          </CardDescription>
-
-        </CardHeader>
-
-
-        <CardContent>
-
-          <form
-            onSubmit={handleReset}
-            className="space-y-5"
+      <div className="min-h-screen bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-50">
+
+        <div className="max-w-md mx-auto px-4 py-8">
+
+          <Button
+            variant="ghost"
+            onClick={handleBack}
+            disabled={processing}
+            className="mb-6 text-purple-600"
           >
-
-            {/* =================================================
-                NEW PIN
-                ================================================= */}
-
-            <PinInput
-              label="New Payment PIN"
-              value={newPin}
-              onChange={setNewPin}
-              disabled={isLoading}
-            />
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Back
+          </Button>
 
 
-            {/* =================================================
-                CONFIRM PIN
-                ================================================= */}
+          <Card className="shadow-lg">
 
-            <PinInput
-              label="Confirm New Payment PIN"
-              value={confirmPin}
-              onChange={setConfirmPin}
-              disabled={isLoading}
-            />
+            <CardHeader>
 
+              <div className="flex items-center gap-3">
 
-            {/* =================================================
-                SECURITY NOTICE
-                ================================================= */}
-
-            <div className="rounded-lg border border-blue-100 bg-blue-50 p-4">
-
-              <div className="flex items-start gap-3">
-
-                <ShieldCheck className="h-5 w-5 text-blue-700 shrink-0 mt-0.5" />
+                <div className="w-11 h-11 rounded-full bg-purple-100 flex items-center justify-center">
+                  <LockKeyhole className="h-6 w-6 text-purple-600" />
+                </div>
 
                 <div>
 
-                  <p className="font-medium text-blue-900">
+                  <CardTitle>
+                    Reset Payment PIN
+                  </CardTitle>
 
-                    Keep your PIN private
-
-                  </p>
-
-                  <p className="text-sm text-blue-800 mt-1">
-
-                    Never share your Payment PIN with
-                    IyanjuPay support or anyone else.
-
-                  </p>
+                  <CardDescription>
+                    Create a new 4-digit Payment PIN.
+                  </CardDescription>
 
                 </div>
 
               </div>
 
-            </div>
+            </CardHeader>
 
 
-            {/* =================================================
-                RESET BUTTON
-                ================================================= */}
+            <CardContent className="space-y-6">
 
-            <Button
-              type="submit"
-              className="w-full bg-[#082A63] hover:bg-[#061F49]"
-              disabled={
-                isLoading ||
-                !authorization ||
-                !/^\d{4}$/.test(
-                  newPin
-                ) ||
-                !/^\d{4}$/.test(
-                  confirmPin
-                ) ||
-                newPin !==
-                  confirmPin
-              }
-            >
+              {success ? (
 
-              {isLoading ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                <div className="rounded-lg border border-green-200 bg-green-50 p-5">
 
-                  Resetting...
+                  <div className="flex items-start gap-3">
 
-                </>
+                    <CheckCircle2 className="h-6 w-6 text-green-600 shrink-0" />
+
+                    <div>
+
+                      <p className="font-semibold text-green-800">
+                        Payment PIN reset successfully
+                      </p>
+
+                      <p className="text-sm text-green-700 mt-1">
+                        Your new Payment PIN is now active.
+                      </p>
+
+                      <Button
+                        type="button"
+                        className="mt-4 bg-green-600 hover:bg-green-700"
+                        onClick={() =>
+                          navigate(
+                            "/payment-pin",
+                            {
+                              replace: true,
+                            }
+                          )
+                        }
+                      >
+                        Continue
+                      </Button>
+
+                    </div>
+
+                  </div>
+
+                </div>
+
               ) : (
-                <>
-                  <LockKeyhole className="h-4 w-4 mr-2" />
 
-                  Reset Payment PIN
+                <>
+
+                  <div className="rounded-lg bg-blue-50 border border-blue-100 p-4">
+
+                    <div className="flex items-start gap-3">
+
+                      <ShieldCheck className="h-5 w-5 text-blue-600 mt-0.5" />
+
+                      <div>
+
+                        <p className="text-sm font-medium text-blue-900">
+                          Recovery verified
+                        </p>
+
+                        <p className="text-sm text-blue-700 mt-1">
+                          Create your new Payment PIN below.
+                        </p>
+
+                      </div>
+
+                    </div>
+
+                  </div>
+
+
+                  <PinField
+                    label="New Payment PIN"
+                    value={newPin}
+                    onChange={setNewPin}
+                    disabled={processing}
+                  />
+
+
+                  <PinField
+                    label="Confirm New Payment PIN"
+                    value={confirmPin}
+                    onChange={setConfirmPin}
+                    disabled={processing}
+                  />
+
+
+                  <Button
+                    type="button"
+                    onClick={handleReset}
+                    disabled={
+                      processing ||
+                      !authorization ||
+                      newPin.length !== 4 ||
+                      confirmPin.length !== 4
+                    }
+                    className="w-full bg-purple-600 hover:bg-purple-700"
+                  >
+
+                    {processing ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Resetting PIN...
+                      </>
+                    ) : (
+                      <>
+                        <LockKeyhole className="h-4 w-4 mr-2" />
+                        Reset Payment PIN
+                      </>
+                    )}
+
+                  </Button>
+
+
+                  <p className="text-xs text-gray-500 text-center">
+                    Never share your Payment PIN with anyone.
+                  </p>
 
                 </>
+
               )}
 
-            </Button>
+            </CardContent>
 
+          </Card>
 
-            {/* =================================================
-                BACK
-                ================================================= */}
+        </div>
 
-            <Button
-              type="button"
-              variant="ghost"
-              className="w-full"
-              onClick={handleBack}
-              disabled={isLoading}
-            >
-
-              <ArrowLeft className="h-4 w-4 mr-2" />
-
-              Back
-
-            </Button>
-
-          </form>
-
-        </CardContent>
-
-      </Card>
-
-    </div>
-
-  );
-
-};
+      </div>
+    );
+  };
 
 
 export default ResetPaymentPin;

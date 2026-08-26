@@ -136,6 +136,8 @@ interface TransactionResult {
 
   data?: any;
 
+  metadata?: any;
+
   [key: string]: any;
 }
 
@@ -175,6 +177,18 @@ interface TransactionResult {
  * This page does NOT collect or verify the Payment PIN.
  *
  * PIN authorization happens before this page.
+ *
+ * BANK TRANSFER CONFIRMATION:
+ *
+ * If Flutterwave initially returns NEW / PENDING /
+ * QUEUED, the page waits 5 seconds before deciding
+ * whether to display Pending.
+ *
+ * During those 5 seconds, the page remains on the
+ * Processing screen.
+ *
+ * After 5 seconds, the existing transaction record
+ * is checked.
  */
 const TransactionProcessingPage = ({
   transactionType,
@@ -355,6 +369,7 @@ const TransactionProcessingPage = ({
         "succeeded",
         "paid",
         "successful_payment",
+        "successfully_completed",
       ].includes(rawStatus)
     ) {
       return "success";
@@ -432,94 +447,81 @@ const TransactionProcessingPage = ({
   };
 
   // ==========================================================
-  // WAIT 3 SECONDS AND CHECK BANK TRANSACTION
+  // CHECK BANK TRANSFER STATUS AFTER 5 SECONDS
+  // ==========================================================
+  //
+  // Flutterwave may initially return NEW / PENDING /
+  // QUEUED even when the transfer completes shortly
+  // afterwards.
+  //
+  // We therefore wait 5 seconds before deciding whether
+  // to display Pending.
+  //
+  // IMPORTANT:
+  //
+  // This function does NOT call flutterwave-transfer again.
+  //
+  // It only checks the existing transaction record.
   // ==========================================================
 
-  /**
-   * Flutterwave can initially return a pending/NEW response
-   * even though the webhook may update our transaction shortly
-   * afterwards.
-   *
-   * We deliberately wait 3 seconds before deciding whether
-   * the user should see Pending.
-   *
-   * The transactions table is used as the source of truth.
-   */
-  const waitAndCheckBankTransaction =
+  const checkBankTransferStatus =
     useCallback(
       async (
-        response: TransactionResult
+        transactionId: string,
+        initialResponse: TransactionResult
       ): Promise<TransactionResult> => {
         /*
-         * Only bank transfers need this extra
-         * short confirmation window.
-         */
-        if (!isBank) {
-          return response;
-        }
-
-        /*
-         * Find the transaction ID returned by
-         * flutterwave-transfer.
-         */
-        const transactionId =
-          response?.transaction_id ||
-          response?.transactionId ||
-          response?.data?.transaction_id ||
-          "";
-
-        if (!transactionId) {
-          /*
-           * Without a transaction ID there is no safe
-           * database transaction to inspect.
-           *
-           * Preserve the original response and let
-           * normalizeStatus() handle it as pending.
-           */
-          return response;
-        }
-
-        /*
-         * Wait exactly 3 seconds before checking.
-         *
-         * This gives the Flutterwave webhook time to
-         * update public.transactions.
+         * Wait exactly 5 seconds.
          */
         await new Promise<void>(
           (resolve) => {
-            window.setTimeout(
+            setTimeout(
               resolve,
-              3000
+              5000
             );
           }
         );
 
+        /*
+         * Component may have been unmounted
+         * while waiting.
+         */
         if (!mountedRef.current) {
-          return response;
+          return initialResponse;
         }
 
         /*
-         * Check our transaction record.
-         *
-         * We intentionally query by transaction ID
-         * returned by our own Edge Function.
+         * Without a transaction ID we cannot
+         * safely check the transaction.
          */
-        const {
-          data: transaction,
-          error,
-        } =
-          await supabase
+        if (!transactionId) {
+          console.warn(
+            "Bank transfer status check skipped: transaction ID missing."
+          );
+
+          return initialResponse;
+        }
+
+        try {
+          console.log(
+            "Checking bank transfer status after 5 seconds:",
+            transactionId
+          );
+
+          const {
+            data: transaction,
+            error,
+          } = await supabase
             .from("transactions")
             .select(
-              [
-                "id",
-                "status",
-                "reference_number",
-                "reference",
-                "provider_reference",
-                "metadata",
-                "amount",
-              ].join(",")
+              `
+                id,
+                status,
+                reference_number,
+                provider_reference,
+                amount,
+                metadata
+              `
             )
             .eq(
               "id",
@@ -527,196 +529,101 @@ const TransactionProcessingPage = ({
             )
             .maybeSingle();
 
-        if (error) {
+          if (error) {
+            console.error(
+              "Bank transfer status check failed:",
+              error
+            );
+
+            /*
+             * Never falsely display success.
+             *
+             * If the database check fails,
+             * retain the original provider response.
+             */
+            return initialResponse;
+          }
+
+          if (!transaction) {
+            console.warn(
+              "Bank transfer transaction was not found:",
+              transactionId
+            );
+
+            return initialResponse;
+          }
+
+          /*
+           * Preserve the original Flutterwave response
+           * while overriding the status with the latest
+           * transaction status from our database.
+           */
+          const databaseResponse:
+            TransactionResult = {
+              ...initialResponse,
+
+              transaction_id:
+                transaction.id,
+
+              reference:
+                transaction.reference_number ||
+                initialResponse.reference,
+
+              transfer_id:
+                transaction.provider_reference ||
+                initialResponse.transfer_id,
+
+              status:
+                transaction.status,
+
+              amount:
+                Number(
+                  transaction.amount ??
+                    initialResponse.amount ??
+                    amount
+                ),
+
+              metadata:
+                transaction.metadata,
+
+              data: {
+                ...(initialResponse.data ||
+                  {}),
+
+                status:
+                  transaction.status,
+
+                transaction_id:
+                  transaction.id,
+
+                reference:
+                  transaction.reference_number ||
+                  initialResponse.reference,
+
+                provider_reference:
+                  transaction.provider_reference,
+
+                metadata:
+                  transaction.metadata,
+              },
+            };
+
+          console.log(
+            "Bank transfer status after 5-second check:",
+            databaseResponse
+          );
+
+          return databaseResponse;
+        } catch (error) {
           console.error(
-            "Bank transaction status check failed:",
+            "Unexpected bank transfer status check error:",
             error
           );
 
-          /*
-           * Do NOT turn a database-check error into
-           * a false success or false failure.
-           *
-           * Keep the original pending response.
-           */
-          return response;
+          return initialResponse;
         }
-
-        if (!transaction) {
-          /*
-           * Transaction could not be found.
-           *
-           * Safest behavior is to preserve the original
-           * Flutterwave response.
-           */
-          return response;
-        }
-
-        const databaseStatus =
-          String(
-            transaction?.status ??
-              transaction?.metadata?.status ??
-              transaction?.metadata
-                ?.flutterwave_status ??
-              ""
-          )
-            .trim()
-            .toLowerCase();
-
-        // ------------------------------------------------------
-        // DATABASE SUCCESS
-        // ------------------------------------------------------
-
-        if (
-          [
-            "success",
-            "successful",
-            "completed",
-            "complete",
-            "succeeded",
-            "paid",
-            "settled",
-          ].includes(
-            databaseStatus
-          )
-        ) {
-          return {
-            ...response,
-
-            success: true,
-
-            status: "success",
-
-            reference:
-              response.reference ||
-              transaction.reference_number ||
-              transaction.reference ||
-              "",
-
-            transaction_id:
-              response.transaction_id ||
-              transaction.id,
-
-            provider_reference:
-              response.provider_reference ||
-              transaction.provider_reference ||
-              undefined,
-
-            data: {
-              ...(response.data || {}),
-
-              status: "success",
-
-              transaction_status:
-                "success",
-
-              database_status:
-                databaseStatus,
-            },
-          };
-        }
-
-        // ------------------------------------------------------
-        // DATABASE FAILED
-        // ------------------------------------------------------
-
-        if (
-          [
-            "failed",
-            "failure",
-            "cancelled",
-            "canceled",
-            "reversed",
-            "rejected",
-            "declined",
-            "error",
-          ].includes(
-            databaseStatus
-          )
-        ) {
-          const providerError =
-            transaction?.metadata
-              ?.provider_error ||
-            transaction?.metadata
-              ?.error ||
-            response.error ||
-            response.message ||
-            "The transfer could not be completed.";
-
-          return {
-            ...response,
-
-            success: false,
-
-            status: "failed",
-
-            error:
-              providerError,
-
-            reference:
-              response.reference ||
-              transaction.reference_number ||
-              transaction.reference ||
-              "",
-
-            transaction_id:
-              response.transaction_id ||
-              transaction.id,
-
-            data: {
-              ...(response.data || {}),
-
-              status: "failed",
-
-              transaction_status:
-                "failed",
-
-              database_status:
-                databaseStatus,
-            },
-          };
-        }
-
-        // ------------------------------------------------------
-        // STILL PENDING
-        // ------------------------------------------------------
-
-        /*
-         * The webhook has not changed the transaction to a
-         * final state yet.
-         *
-         * Keep the original response and let the page show
-         * Pending.
-         */
-        return {
-          ...response,
-
-          status: "pending",
-
-          transaction_id:
-            response.transaction_id ||
-            transaction.id,
-
-          reference:
-            response.reference ||
-            transaction.reference_number ||
-            transaction.reference ||
-            "",
-
-          data: {
-            ...(response.data || {}),
-
-            status: "pending",
-
-            database_status:
-              databaseStatus ||
-              "pending",
-          },
-        };
       },
-      [
-        isBank,
-      ]
+      [amount]
     );
 
   // ==========================================================
@@ -801,33 +708,24 @@ const TransactionProcessingPage = ({
                 details?.bankCode,
 
               /*
+               * Keep account_name for compatibility
+               * with existing callers.
+               */
+              account_name:
+                details?.recipient,
+
+              /*
                * IMPORTANT:
                *
                * flutterwave-transfer expects
                * beneficiary_name.
                *
-               * The previous implementation sent
-               * account_name, which caused:
+               * This fixes:
                *
                * "Beneficiary name is required."
-               *
-               * Support the existing recipient field
-               * and a few compatible aliases without
-               * changing the rest of the transfer flow.
                */
               beneficiary_name:
-                details?.recipient ||
-                details?.recipientName ||
-                details?.accountName ||
-                details?.account_name ||
-                "",
-
-              account_name:
-                details?.recipient ||
-                details?.recipientName ||
-                details?.accountName ||
-                details?.account_name ||
-                "",
+                details?.recipient,
 
               narration:
                 details?.narration ||
@@ -1014,7 +912,9 @@ const TransactionProcessingPage = ({
                 `Unable to process this ${transactionName.toLowerCase()}.`
               );
 
-            throw new Error(message);
+            throw new Error(
+              message
+            );
           }
 
           // ==================================================
@@ -1031,7 +931,7 @@ const TransactionProcessingPage = ({
           // NORMALIZED RESPONSE
           // ==================================================
 
-          let response =
+          const response =
             data as TransactionResult;
 
           // ==================================================
@@ -1055,65 +955,98 @@ const TransactionProcessingPage = ({
           // DETERMINE INITIAL STATUS
           // ==================================================
 
+          let finalResponse =
+            response;
+
           let normalizedStatus =
             normalizeStatus(
               response
             );
 
           // ==================================================
-          // FLUTTERWAVE BANK TRANSFER
+          // BANK TRANSFER 5-SECOND CONFIRMATION
+          // ==================================================
+          //
+          // If Flutterwave says NEW/PENDING/QUEUED,
+          // remain on Processing for 5 seconds.
+          //
+          // Then check the existing transaction.
+          //
+          // No second transfer is created.
           // ==================================================
 
-          /**
-           * IMPORTANT:
-           *
-           * Flutterwave can return:
-           *
-           * status: "pending"
-           * status: "NEW"
-           *
-           * immediately after accepting the transfer.
-           *
-           * We do NOT immediately show Pending.
-           *
-           * We wait 3 seconds and inspect our transaction
-           * record. The Flutterwave webhook may have already
-           * changed the transaction to completed/failed.
-           */
           if (
             isBank &&
             normalizedStatus ===
               "pending"
           ) {
             console.log(
-              "Flutterwave bank transfer is pending. Waiting 3 seconds before final status check..."
+              "Flutterwave bank transfer is pending."
             );
 
-            response =
-              await waitAndCheckBankTransaction(
+            console.log(
+              "Waiting 5 seconds before displaying final status..."
+            );
+
+            /*
+             * Keep the Processing screen visible
+             * during the 5-second confirmation period.
+             */
+            if (
+              mountedRef.current
+            ) {
+              setStatus(
+                "processing"
+              );
+
+              setResult(
+                response
+              );
+            }
+
+            /*
+             * Get the existing transaction ID.
+             */
+            const existingTransactionId =
+              response.transaction_id ||
+              response.transactionId ||
+              response.data
+                ?.transaction_id ||
+              "";
+
+            /*
+             * Wait 5 seconds and then check
+             * the existing transaction.
+             */
+            finalResponse =
+              await checkBankTransferStatus(
+                existingTransactionId,
                 response
               );
 
+            if (
+              !mountedRef.current
+            ) {
+              return;
+            }
+
+            /*
+             * Recalculate the status using the
+             * latest database information.
+             */
             normalizedStatus =
               normalizeStatus(
-                response
+                finalResponse
               );
 
             console.log(
-              "Bank transfer status after 3-second confirmation window:",
-              {
-                transaction_id:
-                  response?.transaction_id,
-                reference:
-                  response?.reference,
-                status:
-                  response?.status,
-              }
+              "Bank transfer final status after 5 seconds:",
+              normalizedStatus
             );
           }
 
           // ==================================================
-          // MOUNT CHECK
+          // COMPONENT STILL MOUNTED
           // ==================================================
 
           if (
@@ -1122,7 +1055,13 @@ const TransactionProcessingPage = ({
             return;
           }
 
-          setResult(response);
+          // ==================================================
+          // SAVE FINAL RESULT
+          // ==================================================
+
+          setResult(
+            finalResponse
+          );
 
           setStatus(
             normalizedStatus
@@ -1143,7 +1082,7 @@ const TransactionProcessingPage = ({
                   : "Transfer Successful",
 
               description:
-                response.message ||
+                finalResponse.message ||
                 `₦${amount.toLocaleString(
                   "en-NG"
                 )} ${
@@ -1171,7 +1110,7 @@ const TransactionProcessingPage = ({
                   : "Transfer Pending",
 
               description:
-                response.message ||
+                finalResponse.message ||
                 `Your ${
                   isBill
                     ? billServiceName.toLowerCase()
@@ -1187,8 +1126,8 @@ const TransactionProcessingPage = ({
           // ==================================================
 
           setErrorMessage(
-            response.error ||
-              response.message ||
+            finalResponse.error ||
+              finalResponse.message ||
               `The ${transactionName.toLowerCase()} could not be completed.`
           );
         } catch (error: any) {
@@ -1240,9 +1179,7 @@ const TransactionProcessingPage = ({
         billServiceName,
         transactionName,
         toast,
-        extractFunctionError,
-        normalizeStatus,
-        waitAndCheckBankTransaction,
+        checkBankTransferStatus,
       ]
     );
 

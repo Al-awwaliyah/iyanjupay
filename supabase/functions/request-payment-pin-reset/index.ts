@@ -1,9 +1,5 @@
-import {
-  createClient,
-} from "https://esm.sh/@supabase/supabase-js@2";
-
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import nodemailer from "npm:nodemailer";
-
 
 // ============================================================
 // ENVIRONMENT
@@ -16,9 +12,7 @@ const SUPABASE_ANON_KEY =
   Deno.env.get("SUPABASE_ANON_KEY")!;
 
 const SUPABASE_SERVICE_ROLE_KEY =
-  Deno.env.get(
-    "SUPABASE_SERVICE_ROLE_KEY"
-  )!;
+  Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
 const SMTP_HOST =
   Deno.env.get("BREVO_SMTP_HOST")!;
@@ -42,9 +36,7 @@ const FROM_NAME =
   "IyanjuPay";
 
 const RESET_SECRET =
-  Deno.env.get(
-    "PAYMENT_PIN_RESET_SECRET"
-  )!;
+  Deno.env.get("PAYMENT_PIN_RESET_SECRET")!;
 
 
 // ============================================================
@@ -64,11 +56,11 @@ const corsHeaders = {
 // RESPONSE
 // ============================================================
 
-const json = (
+function json(
   body: unknown,
   status = 200
-) =>
-  new Response(
+) {
+  return new Response(
     JSON.stringify(body),
     {
       status,
@@ -79,10 +71,11 @@ const json = (
       },
     }
   );
+}
 
 
 // ============================================================
-// RANDOM OTP
+// OTP GENERATION
 // ============================================================
 
 function generateOtp(): string {
@@ -158,13 +151,11 @@ Deno.serve(async (req) => {
     return json(
       {
         success: false,
-        message:
-          "Method not allowed",
+        message: "Method not allowed",
       },
       405
     );
   }
-
 
   try {
 
@@ -173,9 +164,7 @@ Deno.serve(async (req) => {
     // ========================================================
 
     const authHeader =
-      req.headers.get(
-        "Authorization"
-      );
+      req.headers.get("Authorization");
 
     if (!authHeader) {
       return json(
@@ -187,7 +176,6 @@ Deno.serve(async (req) => {
         401
       );
     }
-
 
     const userClient =
       createClient(
@@ -203,16 +191,13 @@ Deno.serve(async (req) => {
         }
       );
 
-
     const {
       data: {
         user,
       },
-      error:
-        userError,
+      error: userError,
     } =
       await userClient.auth.getUser();
-
 
     if (
       userError ||
@@ -230,7 +215,7 @@ Deno.serve(async (req) => {
 
 
     // ========================================================
-    // EMAIL VERIFICATION
+    // EMAIL
     // ========================================================
 
     if (!user.email) {
@@ -244,10 +229,7 @@ Deno.serve(async (req) => {
       );
     }
 
-
-    if (
-      !user.email_confirmed_at
-    ) {
+    if (!user.email_confirmed_at) {
       return json(
         {
           success: false,
@@ -258,7 +240,6 @@ Deno.serve(async (req) => {
       );
     }
 
-
     const email =
       user.email
         .trim()
@@ -266,7 +247,7 @@ Deno.serve(async (req) => {
 
 
     // ========================================================
-    // SERVICE CLIENT
+    // SERVICE ROLE CLIENT
     // ========================================================
 
     const admin =
@@ -282,8 +263,7 @@ Deno.serve(async (req) => {
 
     const {
       data: pinRecord,
-      error:
-        pinError,
+      error: pinError,
     } =
       await admin
         .from("payment_pins")
@@ -293,7 +273,6 @@ Deno.serve(async (req) => {
           user.id
         )
         .maybeSingle();
-
 
     if (pinError) {
       console.error(
@@ -311,7 +290,6 @@ Deno.serve(async (req) => {
       );
     }
 
-
     if (!pinRecord) {
       return json(
         {
@@ -326,15 +304,11 @@ Deno.serve(async (req) => {
 
     // ========================================================
     // RATE LIMIT
-    //
-    // Prevent excessive reset-code requests.
-    // One active challenge every 60 seconds.
     // ========================================================
 
     const {
       data: recentChallenge,
-      error:
-        recentError,
+      error: recentError,
     } =
       await admin
         .from(
@@ -360,7 +334,6 @@ Deno.serve(async (req) => {
         .limit(1)
         .maybeSingle();
 
-
     if (recentError) {
       console.error(
         "Reset challenge lookup error:",
@@ -377,7 +350,6 @@ Deno.serve(async (req) => {
       );
     }
 
-
     if (recentChallenge) {
 
       const createdAt =
@@ -389,9 +361,7 @@ Deno.serve(async (req) => {
         Date.now() -
         createdAt;
 
-
       if (age < 60_000) {
-
         return json(
           {
             success: false,
@@ -405,24 +375,44 @@ Deno.serve(async (req) => {
 
 
     // ========================================================
-    // INVALIDATE PREVIOUS ACTIVE CHALLENGES
+    // INVALIDATE OLD CHALLENGES
     // ========================================================
 
-    await admin
-      .from(
-        "payment_pin_reset_challenges"
-      )
-      .update({
-        used_at: new Date().toISOString(),
-      })
-      .eq(
-        "user_id",
-        user.id
-      )
-      .is(
-        "used_at",
-        null
+    const {
+      error: invalidateError,
+    } =
+      await admin
+        .from(
+          "payment_pin_reset_challenges"
+        )
+        .update({
+          used_at:
+            new Date().toISOString(),
+        })
+        .eq(
+          "user_id",
+          user.id
+        )
+        .is(
+          "used_at",
+          null
+        );
+
+    if (invalidateError) {
+      console.error(
+        "Challenge invalidation error:",
+        invalidateError
       );
+
+      return json(
+        {
+          success: false,
+          message:
+            "Unable to start PIN recovery.",
+        },
+        500
+      );
+    }
 
 
     // ========================================================
@@ -432,11 +422,13 @@ Deno.serve(async (req) => {
     const otp =
       generateOtp();
 
+    /*
+     * The database stores ONLY the HMAC.
+     * The actual OTP is never stored.
+     */
 
-    const otpDigest =
-      await hmacSha256(
-        otp
-      );
+    const otpHash =
+      await hmacSha256(otp);
 
 
     // ========================================================
@@ -451,13 +443,12 @@ Deno.serve(async (req) => {
 
 
     // ========================================================
-    // STORE CHALLENGE
+    // CREATE CHALLENGE
     // ========================================================
 
     const {
       data: challenge,
-      error:
-        challengeError,
+      error: challengeError,
     } =
       await admin
         .from(
@@ -469,8 +460,8 @@ Deno.serve(async (req) => {
 
           email,
 
-          otp_digest:
-            otpDigest,
+          otp_hash:
+            otpHash,
 
           expires_at:
             expiresAt,
@@ -487,11 +478,8 @@ Deno.serve(async (req) => {
           used_at:
             null,
         })
-        .select(
-          "id"
-        )
+        .select("id")
         .single();
-
 
     if (
       challengeError ||
@@ -540,20 +528,24 @@ Deno.serve(async (req) => {
 
 
     // ========================================================
-    // EMAIL
+    // SEND EMAIL
     // ========================================================
 
-    await transporter.sendMail({
+    try {
 
-      from: `"${FROM_NAME}" <${FROM_EMAIL}>`,
+      await transporter.sendMail({
 
-      to: email,
+        from:
+          `"${FROM_NAME}" <${FROM_EMAIL}>`,
 
-      subject:
-        "IyanjuPay Payment PIN Reset Code",
+        to:
+          email,
 
-      text:
-        `Your IyanjuPay Payment PIN reset code is ${otp}.
+        subject:
+          "IyanjuPay Payment PIN Reset Code",
+
+        text:
+          `Your IyanjuPay Payment PIN reset code is ${otp}.
 
 This code expires in 10 minutes.
 
@@ -561,52 +553,92 @@ If you did not request a Payment PIN reset, please secure your account immediate
 
 Never share this code or your Payment PIN with anyone.`,
 
-      html: `
-        <div style="font-family:Arial,sans-serif;max-width:600px;margin:auto;padding:24px">
-
-          <h2 style="color:#082A63">
-            IyanjuPay Payment PIN Reset
-          </h2>
-
-          <p>
-            We received a request to reset your Payment PIN.
-          </p>
-
-          <p>
-            Your verification code is:
-          </p>
-
+        html: `
           <div style="
-            font-size:32px;
-            font-weight:bold;
-            letter-spacing:8px;
-            text-align:center;
-            padding:20px;
-            background:#f3f6fa;
-            border-radius:8px;
-            color:#082A63;
+            font-family:Arial,sans-serif;
+            max-width:600px;
+            margin:auto;
+            padding:24px;
           ">
-            ${otp}
+
+            <h2 style="color:#082A63">
+              IyanjuPay Payment PIN Reset
+            </h2>
+
+            <p>
+              We received a request to reset your Payment PIN.
+            </p>
+
+            <p>
+              Your verification code is:
+            </p>
+
+            <div style="
+              font-size:32px;
+              font-weight:bold;
+              letter-spacing:8px;
+              text-align:center;
+              padding:20px;
+              background:#f3f6fa;
+              border-radius:8px;
+              color:#082A63;
+            ">
+              ${otp}
+            </div>
+
+            <p>
+              This code expires in
+              <strong>10 minutes</strong>.
+            </p>
+
+            <p style="color:#666">
+              If you did not request this reset,
+              you can safely ignore this email.
+            </p>
+
+            <p style="
+              color:#999;
+              font-size:12px;
+            ">
+              Never share your verification code
+              or Payment PIN with anyone.
+            </p>
+
           </div>
+        `,
+      });
 
-          <p>
-            This code expires in
-            <strong>10 minutes</strong>.
-          </p>
+    } catch (mailError) {
 
-          <p style="color:#666">
-            If you did not request this reset,
-            you can safely ignore this email.
-          </p>
+      console.error(
+        "Brevo SMTP error:",
+        mailError
+      );
 
-          <p style="color:#999;font-size:12px">
-            Never share your verification code
-            or Payment PIN with anyone.
-          </p>
+      /*
+       * Remove the challenge if email
+       * delivery could not be initiated.
+       */
 
-        </div>
-      `,
-    });
+      await admin
+        .from(
+          "payment_pin_reset_challenges"
+        )
+        .delete()
+        .eq(
+          "id",
+          challenge.id
+        );
+
+      return json(
+        {
+          success: false,
+          message:
+            "Unable to send the Payment PIN recovery email.",
+        },
+        500
+      );
+    }
 
 
     // ========================================================
@@ -625,7 +657,6 @@ Never share this code or your Payment PIN with anyone.`,
       expires_at:
         expiresAt,
     });
-
 
   } catch (error) {
 

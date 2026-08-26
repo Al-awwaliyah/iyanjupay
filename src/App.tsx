@@ -28,6 +28,7 @@ import OnboardingPage from "@/components/onboarding/OnboardingPage";
 import OnboardingBvnPage from "@/components/onboarding/OnboardingBvnPage";
 import Dashboard from "@/components/Dashboard";
 import SendMoney from "./pages/SendMoney";
+import RewardsPage from "./components/rewards/RewardsPage";
 import TransactionProcessing from "./pages/TransactionProcessing";
 import PaymentPinPage from "@/components/onboarding/PaymentPinPage";
 import ServicePayment from "./pages/ServicePayment";
@@ -168,6 +169,11 @@ const App = () => {
             <Route
               path="/send-money"
               element={<SendMoney />}
+            />
+
+            <Route
+              path="/reward"
+              element={<RewardsPage />}
             />
             
             <Route

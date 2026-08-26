@@ -26,13 +26,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
-import {
-  supabase,
-} from "@/integrations/supabase/client";
-
-import {
-  useToast,
-} from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
 
 const ResetPaymentPin = () => {
   const navigate = useNavigate();
@@ -50,16 +45,16 @@ const ResetPaymentPin = () => {
   const [showConfirmPin, setShowConfirmPin] =
     useState(false);
 
+  const [sessionChecking, setSessionChecking] =
+    useState(true);
+
   const [isLoading, setIsLoading] =
     useState(false);
 
-  const [checkingSession, setCheckingSession] =
-    useState(true);
-
   /*
-   * ==========================================================
+   * ============================================================
    * VERIFY RECOVERY SESSION
-   * ==========================================================
+   * ============================================================
    */
 
   useEffect(() => {
@@ -69,63 +64,30 @@ const ResetPaymentPin = () => {
       async () => {
         try {
           /*
-           * getSession() returns the current session and
-           * refreshes it when necessary.
+           * Get current session.
            */
 
           const {
-            data,
-            error,
+            data: sessionData,
+            error: sessionError,
           } =
             await supabase.auth.getSession();
 
-          if (!mounted) {
-            return;
+          if (sessionError) {
+            throw sessionError;
           }
 
-          if (
-            error ||
-            !data.session
-          ) {
+          const session =
+            sessionData.session;
+
+          if (!session) {
             throw new Error(
               "No active recovery session."
             );
           }
 
           /*
-           * Get the actual authenticated user.
-           */
-
-          const {
-            data: userData,
-            error: userError,
-          } =
-            await supabase.auth.getUser();
-
-          if (
-            userError ||
-            !userData.user
-          ) {
-            throw new Error(
-              "Recovery authentication could not be verified."
-            );
-          }
-
-          /*
-           * --------------------------------------------------
-           * IMPORTANT
-           *
-           * Ask Supabase for the JWT claims.
-           *
-           * The recovery session should contain:
-           *
-           * amr: [
-           *   {
-           *     method: "recovery"
-           *   }
-           * ]
-           *
-           * --------------------------------------------------
+           * Verify the actual JWT claims.
            */
 
           const {
@@ -133,42 +95,30 @@ const ResetPaymentPin = () => {
             error: claimsError,
           } =
             await supabase.auth.getClaims(
-              data.session.access_token
+              session.access_token
             );
 
-          if (
-            claimsError ||
-            !claimsData?.claims
-          ) {
-            throw new Error(
-              "Unable to verify recovery authentication."
-            );
+          if (claimsError) {
+            throw claimsError;
           }
 
           const claims =
-            claimsData.claims as {
-              amr?: Array<{
-                method?: string;
-              }>;
-            };
+            claimsData?.claims as
+              | {
+                  amr?: Array<{
+                    method?: string;
+                  }>;
+                  sub?: string;
+                }
+              | undefined;
 
           const isRecovery =
-            Array.isArray(
-              claims.amr
-            ) &&
+            Array.isArray(claims?.amr) &&
             claims.amr.some(
               (method) =>
                 method?.method ===
                 "recovery"
             );
-
-          console.log(
-            "Payment PIN recovery claims:",
-            {
-              amr: claims.amr,
-              isRecovery,
-            }
-          );
 
           if (!isRecovery) {
             throw new Error(
@@ -177,19 +127,31 @@ const ResetPaymentPin = () => {
           }
 
           /*
-           * Recovery session is valid.
+           * Make sure the session belongs
+           * to a real authenticated user.
            */
 
-          setCheckingSession(false);
-        } catch (error: any) {
-          if (!mounted) {
-            return;
+          if (
+            !claims?.sub ||
+            claims.sub !== session.user.id
+          ) {
+            throw new Error(
+              "Recovery user could not be verified."
+            );
           }
 
+          if (mounted) {
+            setSessionChecking(false);
+          }
+        } catch (error: any) {
           console.error(
             "Payment PIN recovery session verification failed:",
             error
           );
+
+          if (!mounted) {
+            return;
+          }
 
           toast({
             title:
@@ -200,20 +162,11 @@ const ResetPaymentPin = () => {
             variant: "destructive",
           });
 
-          /*
-           * Remove temporary recovery email.
-           */
+          await supabase.auth.signOut();
 
-          sessionStorage.removeItem(
-            "iyanjupay_payment_pin_reset_email"
-          );
-
-          navigate(
-            "/payment-pin",
-            {
-              replace: true,
-            }
-          );
+          navigate("/payment-pin", {
+            replace: true,
+          });
         }
       };
 
@@ -222,29 +175,12 @@ const ResetPaymentPin = () => {
     return () => {
       mounted = false;
     };
-  }, [
-    navigate,
-    toast,
-  ]);
+  }, [navigate, toast]);
 
   /*
-   * ==========================================================
-   * HANDLE PIN INPUT
-   * ==========================================================
-   */
-
-  const cleanPin = (
-    value: string
-  ) => {
-    return value
-      .replace(/\D/g, "")
-      .slice(0, 4);
-  };
-
-  /*
-   * ==========================================================
-   * RESET PAYMENT PIN
-   * ==========================================================
+   * ============================================================
+   * RESET PIN
+   * ============================================================
    */
 
   const handleReset = async (
@@ -252,23 +188,11 @@ const ResetPaymentPin = () => {
   ) => {
     e.preventDefault();
 
-    if (checkingSession) {
-      return;
-    }
-
     if (isLoading) {
       return;
     }
 
-    /*
-     * --------------------------------------------------------
-     * Validate new PIN
-     * --------------------------------------------------------
-     */
-
-    if (
-      !/^\d{4}$/.test(newPin)
-    ) {
+    if (!/^\d{4}$/.test(newPin)) {
       toast({
         title: "Invalid PIN",
         description:
@@ -279,35 +203,7 @@ const ResetPaymentPin = () => {
       return;
     }
 
-    /*
-     * --------------------------------------------------------
-     * Validate confirmation
-     * --------------------------------------------------------
-     */
-
-    if (
-      !/^\d{4}$/.test(confirmPin)
-    ) {
-      toast({
-        title:
-          "Invalid confirmation PIN",
-        description:
-          "Your confirmation PIN must contain exactly 4 digits.",
-        variant: "destructive",
-      });
-
-      return;
-    }
-
-    /*
-     * --------------------------------------------------------
-     * PIN match
-     * --------------------------------------------------------
-     */
-
-    if (
-      newPin !== confirmPin
-    ) {
+    if (newPin !== confirmPin) {
       toast({
         title: "PINs do not match",
         description:
@@ -322,9 +218,9 @@ const ResetPaymentPin = () => {
 
     try {
       /*
-       * ------------------------------------------------------
-       * Get current session
-       * ------------------------------------------------------
+       * ========================================================
+       * GET FRESH SESSION
+       * ========================================================
        */
 
       const {
@@ -333,20 +229,23 @@ const ResetPaymentPin = () => {
       } =
         await supabase.auth.getSession();
 
-      if (
-        sessionError ||
-        !sessionData.session
-      ) {
+      if (sessionError) {
+        throw sessionError;
+      }
+
+      const session =
+        sessionData.session;
+
+      if (!session) {
         throw new Error(
-          "Your recovery session has expired. Please request a new code."
+          "Recovery session has expired."
         );
       }
 
       /*
-       * ------------------------------------------------------
-       * Verify the CURRENT JWT claims again immediately
-       * before the sensitive database operation.
-       * ------------------------------------------------------
+       * ========================================================
+       * VERIFY FRESH JWT
+       * ========================================================
        */
 
       const {
@@ -354,33 +253,27 @@ const ResetPaymentPin = () => {
         error: claimsError,
       } =
         await supabase.auth.getClaims(
-          sessionData.session.access_token
+          session.access_token
         );
 
-      if (
-        claimsError ||
-        !claimsData?.claims
-      ) {
-        throw new Error(
-          "Unable to verify your recovery session."
-        );
+      if (claimsError) {
+        throw claimsError;
       }
 
       const claims =
-        claimsData.claims as {
-          amr?: Array<{
-            method?: string;
-          }>;
-        };
+        claimsData?.claims as
+          | {
+              amr?: Array<{
+                method?: string;
+              }>;
+            }
+          | undefined;
 
       const isRecovery =
-        Array.isArray(
-          claims.amr
-        ) &&
+        Array.isArray(claims?.amr) &&
         claims.amr.some(
           (method) =>
-            method?.method ===
-            "recovery"
+            method?.method === "recovery"
         );
 
       if (!isRecovery) {
@@ -390,9 +283,9 @@ const ResetPaymentPin = () => {
       }
 
       /*
-       * ------------------------------------------------------
-       * Call secure database RPC
-       * ------------------------------------------------------
+       * ========================================================
+       * CALL SECURE RPC
+       * ========================================================
        */
 
       const {
@@ -418,12 +311,6 @@ const ResetPaymentPin = () => {
         );
       }
 
-      /*
-       * ------------------------------------------------------
-       * Validate RPC result
-       * ------------------------------------------------------
-       */
-
       if (
         !data ||
         data.success !== true
@@ -435,29 +322,13 @@ const ResetPaymentPin = () => {
       }
 
       /*
-       * ------------------------------------------------------
-       * Clear sensitive values
-       * ------------------------------------------------------
+       * ========================================================
+       * CLEAR PIN VALUES
+       * ========================================================
        */
 
       setNewPin("");
       setConfirmPin("");
-
-      sessionStorage.removeItem(
-        "iyanjupay_payment_pin_reset_email"
-      );
-
-      /*
-       * ------------------------------------------------------
-       * IMPORTANT
-       *
-       * Do NOT call signOut() here.
-       *
-       * The recovery session is being replaced/managed by
-       * Supabase Auth. We don't want to destroy a normal
-       * application session unexpectedly.
-       * ------------------------------------------------------
-       */
 
       toast({
         title:
@@ -467,15 +338,25 @@ const ResetPaymentPin = () => {
       });
 
       /*
-       * Return to Payment PIN page.
+       * ========================================================
+       * END RECOVERY SESSION
+       * ========================================================
        */
 
-      navigate(
-        "/payment-pin",
-        {
-          replace: true,
-        }
-      );
+      await supabase.auth.signOut();
+
+      /*
+       * ========================================================
+       * RETURN TO LOGIN
+       *
+       * Because the recovery session was intentionally
+       * terminated.
+       * ========================================================
+       */
+
+      navigate("/", {
+        replace: true,
+      });
     } catch (error: any) {
       console.error(
         "Payment PIN reset failed:",
@@ -496,28 +377,29 @@ const ResetPaymentPin = () => {
   };
 
   /*
-   * ==========================================================
-   * BACK
-   * ==========================================================
+   * ============================================================
+   * LOADING
+   * ============================================================
    */
 
-  const handleBack = () => {
-    if (isLoading) {
-      return;
-    }
+  if (sessionChecking) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-green-50 to-blue-50">
+        <div className="flex items-center gap-3 text-[#082A63]">
+          <Loader2 className="h-5 w-5 animate-spin" />
 
-    navigate(
-      "/payment-pin",
-      {
-        replace: true,
-      }
+          <span className="font-medium">
+            Verifying secure recovery session...
+          </span>
+        </div>
+      </div>
     );
-  };
+  }
 
   /*
-   * ==========================================================
+   * ============================================================
    * UI
-   * ==========================================================
+   * ============================================================
    */
 
   return (
@@ -526,7 +408,7 @@ const ResetPaymentPin = () => {
 
         <CardHeader className="text-center">
 
-          <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-blue-100">
+          <div className="mx-auto mb-3 w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center">
             <ShieldCheck className="h-6 w-6 text-[#082A63]" />
           </div>
 
@@ -542,225 +424,187 @@ const ResetPaymentPin = () => {
 
         <CardContent>
 
-          {checkingSession ? (
-            <div className="flex flex-col items-center justify-center py-10">
+          <form
+            onSubmit={handleReset}
+            className="space-y-5"
+          >
 
-              <Loader2 className="h-8 w-8 animate-spin text-[#082A63]" />
+            {/* NEW PIN */}
 
-              <p className="mt-3 text-sm text-gray-600">
-                Verifying secure recovery session...
-              </p>
+            <div className="space-y-2">
+
+              <Label htmlFor="new-payment-pin">
+                New Payment PIN
+              </Label>
+
+              <div className="relative">
+
+                <Input
+                  id="new-payment-pin"
+                  type={
+                    showNewPin
+                      ? "text"
+                      : "password"
+                  }
+                  inputMode="numeric"
+                  autoComplete="new-password"
+                  maxLength={4}
+                  value={newPin}
+                  onChange={(e) =>
+                    setNewPin(
+                      e.target.value
+                        .replace(/\D/g, "")
+                        .slice(0, 4)
+                    )
+                  }
+                  placeholder="••••"
+                  disabled={isLoading}
+                  className="pr-12 text-center text-2xl tracking-[0.5em]"
+                />
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    setShowNewPin(
+                      (value) => !value
+                    )
+                  }
+                  disabled={isLoading}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500"
+                  aria-label={
+                    showNewPin
+                      ? "Hide PIN"
+                      : "Show PIN"
+                  }
+                >
+                  {showNewPin ? (
+                    <EyeOff className="h-5 w-5" />
+                  ) : (
+                    <Eye className="h-5 w-5" />
+                  )}
+                </button>
+
+              </div>
 
             </div>
-          ) : (
-            <form
-              onSubmit={handleReset}
-              className="space-y-5"
+
+            {/* CONFIRM PIN */}
+
+            <div className="space-y-2">
+
+              <Label htmlFor="confirm-payment-pin">
+                Confirm New Payment PIN
+              </Label>
+
+              <div className="relative">
+
+                <Input
+                  id="confirm-payment-pin"
+                  type={
+                    showConfirmPin
+                      ? "text"
+                      : "password"
+                  }
+                  inputMode="numeric"
+                  autoComplete="new-password"
+                  maxLength={4}
+                  value={confirmPin}
+                  onChange={(e) =>
+                    setConfirmPin(
+                      e.target.value
+                        .replace(/\D/g, "")
+                        .slice(0, 4)
+                    )
+                  }
+                  placeholder="••••"
+                  disabled={isLoading}
+                  className="pr-12 text-center text-2xl tracking-[0.5em]"
+                />
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    setShowConfirmPin(
+                      (value) => !value
+                    )
+                  }
+                  disabled={isLoading}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500"
+                  aria-label={
+                    showConfirmPin
+                      ? "Hide PIN"
+                      : "Show PIN"
+                  }
+                >
+                  {showConfirmPin ? (
+                    <EyeOff className="h-5 w-5" />
+                  ) : (
+                    <Eye className="h-5 w-5" />
+                  )}
+                </button>
+
+              </div>
+
+            </div>
+
+            {/* SECURITY MESSAGE */}
+
+            <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
+
+              <div className="flex gap-3">
+
+                <LockKeyhole className="h-5 w-5 text-[#082A63] shrink-0 mt-0.5" />
+
+                <p className="text-sm text-blue-900">
+                  Your new Payment PIN must contain
+                  exactly 4 digits. Never share your
+                  Payment PIN with anyone.
+                </p>
+
+              </div>
+
+            </div>
+
+            {/* SUBMIT */}
+
+            <Button
+              type="submit"
+              className="w-full bg-[#082A63] hover:bg-[#061F49]"
+              disabled={
+                isLoading ||
+                !/^\d{4}$/.test(newPin) ||
+                !/^\d{4}$/.test(confirmPin) ||
+                newPin !== confirmPin
+              }
             >
+              {isLoading ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Resetting Payment PIN...
+                </>
+              ) : (
+                <>
+                  <LockKeyhole className="h-4 w-4 mr-2" />
+                  Reset Payment PIN
+                </>
+              )}
+            </Button>
 
-              {/* =================================================
-                  NEW PIN
-                  ================================================= */}
+            <Button
+              type="button"
+              variant="ghost"
+              className="w-full"
+              onClick={() =>
+                navigate("/payment-pin", {
+                  replace: true,
+                })
+              }
+              disabled={isLoading}
+            >
+              ← Back
+            </Button>
 
-              <div className="space-y-2">
-
-                <Label htmlFor="new-payment-pin">
-                  New Payment PIN
-                </Label>
-
-                <div className="relative">
-
-                  <Input
-                    id="new-payment-pin"
-                    type={
-                      showNewPin
-                        ? "text"
-                        : "password"
-                    }
-                    inputMode="numeric"
-                    autoComplete="new-password"
-                    maxLength={4}
-                    value={newPin}
-                    onChange={(e) =>
-                      setNewPin(
-                        cleanPin(
-                          e.target.value
-                        )
-                      )
-                    }
-                    placeholder="••••"
-                    disabled={isLoading}
-                    className="pr-12 text-center text-2xl tracking-[0.5em]"
-                    required
-                  />
-
-                  <button
-                    type="button"
-                    tabIndex={-1}
-                    onClick={() =>
-                      setShowNewPin(
-                        (current) =>
-                          !current
-                      )
-                    }
-                    disabled={isLoading}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700 disabled:opacity-50"
-                    aria-label={
-                      showNewPin
-                        ? "Hide PIN"
-                        : "Show PIN"
-                    }
-                  >
-                    {showNewPin ? (
-                      <EyeOff className="h-5 w-5" />
-                    ) : (
-                      <Eye className="h-5 w-5" />
-                    )}
-                  </button>
-
-                </div>
-
-                <p className="text-xs text-gray-500">
-                  Enter exactly 4 digits.
-                </p>
-
-              </div>
-
-              {/* =================================================
-                  CONFIRM PIN
-                  ================================================= */}
-
-              <div className="space-y-2">
-
-                <Label htmlFor="confirm-payment-pin">
-                  Confirm New Payment PIN
-                </Label>
-
-                <div className="relative">
-
-                  <Input
-                    id="confirm-payment-pin"
-                    type={
-                      showConfirmPin
-                        ? "text"
-                        : "password"
-                    }
-                    inputMode="numeric"
-                    autoComplete="new-password"
-                    maxLength={4}
-                    value={confirmPin}
-                    onChange={(e) =>
-                      setConfirmPin(
-                        cleanPin(
-                          e.target.value
-                        )
-                      )
-                    }
-                    placeholder="••••"
-                    disabled={isLoading}
-                    className="pr-12 text-center text-2xl tracking-[0.5em]"
-                    required
-                  />
-
-                  <button
-                    type="button"
-                    tabIndex={-1}
-                    onClick={() =>
-                      setShowConfirmPin(
-                        (current) =>
-                          !current
-                      )
-                    }
-                    disabled={isLoading}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700 disabled:opacity-50"
-                    aria-label={
-                      showConfirmPin
-                        ? "Hide PIN"
-                        : "Show PIN"
-                    }
-                  >
-                    {showConfirmPin ? (
-                      <EyeOff className="h-5 w-5" />
-                    ) : (
-                      <Eye className="h-5 w-5" />
-                    )}
-                  </button>
-
-                </div>
-
-                <p className="text-xs text-gray-500">
-                  Re-enter your new 4-digit PIN.
-                </p>
-
-              </div>
-
-              {/* =================================================
-                  SECURITY NOTICE
-                  ================================================= */}
-
-              <div className="rounded-lg border border-blue-200 bg-blue-50 p-3">
-
-                <div className="flex gap-3">
-
-                  <ShieldCheck className="h-5 w-5 shrink-0 text-[#082A63]" />
-
-                  <p className="text-sm text-blue-800">
-                    Your PIN is securely hashed and
-                    never stored in plain text.
-                  </p>
-
-                </div>
-
-              </div>
-
-              {/* =================================================
-                  RESET BUTTON
-                  ================================================= */}
-
-              <Button
-                type="submit"
-                className="w-full bg-[#082A63] hover:bg-[#061F49]"
-                disabled={
-                  isLoading ||
-                  !/^\d{4}$/.test(
-                    newPin
-                  ) ||
-                  !/^\d{4}$/.test(
-                    confirmPin
-                  ) ||
-                  newPin !==
-                    confirmPin
-                }
-              >
-                {isLoading ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Resetting Payment PIN...
-                  </>
-                ) : (
-                  <>
-                    <LockKeyhole className="h-4 w-4 mr-2" />
-                    Reset Payment PIN
-                  </>
-                )}
-              </Button>
-
-              {/* =================================================
-                  BACK
-                  ================================================= */}
-
-              <Button
-                type="button"
-                variant="ghost"
-                className="w-full"
-                onClick={handleBack}
-                disabled={isLoading}
-              >
-                ← Back
-              </Button>
-
-            </form>
-          )}
+          </form>
 
         </CardContent>
 

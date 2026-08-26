@@ -1,6 +1,4 @@
-import {
-  createClient,
-} from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 // ============================================================
 // ENVIRONMENT
@@ -13,14 +11,7 @@ const SUPABASE_ANON_KEY =
   Deno.env.get("SUPABASE_ANON_KEY")!;
 
 const SUPABASE_SERVICE_ROLE_KEY =
-  Deno.env.get(
-    "SUPABASE_SERVICE_ROLE_KEY"
-  )!;
-
-const RESET_SECRET =
-  Deno.env.get(
-    "PAYMENT_PIN_RESET_SECRET"
-  );
+  Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
 // ============================================================
 // CORS
@@ -57,82 +48,25 @@ function json(
 
 // ============================================================
 // SHA-256
-//
-// Used for the reset authorization token.
-//
-// IMPORTANT:
-// This MUST match reset_payment_pin().
 // ============================================================
 
-async function sha256(
+async function sha256Hex(
   value: string
 ): Promise<string> {
-
   const encoder =
     new TextEncoder();
 
   const data =
     encoder.encode(value);
 
-  const hash =
+  const hashBuffer =
     await crypto.subtle.digest(
       "SHA-256",
       data
     );
 
   return Array.from(
-    new Uint8Array(hash)
-  )
-    .map((byte) =>
-      byte
-        .toString(16)
-        .padStart(2, "0")
-    )
-    .join("");
-}
-
-// ============================================================
-// HMAC SHA-256
-//
-// Used for OTP verification.
-// ============================================================
-
-async function hmacSha256(
-  value: string
-): Promise<string> {
-
-  if (!RESET_SECRET) {
-    throw new Error(
-      "PAYMENT_PIN_RESET_SECRET is not configured."
-    );
-  }
-
-  const encoder =
-    new TextEncoder();
-
-  const key =
-    await crypto.subtle.importKey(
-      "raw",
-      encoder.encode(
-        RESET_SECRET
-      ),
-      {
-        name: "HMAC",
-        hash: "SHA-256",
-      },
-      false,
-      ["sign"]
-    );
-
-  const signature =
-    await crypto.subtle.sign(
-      "HMAC",
-      key,
-      encoder.encode(value)
-    );
-
-  return Array.from(
-    new Uint8Array(signature)
+    new Uint8Array(hashBuffer)
   )
     .map((byte) =>
       byte
@@ -147,13 +81,10 @@ async function hmacSha256(
 // ============================================================
 
 function generateAuthorizationToken(): string {
-
   const bytes =
     new Uint8Array(32);
 
-  crypto.getRandomValues(
-    bytes
-  );
+  crypto.getRandomValues(bytes);
 
   return Array.from(bytes)
     .map((byte) =>
@@ -172,7 +103,6 @@ function constantTimeEqual(
   a: string,
   b: string
 ): boolean {
-
   const encoder =
     new TextEncoder();
 
@@ -209,16 +139,22 @@ function constantTimeEqual(
 // ============================================================
 
 Deno.serve(async (req) => {
+  // ==========================================================
+  // OPTIONS
+  // ==========================================================
 
   if (req.method === "OPTIONS") {
     return new Response(
       "ok",
       {
-        headers:
-          corsHeaders,
+        headers: corsHeaders,
       }
     );
   }
+
+  // ==========================================================
+  // METHOD
+  // ==========================================================
 
   if (req.method !== "POST") {
     return json(
@@ -232,6 +168,28 @@ Deno.serve(async (req) => {
   }
 
   try {
+    // ========================================================
+    // ENVIRONMENT
+    // ========================================================
+
+    if (
+      !SUPABASE_URL ||
+      !SUPABASE_ANON_KEY ||
+      !SUPABASE_SERVICE_ROLE_KEY
+    ) {
+      console.error(
+        "Supabase environment variables are missing."
+      );
+
+      return json(
+        {
+          success: false,
+          message:
+            "Server configuration error.",
+        },
+        500
+      );
+    }
 
     // ========================================================
     // AUTHENTICATION
@@ -279,6 +237,11 @@ Deno.serve(async (req) => {
       userError ||
       !user
     ) {
+      console.error(
+        "Authentication error:",
+        userError
+      );
+
       return json(
         {
           success: false,
@@ -299,12 +262,9 @@ Deno.serve(async (req) => {
     };
 
     try {
-
       body =
         await req.json();
-
     } catch {
-
       return json(
         {
           success: false,
@@ -342,7 +302,9 @@ Deno.serve(async (req) => {
     }
 
     if (
-      !/^[0-9]{6}$/.test(otp)
+      !/^[0-9]{6}$/.test(
+        otp
+      )
     ) {
       return json(
         {
@@ -370,8 +332,7 @@ Deno.serve(async (req) => {
 
     const {
       data: challenge,
-      error:
-        challengeError,
+      error: challengeError,
     } =
       await admin
         .from(
@@ -399,7 +360,6 @@ Deno.serve(async (req) => {
         .maybeSingle();
 
     if (challengeError) {
-
       console.error(
         "Challenge lookup error:",
         challengeError
@@ -465,7 +425,6 @@ Deno.serve(async (req) => {
         challenge.expires_at
       ).getTime() <= Date.now()
     ) {
-
       await admin
         .from(
           "payment_pin_reset_challenges"
@@ -494,14 +453,13 @@ Deno.serve(async (req) => {
     }
 
     // ========================================================
-    // MAX ATTEMPTS
+    // ATTEMPTS
     // ========================================================
 
     if (
       challenge.attempts >=
       challenge.max_attempts
     ) {
-
       await admin
         .from(
           "payment_pin_reset_challenges"
@@ -530,22 +488,22 @@ Deno.serve(async (req) => {
     }
 
     // ========================================================
-    // HASH SUPPLIED OTP
+    // HASH SUBMITTED OTP
     // ========================================================
 
-    const submittedOtpHash =
-      await hmacSha256(
+    const submittedHash =
+      await sha256Hex(
         otp
       );
 
     // ========================================================
-    // COMPARE OTP
+    // CONSTANT-TIME COMPARISON
     // ========================================================
 
     const matches =
       constantTimeEqual(
-        submittedOtpHash,
-        challenge.otp_hash
+        challenge.otp_hash,
+        submittedHash
       );
 
     // ========================================================
@@ -553,7 +511,6 @@ Deno.serve(async (req) => {
     // ========================================================
 
     if (!matches) {
-
       const nextAttempts =
         challenge.attempts + 1;
 
@@ -561,23 +518,38 @@ Deno.serve(async (req) => {
         nextAttempts >=
         challenge.max_attempts;
 
-      await admin
-        .from(
-          "payment_pin_reset_challenges"
-        )
-        .update({
-          attempts:
-            nextAttempts,
+      const {
+        error:
+          attemptUpdateError,
+      } =
+        await admin
+          .from(
+            "payment_pin_reset_challenges"
+          )
+          .update({
+            attempts:
+              nextAttempts,
 
-          used_at:
-            exhausted
-              ? new Date().toISOString()
-              : null,
-        })
-        .eq(
-          "id",
-          challenge.id
+            used_at:
+              exhausted
+                ? new Date().toISOString()
+                : null,
+          })
+          .eq(
+            "id",
+            challenge.id
+          )
+          .eq(
+            "user_id",
+            user.id
+          );
+
+      if (attemptUpdateError) {
+        console.error(
+          "OTP attempt update error:",
+          attemptUpdateError
         );
+      }
 
       return json(
         {
@@ -587,9 +559,7 @@ Deno.serve(async (req) => {
               ? "Too many incorrect attempts. Please request a new recovery code."
               : "Invalid recovery code.",
         },
-        exhausted
-          ? 429
-          : 400
+        exhausted ? 429 : 400
       );
     }
 
@@ -598,7 +568,8 @@ Deno.serve(async (req) => {
     // ========================================================
 
     const verifiedAt =
-      new Date().toISOString();
+      new Date()
+        .toISOString();
 
     const {
       data:
@@ -630,13 +601,14 @@ Deno.serve(async (req) => {
           "used_at",
           null
         )
-        .select("id")
+        .select(
+          "id"
+        )
         .maybeSingle();
 
     if (
       verifyUpdateError
     ) {
-
       console.error(
         "Challenge verification update error:",
         verifyUpdateError
@@ -657,31 +629,36 @@ Deno.serve(async (req) => {
         {
           success: false,
           message:
-            "This recovery code has already been processed.",
+            "This recovery request is no longer valid.",
         },
-        409
+        400
       );
     }
 
     // ========================================================
-    // GENERATE RAW AUTHORIZATION TOKEN
+    // GENERATE AUTHORIZATION TOKEN
     // ========================================================
 
     const authorizationToken =
       generateAuthorizationToken();
 
     // ========================================================
+    // HASH AUTHORIZATION TOKEN
+    //
     // IMPORTANT:
     //
     // reset_payment_pin() uses:
     //
-    // SHA256(raw authorization)
+    // extensions.digest(
+    //     _authorization,
+    //     'sha256'
+    // )
     //
-    // Therefore we MUST use the same hashing method here.
+    // Therefore this MUST be plain SHA-256.
     // ========================================================
 
     const authorizationHash =
-      await sha256(
+      await sha256Hex(
         authorizationToken
       );
 
@@ -701,7 +678,7 @@ Deno.serve(async (req) => {
 
     const {
       error:
-        invalidateAuthorizationError,
+        invalidateError,
     } =
       await admin
         .from(
@@ -720,13 +697,10 @@ Deno.serve(async (req) => {
           null
         );
 
-    if (
-      invalidateAuthorizationError
-    ) {
-
+    if (invalidateError) {
       console.error(
         "Authorization invalidation error:",
-        invalidateAuthorizationError
+        invalidateError
       );
 
       return json(
@@ -768,16 +742,17 @@ Deno.serve(async (req) => {
           used_at:
             null,
         })
-        .select("id")
+        .select(
+          "id"
+        )
         .single();
 
     if (
       authorizationError ||
       !authorization
     ) {
-
       console.error(
-        "Reset authorization creation error:",
+        "Authorization creation error:",
         authorizationError
       );
 
@@ -812,7 +787,6 @@ Deno.serve(async (req) => {
     });
 
   } catch (error) {
-
     console.error(
       "Payment PIN reset verification error:",
       error
@@ -822,9 +796,7 @@ Deno.serve(async (req) => {
       {
         success: false,
         message:
-          error instanceof Error
-            ? error.message
-            : "Unable to verify Payment PIN recovery.",
+          "Unable to verify Payment PIN recovery.",
       },
       500
     );

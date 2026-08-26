@@ -36,6 +36,8 @@ import { useToast } from "@/hooks/use-toast";
 
 import { supabase } from "@/integrations/supabase/client";
 
+import PaymentPinModal from "@/components/security/PaymentPinModal";
+
 interface TransferModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -67,6 +69,11 @@ interface ResolvedIyanjuPayRecipient {
   name: string;
   full_name?: string | null;
   nickname?: string | null;
+}
+
+interface PendingBankTransfer {
+  amount: number;
+  details: any;
 }
 
 type TransferType =
@@ -104,6 +111,21 @@ const TransferModal = ({
 
   const [narration, setNarration] =
     useState("");
+
+  // ==========================================================
+  // PAYMENT PIN
+  // ==========================================================
+
+  const [paymentPinOpen, setPaymentPinOpen] =
+    useState(false);
+
+  const [
+    pendingBankTransfer,
+    setPendingBankTransfer,
+  ] =
+    useState<PendingBankTransfer | null>(
+      null
+    );
 
   // ==========================================================
   // IYANJUPAY
@@ -678,6 +700,10 @@ const TransferModal = ({
 
     setResolvedAccount(null);
     setResolving(false);
+
+    // Payment PIN
+    setPaymentPinOpen(false);
+    setPendingBankTransfer(null);
   };
 
   // ==========================================================
@@ -929,19 +955,19 @@ const TransferModal = ({
     };
 
   // ==========================================================
-  // MAIN TRANSFER HANDLER
+  // PREPARE TRANSFER
   // ==========================================================
 
   const handleTransfer =
     async () => {
-      const transferAmount =
+      const transferAmountValue =
         Number(amount);
 
       if (
         !Number.isFinite(
-          transferAmount
+          transferAmountValue
         ) ||
-        transferAmount <= 0
+        transferAmountValue <= 0
       ) {
         toast({
           title:
@@ -958,16 +984,80 @@ const TransferModal = ({
       }
 
       // --------------------------------------------------------
-      // IYANJUPAY
+      // IYANJUPAY VALIDATION
       // --------------------------------------------------------
 
       if (
         transferType ===
         "iyanjupay"
       ) {
-        await handleIyanjuPayTransfer(
-          transferAmount
-        );
+        const walletId =
+          iyanjupayWalletId.trim();
+
+        if (
+          !/^\d{8}$/.test(
+            walletId
+          )
+        ) {
+          toast({
+            title:
+              "Invalid Wallet ID",
+
+            description:
+              "IyanjuPay Wallet ID must be exactly 8 digits.",
+
+            variant:
+              "destructive",
+          });
+
+          return;
+        }
+
+        if (
+          !resolvedIyanjuPayRecipient ||
+          resolvedIyanjuPayRecipient
+            .wallet_id !==
+            walletId
+        ) {
+          toast({
+            title:
+              "Recipient not verified",
+
+            description:
+              "Please enter a valid IyanjuPay Wallet ID and wait for the recipient name to be verified.",
+
+            variant:
+              "destructive",
+          });
+
+          return;
+        }
+
+        if (
+          transferAmountValue >
+          walletBalance
+        ) {
+          toast({
+            title:
+              "Insufficient Balance",
+
+            description:
+              `You need ₦${transferAmountValue.toLocaleString()} to complete this transfer.`,
+
+            variant:
+              "destructive",
+          });
+
+          return;
+        }
+
+        /*
+         * Everything is valid.
+         *
+         * DO NOT execute the transfer yet.
+         * Ask for Payment PIN first.
+         */
+        setPaymentPinOpen(true);
 
         return;
       }
@@ -980,7 +1070,7 @@ const TransferModal = ({
         BANK_TRANSFER_FEE;
 
       const total =
-        transferAmount +
+        transferAmountValue +
         fee;
 
       if (
@@ -1046,7 +1136,8 @@ const TransferModal = ({
         type:
           "transfer",
 
-        transferAmount,
+        transferAmount:
+          transferAmountValue,
 
         fee,
 
@@ -1054,35 +1145,108 @@ const TransferModal = ({
           total,
       };
 
-      try {
-        await onTransfer(
-          transferAmount,
-          details
+      /*
+       * Store the validated bank transfer.
+       *
+       * DO NOT execute onTransfer() yet.
+       */
+      setPendingBankTransfer({
+        amount:
+          transferAmountValue,
+
+        details,
+      });
+
+      /*
+       * Ask for Payment PIN.
+       */
+      setPaymentPinOpen(true);
+    };
+
+  // ==========================================================
+  // PAYMENT PIN VERIFIED
+  // ==========================================================
+
+  const handlePaymentPinVerified =
+    async () => {
+      setPaymentPinOpen(false);
+
+      /*
+       * IYANJUPAY TRANSFER
+       */
+      if (
+        transferType ===
+        "iyanjupay"
+      ) {
+        const transferAmountValue =
+          Number(amount);
+
+        await handleIyanjuPayTransfer(
+          transferAmountValue
         );
 
-        if (onTransferSuccess) {
-          await onTransferSuccess();
-        }
-
-        handleClose();
-      } catch (error: any) {
-        console.error(
-          "Bank transfer failed:",
-          error
-        );
-
-        toast({
-          title:
-            "Transfer Failed",
-
-          description:
-            error?.message ||
-            "Unable to complete bank transfer.",
-
-          variant:
-            "destructive",
-        });
+        return;
       }
+
+      /*
+       * BANK TRANSFER
+       */
+      if (pendingBankTransfer) {
+        const {
+          amount:
+            transferAmountValue,
+          details,
+        } =
+          pendingBankTransfer;
+
+        /*
+         * Clear the pending transfer BEFORE
+         * executing it.
+         */
+        setPendingBankTransfer(
+          null
+        );
+
+        try {
+          await onTransfer(
+            transferAmountValue,
+            details
+          );
+
+          if (onTransferSuccess) {
+            await onTransferSuccess();
+          }
+
+          handleClose();
+        } catch (error: any) {
+          console.error(
+            "Bank transfer failed:",
+            error
+          );
+
+          toast({
+            title:
+              "Transfer Failed",
+
+            description:
+              error?.message ||
+              "Unable to complete bank transfer.",
+
+            variant:
+              "destructive",
+          });
+        }
+      }
+    };
+
+  // ==========================================================
+  // PAYMENT PIN CANCEL
+  // ==========================================================
+
+  const handlePaymentPinCancel =
+    () => {
+      setPaymentPinOpen(false);
+      setPendingBankTransfer(null);
     };
 
   // ==========================================================
@@ -1094,6 +1258,9 @@ const TransferModal = ({
       resolveRequestRef.current++;
 
       iyanjuPayResolveRequestRef.current++;
+
+      setPaymentPinOpen(false);
+      setPendingBankTransfer(null);
 
       setTransferType(
         "iyanjupay"
@@ -1137,6 +1304,7 @@ const TransferModal = ({
     transferAmount <= 0 ||
     hasInsufficientBalance ||
     iyanjupayTransferring ||
+    paymentPinOpen ||
     (transferType ===
       "iyanjupay" &&
       (
@@ -1157,172 +1325,173 @@ const TransferModal = ({
   // ==========================================================
 
   return (
-    <Dialog
-      open={isOpen}
-      onOpenChange={(open) => {
-        if (!open) {
-          handleClose();
-        }
-      }}
-    >
-      <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
+    <>
+      <Dialog
+        open={isOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            handleClose();
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
 
-        <DialogHeader>
-          <DialogTitle className="text-center text-green-700 flex items-center justify-center gap-2">
-            <Send className="h-5 w-5" />
+          <DialogHeader>
+            <DialogTitle className="text-center text-green-700 flex items-center justify-center gap-2">
+              <Send className="h-5 w-5" />
 
-            Transfer Money
-          </DialogTitle>
-        </DialogHeader>
+              Transfer Money
+            </DialogTitle>
+          </DialogHeader>
 
-        <div className="space-y-4">
+          <div className="space-y-4">
 
-          {/* ================================================== */}
-          {/* TRANSFER TYPE */}
-          {/* ================================================== */}
+            {/* ================================================== */}
+            {/* TRANSFER TYPE */}
+            {/* ================================================== */}
 
-          <div className="grid grid-cols-2 gap-2 p-1 bg-gray-100 rounded-lg">
+            <div className="grid grid-cols-2 gap-2 p-1 bg-gray-100 rounded-lg">
 
-            <Button
-              type="button"
-              variant={
-                transferType ===
-                "iyanjupay"
-                  ? "default"
-                  : "ghost"
-              }
-              onClick={() =>
-                handleTransferTypeChange(
+              <Button
+                type="button"
+                variant={
+                  transferType ===
                   "iyanjupay"
-                )
-              }
-              className={
-                transferType ===
-                "iyanjupay"
-                  ? "bg-green-600 hover:bg-green-700"
-                  : ""
-              }
-            >
-              <User className="h-4 w-4 mr-2" />
-
-              IyanjuPay User
-            </Button>
-
-            <Button
-              type="button"
-              variant={
-                transferType ===
-                "bank"
-                  ? "default"
-                  : "ghost"
-              }
-              onClick={() =>
-                handleTransferTypeChange(
-                  "bank"
-                )
-              }
-              className={
-                transferType ===
-                "bank"
-                  ? "bg-green-600 hover:bg-green-700"
-                  : ""
-              }
-            >
-              <Building2 className="h-4 w-4 mr-2" />
-
-              Bank Account
-            </Button>
-
-          </div>
-
-          {/* ================================================== */}
-          {/* BALANCE */}
-          {/* ================================================== */}
-
-          <div className="bg-green-50 p-3 rounded-lg">
-
-            <p className="text-sm text-green-700">
-
-              Wallet Balance: ₦
-              {walletBalance.toLocaleString(
-                undefined,
-                {
-                  minimumFractionDigits: 2,
-                  maximumFractionDigits: 2,
+                    ? "default"
+                    : "ghost"
                 }
-              )}
+                onClick={() =>
+                  handleTransferTypeChange(
+                    "iyanjupay"
+                  )
+                }
+                className={
+                  transferType ===
+                  "iyanjupay"
+                    ? "bg-green-600 hover:bg-green-700"
+                    : ""
+                }
+              >
+                <User className="h-4 w-4 mr-2" />
 
-            </p>
+                IyanjuPay User
+              </Button>
 
-          </div>
+              <Button
+                type="button"
+                variant={
+                  transferType ===
+                  "bank"
+                    ? "default"
+                    : "ghost"
+                }
+                onClick={() =>
+                  handleTransferTypeChange(
+                    "bank"
+                  )
+                }
+                className={
+                  transferType ===
+                  "bank"
+                    ? "bg-green-600 hover:bg-green-700"
+                    : ""
+                }
+              >
+                <Building2 className="h-4 w-4 mr-2" />
 
-          {/* ================================================== */}
-          {/* IYANJUPAY USER */}
-          {/* ================================================== */}
+                Bank Account
+              </Button>
 
-          {transferType ===
-            "iyanjupay" && (
-            <div className="space-y-4">
+            </div>
 
-              <div className="space-y-2">
+            {/* ================================================== */}
+            {/* BALANCE */}
+            {/* ================================================== */}
 
-                <Label htmlFor="iyanjupayWalletId">
-                  Recipient Wallet ID
-                </Label>
+            <div className="bg-green-50 p-3 rounded-lg">
 
-                <Input
-                  id="iyanjupayWalletId"
-                  value={
-                    iyanjupayWalletId
+              <p className="text-sm text-green-700">
+
+                Wallet Balance: ₦
+                {walletBalance.toLocaleString(
+                  undefined,
+                  {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
                   }
-                  onChange={(e) => {
-                    const value =
-                      e.target.value.replace(
-                        /\D/g,
-                        ""
+                )}
+
+              </p>
+
+            </div>
+
+            {/* ================================================== */}
+            {/* IYANJUPAY USER */}
+            {/* ================================================== */}
+
+            {transferType ===
+              "iyanjupay" && (
+              <div className="space-y-4">
+
+                <div className="space-y-2">
+
+                  <Label htmlFor="iyanjupayWalletId">
+                    Recipient Wallet ID
+                  </Label>
+
+                  <Input
+                    id="iyanjupayWalletId"
+                    value={
+                      iyanjupayWalletId
+                    }
+                    onChange={(e) => {
+                      const value =
+                        e.target.value.replace(
+                          /\D/g,
+                          ""
+                        );
+
+                      iyanjuPayResolveRequestRef.current++;
+
+                      setIyanjuPayWalletId(
+                        value.slice(
+                          0,
+                          8
+                        )
                       );
 
-                    iyanjuPayResolveRequestRef.current++;
+                      setResolvedIyanjuPayRecipient(
+                        null
+                      );
 
-                    setIyanjuPayWalletId(
-                      value.slice(
-                        0,
-                        8
-                      )
-                    );
+                      setResolvingIyanjuPayRecipient(
+                        false
+                      );
+                    }}
+                    placeholder="Enter 8-digit Wallet ID"
+                    autoComplete="off"
+                    inputMode="numeric"
+                    maxLength={8}
+                  />
 
-                    setResolvedIyanjuPayRecipient(
-                      null
-                    );
+                  <p className="text-xs text-gray-500">
+                    Enter the recipient's
+                    8-digit IyanjuPay Wallet ID.
+                  </p>
 
-                    setResolvingIyanjuPayRecipient(
-                      false
-                    );
-                  }}
-                  placeholder="Enter 8-digit Wallet ID"
-                  autoComplete="off"
-                  inputMode="numeric"
-                  maxLength={8}
-                />
-
-                <p className="text-xs text-gray-500">
-                  Enter the recipient's
-                  8-digit IyanjuPay Wallet ID.
-                </p>
-
-                {iyanjupayWalletId.length >
-                  0 &&
-                  iyanjupayWalletId.length <
-                    8 && (
+                  {iyanjupayWalletId.length >
+                    0 &&
+                    iyanjupayWalletId.length <
+                      8 && (
                     <p className="text-xs text-orange-600">
                       Wallet ID must contain
                       exactly 8 digits.
                     </p>
                   )}
 
-                {resolvingIyanjuPayRecipient &&
-                  iyanjupayWalletId.length ===
-                    8 && (
+                  {resolvingIyanjuPayRecipient &&
+                    iyanjupayWalletId.length ===
+                      8 && (
                     <div className="rounded-lg border border-blue-200 bg-blue-50 p-3">
 
                       <div className="flex items-center gap-2">
@@ -1338,265 +1507,265 @@ const TransferModal = ({
                     </div>
                   )}
 
-                {!resolvingIyanjuPayRecipient &&
-                  resolvedIyanjuPayRecipient && (
-                  <div className="rounded-lg border border-green-200 bg-green-50 p-4">
+                  {!resolvingIyanjuPayRecipient &&
+                    resolvedIyanjuPayRecipient && (
+                    <div className="rounded-lg border border-green-200 bg-green-50 p-4">
 
-                    <div className="flex items-start gap-3">
+                      <div className="flex items-start gap-3">
 
-                      <CheckCircle2 className="h-5 w-5 text-green-600 mt-0.5 shrink-0" />
+                        <CheckCircle2 className="h-5 w-5 text-green-600 mt-0.5 shrink-0" />
 
-                      <div className="min-w-0">
+                        <div className="min-w-0">
 
-                        <p className="text-xs text-green-700 font-medium">
-                          VERIFIED RECIPIENT
-                        </p>
+                          <p className="text-xs text-green-700 font-medium">
+                            VERIFIED RECIPIENT
+                          </p>
 
-                        <p className="font-semibold text-gray-900 mt-1 break-words">
-                          {
-                            resolvedIyanjuPayRecipient.name
-                          }
-                        </p>
-
-                        <p className="text-sm text-gray-600">
-                          Wallet ID:{" "}
-                          {
-                            resolvedIyanjuPayRecipient.wallet_id
-                          }
-                        </p>
-
-                      </div>
-
-                    </div>
-
-                  </div>
-                )}
-
-                {!resolvingIyanjuPayRecipient &&
-                  iyanjupayWalletId.length ===
-                    8 &&
-                  !resolvedIyanjuPayRecipient && (
-                  <div className="rounded-lg border border-red-200 bg-red-50 p-3">
-
-                    <p className="text-sm text-red-700">
-                      Wallet ID could not be
-                      verified. Please check
-                      the recipient's Wallet ID.
-                    </p>
-
-                  </div>
-                )}
-
-              </div>
-
-            </div>
-          )}
-
-          {/* ================================================== */}
-          {/* BANK */}
-          {/* ================================================== */}
-
-          {transferType ===
-            "bank" && (
-            <div className="space-y-4">
-
-              {/* ------------------------------------------------ */}
-              {/* SEARCHABLE BANK SELECT */}
-              {/* ------------------------------------------------ */}
-
-              <div className="space-y-2">
-
-                <Label htmlFor="bank">
-                  Recipient Bank
-                </Label>
-
-                <Select
-                  value={bank}
-                  onValueChange={(value) => {
-                    resolveRequestRef.current++;
-
-                    setBank(value);
-
-                    setResolvedAccount(
-                      null
-                    );
-
-                    setResolving(false);
-
-                    setBankSearch("");
-                  }}
-                  disabled={
-                    banksLoading
-                  }
-                >
-
-                  <SelectTrigger id="bank">
-
-                    <SelectValue
-                      placeholder={
-                        banksLoading
-                          ? "Loading banks..."
-                          : "Select bank"
-                      }
-                    />
-
-                  </SelectTrigger>
-
-                  <SelectContent>
-
-                    {/* SEARCH BAR */}
-
-                    <div
-                      className="sticky top-0 z-10 bg-white p-2 border-b"
-                      onPointerDown={(e) =>
-                        e.stopPropagation()
-                      }
-                      onKeyDown={(e) =>
-                        e.stopPropagation()
-                      }
-                    >
-                      <div className="relative">
-
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-
-                        <Input
-                          value={
-                            bankSearch
-                          }
-                          onChange={(e) =>
-                            setBankSearch(
-                              e.target.value
-                            )
-                          }
-                          onKeyDown={(e) =>
-                            e.stopPropagation()
-                          }
-                          placeholder="Search bank name..."
-                          className="pl-9"
-                          autoComplete="off"
-                        />
-
-                      </div>
-                    </div>
-
-                    {/* BANK RESULTS */}
-
-                    {banksLoading ? (
-                      <div className="flex items-center justify-center gap-2 p-4 text-sm text-gray-500">
-
-                        <Loader2 className="h-4 w-4 animate-spin" />
-
-                        Loading banks...
-
-                      </div>
-                    ) : filteredBanks.length >
-                      0 ? (
-                      filteredBanks.map(
-                        (
-                          bankItem
-                        ) => (
-                          <SelectItem
-                            key={
-                              bankItem.code
-                            }
-                            value={
-                              bankItem.code
-                            }
-                          >
+                          <p className="font-semibold text-gray-900 mt-1 break-words">
                             {
-                              bankItem.name
+                              resolvedIyanjuPayRecipient.name
                             }
-                          </SelectItem>
-                        )
-                      )
-                    ) : (
-                      <div className="p-4 text-center text-sm text-gray-500">
-                        No bank found.
+                          </p>
+
+                          <p className="text-sm text-gray-600">
+                            Wallet ID:{" "}
+                            {
+                              resolvedIyanjuPayRecipient.wallet_id
+                            }
+                          </p>
+
+                        </div>
+
                       </div>
-                    )}
 
-                  </SelectContent>
+                    </div>
+                  )}
 
-                </Select>
+                  {!resolvingIyanjuPayRecipient &&
+                    iyanjupayWalletId.length ===
+                      8 &&
+                    !resolvedIyanjuPayRecipient && (
+                    <div className="rounded-lg border border-red-200 bg-red-50 p-3">
 
-                {bankSearch.trim() &&
-                  !bank && (
-                  <p className="text-xs text-gray-500">
-                    Search results:
-                    {" "}
-                    {filteredBanks.length}
-                    {" "}
-                    bank
-                    {filteredBanks.length ===
-                    1
-                      ? ""
-                      : "s"}
-                    {" "}
-                    found.
-                  </p>
-                )}
+                      <p className="text-sm text-red-700">
+                        Wallet ID could not be
+                        verified. Please check
+                        the recipient's Wallet ID.
+                      </p>
+
+                    </div>
+                  )}
+
+                </div>
 
               </div>
+            )}
 
-              {/* ------------------------------------------------ */}
-              {/* ACCOUNT NUMBER */}
-              {/* ------------------------------------------------ */}
+            {/* ================================================== */}
+            {/* BANK */}
+            {/* ================================================== */}
 
-              <div className="space-y-2">
+            {transferType ===
+              "bank" && (
+              <div className="space-y-4">
 
-                <Label htmlFor="accountNumber">
-                  Account Number
-                </Label>
+                {/* ------------------------------------------------ */}
+                {/* SEARCHABLE BANK SELECT */}
+                {/* ------------------------------------------------ */}
 
-                <Input
-                  id="accountNumber"
-                  value={
-                    accountNumber
-                  }
-                  onChange={(e) => {
-                    const value =
-                      e.target.value.replace(
-                        /\D/g,
-                        ""
+                <div className="space-y-2">
+
+                  <Label htmlFor="bank">
+                    Recipient Bank
+                  </Label>
+
+                  <Select
+                    value={bank}
+                    onValueChange={(value) => {
+                      resolveRequestRef.current++;
+
+                      setBank(value);
+
+                      setResolvedAccount(
+                        null
                       );
 
-                    resolveRequestRef.current++;
+                      setResolving(false);
 
-                    setAccountNumber(
-                      value.slice(
-                        0,
-                        10
-                      )
-                    );
+                      setBankSearch("");
+                    }}
+                    disabled={
+                      banksLoading
+                    }
+                  >
 
-                    setResolvedAccount(
-                      null
-                    );
+                    <SelectTrigger id="bank">
 
-                    setResolving(false);
-                  }}
-                  placeholder="Enter 10-digit account number"
-                  maxLength={10}
-                  inputMode="numeric"
-                />
+                      <SelectValue
+                        placeholder={
+                          banksLoading
+                            ? "Loading banks..."
+                            : "Select bank"
+                        }
+                      />
 
-                {resolving && (
-                  <div className="flex items-center gap-2 text-sm text-blue-600">
+                    </SelectTrigger>
 
-                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <SelectContent>
 
-                    <span>
-                      Verifying account...
-                    </span>
+                      {/* SEARCH BAR */}
 
-                  </div>
-                )}
+                      <div
+                        className="sticky top-0 z-10 bg-white p-2 border-b"
+                        onPointerDown={(e) =>
+                          e.stopPropagation()
+                        }
+                        onKeyDown={(e) =>
+                          e.stopPropagation()
+                        }
+                      >
+                        <div className="relative">
 
-                {!resolving &&
-                  accountNumber.length >
-                    0 &&
-                  accountNumber.length <
-                    10 && (
+                          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+
+                          <Input
+                            value={
+                              bankSearch
+                            }
+                            onChange={(e) =>
+                              setBankSearch(
+                                e.target.value
+                              )
+                            }
+                            onKeyDown={(e) =>
+                              e.stopPropagation()
+                            }
+                            placeholder="Search bank name..."
+                            className="pl-9"
+                            autoComplete="off"
+                          />
+
+                        </div>
+                      </div>
+
+                      {/* BANK RESULTS */}
+
+                      {banksLoading ? (
+                        <div className="flex items-center justify-center gap-2 p-4 text-sm text-gray-500">
+
+                          <Loader2 className="h-4 w-4 animate-spin" />
+
+                          Loading banks...
+
+                        </div>
+                      ) : filteredBanks.length >
+                        0 ? (
+                        filteredBanks.map(
+                          (
+                            bankItem
+                          ) => (
+                            <SelectItem
+                              key={
+                                bankItem.code
+                              }
+                              value={
+                                bankItem.code
+                              }
+                            >
+                              {
+                                bankItem.name
+                              }
+                            </SelectItem>
+                          )
+                        )
+                      ) : (
+                        <div className="p-4 text-center text-sm text-gray-500">
+                          No bank found.
+                        </div>
+                      )}
+
+                    </SelectContent>
+
+                  </Select>
+
+                  {bankSearch.trim() &&
+                    !bank && (
+                    <p className="text-xs text-gray-500">
+                      Search results:
+                      {" "}
+                      {filteredBanks.length}
+                      {" "}
+                      bank
+                      {filteredBanks.length ===
+                      1
+                        ? ""
+                        : "s"}
+                      {" "}
+                      found.
+                    </p>
+                  )}
+
+                </div>
+
+                {/* ------------------------------------------------ */}
+                {/* ACCOUNT NUMBER */}
+                {/* ------------------------------------------------ */}
+
+                <div className="space-y-2">
+
+                  <Label htmlFor="accountNumber">
+                    Account Number
+                  </Label>
+
+                  <Input
+                    id="accountNumber"
+                    value={
+                      accountNumber
+                    }
+                    onChange={(e) => {
+                      const value =
+                        e.target.value.replace(
+                          /\D/g,
+                          ""
+                        );
+
+                      resolveRequestRef.current++;
+
+                      setAccountNumber(
+                        value.slice(
+                          0,
+                          10
+                        )
+                      );
+
+                      setResolvedAccount(
+                        null
+                      );
+
+                      setResolving(false);
+                    }}
+                    placeholder="Enter 10-digit account number"
+                    maxLength={10}
+                    inputMode="numeric"
+                  />
+
+                  {resolving && (
+                    <div className="flex items-center gap-2 text-sm text-blue-600">
+
+                      <Loader2 className="h-4 w-4 animate-spin" />
+
+                      <span>
+                        Verifying account...
+                      </span>
+
+                    </div>
+                  )}
+
+                  {!resolving &&
+                    accountNumber.length >
+                      0 &&
+                    accountNumber.length <
+                      10 && (
                     <p className="text-xs text-gray-500">
                       Enter all 10 digits to
                       automatically verify
@@ -1604,253 +1773,270 @@ const TransferModal = ({
                     </p>
                   )}
 
-              </div>
+                </div>
 
-              {/* ------------------------------------------------ */}
-              {/* VERIFIED BANK ACCOUNT */}
-              {/* ------------------------------------------------ */}
+                {/* ------------------------------------------------ */}
+                {/* VERIFIED BANK ACCOUNT */}
+                {/* ------------------------------------------------ */}
 
-              {resolvedAccount && (
-                <div className="rounded-lg border border-green-200 bg-green-50 p-4">
+                {resolvedAccount && (
+                  <div className="rounded-lg border border-green-200 bg-green-50 p-4">
 
-                  <div className="flex items-start gap-3">
+                    <div className="flex items-start gap-3">
 
-                    <CheckCircle2 className="h-5 w-5 text-green-600 mt-0.5" />
+                      <CheckCircle2 className="h-5 w-5 text-green-600 mt-0.5" />
 
-                    <div className="min-w-0">
+                      <div className="min-w-0">
 
-                      <p className="text-xs text-green-700 font-medium">
-                        VERIFIED ACCOUNT
-                      </p>
+                        <p className="text-xs text-green-700 font-medium">
+                          VERIFIED ACCOUNT
+                        </p>
 
-                      <p className="font-semibold text-gray-900 mt-1 break-words">
-                        {
-                          resolvedAccount.account_name
-                        }
-                      </p>
+                        <p className="font-semibold text-gray-900 mt-1 break-words">
+                          {
+                            resolvedAccount.account_name
+                          }
+                        </p>
 
-                      <p className="text-sm text-gray-600">
-                        {
-                          resolvedAccount.account_number
-                        }
-                      </p>
+                        <p className="text-sm text-gray-600">
+                          {
+                            resolvedAccount.account_number
+                          }
+                        </p>
+
+                      </div>
 
                     </div>
 
                   </div>
+                )}
 
-                </div>
-              )}
+              </div>
+            )}
+
+            {/* ================================================== */}
+            {/* AMOUNT */}
+            {/* ================================================== */}
+
+            <div className="space-y-2">
+
+              <Label htmlFor="amount">
+                Amount (₦)
+              </Label>
+
+              <Input
+                id="amount"
+                type="number"
+                value={amount}
+                onChange={(e) =>
+                  setAmount(
+                    e.target.value
+                  )
+                }
+                placeholder="Enter amount"
+                min="1"
+                step="0.01"
+              />
 
             </div>
-          )}
 
-          {/* ================================================== */}
-          {/* AMOUNT */}
-          {/* ================================================== */}
+            {/* ================================================== */}
+            {/* FEE */}
+            {/* ================================================== */}
 
-          <div className="space-y-2">
+            {transferAmount > 0 && (
+              <div className="rounded-lg border bg-gray-50 p-4 space-y-3">
 
-            <Label htmlFor="amount">
-              Amount (₦)
-            </Label>
+                <div className="flex justify-between text-sm">
 
-            <Input
-              id="amount"
-              type="number"
-              value={amount}
-              onChange={(e) =>
-                setAmount(
-                  e.target.value
-                )
-              }
-              placeholder="Enter amount"
-              min="1"
-              step="0.01"
-            />
+                  <span className="text-gray-600">
+                    Transfer amount
+                  </span>
 
-          </div>
+                  <span className="font-medium">
+                    ₦
+                    {transferAmount.toLocaleString(
+                      undefined,
+                      {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      }
+                    )}
+                  </span>
 
-          {/* ================================================== */}
-          {/* FEE */}
-          {/* ================================================== */}
+                </div>
 
-          {transferAmount > 0 && (
-            <div className="rounded-lg border bg-gray-50 p-4 space-y-3">
+                <div className="flex justify-between text-sm">
 
-              <div className="flex justify-between text-sm">
+                  <span className="text-gray-600">
+                    Transfer fee
+                  </span>
 
-                <span className="text-gray-600">
-                  Transfer amount
-                </span>
+                  <span className="font-medium">
+                    ₦
+                    {transferFee.toLocaleString(
+                      undefined,
+                      {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      }
+                    )}
+                  </span>
 
-                <span className="font-medium">
-                  ₦
-                  {transferAmount.toLocaleString(
-                    undefined,
-                    {
-                      minimumFractionDigits: 2,
-                      maximumFractionDigits: 2,
-                    }
-                  )}
-                </span>
+                </div>
+
+                <div className="border-t pt-3 flex justify-between">
+
+                  <span className="font-semibold">
+                    Total to be deducted
+                  </span>
+
+                  <span className="font-bold text-green-700">
+                    ₦
+                    {totalCharged.toLocaleString(
+                      undefined,
+                      {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      }
+                    )}
+                  </span>
+
+                </div>
+
+                {transferType ===
+                  "bank" && (
+                  <div className="rounded-md bg-yellow-50 border border-yellow-200 p-3">
+
+                    <p className="text-xs text-yellow-800">
+                      A ₦10 IyanjuPay transfer
+                      fee will be deducted from
+                      your wallet in addition to
+                      the transfer amount.
+                    </p>
+
+                  </div>
+                )}
+
+                {transferType ===
+                  "iyanjupay" && (
+                  <div className="rounded-md bg-green-50 border border-green-200 p-3">
+
+                    <p className="text-xs text-green-800">
+                      IyanjuPay-to-IyanjuPay
+                      transfers are completely
+                      free. No transfer fee will
+                      be deducted.
+                    </p>
+
+                  </div>
+                )}
 
               </div>
+            )}
 
-              <div className="flex justify-between text-sm">
+            {/* ================================================== */}
+            {/* INSUFFICIENT BALANCE */}
+            {/* ================================================== */}
 
-                <span className="text-gray-600">
-                  Transfer fee
-                </span>
+            {hasInsufficientBalance && (
+              <div className="rounded-md bg-red-50 border border-red-200 p-3">
 
-                <span className="font-medium">
-                  ₦
-                  {transferFee.toLocaleString(
-                    undefined,
-                    {
-                      minimumFractionDigits: 2,
-                      maximumFractionDigits: 2,
-                    }
-                  )}
-                </span>
+                <p className="text-sm text-red-700">
 
-              </div>
-
-              <div className="border-t pt-3 flex justify-between">
-
-                <span className="font-semibold">
-                  Total to be deducted
-                </span>
-
-                <span className="font-bold text-green-700">
-                  ₦
+                  Insufficient wallet balance.
+                  You need ₦
                   {totalCharged.toLocaleString(
                     undefined,
                     {
                       minimumFractionDigits: 2,
                       maximumFractionDigits: 2,
                     }
-                  )}
-                </span>
+                  )}{" "}
+                  to complete this transfer.
+
+                </p>
 
               </div>
+            )}
 
-              {transferType ===
-                "bank" && (
-                <div className="rounded-md bg-yellow-50 border border-yellow-200 p-3">
+            {/* ================================================== */}
+            {/* NARRATION */}
+            {/* ================================================== */}
 
-                  <p className="text-xs text-yellow-800">
-                    A ₦10 IyanjuPay transfer
-                    fee will be deducted from
-                    your wallet in addition to
-                    the transfer amount.
-                  </p>
+            <div className="space-y-2">
 
-                </div>
-              )}
+              <Label htmlFor="narration">
+                Narration (Optional)
+              </Label>
 
-              {transferType ===
-                "iyanjupay" && (
-                <div className="rounded-md bg-green-50 border border-green-200 p-3">
-
-                  <p className="text-xs text-green-800">
-                    IyanjuPay-to-IyanjuPay
-                    transfers are completely
-                    free. No transfer fee will
-                    be deducted.
-                  </p>
-
-                </div>
-              )}
+              <Input
+                id="narration"
+                value={narration}
+                onChange={(e) =>
+                  setNarration(
+                    e.target.value
+                  )
+                }
+                placeholder="Enter transaction description"
+              />
 
             </div>
-          )}
 
-          {/* ================================================== */}
-          {/* INSUFFICIENT BALANCE */}
-          {/* ================================================== */}
+            {/* ================================================== */}
+            {/* SEND */}
+            {/* ================================================== */}
 
-          {hasInsufficientBalance && (
-            <div className="rounded-md bg-red-50 border border-red-200 p-3">
-
-              <p className="text-sm text-red-700">
-
-                Insufficient wallet balance.
-                You need ₦
-                {totalCharged.toLocaleString(
-                  undefined,
-                  {
-                    minimumFractionDigits: 2,
-                    maximumFractionDigits: 2,
-                  }
-                )}{" "}
-                to complete this transfer.
-
-              </p>
-
-            </div>
-          )}
-
-          {/* ================================================== */}
-          {/* NARRATION */}
-          {/* ================================================== */}
-
-          <div className="space-y-2">
-
-            <Label htmlFor="narration">
-              Narration (Optional)
-            </Label>
-
-            <Input
-              id="narration"
-              value={narration}
-              onChange={(e) =>
-                setNarration(
-                  e.target.value
-                )
+            <Button
+              onClick={
+                handleTransfer
               }
-              placeholder="Enter transaction description"
-            />
+              disabled={
+                isTransferDisabled
+              }
+              className="w-full bg-green-600 hover:bg-green-700"
+            >
+
+              {iyanjupayTransferring ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+
+                  Processing transfer...
+                </>
+              ) : (
+                <>
+                  <Send className="h-4 w-4 mr-2" />
+
+                  Send ₦
+                  {transferAmount > 0
+                    ? transferAmount.toLocaleString()
+                    : "Money"}
+                </>
+              )}
+
+            </Button>
 
           </div>
 
-          {/* ================================================== */}
-          {/* SEND */}
-          {/* ================================================== */}
+        </DialogContent>
+      </Dialog>
 
-          <Button
-            onClick={
-              handleTransfer
-            }
-            disabled={
-              isTransferDisabled
-            }
-            className="w-full bg-green-600 hover:bg-green-700"
-          >
+      {/* ====================================================== */}
+      {/* PAYMENT PIN */}
+      {/* ====================================================== */}
 
-            {iyanjupayTransferring ? (
-              <>
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-
-                Processing transfer...
-              </>
-            ) : (
-              <>
-                <Send className="h-4 w-4 mr-2" />
-
-                Send ₦
-                {transferAmount > 0
-                  ? transferAmount.toLocaleString()
-                  : "Money"}
-              </>
-            )}
-
-          </Button>
-
-        </div>
-
-      </DialogContent>
-    </Dialog>
+      <PaymentPinModal
+        open={paymentPinOpen}
+        onCancel={
+          handlePaymentPinCancel
+        }
+        onVerified={
+          handlePaymentPinVerified
+        }
+        title="Authorize Transfer"
+        description="Enter your 4-digit Payment PIN to authorize this transfer."
+      />
+    </>
   );
 };
 

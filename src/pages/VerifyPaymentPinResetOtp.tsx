@@ -1,9 +1,19 @@
-import React, { useEffect, useState } from "react";
+import React, {
+  useEffect,
+  useState,
+} from "react";
+
 import { useNavigate } from "react-router-dom";
 
+import {
+  ArrowLeft,
+  Loader2,
+  MailCheck,
+  RefreshCw,
+  ShieldCheck,
+} from "lucide-react";
+
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 
 import {
   Card,
@@ -13,406 +23,543 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 
-import { supabase } from "@/integrations/supabase/client";
-import { useToast } from "@/hooks/use-toast";
+import {
+  Input,
+} from "@/components/ui/input";
 
-const VerifyPaymentPinResetOtp = () => {
-  const navigate = useNavigate();
-  const { toast } = useToast();
+import {
+  Label,
+} from "@/components/ui/label";
 
-  const [email, setEmail] = useState("");
-  const [otp, setOtp] = useState("");
+import {
+  useToast,
+} from "@/hooks/use-toast";
 
-  const [isLoading, setIsLoading] =
-    useState(false);
+import {
+  supabase,
+} from "@/integrations/supabase/client";
 
-  const [resendLoading, setResendLoading] =
-    useState(false);
+const VerifyPaymentPinResetOtp =
+  () => {
+    const navigate =
+      useNavigate();
 
-  useEffect(() => {
-    const storedEmail =
-      sessionStorage.getItem(
-        "iyanjupay_payment_pin_reset_email"
-      );
+    const { toast } =
+      useToast();
 
-    if (!storedEmail) {
-      navigate("/payment-pin", {
-        replace: true,
-      });
+    const [email, setEmail] =
+      useState("");
 
-      return;
-    }
+    const [otp, setOtp] =
+      useState("");
 
-    setEmail(
-      storedEmail.trim().toLowerCase()
-    );
-  }, [navigate]);
+    const [isLoading, setIsLoading] =
+      useState(false);
 
-  const handleVerify = async (
-    e: React.FormEvent
-  ) => {
-    e.preventDefault();
+    const [resendLoading, setResendLoading] =
+      useState(false);
 
-    const cleanEmail =
-      email.trim().toLowerCase();
+    /*
+     * ==========================================================
+     * LOAD EMAIL
+     * ==========================================================
+     */
 
-    const cleanOtp =
-      otp.trim();
+    useEffect(() => {
+      const storedEmail =
+        sessionStorage.getItem(
+          "iyanjupay_payment_pin_reset_email"
+        );
 
-    if (!cleanEmail) {
-      toast({
-        title: "Recovery session missing",
-        description:
-          "Please start the Payment PIN reset process again.",
-        variant: "destructive",
-      });
-
-      navigate("/payment-pin", {
-        replace: true,
-      });
-
-      return;
-    }
-
-    if (!/^\d{6}$/.test(cleanOtp)) {
-      toast({
-        title: "Invalid code",
-        description:
-          "Enter the 6-digit recovery code sent to your email.",
-        variant: "destructive",
-      });
-
-      return;
-    }
-
-    setIsLoading(true);
-
-    try {
-      /*
-       * ========================================================
-       * VERIFY RECOVERY OTP
-       * ========================================================
-       */
-
-      const {
-        data,
-        error,
-      } =
-        await supabase.auth.verifyOtp({
-          email: cleanEmail,
-          token: cleanOtp,
-          type: "recovery",
+      if (!storedEmail) {
+        toast({
+          title:
+            "Reset session missing",
+          description:
+            "Please start the Payment PIN reset process again.",
+          variant:
+            "destructive",
         });
 
-      if (error) {
-        throw error;
-      }
-
-      /*
-       * ========================================================
-       * IMPORTANT
-       *
-       * verifyOtp() should return the new recovery session.
-       * Do not rely only on the old session.
-       * ========================================================
-       */
-
-      if (!data.session) {
-        throw new Error(
-          "Recovery session could not be established."
-        );
-      }
-
-      /*
-       * ========================================================
-       * FORCE THE CLIENT TO USE THE NEW SESSION
-       * ========================================================
-       */
-
-      await supabase.auth.setSession({
-        access_token:
-          data.session.access_token,
-
-        refresh_token:
-          data.session.refresh_token,
-      });
-
-      /*
-       * ========================================================
-       * VERIFY JWT CLAIMS
-       * ========================================================
-       */
-
-      const {
-        data: claimsData,
-        error: claimsError,
-      } =
-        await supabase.auth.getClaims(
-          data.session.access_token
-        );
-
-      if (claimsError) {
-        console.error(
-          "Recovery claims error:",
-          claimsError
-        );
-
-        throw new Error(
-          "Recovery authentication could not be verified."
-        );
-      }
-
-      const claims =
-        claimsData?.claims as
-          | {
-              amr?: Array<{
-                method?: string;
-                timestamp?: number;
-              }>;
-              sub?: string;
-              email?: string;
-            }
-          | undefined;
-
-      const isRecovery =
-        Array.isArray(claims?.amr) &&
-        claims.amr.some(
-          (method) =>
-            method?.method === "recovery"
-        );
-
-      if (!isRecovery) {
-        console.error(
-          "Unexpected recovery claims:",
-          claims
-        );
-
-        throw new Error(
-          "Payment PIN recovery authentication could not be verified."
-        );
-      }
-
-      /*
-       * ========================================================
-       * VERIFY USER IDENTITY
-       * ========================================================
-       */
-
-      if (
-        !claims?.sub ||
-        claims.sub !==
-          data.session.user.id
-      ) {
-        throw new Error(
-          "Recovery user identity could not be verified."
-        );
-      }
-
-      /*
-       * ========================================================
-       * CLEAR TEMPORARY EMAIL
-       * ========================================================
-       */
-
-      sessionStorage.removeItem(
-        "iyanjupay_payment_pin_reset_email"
-      );
-
-      /*
-       * ========================================================
-       * SUCCESS
-       * ========================================================
-       */
-
-      toast({
-        title: "Email verified",
-        description:
-          "Your recovery session has been verified. You can now create a new Payment PIN.",
-      });
-
-      navigate(
-        "/reset-payment-pin",
-        {
-          replace: true,
-        }
-      );
-    } catch (error: any) {
-      console.error(
-        "Payment PIN recovery session verification failed:",
-        error
-      );
-
-      toast({
-        title:
-          "Verification failed",
-        description:
-          error?.message ||
-          "The recovery code is incorrect, expired, or could not establish a secure recovery session.",
-        variant: "destructive",
-      });
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  /*
-   * ============================================================
-   * RESEND
-   * ============================================================
-   */
-
-  const handleResend = async () => {
-    const cleanEmail =
-      email.trim().toLowerCase();
-
-    if (!cleanEmail) {
-      navigate("/payment-pin", {
-        replace: true,
-      });
-
-      return;
-    }
-
-    setResendLoading(true);
-
-    try {
-      const {
-        error,
-      } =
-        await supabase.auth.resetPasswordForEmail(
-          cleanEmail,
+        navigate(
+          "/payment-pin",
           {
-            redirectTo:
-              `${window.location.origin}/reset-payment-pin`,
+            replace: true,
           }
         );
 
-      if (error) {
-        throw error;
+        return;
       }
 
-      setOtp("");
-
-      toast({
-        title: "New code sent",
-        description:
-          "A new Payment PIN recovery code has been sent to your email.",
-      });
-    } catch (error: any) {
-      console.error(
-        "Payment PIN recovery resend error:",
-        error
+      setEmail(
+        storedEmail
       );
+    }, [
+      navigate,
+      toast,
+    ]);
 
-      toast({
-        title:
-          "Unable to resend code",
-        description:
-          error?.message ||
-          "Please try again later.",
-        variant: "destructive",
-      });
-    } finally {
-      setResendLoading(false);
-    }
-  };
+    /*
+     * ==========================================================
+     * VERIFY OTP
+     * ==========================================================
+     */
 
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-green-50 to-blue-50 p-4">
-      <Card className="w-full max-w-md">
-        <CardHeader className="text-center">
-          <CardTitle className="text-2xl font-bold text-[#082A63]">
-            Verify Payment PIN Reset
-          </CardTitle>
+    const handleVerify =
+      async (
+        e: React.FormEvent
+      ) => {
+        e.preventDefault();
 
-          <CardDescription>
-            Enter the 6-digit recovery code sent to
-          </CardDescription>
+        const cleanOtp =
+          otp
+            .trim();
 
-          <p className="mt-1 text-sm font-semibold text-[#082A63] break-all">
-            {email}
-          </p>
-        </CardHeader>
+        if (
+          !/^\d{6}$/.test(
+            cleanOtp
+          )
+        ) {
+          toast({
+            title:
+              "Invalid code",
+            description:
+              "Enter the 6-digit code sent to your email.",
+            variant:
+              "destructive",
+          });
 
-        <CardContent>
-          <form
-            onSubmit={handleVerify}
-            className="space-y-5"
-          >
-            <div className="space-y-2">
-              <Label htmlFor="payment-pin-reset-otp">
-                Recovery Code
-              </Label>
+          return;
+        }
 
-              <Input
-                id="payment-pin-reset-otp"
-                type="text"
-                inputMode="numeric"
-                autoComplete="one-time-code"
-                maxLength={6}
-                value={otp}
-                onChange={(e) =>
-                  setOtp(
-                    e.target.value
-                      .replace(/\D/g, "")
-                      .slice(0, 6)
-                  )
-                }
-                placeholder="Enter 6-digit code"
-                className="text-center text-2xl tracking-[0.4em]"
-                required
-              />
+        if (!email) {
+          toast({
+            title:
+              "Reset session missing",
+            description:
+              "Please start the Payment PIN reset process again.",
+            variant:
+              "destructive",
+          });
+
+          navigate(
+            "/payment-pin",
+            {
+              replace: true,
+            }
+          );
+
+          return;
+        }
+
+        setIsLoading(true);
+
+        try {
+          /*
+           * ----------------------------------------------------
+           * Call custom verification Edge Function.
+           * ----------------------------------------------------
+           */
+
+          const {
+            data,
+            error,
+          } =
+            await supabase.functions.invoke(
+              "payment-pin-reset-verify",
+              {
+                body: {
+                  otp: cleanOtp,
+                },
+              }
+            );
+
+          if (error) {
+            console.error(
+              "Payment PIN OTP verification error:",
+              error
+            );
+
+            throw new Error(
+              error.message ||
+                "Unable to verify the reset code."
+            );
+          }
+
+          if (
+            !data ||
+            data.success !== true
+          ) {
+            throw new Error(
+              data?.message ||
+                "The reset code is incorrect or expired."
+            );
+          }
+
+          /*
+           * ----------------------------------------------------
+           * The Edge Function must return a short-lived
+           * reset authorization token.
+           * ----------------------------------------------------
+           */
+
+          const resetToken =
+            data.reset_token;
+
+          if (
+            !resetToken ||
+            typeof resetToken !==
+              "string"
+          ) {
+            throw new Error(
+              "Reset authorization could not be established."
+            );
+          }
+
+          /*
+           * ----------------------------------------------------
+           * Store the short-lived reset token.
+           *
+           * It is temporary authorization, not the PIN itself.
+           * ----------------------------------------------------
+           */
+
+          sessionStorage.setItem(
+            "iyanjupay_payment_pin_reset_token",
+            resetToken
+          );
+
+          /*
+           * Email is no longer needed after verification.
+           */
+
+          sessionStorage.removeItem(
+            "iyanjupay_payment_pin_reset_email"
+          );
+
+          setOtp("");
+
+          toast({
+            title:
+              "Code verified",
+            description:
+              "You can now create your new Payment PIN.",
+          });
+
+          navigate(
+            "/reset-payment-pin",
+            {
+              replace: true,
+            }
+          );
+        } catch (error: any) {
+          console.error(
+            "Payment PIN recovery verification failed:",
+            error
+          );
+
+          toast({
+            title:
+              "Verification failed",
+            description:
+              error?.message ||
+              "The reset code is incorrect or expired.",
+            variant:
+              "destructive",
+          });
+        } finally {
+          setIsLoading(
+            false
+          );
+        }
+      };
+
+    /*
+     * ==========================================================
+     * RESEND OTP
+     * ==========================================================
+     */
+
+    const handleResend =
+      async () => {
+        if (
+          resendLoading ||
+          isLoading
+        ) {
+          return;
+        }
+
+        setResendLoading(
+          true
+        );
+
+        try {
+          /*
+           * The request function identifies the authenticated
+           * user itself.
+           */
+
+          const {
+            data,
+            error,
+          } =
+            await supabase.functions.invoke(
+              "payment-pin-reset-request",
+              {
+                body: {},
+              }
+            );
+
+          if (error) {
+            console.error(
+              "Payment PIN reset resend error:",
+              error
+            );
+
+            throw new Error(
+              error.message ||
+                "Unable to resend the reset code."
+            );
+          }
+
+          if (
+            !data ||
+            data.success !== true
+          ) {
+            throw new Error(
+              data?.message ||
+                "Unable to resend the reset code."
+            );
+          }
+
+          setOtp("");
+
+          toast({
+            title:
+              "New reset code sent",
+            description:
+              "A new 6-digit code has been sent to your email.",
+          });
+        } catch (error: any) {
+          console.error(
+            "Payment PIN reset resend failed:",
+            error
+          );
+
+          toast({
+            title:
+              "Unable to resend code",
+            description:
+              error?.message ||
+              "Please try again later.",
+            variant:
+              "destructive",
+          });
+        } finally {
+          setResendLoading(
+            false
+          );
+        }
+      };
+
+    /*
+     * ==========================================================
+     * BACK
+     * ==========================================================
+     */
+
+    const handleBack =
+      () => {
+        if (
+          isLoading ||
+          resendLoading
+        ) {
+          return;
+        }
+
+        navigate(
+          "/payment-pin",
+          {
+            replace: true,
+          }
+        );
+      };
+
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-green-50 to-blue-50 p-4">
+
+        <Card className="w-full max-w-md shadow-lg">
+
+          <CardHeader className="text-center">
+
+            <div className="mx-auto mb-4 w-14 h-14 rounded-full bg-blue-100 flex items-center justify-center">
+              <MailCheck className="h-7 w-7 text-blue-700" />
             </div>
 
-            <Button
-              type="submit"
-              className="w-full bg-[#082A63] hover:bg-[#061F49]"
-              disabled={
-                isLoading ||
-                !/^\d{6}$/.test(otp)
-              }
-            >
-              {isLoading
-                ? "Verifying..."
-                : "Verify Code"}
-            </Button>
+            <CardTitle className="text-2xl font-bold text-[#082A63]">
+              Verify Payment PIN Reset
+            </CardTitle>
 
-            <Button
-              type="button"
-              variant="outline"
-              className="w-full"
-              onClick={handleResend}
-              disabled={
-                isLoading ||
-                resendLoading
-              }
-            >
-              {resendLoading
-                ? "Sending..."
-                : "Resend Code"}
-            </Button>
+            <CardDescription className="mt-2">
+              Enter the 6-digit verification
+              code sent to your account email.
+            </CardDescription>
 
-            <Button
-              type="button"
-              variant="ghost"
-              className="w-full"
-              onClick={() =>
-                navigate("/payment-pin", {
-                  replace: true,
-                })
+            {email && (
+              <p className="mt-2 text-sm font-semibold text-[#082A63] break-all">
+                {email}
+              </p>
+            )}
+
+          </CardHeader>
+
+          <CardContent>
+
+            <form
+              onSubmit={
+                handleVerify
               }
-              disabled={
-                isLoading ||
-                resendLoading
-              }
+              className="space-y-5"
             >
-              ← Back
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
-    </div>
-  );
-};
+
+              {/* SECURITY */}
+
+              <div className="rounded-lg border bg-blue-50 p-3">
+                <div className="flex items-start gap-3">
+
+                  <ShieldCheck className="h-5 w-5 text-blue-700 mt-0.5 shrink-0" />
+
+                  <p className="text-xs text-blue-800">
+                    For your security, this code
+                    can only be used for your
+                    Payment PIN reset and expires
+                    after a short period.
+                  </p>
+
+                </div>
+              </div>
+
+              {/* OTP */}
+
+              <div className="space-y-2">
+
+                <Label htmlFor="payment-pin-reset-otp">
+                  Verification Code
+                </Label>
+
+                <Input
+                  id="payment-pin-reset-otp"
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  maxLength={6}
+                  value={otp}
+                  onChange={(
+                    e
+                  ) =>
+                    setOtp(
+                      e.target.value
+                        .replace(
+                          /\D/g,
+                          ""
+                        )
+                        .slice(
+                          0,
+                          6
+                        )
+                    )
+                  }
+                  placeholder="Enter 6-digit code"
+                  className="text-center text-2xl tracking-[0.4em]"
+                  disabled={
+                    isLoading ||
+                    resendLoading
+                  }
+                  required
+                />
+
+              </div>
+
+              {/* VERIFY */}
+
+              <Button
+                type="submit"
+                className="w-full bg-[#082A63] hover:bg-[#061F49]"
+                disabled={
+                  isLoading ||
+                  resendLoading ||
+                  !/^\d{6}$/.test(
+                    otp
+                  )
+                }
+              >
+
+                {isLoading ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Verifying...
+                  </>
+                ) : (
+                  "Verify Code"
+                )}
+
+              </Button>
+
+              {/* RESEND */}
+
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full"
+                onClick={
+                  handleResend
+                }
+                disabled={
+                  isLoading ||
+                  resendLoading
+                }
+              >
+
+                {resendLoading ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Sending...
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw className="h-4 w-4 mr-2" />
+                    Resend Code
+                  </>
+                )}
+
+              </Button>
+
+              {/* BACK */}
+
+              <Button
+                type="button"
+                variant="ghost"
+                className="w-full"
+                onClick={
+                  handleBack
+                }
+                disabled={
+                  isLoading ||
+                  resendLoading
+                }
+              >
+                <ArrowLeft className="h-4 w-4 mr-2" />
+                Back
+              </Button>
+
+            </form>
+
+          </CardContent>
+
+        </Card>
+
+      </div>
+    );
+  };
 
 export default VerifyPaymentPinResetOtp;

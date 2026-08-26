@@ -27,6 +27,7 @@ import VerifyEmailOtp from "./pages/VerifyEmailOtp";
 import OnboardingPage from "@/components/onboarding/OnboardingPage";
 import OnboardingBvnPage from "@/components/onboarding/OnboardingBvnPage";
 import Dashboard from "@/components/Dashboard";
+import SendMoney from "./pages/SendMoney";
 import TransactionProcessing from "./pages/TransactionProcessing";
 import PaymentPinPage from "@/components/onboarding/PaymentPinPage";
 import VerifyRecoveryOtp from "./pages/VerifyRecoveryOtp";
@@ -161,6 +162,11 @@ const App = () => {
             <Route
               path="/transaction-processing"
               element={<TransactionProcessing />}
+            />
+
+            <Route
+              path="/send-money"
+              element={<SendMoney />}
             />
             
             <Route

@@ -1,308 +1,1418 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow
-} from "@/components/ui/table";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 
 import {
-  ArrowLeft,
-  Filter,
-  Download,
-  ChevronRight,
-  Clock,
-  CheckCircle2,
-  XCircle,
   ArrowDownLeft,
+  ArrowLeft,
   ArrowUpRight,
-  Receipt,
-  Search,
-  X,
-  Copy,
-  Printer,
-  User,
-  Building2,
-  Hash,
-  CalendarDays,
-  FileText,
-  Wallet,
   Banknote,
-  ShieldCheck,
+  Building2,
+  CalendarDays,
+  CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
+  CircleDollarSign,
+  Copy,
+  CreditCard,
+  Download,
+  FileText,
+  Globe,
+  History,
+  Loader2,
   Phone,
-  CreditCard
-} from 'lucide-react';
+  Printer,
+  Receipt,
+  RefreshCw,
+  Search,
+  Smartphone,
+  User,
+  Wallet,
+  Wifi,
+  X,
+  Zap,
+} from "lucide-react";
 
-import { useAuth } from '@/hooks/useAuth';
-import { supabase } from '@/integrations/supabase/client';
-import { useToast } from '@/hooks/use-toast';
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 
-/*
-|--------------------------------------------------------------------------
-| TYPES
-|--------------------------------------------------------------------------
-*/
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
-interface TransactionMetadata {
-  [key: string]: any;
-}
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
-interface TransactionParty {
-  user_id?: string | null;
-  wallet_id?: string | null;
-  name?: string | null;
-  full_name?: string | null;
-  nickname?: string | null;
-  phone_number?: string | null;
-  email?: string | null;
-}
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/hooks/useAuth";
+import { useToast } from "@/hooks/use-toast";
 
-interface Transaction {
+/* ================================================================
+   TYPES
+   ================================================================ */
+
+type JsonObject = Record<string, any>;
+
+type Transaction = {
   id: string;
   user_id: string;
-  wallet_id?: string | null;
-
+  wallet_id: string | null;
   transaction_type: string;
-  amount: number;
-  description?: string | null;
-
+  amount: number | string;
+  description: string | null;
   status: string;
-
-  reference_number?: string | null;
-  reference?: string | null;
-
-  provider?: string | null;
-  provider_reference?: string | null;
-
-  category?: string | null;
-
-  metadata?: TransactionMetadata | null;
-
+  reference_number: string;
+  provider: string | null;
+  provider_reference: string | null;
+  category: string | null;
+  metadata: JsonObject | null;
   created_at: string;
-
-  fee?: number | null;
-  currency?: string | null;
-}
-
-interface TransactionHistoryProps {
-  onBack: () => void;
-}
-
-
-/*
-|--------------------------------------------------------------------------
-| HELPERS
-|--------------------------------------------------------------------------
-*/
-
-const safeString = (
-  value: any,
-  fallback = ''
-): string => {
-
-  if (
-    value === null ||
-    value === undefined
-  ) {
-    return fallback;
-  }
-
-  return String(value);
-
 };
 
+type TransactionKind =
+  | "bank_transfer"
+  | "wallet_transfer"
+  | "airtime"
+  | "data"
+  | "electricity"
+  | "cable"
+  | "internet"
+  | "funding"
+  | "refund"
+  | "fee"
+  | "other";
 
-const firstValue = (
-  metadata: TransactionMetadata | null | undefined,
-  keys: string[],
-  fallback: any = ''
-): any => {
+type Direction =
+  | "incoming"
+  | "outgoing";
 
-  for (const key of keys) {
+type FilterType =
+  | "all"
+  | "money_in"
+  | "money_out"
+  | "transfers"
+  | "bills"
+  | "funding"
+  | "refunds";
 
-    const value =
-      metadata?.[key];
+type StatusFilter =
+  | "all"
+  | "successful"
+  | "pending"
+  | "failed";
+
+type NormalizedTransaction = {
+  transaction: Transaction;
+
+  kind: TransactionKind;
+
+  direction: Direction;
+
+  title: string;
+
+  subtitle: string;
+
+  providerName: string;
+
+  recipientName: string;
+
+  senderName: string;
+
+  phoneNumber: string;
+
+  accountNumber: string;
+
+  accountName: string;
+
+  bankCode: string;
+
+  bankName: string;
+
+  walletId: string;
+
+  virtualAccountNumber: string;
+
+  meterNumber: string;
+
+  meterType: string;
+
+  smartcardNumber: string;
+
+  packageName: string;
+
+  internetAccount: string;
+
+  amount: number;
+
+  fee: number;
+
+  totalCharged: number;
+
+  isSuccessful: boolean;
+
+  isPending: boolean;
+
+  isFailed: boolean;
+};
+
+type TransactionHistoryProps = {
+  onBack?: () => void;
+};
+
+/* ================================================================
+   CONSTANTS
+   ================================================================ */
+
+const PAGE_SIZE = 10;
+
+const SUCCESS_STATUSES = new Set([
+  "success",
+  "successful",
+  "completed",
+  "complete",
+  "succeeded",
+]);
+
+const FAILED_STATUSES = new Set([
+  "failed",
+  "failure",
+  "declined",
+  "rejected",
+  "cancelled",
+  "canceled",
+  "reversed",
+]);
+
+const PENDING_STATUSES = new Set([
+  "pending",
+  "processing",
+  "queued",
+  "new",
+  "initiated",
+  "in_progress",
+  "in-progress",
+]);
+
+const BILL_KINDS = new Set<TransactionKind>([
+  "airtime",
+  "data",
+  "electricity",
+  "cable",
+  "internet",
+]);
+
+/* ================================================================
+   HELPERS
+   ================================================================ */
+
+const normalizeText = (
+  value: unknown
+): string => {
+  return String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "_")
+    .replace(/-/g, "_");
+};
+
+const stringValue = (
+  ...values: unknown[]
+): string => {
+  for (const value of values) {
+    if (
+      value !== null &&
+      value !== undefined &&
+      String(value).trim() !== ""
+    ) {
+      return String(value).trim();
+    }
+  }
+
+  return "";
+};
+
+const numberValue = (
+  ...values: unknown[]
+): number => {
+  for (const value of values) {
+    if (
+      value !== null &&
+      value !== undefined &&
+      value !== ""
+    ) {
+      const parsed = Number(value);
+
+      if (Number.isFinite(parsed)) {
+        return parsed;
+      }
+    }
+  }
+
+  return 0;
+};
+
+const formatCurrency = (
+  value: number
+): string => {
+  return new Intl.NumberFormat("en-NG", {
+    style: "currency",
+    currency: "NGN",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(Number.isFinite(value) ? value : 0);
+};
+
+const formatDate = (
+  value: string
+): string => {
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "Unknown date";
+  }
+
+  return date.toLocaleDateString(
+    "en-NG",
+    {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    }
+  );
+};
+
+const formatDateTime = (
+  value: string
+): string => {
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "Unknown date";
+  }
+
+  return date.toLocaleString(
+    "en-NG",
+    {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    }
+  );
+};
+
+const normalizePhone = (
+  value: unknown
+): string => {
+  return String(value ?? "").trim();
+};
+
+const maskAccountNumber = (
+  accountNumber: string
+): string => {
+  if (!accountNumber) {
+    return "";
+  }
+
+  if (accountNumber.length <= 4) {
+    return accountNumber;
+  }
+
+  return `****${accountNumber.slice(-4)}`;
+};
+
+const getNested = (
+  object: JsonObject,
+  paths: string[][]
+): unknown => {
+  for (const path of paths) {
+    let current: any = object;
+
+    for (const key of path) {
+      if (
+        current === null ||
+        current === undefined
+      ) {
+        current = undefined;
+        break;
+      }
+
+      current = current[key];
+    }
 
     if (
-      value !== undefined &&
-      value !== null &&
-      String(value).trim() !== ''
+      current !== null &&
+      current !== undefined &&
+      String(current).trim() !== ""
     ) {
-      return value;
+      return current;
     }
-
   }
 
-  return fallback;
-
+  return undefined;
 };
 
+const escapeCsv = (
+  value: unknown
+): string => {
+  const text = String(value ?? "");
 
-const formatMoney = (
-  amount:
-    | number
-    | string
-    | null
-    | undefined
-) => {
-
-  const value =
-    Number(amount || 0);
-
-  return `₦${value.toLocaleString(
-    'en-NG',
-    {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2
-    }
-  )}`;
-
+  return `"${text.replace(/"/g, '""')}"`;
 };
 
+/* ================================================================
+   DETERMINE TRANSACTION KIND
+   ================================================================ */
 
-const normalizeStatus = (
-  status?: string
-) => {
+const determineKind = (
+  transaction: Transaction
+): TransactionKind => {
+  const metadata =
+    transaction.metadata ?? {};
 
-  return safeString(
-    status
-  ).toLowerCase();
+  const rawType = normalizeText(
+    transaction.transaction_type
+  );
 
+  const category = normalizeText(
+    transaction.category
+  );
+
+  const description = normalizeText(
+    transaction.description
+  );
+
+  const metadataType = normalizeText(
+    metadata.type
+  );
+
+  const metadataCategory = normalizeText(
+    metadata.category
+  );
+
+  const metadataService = normalizeText(
+    metadata.service
+  );
+
+  const metadataTransactionType =
+    normalizeText(
+      metadata.transaction_type
+    );
+
+  const combined = [
+    rawType,
+    category,
+    description,
+    metadataType,
+    metadataCategory,
+    metadataService,
+    metadataTransactionType,
+  ].join(" ");
+
+  if (
+    combined.includes("transfer_refund") ||
+    category === "transfer_refund" ||
+    rawType === "refund" ||
+    combined.includes("refund")
+  ) {
+    return "refund";
+  }
+
+  if (
+    combined.includes("fee") ||
+    category === "transfer_fee"
+  ) {
+    return "fee";
+  }
+
+  if (
+    combined.includes("airtime") ||
+    metadataService === "airtime"
+  ) {
+    return "airtime";
+  }
+
+  if (
+    combined.includes("electricity") ||
+    metadataService === "electricity"
+  ) {
+    return "electricity";
+  }
+
+  if (
+    combined.includes("cable") ||
+    combined.includes("dstv") ||
+    combined.includes("gotv") ||
+    metadataService === "cable"
+  ) {
+    return "cable";
+  }
+
+  if (
+    combined.includes("internet") ||
+    metadataService === "internet"
+  ) {
+    return "internet";
+  }
+
+  if (
+    combined.includes("data") ||
+    metadataService === "data"
+  ) {
+    return "data";
+  }
+
+  const recipient =
+    metadata.recipient;
+
+  const sender =
+    metadata.sender;
+
+  if (
+    recipient ||
+    sender ||
+    combined.includes("wallet_transfer") ||
+    combined.includes("wallet transfer") ||
+    metadata.provider === "iyanjupay"
+  ) {
+    return "wallet_transfer";
+  }
+
+  if (
+    combined.includes("funding") ||
+    combined.includes("deposit") ||
+    combined.includes("wallet_funding") ||
+    rawType === "credit" ||
+    rawType === "funding" ||
+    rawType === "deposit"
+  ) {
+    return "funding";
+  }
+
+  if (
+    combined.includes("bank_transfer") ||
+    combined.includes("bank transfer") ||
+    category === "transfer" ||
+    rawType === "transfer" ||
+    rawType === "debit" ||
+    metadata.provider === "flutterwave"
+  ) {
+    return "bank_transfer";
+  }
+
+  return "other";
 };
 
+/* ================================================================
+   DETERMINE DIRECTION
+   ================================================================ */
 
-/*
-|--------------------------------------------------------------------------
-| COMPONENT
-|--------------------------------------------------------------------------
-*/
+const determineDirection = (
+  transaction: Transaction,
+  kind: TransactionKind
+): Direction => {
+  const metadata =
+    transaction.metadata ?? {};
 
-const TransactionHistory = ({
-  onBack
-}: TransactionHistoryProps) => {
+  const explicitDirection =
+    normalizeText(
+      metadata.direction ??
+        metadata.transaction_direction ??
+        metadata.flow
+    );
 
-  const { user } =
-    useAuth();
+  if (
+    explicitDirection === "incoming" ||
+    explicitDirection === "in" ||
+    explicitDirection === "credit" ||
+    explicitDirection === "received"
+  ) {
+    return "incoming";
+  }
 
-  const { toast } =
-    useToast();
+  if (
+    explicitDirection === "outgoing" ||
+    explicitDirection === "out" ||
+    explicitDirection === "debit" ||
+    explicitDirection === "sent"
+  ) {
+    return "outgoing";
+  }
 
+  if (
+    metadata.sender &&
+    !metadata.recipient
+  ) {
+    return "incoming";
+  }
+
+  if (
+    metadata.recipient &&
+    !metadata.sender
+  ) {
+    return "outgoing";
+  }
+
+  if (
+    kind === "funding" ||
+    kind === "refund"
+  ) {
+    return "incoming";
+  }
+
+  if (
+    kind === "fee" ||
+    BILL_KINDS.has(kind) ||
+    kind === "bank_transfer"
+  ) {
+    return "outgoing";
+  }
+
+  const type =
+    normalizeText(
+      transaction.transaction_type
+    );
+
+  if (
+    type === "credit" ||
+    type === "deposit" ||
+    type === "funding"
+  ) {
+    return "incoming";
+  }
+
+  return "outgoing";
+};
+
+/* ================================================================
+   NORMALIZE TRANSACTION
+   ================================================================ */
+
+const normalizeTransaction = (
+  transaction: Transaction
+): NormalizedTransaction => {
+  const metadata =
+    transaction.metadata ?? {};
+
+  const kind =
+    determineKind(transaction);
+
+  const direction =
+    determineDirection(
+      transaction,
+      kind
+    );
 
   /*
-  |--------------------------------------------------------------------------
-  | STATE
-  |--------------------------------------------------------------------------
-  */
+   * ------------------------------------------------------------
+   * BANK TRANSFER
+   * ------------------------------------------------------------
+   */
+
+  const accountNumber =
+    stringValue(
+      metadata.account_number,
+      metadata.accountNumber,
+      getNested(metadata, [
+        ["flutterwave_response", "data", "account_number"],
+      ]),
+      getNested(metadata, [
+        ["flutterwave_response", "data", "accountNumber"],
+      ]),
+      getNested(metadata, [
+        ["flutterwave", "data", "account_number"],
+      ])
+    );
+
+  const accountName =
+    stringValue(
+      metadata.beneficiary_name,
+      metadata.beneficiaryName,
+      getNested(metadata, [
+        ["flutterwave_response", "data", "full_name"],
+      ]),
+      getNested(metadata, [
+        ["flutterwave_response", "data", "account_name"],
+      ]),
+      getNested(metadata, [
+        ["flutterwave", "data", "full_name"],
+      ])
+    );
+
+  const bankCode =
+    stringValue(
+      metadata.account_bank,
+      metadata.bank_code,
+      metadata.bankCode,
+      getNested(metadata, [
+        ["flutterwave_response", "data", "bank_code"],
+      ])
+    );
+
+  const bankName =
+    stringValue(
+      metadata.bank_name,
+      metadata.bankName,
+      getNested(metadata, [
+        ["flutterwave_response", "data", "bank_name"],
+      ]),
+      getNested(metadata, [
+        ["flutterwave_response", "data", "bank_name"],
+      ]),
+      getNested(metadata, [
+        ["flutterwave", "data", "bank_name"],
+      ])
+    );
+
+  /*
+   * ------------------------------------------------------------
+   * INTERNAL WALLET TRANSFER
+   * ------------------------------------------------------------
+   */
+
+  const recipient =
+    metadata.recipient ?? {};
+
+  const sender =
+    metadata.sender ?? {};
+
+  const recipientName =
+    stringValue(
+      recipient.name,
+      recipient.full_name,
+      recipient.fullName,
+      metadata.recipient_name,
+      metadata.beneficiary_name
+    );
+
+  const senderName =
+    stringValue(
+      sender.name,
+      sender.full_name,
+      sender.fullName,
+      metadata.sender_name
+    );
+
+  const walletId =
+    stringValue(
+      recipient.wallet_id,
+      recipient.walletId,
+      metadata.recipient_wallet_id,
+      sender.wallet_id,
+      sender.walletId,
+      metadata.sender_wallet_id
+    );
+
+  /*
+   * ------------------------------------------------------------
+   * BILL INFORMATION
+   * ------------------------------------------------------------
+   */
+
+  const service =
+    normalizeText(
+      metadata.service ??
+        getNested(metadata, [
+          ["flutterwave", "service"],
+        ])
+    );
+
+  const providerName =
+    stringValue(
+      metadata.provider_name,
+      metadata.network,
+      metadata.provider,
+      metadata.biller_name,
+      getNested(metadata, [
+        ["flutterwave", "data", "network"],
+      ]),
+      getNested(metadata, [
+        ["flutterwave", "data", "provider"],
+      ]),
+      getNested(metadata, [
+        ["flutterwave_response", "data", "network"],
+      ])
+    );
+
+  const phoneNumber =
+    normalizePhone(
+      metadata.customer ??
+        metadata.phone_number ??
+        metadata.phone ??
+        getNested(metadata, [
+          ["flutterwave", "data", "phone_number"],
+        ]) ??
+        getNested(metadata, [
+          ["flutterwave_response", "data", "phone_number"],
+        ]) ??
+        recipient.phone_number ??
+        sender.phone_number
+    );
+
+  const meterNumber =
+    stringValue(
+      metadata.meter_number,
+      metadata.meterNumber,
+      metadata.customer,
+      metadata.meter
+    );
+
+  const meterType =
+    stringValue(
+      metadata.meter_type,
+      metadata.meterType,
+      metadata.customer_type,
+      metadata.customerType
+    );
+
+  const smartcardNumber =
+    stringValue(
+      metadata.smartcard_number,
+      metadata.smartcardNumber,
+      metadata.iuc_number,
+      metadata.iucNumber,
+      metadata.customer
+    );
+
+  const packageName =
+    stringValue(
+      metadata.package,
+      metadata.package_name,
+      metadata.packageName,
+      metadata.plan,
+      metadata.plan_name,
+      metadata.planName,
+      metadata.item_name,
+      metadata.itemName
+    );
+
+  const internetAccount =
+    stringValue(
+      metadata.account_number,
+      metadata.internet_account,
+      metadata.internetAccount,
+      metadata.customer
+    );
+
+  /*
+   * ------------------------------------------------------------
+   * FUNDING
+   * ------------------------------------------------------------
+   */
+
+  const virtualAccountNumber =
+    stringValue(
+      metadata.virtual_account_number,
+      metadata.virtualAccountNumber,
+      metadata.account_number,
+      getNested(metadata, [
+        ["virtual_account", "account_number"],
+      ])
+    );
+
+  /*
+   * ------------------------------------------------------------
+   * PRICING
+   * ------------------------------------------------------------
+   */
+
+  const amount =
+    numberValue(
+      metadata.transfer_amount,
+      transaction.amount
+    );
+
+  const fee =
+    numberValue(
+      metadata.iyanjupay_fee,
+      metadata.transfer_fee,
+      metadata.fee,
+      metadata.fee_amount,
+      metadata.electronic_fee
+    );
+
+  const totalCharged =
+    numberValue(
+      metadata.total_charged,
+      metadata.totalCharged,
+      amount + fee
+    );
+
+  /*
+   * ------------------------------------------------------------
+   * STATUS
+   * ------------------------------------------------------------
+   */
+
+  const normalizedStatus =
+    normalizeText(
+      transaction.status
+    );
+
+  const isSuccessful =
+    SUCCESS_STATUSES.has(
+      normalizedStatus
+    );
+
+  const isFailed =
+    FAILED_STATUSES.has(
+      normalizedStatus
+    );
+
+  const isPending =
+    PENDING_STATUSES.has(
+      normalizedStatus
+    ) ||
+    (!isSuccessful && !isFailed);
+
+  /*
+   * ------------------------------------------------------------
+   * DISPLAY TITLE
+   * ------------------------------------------------------------
+   */
+
+  let title = "Transaction";
+
+  let subtitle =
+    transaction.description ||
+    "IyanjuPay transaction";
+
+  if (
+    kind === "bank_transfer"
+  ) {
+    title =
+      direction === "incoming"
+        ? `Transfer from ${
+            senderName || "Bank account"
+          }`
+        : `Transfer to ${
+            accountName ||
+            recipientName ||
+            "Bank account"
+          }`;
+
+    subtitle =
+      bankName ||
+      (bankCode
+        ? `Bank code ${bankCode}`
+        : "Bank transfer");
+  }
+
+  if (
+    kind === "wallet_transfer"
+  ) {
+    title =
+      direction === "incoming"
+        ? `Transfer from ${
+            senderName ||
+            "IyanjuPay user"
+          }`
+        : `Transfer to ${
+            recipientName ||
+            "IyanjuPay user"
+          }`;
+
+    subtitle = "IyanjuPay Wallet";
+  }
+
+  if (kind === "airtime") {
+    title =
+      providerName
+        ? `Airtime — ${providerName}`
+        : "Airtime";
+
+    subtitle =
+      phoneNumber ||
+      "Mobile recharge";
+  }
+
+  if (kind === "data") {
+    title =
+      providerName
+        ? `Data — ${providerName}`
+        : "Data";
+
+    subtitle =
+      phoneNumber ||
+      packageName ||
+      "Data bundle";
+  }
+
+  if (kind === "electricity") {
+    title =
+      providerName
+        ? `Electricity — ${providerName}`
+        : "Electricity";
+
+    subtitle =
+      meterNumber
+        ? `Meter ${meterNumber}`
+        : "Electricity payment";
+  }
+
+  if (kind === "cable") {
+    title =
+      providerName
+        ? `Cable TV — ${providerName}`
+        : "Cable TV";
+
+    subtitle =
+      smartcardNumber
+        ? `IUC ${smartcardNumber}`
+        : packageName ||
+          "Cable TV payment";
+  }
+
+  if (kind === "internet") {
+    title =
+      providerName
+        ? `Internet — ${providerName}`
+        : "Internet";
+
+    subtitle =
+      internetAccount ||
+      "Internet payment";
+  }
+
+  if (kind === "funding") {
+    title =
+      senderName
+        ? `Wallet Funding from ${senderName}`
+        : "Wallet Funding";
+
+    subtitle =
+      stringValue(
+        metadata.sender_bank,
+        metadata.bank_name,
+        metadata.sender_bank_name,
+        "Bank transfer"
+      );
+  }
+
+  if (kind === "refund") {
+    title = "Transfer Refund";
+
+    subtitle =
+      stringValue(
+        metadata.reason,
+        "Refund credited to wallet"
+      );
+  }
+
+  if (kind === "fee") {
+    title = "Transfer Fee";
+
+    subtitle =
+      transaction.description ||
+      "IyanjuPay transaction fee";
+  }
+
+  return {
+    transaction,
+
+    kind,
+
+    direction,
+
+    title,
+
+    subtitle,
+
+    providerName,
+
+    recipientName,
+
+    senderName,
+
+    phoneNumber,
+
+    accountNumber,
+
+    accountName,
+
+    bankCode,
+
+    bankName,
+
+    walletId,
+
+    virtualAccountNumber,
+
+    meterNumber,
+
+    meterType,
+
+    smartcardNumber,
+
+    packageName,
+
+    internetAccount,
+
+    amount,
+
+    fee,
+
+    totalCharged,
+
+    isSuccessful,
+
+    isPending,
+
+    isFailed,
+  };
+};
+
+/* ================================================================
+   STATUS LABEL
+   ================================================================ */
+
+const getStatusLabel = (
+  normalized: NormalizedTransaction
+): string => {
+  if (normalized.isSuccessful) {
+    return "Successful";
+  }
+
+  if (normalized.isFailed) {
+    return "Failed";
+  }
+
+  return "Pending";
+};
+
+/* ================================================================
+   STATUS COLORS
+   ================================================================ */
+
+const StatusBadge = ({
+  transaction,
+}: {
+  transaction: NormalizedTransaction;
+}) => {
+  if (transaction.isSuccessful) {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-green-50 px-2.5 py-1 text-xs font-medium text-green-700">
+        <CheckCircle2 className="h-3.5 w-3.5" />
+        Successful
+      </span>
+    );
+  }
+
+  if (transaction.isFailed) {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-red-50 px-2.5 py-1 text-xs font-medium text-red-700">
+        <X className="h-3.5 w-3.5" />
+        Failed
+      </span>
+    );
+  }
+
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full bg-yellow-50 px-2.5 py-1 text-xs font-medium text-yellow-700">
+      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+      Pending
+    </span>
+  );
+};
+
+/* ================================================================
+   TRANSACTION ICON
+   ================================================================ */
+
+const TransactionIcon = ({
+  transaction,
+}: {
+  transaction: NormalizedTransaction;
+}) => {
+  let Icon = CircleDollarSign;
+
+  switch (transaction.kind) {
+    case "bank_transfer":
+      Icon = Building2;
+      break;
+
+    case "wallet_transfer":
+      Icon = Wallet;
+      break;
+
+    case "airtime":
+      Icon = Smartphone;
+      break;
+
+    case "data":
+      Icon = Wifi;
+      break;
+
+    case "electricity":
+      Icon = Zap;
+      break;
+
+    case "cable":
+      Icon = CreditCard;
+      break;
+
+    case "internet":
+      Icon = Globe;
+      break;
+
+    case "funding":
+      Icon = Banknote;
+      break;
+
+    case "refund":
+      Icon = ArrowDownLeft;
+      break;
+
+    case "fee":
+      Icon = Receipt;
+      break;
+  }
+
+  return (
+    <div
+      className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full ${
+        transaction.direction === "incoming"
+          ? "bg-green-50 text-green-600"
+          : "bg-purple-50 text-purple-600"
+      }`}
+    >
+      <Icon className="h-5 w-5" />
+    </div>
+  );
+};
+
+/* ================================================================
+   TRANSACTION DETAILS ROW
+   ================================================================ */
+
+const DetailRow = ({
+  label,
+  value,
+  mono = false,
+  copyable = false,
+  onCopy,
+}: {
+  label: string;
+  value?: string;
+  mono?: boolean;
+  copyable?: boolean;
+  onCopy?: () => void;
+}) => {
+  if (!value) {
+    return null;
+  }
+
+  return (
+    <div className="flex items-start justify-between gap-4 border-b border-gray-100 py-3 last:border-b-0">
+      <span className="text-sm text-gray-500">
+        {label}
+      </span>
+
+      <div className="flex min-w-0 items-center gap-2 text-right">
+        <span
+          className={`break-all text-sm font-medium text-gray-900 ${
+            mono ? "font-mono" : ""
+          }`}
+        >
+          {value}
+        </span>
+
+        {copyable && onCopy && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 shrink-0"
+            onClick={onCopy}
+          >
+            <Copy className="h-3.5 w-3.5" />
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+};
+
+/* ================================================================
+   COMPONENT
+   ================================================================ */
+
+const TransactionHistory = ({
+  onBack,
+}: TransactionHistoryProps) => {
+  const { user } = useAuth();
+
+  const { toast } = useToast();
 
   const [
     transactions,
-    setTransactions
+    setTransactions,
   ] = useState<Transaction[]>([]);
 
   const [
     loading,
-    setLoading
+    setLoading,
   ] = useState(true);
 
   const [
-    filter,
-    setFilter
-  ] = useState<string>('all');
+    refreshing,
+    setRefreshing,
+  ] = useState(false);
+
+  const [
+    error,
+    setError,
+  ] = useState<string | null>(null);
 
   const [
     search,
-    setSearch
-  ] = useState('');
+    setSearch,
+  ] = useState("");
+
+  const [
+    filterType,
+    setFilterType,
+  ] = useState<FilterType>("all");
+
+  const [
+    statusFilter,
+    setStatusFilter,
+  ] = useState<StatusFilter>("all");
+
+  const [
+    dateFilter,
+    setDateFilter,
+  ] = useState("all");
+
+  const [
+    page,
+    setPage,
+  ] = useState(1);
 
   const [
     selectedTransaction,
-    setSelectedTransaction
+    setSelectedTransaction,
   ] =
-    useState<Transaction | null>(
+    useState<NormalizedTransaction | null>(
       null
     );
 
+  /* ==============================================================
+     LOAD TRANSACTIONS
+     ============================================================== */
 
-  /*
-  |--------------------------------------------------------------------------
-  | FETCH TRANSACTIONS
-  |--------------------------------------------------------------------------
-  */
-
-  const fetchTransactions =
-    async () => {
-
+  const loadTransactions = useCallback(
+    async (
+      showRefresh = false
+    ) => {
       if (!user?.id) {
+        setTransactions([]);
+        setLoading(false);
         return;
       }
 
-      try {
-
+      if (showRefresh) {
+        setRefreshing(true);
+      } else {
         setLoading(true);
+      }
 
+      setError(null);
+
+      try {
         const {
           data,
-          error
-        } =
-          await supabase
-            .from('transactions')
-            .select('*')
-            .eq(
-              'user_id',
-              user.id
-            )
-            .order(
-              'created_at',
-              {
-                ascending: false
-              }
-            );
+          error: queryError,
+        } = await supabase
+          .from("transactions")
+          .select(
+            `
+              id,
+              user_id,
+              wallet_id,
+              transaction_type,
+              amount,
+              description,
+              status,
+              reference_number,
+              provider,
+              provider_reference,
+              category,
+              metadata,
+              created_at
+            `
+          )
+          .eq(
+            "user_id",
+            user.id
+          )
+          .order(
+            "created_at",
+            {
+              ascending: false,
+            }
+          );
 
-        if (error) {
-          throw error;
+        if (queryError) {
+          throw queryError;
         }
 
         setTransactions(
-          (data || []) as Transaction[]
+          (data ?? []) as Transaction[]
         );
-
-      } catch (error: any) {
-
+      } catch (err: any) {
         console.error(
-          'Error fetching transactions:',
-          error
+          "Transaction history load error:",
+          err
         );
 
-        toast({
-          title: 'Error',
-          description:
-            error?.message ||
-            'Failed to load transaction history',
-          variant:
-            'destructive'
-        });
-
+        setError(
+          err?.message ||
+            "Unable to load transaction history."
+        );
       } finally {
-
         setLoading(false);
-
+        setRefreshing(false);
       }
+    },
+    [user?.id]
+  );
 
-    };
-
+  /* ==============================================================
+     INITIAL LOAD
+     ============================================================== */
 
   useEffect(() => {
+    loadTransactions();
+  }, [loadTransactions]);
 
+  /* ==============================================================
+     REALTIME
+     ============================================================== */
+
+  useEffect(() => {
     if (!user?.id) {
       return;
     }
-
-    fetchTransactions();
 
     const channel =
       supabase
@@ -310,3553 +1420,2563 @@ const TransactionHistory = ({
           `transaction-history-${user.id}`
         )
         .on(
-          'postgres_changes',
+          "postgres_changes",
           {
-            event: '*',
-            schema: 'public',
-            table: 'transactions',
-            filter:
-              `user_id=eq.${user.id}`
+            event: "*",
+            schema: "public",
+            table: "transactions",
+            filter: `user_id=eq.${user.id}`,
           },
-          () => {
-            fetchTransactions();
+          (
+            payload
+          ) => {
+            if (
+              payload.eventType ===
+              "INSERT"
+            ) {
+              const incoming =
+                payload.new as Transaction;
+
+              setTransactions(
+                current => {
+                  const exists =
+                    current.some(
+                      item =>
+                        item.id ===
+                        incoming.id
+                    );
+
+                  if (exists) {
+                    return current;
+                  }
+
+                  return [
+                    incoming,
+                    ...current,
+                  ].sort(
+                    (a, b) =>
+                      new Date(
+                        b.created_at
+                      ).getTime() -
+                      new Date(
+                        a.created_at
+                      ).getTime()
+                  );
+                }
+              );
+
+              return;
+            }
+
+            if (
+              payload.eventType ===
+              "UPDATE"
+            ) {
+              const updated =
+                payload.new as Transaction;
+
+              setTransactions(
+                current =>
+                  current
+                    .map(item =>
+                      item.id ===
+                      updated.id
+                        ? updated
+                        : item
+                    )
+                    .sort(
+                      (a, b) =>
+                        new Date(
+                          b.created_at
+                        ).getTime() -
+                        new Date(
+                          a.created_at
+                        ).getTime()
+                    )
+              );
+
+              return;
+            }
+
+            if (
+              payload.eventType ===
+              "DELETE"
+            ) {
+              const deleted =
+                payload.old as Transaction;
+
+              setTransactions(
+                current =>
+                  current.filter(
+                    item =>
+                      item.id !==
+                      deleted.id
+                  )
+              );
+            }
           }
         )
-        .subscribe();
+        .subscribe(
+          status => {
+            if (
+              status ===
+              "CHANNEL_ERROR"
+            ) {
+              console.warn(
+                "Transaction realtime channel error."
+              );
+            }
+          }
+        );
 
     return () => {
-
       supabase.removeChannel(
         channel
       );
-
     };
-
   }, [user?.id]);
 
-
-  /*
-  |--------------------------------------------------------------------------
-  | METADATA
-  |--------------------------------------------------------------------------
-  */
-
-  const getTransactionMetadata =
-    (
-      transaction: Transaction
-    ): TransactionMetadata => {
-
-      return (
-        transaction.metadata ||
-        {}
-      );
-
-    };
-
-
-  /*
-  |--------------------------------------------------------------------------
-  | TRANSACTION TYPE
-  |--------------------------------------------------------------------------
-  */
-
-  const getTransactionType =
-    (
-      transaction: Transaction
-    ) => {
-
-      const metadata =
-        getTransactionMetadata(
-          transaction
-        );
-
-      const rawType =
-        safeString(
-          firstValue(
-            metadata,
-            [
-              'transaction_type',
-              'transactionType',
-              'type',
-              'category'
-            ],
-            transaction.transaction_type
-          ),
-          'transaction'
-        )
-          .toLowerCase()
-          .trim();
-
-
-      if (
-        [
-          'internal_transfer',
-          'wallet_to_wallet',
-          'wallet_transfer',
-          'bank_transfer',
-          'transfer'
-        ].includes(rawType)
-      ) {
-        return 'transfer';
-      }
-
-
-      if (
-        [
-          'virtual_account_funding',
-          'wallet_funding',
-          'account_funding',
-          'funding',
-          'fund'
-        ].includes(rawType)
-      ) {
-        return 'funding';
-      }
-
-
-      if (
-        [
-          'airtime',
-          'data',
-          'electricity',
-          'cable',
-          'bill_payment',
-          'bill',
-          'bills'
-        ].includes(rawType)
-      ) {
-        return rawType;
-      }
-
-
-      return rawType;
-
-    };
-
-
-  /*
-  |--------------------------------------------------------------------------
-  | MONEY DIRECTION
-  |--------------------------------------------------------------------------
-  */
-
-  const isMoneyIn =
-    (
-      transaction: Transaction
-    ) => {
-
-      const metadata =
-        getTransactionMetadata(
-          transaction
-        );
-
-      const direction =
-        safeString(
-          firstValue(
-            metadata,
-            [
-              'direction',
-              'transaction_direction',
-              'transactionDirection',
-              'flow'
-            ]
-          )
-        )
-          .toLowerCase()
-          .trim();
-
-
-      if (
-        [
-          'incoming',
-          'in',
-          'credit',
-          'money_in',
-          'received'
-        ].includes(direction)
-      ) {
-        return true;
-      }
-
-
-      if (
-        [
-          'outgoing',
-          'out',
-          'debit',
-          'money_out',
-          'sent'
-        ].includes(direction)
-      ) {
-        return false;
-      }
-
-
-      const type =
-        getTransactionType(
-          transaction
-        );
-
-
-      return [
-        'deposit',
-        'credit',
-        'funding',
-        'refund',
-        'cashback',
-        'reversal',
-        'money_in'
-      ].includes(type);
-
-    };
-
-
-  /*
-  |--------------------------------------------------------------------------
-  | SENDER
-  |--------------------------------------------------------------------------
-  */
-
-  const getSender =
-    (
-      transaction: Transaction
-    ): TransactionParty => {
-
-      const metadata =
-        getTransactionMetadata(
-          transaction
-        );
-
-      const sender =
-        metadata.sender ||
-        metadata.from ||
-        metadata.payer ||
-        {};
-
-      return {
-        user_id:
-          sender.user_id ||
-          metadata.sender_user_id ||
-          metadata.from_user_id ||
-          metadata.payer_user_id ||
-          null,
-
-        wallet_id:
-          sender.wallet_id ||
-          metadata.sender_wallet_id ||
-          metadata.senderWalletId ||
-          metadata.from_wallet_id ||
-          metadata.fromWalletId ||
-          null,
-
-        name:
-          sender.name ||
-          metadata.sender_name ||
-          metadata.senderName ||
-          metadata.from_name ||
-          metadata.fromName ||
-          metadata.payer_name ||
-          null,
-
-        full_name:
-          sender.full_name ||
-          metadata.sender_full_name ||
-          metadata.from_full_name ||
-          metadata.payer_full_name ||
-          null,
-
-        nickname:
-          sender.nickname ||
-          metadata.sender_nickname ||
-          metadata.from_nickname ||
-          null,
-
-        phone_number:
-          sender.phone_number ||
-          metadata.sender_phone_number ||
-          metadata.senderPhoneNumber ||
-          metadata.from_phone_number ||
-          metadata.payer_phone_number ||
-          null,
-
-        email:
-          sender.email ||
-          metadata.sender_email ||
-          metadata.from_email ||
-          metadata.payer_email ||
-          null
-      };
-
-    };
-
-
-  /*
-  |--------------------------------------------------------------------------
-  | RECIPIENT
-  |--------------------------------------------------------------------------
-  */
-
-  const getRecipient =
-    (
-      transaction: Transaction
-    ): TransactionParty => {
-
-      const metadata =
-        getTransactionMetadata(
-          transaction
-        );
-
-      const recipient =
-        metadata.recipient ||
-        metadata.receiver ||
-        metadata.beneficiary ||
-        metadata.to ||
-        {};
-
-      return {
-        user_id:
-          recipient.user_id ||
-          metadata.recipient_user_id ||
-          metadata.receiver_user_id ||
-          metadata.to_user_id ||
-          metadata.beneficiary_user_id ||
-          null,
-
-        wallet_id:
-          recipient.wallet_id ||
-          metadata.recipient_wallet_id ||
-          metadata.recipientWalletId ||
-          metadata.receiver_wallet_id ||
-          metadata.receiverWalletId ||
-          metadata.to_wallet_id ||
-          metadata.beneficiary_wallet_id ||
-          null,
-
-        name:
-          recipient.name ||
-          metadata.recipient_name ||
-          metadata.recipientName ||
-          metadata.receiver_name ||
-          metadata.receiverName ||
-          metadata.to_name ||
-          metadata.toName ||
-          metadata.beneficiary_name ||
-          null,
-
-        full_name:
-          recipient.full_name ||
-          metadata.recipient_full_name ||
-          metadata.receiver_full_name ||
-          metadata.to_full_name ||
-          metadata.beneficiary_full_name ||
-          null,
-
-        nickname:
-          recipient.nickname ||
-          metadata.recipient_nickname ||
-          metadata.receiver_nickname ||
-          metadata.beneficiary_nickname ||
-          null,
-
-        phone_number:
-          recipient.phone_number ||
-          metadata.recipient_phone_number ||
-          metadata.recipientPhoneNumber ||
-          metadata.receiver_phone_number ||
-          metadata.receiverPhoneNumber ||
-          metadata.to_phone_number ||
-          metadata.beneficiary_phone_number ||
-          null,
-
-        email:
-          recipient.email ||
-          metadata.recipient_email ||
-          metadata.receiver_email ||
-          metadata.to_email ||
-          metadata.beneficiary_email ||
-          null
-      };
-
-    };
-
-
-  /*
-  |--------------------------------------------------------------------------
-  | COUNTERPARTY BANK NAME
-  |--------------------------------------------------------------------------
-  */
-
-  const getCounterpartyBankName =
-    (
-      transaction: Transaction
-    ) => {
-
-      const metadata =
-        getTransactionMetadata(
-          transaction
-        );
-
-      const moneyIn =
-        isMoneyIn(
-          transaction
-        );
-
-
-      return safeString(
-        firstValue(
-          metadata,
-          moneyIn
-            ? [
-                'sender_bank_name',
-                'senderBankName',
-                'from_bank_name',
-                'fromBankName',
-                'payer_bank_name',
-                'payerBankName',
-                'bank_name',
-                'bankName'
-              ]
-            : [
-                'recipient_bank_name',
-                'recipientBankName',
-                'receiver_bank_name',
-                'receiverBankName',
-                'to_bank_name',
-                'toBankName',
-                'beneficiary_bank_name',
-                'beneficiaryBankName',
-                'bank_name',
-                'bankName'
-              ],
-          ''
-        )
-      );
-
-    };
-
-
-  /*
-  |--------------------------------------------------------------------------
-  | COUNTERPARTY ACCOUNT NAME
-  |--------------------------------------------------------------------------
-  */
-
-  const getCounterpartyAccountName =
-    (
-      transaction: Transaction
-    ) => {
-
-      const metadata =
-        getTransactionMetadata(
-          transaction
-        );
-
-      const moneyIn =
-        isMoneyIn(
-          transaction
-        );
-
-
-      if (moneyIn) {
-
-        const sender =
-          getSender(
-            transaction
-          );
-
-        return safeString(
-          firstValue(
-            metadata,
-            [
-              'sender_account_name',
-              'senderAccountName',
-              'sender_name',
-              'sender_full_name',
-              'senderName',
-              'from_account_name',
-              'fromAccountName',
-              'from_name',
-              'from_full_name',
-              'fromName',
-              'payer_account_name',
-              'payerAccountName',
-              'payer_name',
-              'account_name',
-              'accountName',
-              'customer_name'
-            ],
-            sender.name ||
-              sender.full_name ||
-              ''
-          )
-        );
-
-      }
-
-
-      const recipient =
-        getRecipient(
-          transaction
-        );
-
-      return safeString(
-        firstValue(
-          metadata,
-          [
-            'recipient_account_name',
-            'recipientAccountName',
-            'recipient_name',
-            'recipient_full_name',
-            'recipientName',
-            'receiver_account_name',
-            'receiverAccountName',
-            'receiver_name',
-            'receiver_full_name',
-            'receiverName',
-            'to_account_name',
-            'toAccountName',
-            'to_name',
-            'to_full_name',
-            'toName',
-            'beneficiary_name',
-            'beneficiary_account_name',
-            'beneficiaryAccountName',
-            'account_name',
-            'accountName'
-          ],
-          recipient.name ||
-            recipient.full_name ||
-            ''
-        )
-      );
-
-    };
-
-
-  /*
-  |--------------------------------------------------------------------------
-  | COUNTERPARTY ACCOUNT NUMBER
-  |--------------------------------------------------------------------------
-  */
-
-  const getCounterpartyAccountNumber =
-    (
-      transaction: Transaction
-    ) => {
-
-      const metadata =
-        getTransactionMetadata(
-          transaction
-        );
-
-      const moneyIn =
-        isMoneyIn(
-          transaction
-        );
-
-
-      return safeString(
-        firstValue(
-          metadata,
-          moneyIn
-            ? [
-                'sender_account_number',
-                'senderAccountNumber',
-                'from_account_number',
-                'fromAccountNumber',
-                'payer_account_number',
-                'payerAccountNumber',
-                'account_number',
-                'accountNumber'
-              ]
-            : [
-                'recipient_account_number',
-                'recipientAccountNumber',
-                'receiver_account_number',
-                'receiverAccountNumber',
-                'to_account_number',
-                'toAccountNumber',
-                'beneficiary_account_number',
-                'beneficiaryAccountNumber',
-                'account_number',
-                'accountNumber'
-              ],
-          ''
-        )
-      );
-
-    };
-
-
-  /*
-  |--------------------------------------------------------------------------
-  | COUNTERPARTY NAME
-  |--------------------------------------------------------------------------
-  */
-
-  const getCounterpartyName =
-    (
-      transaction: Transaction
-    ) => {
-
-      const metadata =
-        getTransactionMetadata(
-          transaction
-        );
-
-      const moneyIn =
-        isMoneyIn(
-          transaction
-        );
-
-      const party =
-        moneyIn
-          ? getSender(transaction)
-          : getRecipient(transaction);
-
-
-      const partyName =
-        safeString(
-          party?.name ||
-          party?.full_name ||
-          party?.nickname
-        );
-
-
-      if (partyName) {
-        return partyName;
-      }
-
-
-      if (moneyIn) {
-
-        return safeString(
-          firstValue(
-            metadata,
-            [
-              'sender_name',
-              'sender_full_name',
-              'senderName',
-              'from_name',
-              'from_full_name',
-              'fromName',
-              'payer_name',
-              'payer_full_name',
-              'sender_account_name',
-              'from_account_name',
-              'payer_account_name',
-              'customer_name',
-              'account_name'
-            ],
-            'Funding source'
-          )
-        );
-
-      }
-
-
-      return safeString(
-        firstValue(
-          metadata,
-          [
-            'recipient_name',
-            'recipient_full_name',
-            'recipientName',
-            'receiver_name',
-            'receiver_full_name',
-            'receiverName',
-            'to_name',
-            'to_full_name',
-            'toName',
-            'beneficiary_name',
-            'beneficiary_full_name',
-            'recipient_account_name',
-            'receiver_account_name',
-            'to_account_name',
-            'beneficiary_account_name'
-          ],
-          'Recipient'
-        )
-      );
-
-    };
-
-
-  /*
-  |--------------------------------------------------------------------------
-  | COUNTERPARTY PHONE
-  |--------------------------------------------------------------------------
-  */
-
-  const getCounterpartyPhone =
-    (
-      transaction: Transaction
-    ) => {
-
-      const metadata =
-        getTransactionMetadata(
-          transaction
-        );
-
-      const moneyIn =
-        isMoneyIn(
-          transaction
-        );
-
-      const party =
-        moneyIn
-          ? getSender(transaction)
-          : getRecipient(transaction);
-
-
-      return safeString(
-        party?.phone_number ||
-        firstValue(
-          metadata,
-          moneyIn
-            ? [
-                'sender_phone_number',
-                'senderPhoneNumber',
-                'from_phone_number',
-                'fromPhoneNumber',
-                'payer_phone_number',
-                'payerPhoneNumber',
-                'phone_number',
-                'phoneNumber'
-              ]
-            : [
-                'recipient_phone_number',
-                'recipientPhoneNumber',
-                'receiver_phone_number',
-                'receiverPhoneNumber',
-                'to_phone_number',
-                'toPhoneNumber',
-                'beneficiary_phone_number',
-                'beneficiaryPhoneNumber',
-                'phone_number',
-                'phoneNumber'
-              ],
-          ''
-        )
-      );
-
-    };
-
-
-  /*
-  |--------------------------------------------------------------------------
-  | BILL PAYMENT PHONE NUMBER
-  |--------------------------------------------------------------------------
-  */
-
-  const getBillPhoneNumber =
-    (
-      transaction: Transaction
-    ) => {
-
-      const metadata =
-        getTransactionMetadata(
-          transaction
-        );
-
-      return safeString(
-        firstValue(
-          metadata,
-          [
-            'phone_number',
-            'phoneNumber',
-            'customer_phone',
-            'customerPhone',
-            'beneficiary_phone',
-            'beneficiaryPhone',
-            'recipient_phone_number',
-            'recipientPhoneNumber',
-            'mobile_number',
-            'mobileNumber',
-            'subscriber_number',
-            'subscriberNumber'
-          ],
-          getCounterpartyPhone(
-            transaction
-          )
-        )
-      );
-
-    };
-
-
-  /*
-  |--------------------------------------------------------------------------
-  | BILL PAYMENT AMOUNT
-  |--------------------------------------------------------------------------
-  */
-
-  const getBillPaymentAmount =
-    (
-      transaction: Transaction
-    ) => {
-
-      const metadata =
-        getTransactionMetadata(
-          transaction
-        );
-
-      const amount =
-        firstValue(
-          metadata,
-          [
-            'bill_amount',
-            'billAmount',
-            'payment_amount',
-            'paymentAmount',
-            'amount_paid',
-            'amountPaid',
-            'billed_amount',
-            'billedAmount'
-          ],
-          transaction.amount
-        );
-
-      return Number(
-        amount || transaction.amount || 0
-      );
-
-    };
-
-
-  /*
-  |--------------------------------------------------------------------------
-  | BILL PROVIDER
-  |--------------------------------------------------------------------------
-  */
-
-  const getBillProvider =
-    (
-      transaction: Transaction
-    ) => {
-
-      const metadata =
-        getTransactionMetadata(
-          transaction
-        );
-
-      return safeString(
-        firstValue(
-          metadata,
-          [
-            'provider',
-            'biller',
-            'biller_name',
-            'billerName',
-            'service_provider',
-            'serviceProvider',
-            'network',
-            'network_name',
-            'networkName',
-            'disco',
-            'disco_name',
-            'cable_provider'
-          ],
-          transaction.provider ||
-            ''
-        )
-      );
-
-    };
-
-
-  /*
-  |--------------------------------------------------------------------------
-  | CUSTOMER / METER / SMARTCARD NUMBER
-  |--------------------------------------------------------------------------
-  */
-
-  const getCustomerIdentifier =
-    (
-      transaction: Transaction
-    ) => {
-
-      const metadata =
-        getTransactionMetadata(
-          transaction
-        );
-
-      return safeString(
-        firstValue(
-          metadata,
-          [
-            'customer_number',
-            'customerNumber',
-            'meter_number',
-            'meterNumber',
-            'smartcard_number',
-            'smartcardNumber',
-            'decoder_number',
-            'decoderNumber',
-            'subscriber_id',
-            'subscriberId',
-            'account_number',
-            'accountNumber'
-          ],
-          ''
-        )
-      );
-
-    };
-
-
-  /*
-  |--------------------------------------------------------------------------
-  | COUNTERPARTY NICKNAME
-  |--------------------------------------------------------------------------
-  */
-
-  const getCounterpartyNickname =
-    (
-      transaction: Transaction
-    ) => {
-
-      const party =
-        isMoneyIn(transaction)
-          ? getSender(transaction)
-          : getRecipient(transaction);
-
-      return safeString(
-        party?.nickname ||
-        ''
-      );
-
-    };
-
-
-  /*
-  |--------------------------------------------------------------------------
-  | COUNTERPARTY WALLET
-  |--------------------------------------------------------------------------
-  */
-
-  const getCounterpartyWallet =
-    (
-      transaction: Transaction
-    ) => {
-
-      const metadata =
-        getTransactionMetadata(
-          transaction
-        );
-
-      const party =
-        isMoneyIn(transaction)
-          ? getSender(transaction)
-          : getRecipient(transaction);
-
-
-      if (party?.wallet_id) {
-        return safeString(
-          party.wallet_id
-        );
-      }
-
-
-      return safeString(
-        firstValue(
-          metadata,
-          isMoneyIn(transaction)
-            ? [
-                'sender_wallet_id',
-                'senderWalletId',
-                'from_wallet_id',
-                'fromWalletId'
-              ]
-            : [
-                'recipient_wallet_id',
-                'recipientWalletId',
-                'receiver_wallet_id',
-                'receiverWalletId',
-                'to_wallet_id',
-                'toWalletId'
-              ],
-          ''
-        )
-      );
-
-    };
-
-
-  /*
-  |--------------------------------------------------------------------------
-  | NARRATION
-  |--------------------------------------------------------------------------
-  */
-
-  const getNarration =
-    (
-      transaction: Transaction
-    ) => {
-
-      const metadata =
-        getTransactionMetadata(
-          transaction
-        );
-
-      return safeString(
-        firstValue(
-          metadata,
-          [
-            'narration',
-            'description',
-            'remark',
-            'reason',
-            'message'
-          ],
-          transaction.description ||
-            'Wallet transaction'
-        )
-      );
-
-    };
-
-
-  /*
-  |--------------------------------------------------------------------------
-  | REFERENCE
-  |--------------------------------------------------------------------------
-  */
-
-  const getReference =
-    (
-      transaction: Transaction
-    ) => {
-
-      const metadata =
-        getTransactionMetadata(
-          transaction
-        );
-
-      return safeString(
-        firstValue(
-          metadata,
-          [
-            'reference',
-            'transaction_reference',
-            'transactionReference',
-            'reference_number'
-          ],
-          transaction.reference_number ||
-            transaction.reference ||
-            transaction.id
-        )
-      );
-
-    };
-
-
-  /*
-  |--------------------------------------------------------------------------
-  | PROVIDER REFERENCE
-  |--------------------------------------------------------------------------
-  */
-
-  const getProviderReference =
-    (
-      transaction: Transaction
-    ) => {
-
-      const metadata =
-        getTransactionMetadata(
-          transaction
-        );
-
-      return safeString(
-        firstValue(
-          metadata,
-          [
-            'provider_reference',
-            'providerReference',
-            'flutterwave_reference',
-            'flw_reference',
-            'payment_reference'
-          ],
-          transaction.provider_reference ||
-            ''
-        )
-      );
-
-    };
-
-
-  /*
-  |--------------------------------------------------------------------------
-  | FEE
-  |--------------------------------------------------------------------------
-  */
-
-  const getFee =
-    (
-      transaction: Transaction
-    ) => {
-
-      const metadata =
-        getTransactionMetadata(
-          transaction
-        );
-
-      const fee =
-        firstValue(
-          metadata,
-          [
-            'fee',
-            'transaction_fee',
-            'charge',
-            'transfer_fee',
-            'service_fee'
-          ],
-          transaction.fee ?? 0
-        );
-
-      return Number(
-        fee || 0
-      );
-
-    };
-
-
-  /*
-  |--------------------------------------------------------------------------
-  | TRANSACTION TITLE
-  |--------------------------------------------------------------------------
-  */
-
-  const getTransactionTitle =
-    (
-      transaction: Transaction
-    ) => {
-
-      const type =
-        getTransactionType(
-          transaction
-        );
-
-      const moneyIn =
-        isMoneyIn(
-          transaction
-        );
-
-
-      switch (type) {
-
-        case 'transfer':
-
-          return moneyIn
-            ? `Received from ${getCounterpartyName(transaction)}`
-            : `Transfer to ${getCounterpartyName(transaction)}`;
-
-
-        case 'funding':
-
-          return 'Wallet Funding';
-
-
-        case 'deposit':
-
-          return 'Wallet Deposit';
-
-
-        case 'refund':
-
-          return 'Refund';
-
-
-        case 'cashback':
-
-          return 'Cashback';
-
-
-        case 'airtime':
-
-          return 'Airtime Purchase';
-
-
-        case 'data':
-
-          return 'Data Purchase';
-
-
-        case 'electricity':
-
-          return 'Electricity Payment';
-
-
-        case 'cable':
-
-          return 'Cable TV Payment';
-
-
-        case 'bill_payment':
-
-        case 'bill':
-
-        case 'bills':
-
-          return getBillProvider(transaction)
-            ? `Bill Payment - ${getBillProvider(transaction)}`
-            : 'Bill Payment';
-
-
-        case 'withdrawal':
-
-          return 'Withdrawal';
-
-
-        default:
-
-          return moneyIn
-            ? `Money received from ${getCounterpartyName(transaction)}`
-            : `Money sent to ${getCounterpartyName(transaction)}`;
-
-      }
-
-    };
-
-
-  /*
-  |--------------------------------------------------------------------------
-  | TRANSACTION SUBTITLE
-  |--------------------------------------------------------------------------
-  */
-
-  const getTransactionSubtitle =
-    (
-      transaction: Transaction
-    ) => {
-
-      const type =
-        getTransactionType(
-          transaction
-        );
-
-      const moneyIn =
-        isMoneyIn(
-          transaction
-        );
-
-
-      if (type === 'transfer') {
-
-        return moneyIn
-          ? 'Money received'
-          : 'Money sent';
-
-      }
-
-
-      if (type === 'funding') {
-
-        const bank =
-          getCounterpartyBankName(
-            transaction
-          );
-
-        const accountName =
-          getCounterpartyAccountName(
-            transaction
-          );
-
-        if (bank && accountName) {
-          return `${accountName} • ${bank}`;
-        }
-
-        if (bank) {
-          return `Funding via ${bank}`;
-        }
-
-        return 'Money added to wallet';
-
-      }
-
-
-      if (
-        [
-          'airtime',
-          'data',
-          'electricity',
-          'cable',
-          'bill_payment',
-          'bill',
-          'bills'
-        ].includes(type)
-      ) {
-
-        const phone =
-          getBillPhoneNumber(
-            transaction
-          );
-
-        const provider =
-          getBillProvider(
-            transaction
-          );
-
-        if (provider && phone) {
-          return `${provider} • ${phone}`;
-        }
-
-        return provider ||
-          phone ||
-          getNarration(transaction);
-
-      }
-
-
-      return getNarration(
-        transaction
-      );
-
-    };
-
-
-  /*
-  |--------------------------------------------------------------------------
-  | TRANSACTION ICON
-  |--------------------------------------------------------------------------
-  */
-
-  const getTransactionIcon =
-    (
-      transaction: Transaction
-    ) => {
-
-      const type =
-        getTransactionType(
-          transaction
-        );
-
-      const moneyIn =
-        isMoneyIn(
-          transaction
-        );
-
-
-      if (type === 'transfer') {
-
-        return moneyIn ? (
-          <ArrowDownLeft className="h-5 w-5 text-green-600" />
-        ) : (
-          <ArrowUpRight className="h-5 w-5 text-purple-600" />
-        );
-
-      }
-
-
-      switch (type) {
-
-        case 'funding':
-        case 'deposit':
-        case 'credit':
-
-          return (
-            <Banknote className="h-5 w-5 text-green-600" />
-          );
-
-
-        case 'airtime':
-
-          return (
-            <span className="text-lg">📱</span>
-          );
-
-
-        case 'data':
-
-          return (
-            <span className="text-lg">🌐</span>
-          );
-
-
-        case 'electricity':
-
-          return (
-            <span className="text-lg">⚡</span>
-          );
-
-
-        case 'cable':
-
-          return (
-            <span className="text-lg">📺</span>
-          );
-
-
-        case 'bill_payment':
-        case 'bill':
-        case 'bills':
-
-          return (
-            <CreditCard className="h-5 w-5 text-purple-600" />
-          );
-
-
-        default:
-
-          return (
-            <Wallet className="h-5 w-5 text-purple-600" />
-          );
-
-      }
-
-    };
-
-
-  /*
-  |--------------------------------------------------------------------------
-  | ICON BACKGROUND
-  |--------------------------------------------------------------------------
-  */
-
-  const getTransactionIconBackground =
-    (
-      transaction: Transaction
-    ) => {
-
-      return isMoneyIn(transaction)
-        ? 'bg-green-50'
-        : 'bg-purple-50';
-
-    };
-
-
-  /*
-  |--------------------------------------------------------------------------
-  | STATUS
-  |--------------------------------------------------------------------------
-  */
-
-  const getStatusColor =
-    (
-      status: string
-    ) => {
-
-      switch (
-        normalizeStatus(status)
-      ) {
-
-        case 'completed':
-        case 'successful':
-        case 'success':
-
-          return 'text-green-700 bg-green-100 border-green-200';
-
-
-        case 'pending':
-        case 'processing':
-
-          return 'text-yellow-700 bg-yellow-100 border-yellow-200';
-
-
-        case 'failed':
-        case 'cancelled':
-        case 'canceled':
-        case 'reversed':
-
-          return 'text-red-700 bg-red-100 border-red-200';
-
-
-        default:
-
-          return 'text-gray-700 bg-gray-100 border-gray-200';
-
-      }
-
-    };
-
-
-  const getStatusIcon =
-    (
-      status: string
-    ) => {
-
-      switch (
-        normalizeStatus(status)
-      ) {
-
-        case 'completed':
-        case 'successful':
-        case 'success':
-
-          return (
-            <CheckCircle2 className="h-3.5 w-3.5" />
-          );
-
-
-        case 'pending':
-        case 'processing':
-
-          return (
-            <Clock className="h-3.5 w-3.5" />
-          );
-
-
-        case 'failed':
-        case 'cancelled':
-        case 'canceled':
-        case 'reversed':
-
-          return (
-            <XCircle className="h-3.5 w-3.5" />
-          );
-
-
-        default:
-
-          return (
-            <Clock className="h-3.5 w-3.5" />
-          );
-
-      }
-
-    };
-
-
-  /*
-  |--------------------------------------------------------------------------
-  | DATE
-  |--------------------------------------------------------------------------
-  */
-
-  const formatDate =
-    (
-      date: string
-    ) => {
-
-      return new Date(
-        date
-      ).toLocaleDateString(
-        'en-NG',
-        {
-          day: 'numeric',
-          month: 'short',
-          year: 'numeric'
-        }
-      );
-
-    };
-
-
-  const formatTime =
-    (
-      date: string
-    ) => {
-
-      return new Date(
-        date
-      ).toLocaleTimeString(
-        'en-NG',
-        {
-          hour: '2-digit',
-          minute: '2-digit'
-        }
-      );
-
-    };
-
-
-  const formatFullDate =
-    (
-      date: string
-    ) => {
-
-      return new Date(
-        date
-      ).toLocaleString(
-        'en-NG',
-        {
-          weekday: 'short',
-          day: 'numeric',
-          month: 'long',
-          year: 'numeric',
-          hour: '2-digit',
-          minute: '2-digit'
-        }
-      );
-
-    };
-
-
-  /*
-  |--------------------------------------------------------------------------
-  | COPY REFERENCE
-  |--------------------------------------------------------------------------
-  */
-
-  const copyReference =
-    async (
-      transaction: Transaction
-    ) => {
-
-      const reference =
-        getReference(
-          transaction
-        );
-
-      try {
-
-        await navigator.clipboard.writeText(
-          reference
-        );
-
-        toast({
-          title: 'Copied',
-          description:
-            'Transaction reference copied'
-        });
-
-      } catch {
-
-        toast({
-          title: 'Unable to copy',
-          description:
-            'Please copy the reference manually',
-          variant:
-            'destructive'
-        });
-
-      }
-
-    };
-
-
-  /*
-  |--------------------------------------------------------------------------
-  | PRINT RECEIPT
-  |--------------------------------------------------------------------------
-  */
-
-  const printReceipt =
-    (
-      transaction: Transaction
-    ) => {
-
-      const moneyIn =
-        isMoneyIn(transaction);
-
-      const type =
-        getTransactionType(transaction);
-
-      const counterparty =
-        getCounterpartyName(transaction);
-
-      const bank =
-        getCounterpartyBankName(transaction);
-
-      const accountName =
-        getCounterpartyAccountName(transaction);
-
-      const accountNumber =
-        getCounterpartyAccountNumber(transaction);
-
-      const narration =
-        getNarration(transaction);
-
-      const reference =
-        getReference(transaction);
-
-      const providerReference =
-        getProviderReference(transaction);
-
-      const fee =
-        getFee(transaction);
-
-      const billPhone =
-        getBillPhoneNumber(transaction);
-
-      const billProvider =
-        getBillProvider(transaction);
-
-      const customerIdentifier =
-        getCustomerIdentifier(transaction);
-
-      const title =
-        getTransactionTitle(transaction);
-
-      const status =
-        transaction.status ||
-        'completed';
-
-      const currency =
-        transaction.currency ||
-        'NGN';
-
-      const amount =
-        Number(transaction.amount || 0);
-
-
-      const receiptWindow =
-        window.open(
-          '',
-          '_blank',
-          'width=500,height=800'
-        );
-
-
-      if (!receiptWindow) {
-
-        toast({
-          title: 'Popup blocked',
-          description:
-            'Please allow popups to print the receipt',
-          variant:
-            'destructive'
-        });
-
-        return;
-
-      }
-
-
-      const escaped =
-        (value: any) =>
-          String(value ?? '')
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;')
-            .replace(/'/g, '&#039;');
-
-
-      receiptWindow.document.write(`
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <title>IyanjuPay Transaction Receipt</title>
-
-          <style>
-
-            * {
-              box-sizing: border-box;
-            }
-
-            body {
-              margin: 0;
-              padding: 30px;
-              font-family: Arial, Helvetica, sans-serif;
-              background: #f5f7fb;
-              color: #111827;
-            }
-
-            .receipt {
-              max-width: 430px;
-              margin: 0 auto;
-              background: white;
-              border-radius: 18px;
-              padding: 28px;
-              box-shadow: 0 10px 30px rgba(0,0,0,0.08);
-            }
-
-            .brand {
-              text-align: center;
-              font-size: 24px;
-              font-weight: 800;
-              color: #6d28d9;
-              margin-bottom: 4px;
-            }
-
-            .subtitle {
-              text-align: center;
-              color: #6b7280;
-              font-size: 12px;
-            }
-
-            .status {
-              margin: 22px auto;
-              width: 76px;
-              height: 76px;
-              border-radius: 50%;
-              display: flex;
-              align-items: center;
-              justify-content: center;
-              background: ${moneyIn ? '#dcfce7' : '#ede9fe'};
-              color: ${moneyIn ? '#16a34a' : '#7c3aed'};
-              font-size: 36px;
-            }
-
-            .amount {
-              text-align: center;
-              font-size: 30px;
-              font-weight: 800;
-              margin-bottom: 4px;
-            }
-
-            .direction {
-              text-align: center;
-              color: #6b7280;
-              font-size: 13px;
-              margin-bottom: 24px;
-            }
-
-            .divider {
-              border-top: 1px solid #e5e7eb;
-              margin: 20px 0;
-            }
-
-            .row {
-              display: flex;
-              justify-content: space-between;
-              gap: 20px;
-              padding: 9px 0;
-              font-size: 13px;
-            }
-
-            .label {
-              color: #6b7280;
-            }
-
-            .value {
-              text-align: right;
-              font-weight: 600;
-              max-width: 60%;
-              word-break: break-word;
-            }
-
-            .reference {
-              font-family: monospace;
-              font-size: 11px;
-            }
-
-            .footer {
-              margin-top: 25px;
-              padding-top: 18px;
-              border-top: 1px dashed #d1d5db;
-              text-align: center;
-              color: #9ca3af;
-              font-size: 11px;
-              line-height: 1.6;
-            }
-
-            @media print {
-              body {
-                background: white;
-                padding: 0;
-              }
-
-              .receipt {
-                box-shadow: none;
-                max-width: 100%;
-              }
-            }
-
-          </style>
-        </head>
-
-        <body>
-
-          <div class="receipt">
-
-            <div class="brand">IyanjuPay</div>
-
-            <div class="subtitle">
-              Transaction Receipt
-            </div>
-
-            <div class="status">
-
-              ${
-                [
-                  'completed',
-                  'successful',
-                  'success'
-                ].includes(normalizeStatus(status))
-                  ? '✓'
-                  : normalizeStatus(status) === 'failed'
-                    ? '×'
-                    : '⋯'
-              }
-
-            </div>
-
-            <div class="amount">
-
-              ${moneyIn ? '+' : '-'}
-
-              ${escaped(currency)}
-
-              ${amount.toLocaleString(
-                'en-NG',
-                {
-                  minimumFractionDigits: 2,
-                  maximumFractionDigits: 2
-                }
-              )}
-
-            </div>
-
-            <div class="direction">
-
-              ${moneyIn
-                ? 'Money received'
-                : 'Money sent'}
-
-            </div>
-
-            <div class="divider"></div>
-
-            <div class="row">
-              <span class="label">Status</span>
-              <span class="value">${escaped(status)}</span>
-            </div>
-
-            <div class="row">
-              <span class="label">
-                ${moneyIn ? 'From' : 'To'}
-              </span>
-              <span class="value">
-                ${escaped(counterparty)}
-              </span>
-            </div>
-
-            ${
-              accountName
-                ? `
-                <div class="row">
-                  <span class="label">Account Name</span>
-                  <span class="value">
-                    ${escaped(accountName)}
-                  </span>
-                </div>
-                `
-                : ''
-            }
-
-            ${
-              bank
-                ? `
-                <div class="row">
-                  <span class="label">Bank</span>
-                  <span class="value">
-                    ${escaped(bank)}
-                  </span>
-                </div>
-                `
-                : ''
-            }
-
-            ${
-              accountNumber
-                ? `
-                <div class="row">
-                  <span class="label">Account Number</span>
-                  <span class="value">
-                    ${escaped(accountNumber)}
-                  </span>
-                </div>
-                `
-                : ''
-            }
-
-            ${
-              billProvider
-                ? `
-                <div class="row">
-                  <span class="label">Bill Provider</span>
-                  <span class="value">
-                    ${escaped(billProvider)}
-                  </span>
-                </div>
-                `
-                : ''
-            }
-
-            ${
-              billPhone
-                ? `
-                <div class="row">
-                  <span class="label">Phone Number</span>
-                  <span class="value">
-                    ${escaped(billPhone)}
-                  </span>
-                </div>
-                `
-                : ''
-            }
-
-            ${
-              customerIdentifier
-                ? `
-                <div class="row">
-                  <span class="label">Customer Number</span>
-                  <span class="value">
-                    ${escaped(customerIdentifier)}
-                  </span>
-                </div>
-                `
-                : ''
-            }
-
-            <div class="row">
-              <span class="label">Type</span>
-              <span class="value">
-                ${escaped(title)}
-              </span>
-            </div>
-
-            <div class="row">
-              <span class="label">Narration</span>
-              <span class="value">
-                ${escaped(narration)}
-              </span>
-            </div>
-
-            ${
-              fee > 0
-                ? `
-                <div class="row">
-                  <span class="label">Fee</span>
-                  <span class="value">
-                    ${formatMoney(fee)}
-                  </span>
-                </div>
-                `
-                : ''
-            }
-
-            <div class="row">
-              <span class="label">Date</span>
-              <span class="value">
-                ${escaped(
-                  formatFullDate(
-                    transaction.created_at
-                  )
-                )}
-              </span>
-            </div>
-
-            <div class="row">
-              <span class="label">Reference</span>
-              <span class="value reference">
-                ${escaped(reference)}
-              </span>
-            </div>
-
-            ${
-              providerReference
-                ? `
-                <div class="row">
-                  <span class="label">
-                    Provider Ref.
-                  </span>
-                  <span class="value reference">
-                    ${escaped(providerReference)}
-                  </span>
-                </div>
-                `
-                : ''
-            }
-
-            <div class="footer">
-              This is an electronically generated
-              transaction receipt from IyanjuPay.
-              <br />
-              Keep this receipt for your records.
-            </div>
-
-          </div>
-
-          <script>
-            window.onload = function() {
-              window.print();
-            };
-          </script>
-
-        </body>
-        </html>
-      `);
-
-      receiptWindow.document.close();
-
-    };
-
-
-  /*
-  |--------------------------------------------------------------------------
-  | FILTERED TRANSACTIONS
-  |--------------------------------------------------------------------------
-  */
+  /* ==============================================================
+     NORMALIZED TRANSACTIONS
+     ============================================================== */
+
+  const normalizedTransactions =
+    useMemo(
+      () =>
+        transactions.map(
+          normalizeTransaction
+        ),
+      [transactions]
+    );
+
+  /* ==============================================================
+     FILTER
+     ============================================================== */
 
   const filteredTransactions =
     useMemo(() => {
+      const query =
+        search.trim().toLowerCase();
 
-      return transactions.filter(
-        (transaction) => {
+      const now = new Date();
 
-          const status =
-            normalizeStatus(
-              transaction.status
-            );
+      return normalizedTransactions.filter(
+        transaction => {
+          const raw =
+            transaction.transaction;
 
-          const matchesFilter =
-            filter === 'all' ||
-            (
-              filter === 'completed' &&
-              [
-                'completed',
-                'successful',
-                'success'
-              ].includes(status)
-            ) ||
-            (
-              filter === 'pending' &&
-              [
-                'pending',
-                'processing'
-              ].includes(status)
-            ) ||
-            (
-              filter === 'failed' &&
-              [
-                'failed',
-                'cancelled',
-                'canceled',
-                'reversed'
-              ].includes(status)
-            );
+          /*
+           * SEARCH
+           */
 
+          if (query) {
+            const searchable = [
+              transaction.title,
+              transaction.subtitle,
+              transaction.providerName,
+              transaction.recipientName,
+              transaction.senderName,
+              transaction.phoneNumber,
+              transaction.accountNumber,
+              transaction.accountName,
+              transaction.bankName,
+              transaction.walletId,
+              transaction.virtualAccountNumber,
+              transaction.meterNumber,
+              transaction.smartcardNumber,
+              transaction.packageName,
+              raw.reference_number,
+              raw.provider_reference,
+              raw.description,
+              raw.category,
+              raw.transaction_type,
+              raw.status,
+            ]
+              .filter(Boolean)
+              .join(" ")
+              .toLowerCase();
 
-          const searchText =
-            search
-              .toLowerCase()
-              .trim();
+            if (
+              !searchable.includes(
+                query
+              )
+            ) {
+              return false;
+            }
+          }
 
+          /*
+           * TYPE FILTER
+           */
 
-          const searchableText = [
+          if (
+            filterType ===
+            "money_in" &&
+            transaction.direction !==
+              "incoming"
+          ) {
+            return false;
+          }
 
-            transaction.description,
-            transaction.transaction_type,
-            transaction.reference_number,
-            transaction.reference,
-            transaction.provider_reference,
+          if (
+            filterType ===
+            "money_out" &&
+            transaction.direction !==
+              "outgoing"
+          ) {
+            return false;
+          }
 
-            getTransactionTitle(transaction),
-            getTransactionSubtitle(transaction),
+          if (
+            filterType ===
+            "transfers" &&
+            transaction.kind !==
+              "bank_transfer" &&
+            transaction.kind !==
+              "wallet_transfer"
+          ) {
+            return false;
+          }
 
-            getCounterpartyName(transaction),
-            getCounterpartyAccountName(transaction),
-            getCounterpartyNickname(transaction),
-            getCounterpartyWallet(transaction),
-            getCounterpartyBankName(transaction),
-            getCounterpartyAccountNumber(transaction),
-            getCounterpartyPhone(transaction),
+          if (
+            filterType ===
+            "bills" &&
+            !BILL_KINDS.has(
+              transaction.kind
+            )
+          ) {
+            return false;
+          }
 
-            getBillPhoneNumber(transaction),
-            getBillProvider(transaction),
-            getCustomerIdentifier(transaction),
+          if (
+            filterType ===
+            "funding" &&
+            transaction.kind !==
+              "funding"
+          ) {
+            return false;
+          }
 
-            getNarration(transaction)
+          if (
+            filterType ===
+            "refunds" &&
+            transaction.kind !==
+              "refund"
+          ) {
+            return false;
+          }
 
-          ]
-            .filter(Boolean)
-            .join(' ')
-            .toLowerCase();
+          /*
+           * STATUS FILTER
+           */
 
+          if (
+            statusFilter ===
+              "successful" &&
+            !transaction.isSuccessful
+          ) {
+            return false;
+          }
 
-          const matchesSearch =
-            !searchText ||
-            searchableText.includes(
-              searchText
-            );
+          if (
+            statusFilter ===
+              "failed" &&
+            !transaction.isFailed
+          ) {
+            return false;
+          }
 
+          if (
+            statusFilter ===
+              "pending" &&
+            !transaction.isPending
+          ) {
+            return false;
+          }
 
-          return (
-            matchesFilter &&
-            matchesSearch
-          );
+          /*
+           * DATE FILTER
+           */
 
-        }
-      );
+          if (
+            dateFilter !== "all"
+          ) {
+            const createdAt =
+              new Date(
+                raw.created_at
+              );
 
-    }, [
-      transactions,
-      filter,
-      search
-    ]);
+            if (
+              dateFilter ===
+              "today"
+            ) {
+              const start =
+                new Date(now);
 
+              start.setHours(
+                0,
+                0,
+                0,
+                0
+              );
 
-  /*
-  |--------------------------------------------------------------------------
-  | SUMMARY
-  |--------------------------------------------------------------------------
-  */
-
-  const completedTransactions =
-    transactions.filter(
-      (transaction) => {
-
-        return [
-          'completed',
-          'successful',
-          'success'
-        ].includes(
-          normalizeStatus(
-            transaction.status
-          )
-        );
-
-      }
-    );
-
-
-  const pendingTransactions =
-    transactions.filter(
-      (transaction) => {
-
-        return [
-          'pending',
-          'processing'
-        ].includes(
-          normalizeStatus(
-            transaction.status
-          )
-        );
-
-      }
-    );
-
-
-  const failedTransactions =
-    transactions.filter(
-      (transaction) => {
-
-        return [
-          'failed',
-          'cancelled',
-          'canceled',
-          'reversed'
-        ].includes(
-          normalizeStatus(
-            transaction.status
-          )
-        );
-
-      }
-    );
-
-
-  const totalSpent =
-    completedTransactions
-      .filter(
-        (transaction) =>
-          !isMoneyIn(
-            transaction
-          )
-      )
-      .reduce(
-        (
-          sum,
-          transaction
-        ) =>
-          sum +
-          Number(
-            transaction.amount || 0
-          ),
-        0
-      );
-
-
-  /*
-  |--------------------------------------------------------------------------
-  | LOADING
-  |--------------------------------------------------------------------------
-  */
-
-  if (loading) {
-
-    return (
-
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-50 px-4">
-
-        <div className="text-center">
-
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto" />
-
-          <p className="mt-4 text-sm text-gray-600">
-            Loading transactions...
-          </p>
-
-        </div>
-
-      </div>
-    );
-
-  }
-
-
-  /*
-  |--------------------------------------------------------------------------
-  | PAGE
-  |--------------------------------------------------------------------------
-  */
-
-  return (
-
-    <div className="min-h-screen bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-50">
-
-      <div className="w-full max-w-6xl mx-auto px-3 sm:px-4 md:px-6 py-4 sm:py-6">
-
-
-        {/* HEADER */}
-
-        <div className="flex items-center justify-between gap-3 mb-5 sm:mb-6">
-
-          <div className="flex items-center gap-2 sm:gap-4 min-w-0">
-
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={onBack}
-              className="text-purple-600 shrink-0 px-2 sm:px-3"
-            >
-
-              <ArrowLeft className="h-4 w-4 sm:mr-2" />
-
-              <span className="hidden sm:inline">
-                Back
-              </span>
-
-            </Button>
-
-            <h1 className="text-lg sm:text-2xl font-bold text-gray-900 truncate">
-              Transaction History
-            </h1>
-
-          </div>
-
-
-          <div className="hidden sm:flex gap-2">
-
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() =>
-                setFilter(
-                  filter === 'all'
-                    ? 'completed'
-                    : 'all'
-                )
+              if (
+                createdAt < start
+              ) {
+                return false;
               }
-            >
+            }
 
-              <Filter className="h-4 w-4 mr-2" />
+            if (
+              dateFilter ===
+              "7_days"
+            ) {
+              const start =
+                new Date(now);
 
-              Filter
+              start.setDate(
+                start.getDate() -
+                  7
+              );
 
-            </Button>
+              if (
+                createdAt < start
+              ) {
+                return false;
+              }
+            }
 
+            if (
+              dateFilter ===
+              "30_days"
+            ) {
+              const start =
+                new Date(now);
 
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
+              start.setDate(
+                start.getDate() -
+                  30
+              );
 
-                if (
-                  filteredTransactions.length === 0
-                ) {
+              if (
+                createdAt < start
+              ) {
+                return false;
+              }
+            }
 
-                  toast({
-                    title: 'No transactions',
-                    description:
-                      'There are no transactions to export.'
-                  });
-
-                  return;
-
-                }
-
-
-                const rows =
-                  filteredTransactions.map(
-                    (transaction) => ({
-
-                      Date:
-                        formatFullDate(
-                          transaction.created_at
-                        ),
-
-                      Transaction:
-                        getTransactionTitle(
-                          transaction
-                        ),
-
-                      Direction:
-                        isMoneyIn(transaction)
-                          ? 'Money In'
-                          : 'Money Out',
-
-                      Counterparty:
-                        getCounterpartyName(
-                          transaction
-                        ),
-
-                      AccountName:
-                        getCounterpartyAccountName(
-                          transaction
-                        ),
-
-                      Bank:
-                        getCounterpartyBankName(
-                          transaction
-                        ),
-
-                      AccountNumber:
-                        getCounterpartyAccountNumber(
-                          transaction
-                        ),
-
-                      PhoneNumber:
-                        getBillPhoneNumber(
-                          transaction
-                        ),
-
-                      BillProvider:
-                        getBillProvider(
-                          transaction
-                        ),
-
-                      CustomerIdentifier:
-                        getCustomerIdentifier(
-                          transaction
-                        ),
-
-                      Amount:
-                        Number(
-                          transaction.amount
-                        ),
-
-                      Fee:
-                        getFee(
-                          transaction
-                        ),
-
-                      Status:
-                        transaction.status,
-
-                      Reference:
-                        getReference(
-                          transaction
-                        ),
-
-                      Narration:
-                        getNarration(
-                          transaction
-                        )
-
-                    })
-                  );
-
-
-                const headers =
-                  Object.keys(
-                    rows[0]
-                  );
-
-
-                const csv = [
-
-                  headers.join(','),
-
-                  ...rows.map(
-                    (row) =>
-                      headers
-                        .map(
-                          (header) =>
-                            `"${String(
-                              (row as any)[header] ?? ''
-                            ).replace(
-                              /"/g,
-                              '""'
-                            )}"`
-                        )
-                        .join(',')
-                  )
-
-                ].join('\n');
-
-
-                const blob =
-                  new Blob(
-                    [csv],
-                    {
-                      type:
-                        'text/csv;charset=utf-8;'
-                    }
-                  );
-
-                const url =
-                  URL.createObjectURL(
-                    blob
-                  );
-
-                const a =
-                  document.createElement(
-                    'a'
-                  );
-
-                a.href = url;
-
-                a.download =
-                  `iyanjupay-transactions-${new Date()
-                    .toISOString()
-                    .slice(0, 10)}.csv`;
-
-                a.click();
-
-                URL.revokeObjectURL(
-                  url
+            if (
+              dateFilter ===
+              "this_month"
+            ) {
+              const start =
+                new Date(
+                  now.getFullYear(),
+                  now.getMonth(),
+                  1
                 );
 
-              }}
-            >
-
-              <Download className="h-4 w-4 mr-2" />
-
-              Export
-
-            </Button>
-
-          </div>
-
-        </div>
-
-
-        {/* SEARCH */}
-
-        <div className="relative mb-4 sm:mb-6">
-
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-
-          <input
-            type="text"
-            value={search}
-            onChange={(e) =>
-              setSearch(
-                e.target.value
-              )
+              if (
+                createdAt < start
+              ) {
+                return false;
+              }
             }
-            placeholder="Search name, account, bank, phone or reference..."
-            className="w-full h-11 rounded-xl border border-gray-200 bg-white pl-10 pr-4 text-sm outline-none focus:ring-2 focus:ring-purple-500"
-          />
+          }
 
+          return true;
+        }
+      );
+    }, [
+      normalizedTransactions,
+      search,
+      filterType,
+      statusFilter,
+      dateFilter,
+    ]);
+
+  /* ==============================================================
+     PAGINATION
+     ============================================================== */
+
+  const totalPages =
+    Math.max(
+      1,
+      Math.ceil(
+        filteredTransactions.length /
+          PAGE_SIZE
+      )
+    );
+
+  const safePage =
+    Math.min(
+      page,
+      totalPages
+    );
+
+  const paginatedTransactions =
+    useMemo(() => {
+      const start =
+        (safePage - 1) *
+        PAGE_SIZE;
+
+      return filteredTransactions.slice(
+        start,
+        start + PAGE_SIZE
+      );
+    }, [
+      filteredTransactions,
+      safePage,
+    ]);
+
+  useEffect(() => {
+    if (page > totalPages) {
+      setPage(totalPages);
+    }
+  }, [page, totalPages]);
+
+  /* ==============================================================
+     RESET PAGE WHEN FILTERS CHANGE
+     ============================================================== */
+
+  useEffect(() => {
+    setPage(1);
+  }, [
+    search,
+    filterType,
+    statusFilter,
+    dateFilter,
+  ]);
+
+  /* ==============================================================
+     COPY
+     ============================================================== */
+
+  const copyToClipboard =
+    useCallback(
+      async (
+        value: string,
+        label: string
+      ) => {
+        if (!value) {
+          return;
+        }
+
+        try {
+          await navigator.clipboard.writeText(
+            value
+          );
+
+          toast({
+            title: "Copied",
+            description: `${label} copied to clipboard.`,
+          });
+        } catch (err) {
+          console.error(
+            "Clipboard error:",
+            err
+          );
+
+          toast({
+            title: "Copy failed",
+            description:
+              `Unable to copy ${label.toLowerCase()}.`,
+            variant:
+              "destructive",
+          });
+        }
+      },
+      [toast]
+    );
+
+  /* ==============================================================
+     CSV EXPORT
+     ============================================================== */
+
+  const exportCsv =
+    useCallback(() => {
+      if (
+        filteredTransactions.length ===
+        0
+      ) {
+        toast({
+          title:
+            "Nothing to export",
+          description:
+            "There are no transactions matching your current filters.",
+        });
+
+        return;
+      }
+
+      const headers = [
+        "Date",
+        "Title",
+        "Type",
+        "Direction",
+        "Amount",
+        "Fee",
+        "Total Charged",
+        "Status",
+        "Provider",
+        "Bank",
+        "Account Name",
+        "Account Number",
+        "Phone Number",
+        "Wallet ID",
+        "Meter Number",
+        "Smartcard/IUC",
+        "Reference",
+        "Provider Reference",
+      ];
+
+      const rows =
+        filteredTransactions.map(
+          item => [
+            formatDateTime(
+              item.transaction.created_at
+            ),
+            item.title,
+            item.kind,
+            item.direction,
+            item.amount.toFixed(2),
+            item.fee.toFixed(2),
+            item.totalCharged.toFixed(
+              2
+            ),
+            getStatusLabel(item),
+            item.providerName,
+            item.bankName,
+            item.accountName,
+            item.accountNumber,
+            item.phoneNumber,
+            item.walletId,
+            item.meterNumber,
+            item.smartcardNumber,
+            item.transaction
+              .reference_number,
+            item.transaction
+              .provider_reference,
+          ]
+            .map(escapeCsv)
+            .join(",")
+        );
+
+      const csv = [
+        headers
+          .map(escapeCsv)
+          .join(","),
+        ...rows,
+      ].join("\n");
+
+      const blob =
+        new Blob(
+          [csv],
+          {
+            type:
+              "text/csv;charset=utf-8;",
+          }
+        );
+
+      const url =
+        URL.createObjectURL(
+          blob
+        );
+
+      const anchor =
+        document.createElement(
+          "a"
+        );
+
+      anchor.href = url;
+
+      anchor.download = `iyanjupay-transaction-history-${new Date()
+        .toISOString()
+        .slice(0, 10)}.csv`;
+
+      document.body.appendChild(
+        anchor
+      );
+
+      anchor.click();
+
+      document.body.removeChild(
+        anchor
+      );
+
+      URL.revokeObjectURL(
+        url
+      );
+
+      toast({
+        title:
+          "Transactions exported",
+        description: `${filteredTransactions.length} transaction${
+          filteredTransactions.length ===
+          1
+            ? ""
+            : "s"
+        } exported successfully.`,
+      });
+    }, [
+      filteredTransactions,
+      toast,
+    ]);
+
+  /* ==============================================================
+     PRINT RECEIPT
+     ============================================================== */
+
+  const printReceipt =
+    useCallback(
+      (
+        item: NormalizedTransaction
+      ) => {
+        const transaction =
+          item.transaction;
+
+        const status =
+          getStatusLabel(item);
+
+        const amount =
+          formatCurrency(
+            item.amount
+          );
+
+        const fee =
+          formatCurrency(
+            item.fee
+          );
+
+        const total =
+          formatCurrency(
+            item.totalCharged
+          );
+
+        const reference =
+          transaction.reference_number;
+
+        const detail = (
+          label: string,
+          value: string
+        ) => {
+          if (!value) {
+            return "";
+          }
+
+          return `
+            <div class="row">
+              <span>${label}</span>
+              <strong>${value}</strong>
+            </div>
+          `;
+        };
+
+        let details = "";
+
+        if (
+          item.kind ===
+          "bank_transfer"
+        ) {
+          details += detail(
+            "Account name",
+            item.accountName
+          );
+
+          details += detail(
+            "Account number",
+            item.accountNumber
+          );
+
+          details += detail(
+            "Bank",
+            item.bankName ||
+              item.bankCode
+          );
+        }
+
+        if (
+          item.kind ===
+          "wallet_transfer"
+        ) {
+          if (
+            item.direction ===
+            "incoming"
+          ) {
+            details += detail(
+              "Sender",
+              item.senderName
+            );
+          } else {
+            details += detail(
+              "Recipient",
+              item.recipientName
+            );
+          }
+
+          details += detail(
+            "Phone number",
+            item.phoneNumber
+          );
+
+          details += detail(
+            "Wallet ID",
+            item.walletId
+          );
+        }
+
+        if (
+          item.kind ===
+          "airtime"
+        ) {
+          details += detail(
+            "Provider",
+            item.providerName
+          );
+
+          details += detail(
+            "Phone number",
+            item.phoneNumber
+          );
+        }
+
+        if (
+          item.kind === "data"
+        ) {
+          details += detail(
+            "Provider",
+            item.providerName
+          );
+
+          details += detail(
+            "Phone number",
+            item.phoneNumber
+          );
+
+          details += detail(
+            "Plan",
+            item.packageName
+          );
+        }
+
+        if (
+          item.kind ===
+          "electricity"
+        ) {
+          details += detail(
+            "Provider",
+            item.providerName
+          );
+
+          details += detail(
+            "Meter number",
+            item.meterNumber
+          );
+
+          details += detail(
+            "Meter type",
+            item.meterType
+          );
+        }
+
+        if (
+          item.kind === "cable"
+        ) {
+          details += detail(
+            "Provider",
+            item.providerName
+          );
+
+          details += detail(
+            "Smartcard/IUC",
+            item.smartcardNumber
+          );
+
+          details += detail(
+            "Package",
+            item.packageName
+          );
+        }
+
+        if (
+          item.kind ===
+          "internet"
+        ) {
+          details += detail(
+            "Provider",
+            item.providerName
+          );
+
+          details += detail(
+            "Account number",
+            item.internetAccount
+          );
+
+          details += detail(
+            "Plan",
+            item.packageName
+          );
+        }
+
+        if (
+          item.kind ===
+          "funding"
+        ) {
+          details += detail(
+            "Sender",
+            item.senderName
+          );
+
+          details += detail(
+            "Bank",
+            stringValue(
+              transaction.metadata
+                ?.sender_bank,
+              transaction.metadata
+                ?.bank_name,
+              "Bank transfer"
+            )
+          );
+
+          details += detail(
+            "Virtual account",
+            item.virtualAccountNumber
+          );
+        }
+
+        const popup =
+          window.open(
+            "",
+            "_blank",
+            "width=700,height=850"
+          );
+
+        if (!popup) {
+          toast({
+            title:
+              "Unable to print",
+            description:
+              "Please allow pop-ups for IyanjuPay and try again.",
+            variant:
+              "destructive",
+          });
+
+          return;
+        }
+
+        popup.document.write(`
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <title>IyanjuPay Receipt - ${reference}</title>
+
+            <style>
+              * {
+                box-sizing: border-box;
+              }
+
+              body {
+                margin: 0;
+                padding: 40px 20px;
+                background: #f5f5f5;
+                color: #111827;
+                font-family:
+                  Arial,
+                  Helvetica,
+                  sans-serif;
+              }
+
+              .receipt {
+                width: 100%;
+                max-width: 620px;
+                margin: 0 auto;
+                background: white;
+                border-radius: 18px;
+                padding: 32px;
+                box-shadow:
+                  0 10px 35px
+                  rgba(0,0,0,.08);
+              }
+
+              .brand {
+                text-align: center;
+                margin-bottom: 24px;
+              }
+
+              .brand img {
+                width: 64px;
+                height: 64px;
+                object-fit: contain;
+                margin-bottom: 8px;
+              }
+
+              .brand h1 {
+                margin: 0;
+                font-size: 26px;
+              }
+
+              .brand p {
+                margin: 6px 0 0;
+                color: #6b7280;
+                font-size: 13px;
+              }
+
+              .status {
+                text-align: center;
+                margin: 22px 0;
+              }
+
+              .status span {
+                display: inline-block;
+                padding: 8px 16px;
+                border-radius: 999px;
+                font-size: 13px;
+                font-weight: 700;
+              }
+
+              .successful {
+                background: #ecfdf5;
+                color: #047857;
+              }
+
+              .failed {
+                background: #fef2f2;
+                color: #b91c1c;
+              }
+
+              .pending {
+                background: #fffbeb;
+                color: #b45309;
+              }
+
+              .title {
+                text-align: center;
+                font-size: 20px;
+                font-weight: 700;
+                margin-bottom: 5px;
+              }
+
+              .subtitle {
+                text-align: center;
+                color: #6b7280;
+                font-size: 14px;
+                margin-bottom: 28px;
+              }
+
+              .section {
+                border-top: 1px solid #e5e7eb;
+                padding-top: 12px;
+                margin-top: 16px;
+              }
+
+              .row {
+                display: flex;
+                justify-content: space-between;
+                gap: 20px;
+                padding: 11px 0;
+                border-bottom: 1px solid #f3f4f6;
+                font-size: 13px;
+              }
+
+              .row span {
+                color: #6b7280;
+              }
+
+              .row strong {
+                text-align: right;
+                word-break: break-word;
+              }
+
+              .amount {
+                margin-top: 20px;
+                padding: 18px;
+                border-radius: 12px;
+                background: #f9fafb;
+              }
+
+              .amount .row:last-child {
+                border-bottom: 0;
+                font-size: 16px;
+              }
+
+              .footer {
+                text-align: center;
+                margin-top: 28px;
+                padding-top: 20px;
+                border-top: 1px dashed #d1d5db;
+                color: #6b7280;
+                font-size: 11px;
+                line-height: 1.6;
+              }
+
+              @media print {
+                body {
+                  padding: 0;
+                  background: white;
+                }
+
+                .receipt {
+                  box-shadow: none;
+                  max-width: none;
+                }
+              }
+            </style>
+          </head>
+
+          <body>
+            <div class="receipt">
+
+              <div class="brand">
+                <img
+                  src="${window.location.origin}/icon-180.png"
+                  alt="IyanjuPay"
+                />
+                <h1>IyanjuPay</h1>
+                <p>Transaction Receipt</p>
+              </div>
+
+              <div class="status">
+                <span class="${
+                  item.isSuccessful
+                    ? "successful"
+                    : item.isFailed
+                    ? "failed"
+                    : "pending"
+                }">
+                  ${status}
+                </span>
+              </div>
+
+              <div class="title">
+                ${item.title}
+              </div>
+
+              <div class="subtitle">
+                ${item.subtitle}
+              </div>
+
+              <div class="section">
+                ${details}
+              </div>
+
+              <div class="amount">
+                ${detail(
+                  "Amount",
+                  amount
+                )}
+
+                ${
+                  item.fee > 0
+                    ? detail(
+                        "Fee",
+                        fee
+                      )
+                    : ""
+                }
+
+                ${
+                  item.fee > 0
+                    ? detail(
+                        "Total charged",
+                        total
+                      )
+                    : ""
+                }
+              </div>
+
+              <div class="section">
+                ${detail(
+                  "Reference",
+                  reference
+                )}
+
+                ${detail(
+                  "Date",
+                  formatDateTime(
+                    transaction.created_at
+                  )
+                )}
+
+                ${
+                  transaction.provider_reference
+                    ? detail(
+                        "Provider reference",
+                        transaction.provider_reference
+                      )
+                    : ""
+                }
+              </div>
+
+              <div class="footer">
+                This receipt was generated by IyanjuPay.<br />
+                Keep this receipt for your records.
+              </div>
+
+            </div>
+
+            <script>
+              window.onload = function() {
+                window.print();
+              };
+            </script>
+          </body>
+          </html>
+        `);
+
+        popup.document.close();
+      },
+      [toast]
+    );
+
+  /* ==============================================================
+     CLEAR FILTERS
+     ============================================================== */
+
+  const clearFilters =
+    useCallback(() => {
+      setSearch("");
+      setFilterType("all");
+      setStatusFilter("all");
+      setDateFilter("all");
+      setPage(1);
+    }, []);
+
+  const hasActiveFilters =
+    Boolean(
+      search ||
+        filterType !== "all" ||
+        statusFilter !== "all" ||
+        dateFilter !== "all"
+    );
+
+  /* ==============================================================
+     RENDER
+     ============================================================== */
+
+  return (
+    <div className="min-h-screen bg-gray-50 pb-10">
+      {/* ==========================================================
+          HEADER
+          ========================================================== */}
+
+      <div className="sticky top-0 z-30 border-b border-gray-200 bg-white/95 backdrop-blur">
+        <div className="mx-auto max-w-5xl px-4 py-4 sm:px-6">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-3">
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                onClick={onBack}
+                className="shrink-0"
+              >
+                <ArrowLeft className="h-5 w-5" />
+              </Button>
+
+              <div className="min-w-0">
+                <h1 className="truncate text-xl font-bold text-gray-900 sm:text-2xl">
+                  Transaction History
+                </h1>
+
+                <p className="text-xs text-gray-500 sm:text-sm">
+                  View and manage your IyanjuPay transactions
+                </p>
+              </div>
+            </div>
+
+            <div className="flex shrink-0 items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                onClick={() =>
+                  loadTransactions(
+                    true
+                  )
+                }
+                disabled={
+                  loading ||
+                  refreshing
+                }
+                title="Refresh"
+              >
+                <RefreshCw
+                  className={`h-4 w-4 ${
+                    refreshing
+                      ? "animate-spin"
+                      : ""
+                  }`}
+                />
+              </Button>
+
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                onClick={exportCsv}
+                disabled={
+                  filteredTransactions.length ===
+                  0
+                }
+                title="Export CSV"
+              >
+                <Download className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
         </div>
+      </div>
 
+      {/* ==========================================================
+          CONTENT
+          ========================================================== */}
 
-        {/* SUMMARY */}
+      <main className="mx-auto max-w-5xl px-4 py-5 sm:px-6 sm:py-7">
+        {/* ========================================================
+            SUMMARY
+            ======================================================== */}
 
-        <div className="flex md:grid md:grid-cols-4 gap-3 mb-5 sm:mb-6 overflow-x-auto">
-
-          <Card className="min-w-[150px] md:min-w-0 shadow-sm">
-
-            <CardContent className="p-4 text-center">
-
-              <p className="text-xl font-bold text-green-600">
-                {completedTransactions.length}
+        <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <Card className="border-0 shadow-sm">
+            <CardContent className="p-4">
+              <p className="text-xs text-gray-500">
+                Total
               </p>
 
-              <p className="text-xs text-gray-600 mt-1">
-                Completed
+              <p className="mt-1 text-xl font-bold text-gray-900">
+                {
+                  normalizedTransactions.length
+                }
               </p>
-
             </CardContent>
-
           </Card>
 
-
-          <Card className="min-w-[150px] md:min-w-0 shadow-sm">
-
-            <CardContent className="p-4 text-center">
-
-              <p className="text-xl font-bold text-yellow-600">
-                {pendingTransactions.length}
+          <Card className="border-0 shadow-sm">
+            <CardContent className="p-4">
+              <p className="text-xs text-gray-500">
+                Successful
               </p>
 
-              <p className="text-xs text-gray-600 mt-1">
+              <p className="mt-1 text-xl font-bold text-green-600">
+                {
+                  normalizedTransactions.filter(
+                    item =>
+                      item.isSuccessful
+                  ).length
+                }
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card className="border-0 shadow-sm">
+            <CardContent className="p-4">
+              <p className="text-xs text-gray-500">
                 Pending
               </p>
 
+              <p className="mt-1 text-xl font-bold text-yellow-600">
+                {
+                  normalizedTransactions.filter(
+                    item =>
+                      item.isPending
+                  ).length
+                }
+              </p>
             </CardContent>
-
           </Card>
 
-
-          <Card className="min-w-[150px] md:min-w-0 shadow-sm">
-
-            <CardContent className="p-4 text-center">
-
-              <p className="text-xl font-bold text-red-600">
-                {failedTransactions.length}
-              </p>
-
-              <p className="text-xs text-gray-600 mt-1">
+          <Card className="border-0 shadow-sm">
+            <CardContent className="p-4">
+              <p className="text-xs text-gray-500">
                 Failed
               </p>
 
-            </CardContent>
-
-          </Card>
-
-
-          <Card className="min-w-[180px] md:min-w-0 shadow-sm">
-
-            <CardContent className="p-4 text-center">
-
-              <p className="text-xl font-bold text-purple-600">
-                {formatMoney(totalSpent)}
+              <p className="mt-1 text-xl font-bold text-red-600">
+                {
+                  normalizedTransactions.filter(
+                    item =>
+                      item.isFailed
+                  ).length
+                }
               </p>
-
-              <p className="text-xs text-gray-600 mt-1">
-                Total Sent
-              </p>
-
             </CardContent>
-
           </Card>
-
         </div>
 
+        {/* ========================================================
+            SEARCH
+            ======================================================== */}
 
-        {/* FILTERS */}
+        <Card className="mb-5 border-0 shadow-sm">
+          <CardContent className="space-y-4 p-4">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
 
-        <div className="flex gap-2 mb-5 overflow-x-auto">
-
-          {[
-            'all',
-            'completed',
-            'pending',
-            'failed'
-          ].map(
-            (status) => (
-
-              <Button
-                key={status}
-                variant={
-                  filter === status
-                    ? 'default'
-                    : 'outline'
+              <Input
+                value={search}
+                onChange={event =>
+                  setSearch(
+                    event.target.value
+                  )
                 }
-                size="sm"
-                onClick={() =>
-                  setFilter(status)
-                }
-                className={
-                  filter === status
-                    ? 'shrink-0 rounded-full px-4 bg-purple-600 hover:bg-purple-700'
-                    : 'shrink-0 rounded-full px-4 bg-white'
+                placeholder="Search transactions, names, phone, account or reference..."
+                className="h-11 pl-10 pr-10"
+              />
+
+              {search && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    setSearch("")
+                  }
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              )}
+            </div>
+
+            {/* ====================================================
+                FILTERS
+                ==================================================== */}
+
+            <div className="grid gap-3 sm:grid-cols-3">
+              <Select
+                value={filterType}
+                onValueChange={value =>
+                  setFilterType(
+                    value as FilterType
+                  )
                 }
               >
+                <SelectTrigger>
+                  <SelectValue placeholder="Transaction type" />
+                </SelectTrigger>
 
-                {status === 'all'
-                  ? 'All'
-                  : status.charAt(0).toUpperCase() +
-                    status.slice(1)}
+                <SelectContent>
+                  <SelectItem value="all">
+                    All transactions
+                  </SelectItem>
 
-              </Button>
+                  <SelectItem value="money_in">
+                    Money received
+                  </SelectItem>
 
-            )
-          )}
+                  <SelectItem value="money_out">
+                    Money sent
+                  </SelectItem>
 
-        </div>
+                  <SelectItem value="transfers">
+                    Transfers
+                  </SelectItem>
 
+                  <SelectItem value="bills">
+                    Bills & services
+                  </SelectItem>
 
-        {/* TRANSACTION LIST */}
+                  <SelectItem value="funding">
+                    Wallet funding
+                  </SelectItem>
 
-        <Card className="shadow-sm border-gray-100 overflow-hidden">
+                  <SelectItem value="refunds">
+                    Refunds
+                  </SelectItem>
+                </SelectContent>
+              </Select>
 
-          <CardHeader className="px-4 sm:px-6 py-4 border-b bg-white">
+              <Select
+                value={statusFilter}
+                onValueChange={value =>
+                  setStatusFilter(
+                    value as StatusFilter
+                  )
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Status" />
+                </SelectTrigger>
 
-            <CardTitle className="text-base sm:text-lg">
-              Recent Transactions
-            </CardTitle>
+                <SelectContent>
+                  <SelectItem value="all">
+                    All statuses
+                  </SelectItem>
 
-          </CardHeader>
+                  <SelectItem value="successful">
+                    Successful
+                  </SelectItem>
 
+                  <SelectItem value="pending">
+                    Pending
+                  </SelectItem>
 
-          <CardContent className="p-0">
+                  <SelectItem value="failed">
+                    Failed
+                  </SelectItem>
+                </SelectContent>
+              </Select>
 
-            {filteredTransactions.length === 0 ? (
+              <Select
+                value={dateFilter}
+                onValueChange={
+                  setDateFilter
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Date" />
+                </SelectTrigger>
 
-              <div className="text-center py-12">
+                <SelectContent>
+                  <SelectItem value="all">
+                    All dates
+                  </SelectItem>
 
-                <Receipt className="h-10 w-10 text-gray-300 mx-auto mb-3" />
+                  <SelectItem value="today">
+                    Today
+                  </SelectItem>
 
-                <p className="text-gray-500">
-                  No transactions found
+                  <SelectItem value="7_days">
+                    Last 7 days
+                  </SelectItem>
+
+                  <SelectItem value="30_days">
+                    Last 30 days
+                  </SelectItem>
+
+                  <SelectItem value="this_month">
+                    This month
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {hasActiveFilters && (
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-xs text-gray-500">
+                  Showing{" "}
+                  {
+                    filteredTransactions.length
+                  }{" "}
+                  matching transaction
+                  {filteredTransactions.length ===
+                  1
+                    ? ""
+                    : "s"}
                 </p>
 
-              </div>
-
-            ) : (
-
-              <div className="divide-y">
-
-                {filteredTransactions.map(
-                  (transaction) => {
-
-                    const moneyIn =
-                      isMoneyIn(
-                        transaction
-                      );
-
-                    const status =
-                      normalizeStatus(
-                        transaction.status
-                      );
-
-                    return (
-
-                      <button
-                        key={transaction.id}
-                        type="button"
-                        onClick={() =>
-                          setSelectedTransaction(
-                            transaction
-                          )
-                        }
-                        className="w-full text-left bg-white px-4 sm:px-6 py-4 hover:bg-gray-50"
-                      >
-
-                        <div className="flex items-center gap-3">
-
-                          <div
-                            className={`
-                              h-11 w-11 rounded-full
-                              flex items-center justify-center
-                              shrink-0
-                              ${getTransactionIconBackground(
-                                transaction
-                              )}
-                            `}
-                          >
-
-                            {getTransactionIcon(
-                              transaction
-                            )}
-
-                          </div>
-
-
-                          <div className="flex-1 min-w-0">
-
-                            <div className="flex justify-between gap-3">
-
-                              <div className="min-w-0">
-
-                                <p className="font-semibold text-sm text-gray-900 truncate">
-
-                                  {getTransactionTitle(
-                                    transaction
-                                  )}
-
-                                </p>
-
-                                <p className="text-xs text-gray-500 mt-1 truncate">
-
-                                  {getTransactionSubtitle(
-                                    transaction
-                                  )}
-
-                                </p>
-
-
-                                {/* RECIPIENT / ACCOUNT DETAILS */}
-
-                                {!isMoneyIn(transaction) && (
-                                  <p className="text-[11px] text-gray-400 mt-1 truncate">
-
-                                    {getCounterpartyAccountName(transaction) &&
-                                      `${getCounterpartyAccountName(transaction)}`}
-
-                                    {getCounterpartyBankName(transaction) &&
-                                      ` • ${getCounterpartyBankName(transaction)}`}
-
-                                  </p>
-                                )}
-
-                              </div>
-
-
-                              <div className="text-right shrink-0">
-
-                                <p
-                                  className={`
-                                    font-bold text-sm
-                                    ${
-                                      moneyIn
-                                        ? 'text-green-600'
-                                        : 'text-gray-900'
-                                    }
-                                  `}
-                                >
-
-                                  {moneyIn ? '+' : '-'}
-
-                                  {formatMoney(
-                                    transaction.amount
-                                  )}
-
-                                </p>
-
-                              </div>
-
-                            </div>
-
-
-                            <div className="flex items-center justify-between mt-2">
-
-                              <span className="text-[11px] text-gray-400">
-
-                                {formatDate(
-                                  transaction.created_at
-                                )}
-
-                                {' • '}
-
-                                {formatTime(
-                                  transaction.created_at
-                                )}
-
-                              </span>
-
-
-                              <span
-                                className={`
-                                  inline-flex items-center gap-1
-                                  px-2 py-0.5 rounded-full
-                                  text-[10px] font-semibold capitalize
-                                  ${getStatusColor(
-                                    transaction.status
-                                  )}
-                                `}
-                              >
-
-                                {getStatusIcon(
-                                  transaction.status
-                                )}
-
-                                {status}
-
-                              </span>
-
-                            </div>
-
-                          </div>
-
-
-                          <ChevronRight className="h-4 w-4 text-gray-300" />
-
-                        </div>
-
-                      </button>
-
-                    );
-
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={
+                    clearFilters
                   }
-                )}
-
+                >
+                  Clear filters
+                </Button>
               </div>
-
             )}
-
           </CardContent>
-
         </Card>
 
-      </div>
+        {/* ========================================================
+            ERROR
+            ======================================================== */}
 
+        {error && (
+          <Card className="mb-5 border-red-200 bg-red-50 shadow-sm">
+            <CardContent className="flex flex-col items-center gap-3 p-6 text-center">
+              <X className="h-8 w-8 text-red-500" />
 
-      {/* TRANSACTION DETAILS MODAL */}
+              <div>
+                <p className="font-semibold text-red-800">
+                  Unable to load transactions
+                </p>
 
-      {selectedTransaction && (
-
-        <div
-          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm"
-          onClick={() =>
-            setSelectedTransaction(
-              null
-            )
-          }
-        >
-
-          <div
-            className="w-full sm:max-w-md max-h-[92vh] overflow-y-auto bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl"
-            onClick={(e) =>
-              e.stopPropagation()
-            }
-          >
-
-            {/* HEADER */}
-
-            <div className="sticky top-0 z-10 bg-white border-b px-5 py-4 flex items-center justify-between">
-
-              <div className="flex items-center gap-2">
-
-                <Receipt className="h-5 w-5 text-purple-600" />
-
-                <div>
-
-                  <h2 className="font-bold text-gray-900">
-
-                    {getTransactionTitle(
-                      selectedTransaction
-                    )}
-
-                  </h2>
-
-                  <p className="text-[11px] text-gray-400">
-                    Transaction Details
-                  </p>
-
-                </div>
-
+                <p className="mt-1 text-sm text-red-600">
+                  {error}
+                </p>
               </div>
 
-
-              <button
+              <Button
                 type="button"
+                variant="outline"
                 onClick={() =>
-                  setSelectedTransaction(
-                    null
-                  )
+                  loadTransactions()
                 }
-                className="h-9 w-9 rounded-full bg-gray-100 flex items-center justify-center"
               >
+                Try again
+              </Button>
+            </CardContent>
+          </Card>
+        )}
 
-                <X className="h-4 w-4" />
+        {/* ========================================================
+            LOADING
+            ======================================================== */}
 
-              </button>
+        {loading && (
+          <div className="flex min-h-[300px] items-center justify-center">
+            <div className="text-center">
+              <Loader2 className="mx-auto h-9 w-9 animate-spin text-purple-600" />
 
+              <p className="mt-3 text-sm text-gray-500">
+                Loading transactions...
+              </p>
             </div>
+          </div>
+        )}
 
+        {/* ========================================================
+            EMPTY
+            ======================================================== */}
 
-            <div className="p-5">
-
-
-              {/* STATUS ICON */}
-
-              <div className="flex justify-center">
-
-                <div className="h-20 w-20 rounded-full bg-purple-100 flex items-center justify-center">
-
-                  {normalizeStatus(
-                    selectedTransaction.status
-                  ) === 'failed' ? (
-
-                    <XCircle className="h-10 w-10 text-red-600" />
-
-                  ) : normalizeStatus(
-                    selectedTransaction.status
-                  ) === 'pending' ? (
-
-                    <Clock className="h-10 w-10 text-yellow-600" />
-
-                  ) : (
-
-                    <CheckCircle2
-                      className={`
-                        h-10 w-10
-                        ${
-                          isMoneyIn(selectedTransaction)
-                            ? 'text-green-600'
-                            : 'text-purple-600'
-                        }
-                      `}
-                    />
-
-                  )}
-
+        {!loading &&
+          !error &&
+          filteredTransactions.length ===
+            0 && (
+            <Card className="border-0 shadow-sm">
+              <CardContent className="flex min-h-[320px] flex-col items-center justify-center px-6 text-center">
+                <div className="flex h-16 w-16 items-center justify-center rounded-full bg-gray-100">
+                  <History className="h-8 w-8 text-gray-400" />
                 </div>
 
-              </div>
+                <h2 className="mt-5 text-lg font-semibold text-gray-900">
+                  {hasActiveFilters
+                    ? "No matching transactions"
+                    : "No transactions yet"}
+                </h2>
 
+                <p className="mt-2 max-w-sm text-sm text-gray-500">
+                  {hasActiveFilters
+                    ? "Try changing your search or filters."
+                    : "Your completed transfers, bill payments and wallet activities will appear here."}
+                </p>
 
-              {/* AMOUNT */}
-
-              <div className="text-center mt-5">
-
-                <p
-                  className={`
-                    text-3xl font-bold
-                    ${
-                      isMoneyIn(selectedTransaction)
-                        ? 'text-green-600'
-                        : 'text-gray-900'
+                {hasActiveFilters && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="mt-5"
+                    onClick={
+                      clearFilters
                     }
-                  `}
-                >
-
-                  {isMoneyIn(selectedTransaction)
-                    ? '+'
-                    : '-'}
-
-                  {formatMoney(
-                    selectedTransaction.amount
-                  )}
-
-                </p>
-
-                <p className="text-sm text-gray-500 mt-1">
-
-                  {getTransactionSubtitle(
-                    selectedTransaction
-                  )}
-
-                </p>
-
-              </div>
-
-
-              {/* STATUS */}
-
-              <div className="flex justify-center mt-3">
-
-                <span
-                  className={`
-                    inline-flex items-center gap-1.5
-                    px-3 py-1.5 rounded-full
-                    border text-xs font-semibold capitalize
-                    ${getStatusColor(
-                      selectedTransaction.status
-                    )}
-                  `}
-                >
-
-                  {getStatusIcon(
-                    selectedTransaction.status
-                  )}
-
-                  {selectedTransaction.status}
-
-                </span>
-
-              </div>
-
-
-              {/* COUNTERPARTY CARD */}
-
-              <div className="mt-6 rounded-2xl bg-gray-50 p-4">
-
-                <p className="text-[11px] font-semibold tracking-wide text-gray-400 mb-3">
-
-                  {isMoneyIn(selectedTransaction)
-                    ? 'MONEY RECEIVED FROM'
-                    : 'MONEY SENT TO'}
-
-                </p>
-
-
-                <div className="flex items-start gap-3">
-
-                  <div className="h-12 w-12 rounded-full bg-purple-50 flex items-center justify-center shrink-0">
-
-                    {getCounterpartyBankName(selectedTransaction)
-                      ? (
-                        <Building2 className="h-5 w-5 text-purple-600" />
-                      )
-                      : (
-                        <User className="h-5 w-5 text-purple-600" />
-                      )}
-
-                  </div>
-
-
-                  <div className="min-w-0 flex-1">
-
-                    {/* RECIPIENT / SENDER NAME */}
-
-                    <p className="font-semibold text-gray-900 truncate">
-
-                      {getCounterpartyName(
-                        selectedTransaction
-                      )}
-
-                    </p>
-
-
-                    {/* ACCOUNT NAME */}
-
-                    {getCounterpartyAccountName(
-                      selectedTransaction
-                    ) && (
-
-                      <p className="text-sm text-gray-700 mt-1 truncate">
-
-                        Account Name:{' '}
-
-                        {getCounterpartyAccountName(
-                          selectedTransaction
-                        )}
-
-                      </p>
-
-                    )}
-
-
-                    {/* BANK NAME */}
-
-                    {getCounterpartyBankName(
-                      selectedTransaction
-                    ) && (
-
-                      <p className="text-sm text-gray-600 mt-1">
-
-                        Bank:{' '}
-
-                        {getCounterpartyBankName(
-                          selectedTransaction
-                        )}
-
-                      </p>
-
-                    )}
-
-
-                    {/* ACCOUNT NUMBER */}
-
-                    {getCounterpartyAccountNumber(
-                      selectedTransaction
-                    ) && (
-
-                      <p className="text-xs text-gray-500 mt-1 font-mono">
-
-                        Account:{' '}
-
-                        {getCounterpartyAccountNumber(
-                          selectedTransaction
-                        )}
-
-                      </p>
-
-                    )}
-
-
-                    {/* PHONE */}
-
-                    {getCounterpartyPhone(
-                      selectedTransaction
-                    ) && (
-
-                      <p className="text-xs text-gray-500 mt-1">
-
-                        Phone:{' '}
-
-                        {getCounterpartyPhone(
-                          selectedTransaction
-                        )}
-
-                      </p>
-
-                    )}
-
-                  </div>
-
-                </div>
-
-              </div>
-
-
-              {/* DETAILS */}
-
-              <div className="mt-5 space-y-1">
-
-
-                {/* BILL PROVIDER */}
-
-                {getBillProvider(
-                  selectedTransaction
-                ) && (
-
-                  <div className="flex items-center justify-between py-3 border-b">
-
-                    <div className="flex items-center gap-2 text-gray-500">
-
-                      <Building2 className="h-4 w-4" />
-
-                      <span className="text-sm">
-                        Bill Provider
-                      </span>
-
-                    </div>
-
-                    <span className="text-sm font-medium text-right max-w-[60%]">
-
-                      {getBillProvider(
-                        selectedTransaction
-                      )}
-
-                    </span>
-
-                  </div>
-
+                  >
+                    Clear filters
+                  </Button>
                 )}
-
-
-                {/* BILL PHONE */}
-
-                {getBillPhoneNumber(
-                  selectedTransaction
-                ) && (
-
-                  <div className="flex items-center justify-between py-3 border-b">
-
-                    <div className="flex items-center gap-2 text-gray-500">
-
-                      <Phone className="h-4 w-4" />
-
-                      <span className="text-sm">
-                        Phone Number
-                      </span>
-
-                    </div>
-
-                    <span className="text-sm font-medium">
-
-                      {getBillPhoneNumber(
-                        selectedTransaction
-                      )}
-
-                    </span>
-
-                  </div>
-
-                )}
-
-
-                {/* CUSTOMER NUMBER */}
-
-                {getCustomerIdentifier(
-                  selectedTransaction
-                ) && (
-
-                  <div className="flex items-center justify-between py-3 border-b">
-
-                    <div className="flex items-center gap-2 text-gray-500">
-
-                      <Hash className="h-4 w-4" />
-
-                      <span className="text-sm">
-                        Customer Number
-                      </span>
-
-                    </div>
-
-                    <span className="text-sm font-medium max-w-[55%] truncate">
-
-                      {getCustomerIdentifier(
-                        selectedTransaction
-                      )}
-
-                    </span>
-
-                  </div>
-
-                )}
-
-
-                {/* BILL AMOUNT */}
-
-                {[
-                  'airtime',
-                  'data',
-                  'electricity',
-                  'cable',
-                  'bill_payment',
-                  'bill',
-                  'bills'
-                ].includes(
-                  getTransactionType(
-                    selectedTransaction
-                  )
-                ) && (
-
-                  <div className="flex items-center justify-between py-3 border-b">
-
-                    <div className="flex items-center gap-2 text-gray-500">
-
-                      <Banknote className="h-4 w-4" />
-
-                      <span className="text-sm">
-                        Bill Payment Amount
-                      </span>
-
-                    </div>
-
-                    <span className="text-sm font-bold text-gray-900">
-
-                      {formatMoney(
-                        getBillPaymentAmount(
-                          selectedTransaction
-                        )
-                      )}
-
-                    </span>
-
-                  </div>
-
-                )}
-
-
-                {/* NARRATION */}
-
-                <div className="flex items-center justify-between py-3 border-b gap-3">
-
-                  <div className="flex items-center gap-2 text-gray-500">
-
-                    <FileText className="h-4 w-4" />
-
-                    <span className="text-sm">
-                      Narration
-                    </span>
-
-                  </div>
-
-                  <span className="text-sm font-medium text-right max-w-[55%]">
-
-                    {getNarration(
-                      selectedTransaction
-                    )}
-
-                  </span>
-
-                </div>
-
-
-                {/* TYPE */}
-
-                <div className="flex items-center justify-between py-3 border-b gap-3">
-
-                  <div className="flex items-center gap-2 text-gray-500">
-
-                    <Wallet className="h-4 w-4" />
-
-                    <span className="text-sm">
-                      Type
-                    </span>
-
-                  </div>
-
-                  <span className="text-sm font-medium text-right max-w-[60%]">
-
-                    {getTransactionTitle(
-                      selectedTransaction
-                    )}
-
-                  </span>
-
-                </div>
-
-
-                {/* FEE */}
-
-                {getFee(
-                  selectedTransaction
-                ) > 0 && (
-
-                  <div className="flex items-center justify-between py-3 border-b">
-
-                    <div className="flex items-center gap-2 text-gray-500">
-
-                      <Banknote className="h-4 w-4" />
-
-                      <span className="text-sm">
-                        Fee
-                      </span>
-
-                    </div>
-
-                    <span className="text-sm font-medium">
-
-                      {formatMoney(
-                        getFee(
-                          selectedTransaction
-                        )
-                      )}
-
-                    </span>
-
-                  </div>
-
-                )}
-
-
-                {/* DATE */}
-
-                <div className="flex items-center justify-between py-3 border-b gap-3">
-
-                  <div className="flex items-center gap-2 text-gray-500">
-
-                    <CalendarDays className="h-4 w-4" />
-
-                    <span className="text-sm">
-                      Date
-                    </span>
-
-                  </div>
-
-                  <span className="text-sm font-medium text-right max-w-[60%]">
-
-                    {formatFullDate(
-                      selectedTransaction.created_at
-                    )}
-
-                  </span>
-
-                </div>
-
-
-                {/* REFERENCE */}
-
-                <div className="flex items-center justify-between gap-3 py-3 border-b">
-
-                  <div className="flex items-center gap-2 text-gray-500 shrink-0">
-
-                    <Hash className="h-4 w-4" />
-
-                    <span className="text-sm">
-                      Reference
-                    </span>
-
-                  </div>
-
-                  <div className="flex items-center gap-1 min-w-0">
-
-                    <span className="text-xs font-mono truncate">
-
-                      {getReference(
-                        selectedTransaction
-                      )}
-
-                    </span>
-
-                    <button
-                      type="button"
+              </CardContent>
+            </Card>
+          )}
+
+        {/* ========================================================
+            TRANSACTION LIST
+            ======================================================== */}
+
+        {!loading &&
+          !error &&
+          paginatedTransactions.length >
+            0 && (
+            <div className="space-y-3">
+              {paginatedTransactions.map(
+                item => {
+                  const amountText =
+                    formatCurrency(
+                      item.amount
+                    );
+
+                  const amountClass =
+                    item.direction ===
+                    "incoming"
+                      ? "text-green-600"
+                      : "text-gray-900";
+
+                  return (
+                    <Card
+                      key={
+                        item.transaction.id
+                      }
+                      className="cursor-pointer border-0 shadow-sm transition hover:-translate-y-[1px] hover:shadow-md"
                       onClick={() =>
-                        copyReference(
-                          selectedTransaction
+                        setSelectedTransaction(
+                          item
                         )
                       }
-                      className="h-7 w-7 rounded-md hover:bg-gray-100 flex items-center justify-center shrink-0"
                     >
+                      <CardContent className="p-4">
+                        <div className="flex items-start gap-3">
+                          <TransactionIcon
+                            transaction={
+                              item
+                            }
+                          />
 
-                      <Copy className="h-3.5 w-3.5" />
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <h3 className="truncate text-sm font-semibold text-gray-900 sm:text-base">
+                                  {
+                                    item.title
+                                  }
+                                </h3>
 
-                    </button>
+                                <p className="mt-0.5 truncate text-xs text-gray-500 sm:text-sm">
+                                  {
+                                    item.subtitle
+                                  }
+                                </p>
+                              </div>
 
+                              <div className="shrink-0 text-right">
+                                <p
+                                  className={`text-sm font-bold sm:text-base ${amountClass}`}
+                                >
+                                  {item.direction ===
+                                  "incoming"
+                                    ? "+"
+                                    : "-"}
+                                  {amountText}
+                                </p>
+
+                                {item.fee >
+                                  0 && (
+                                  <p className="mt-0.5 text-[11px] text-gray-400">
+                                    Fee{" "}
+                                    {formatCurrency(
+                                      item.fee
+                                    )}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+
+                            <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                              <div className="flex items-center gap-2">
+                                <StatusBadge
+                                  transaction={
+                                    item
+                                  }
+
+                                />
+
+                                <span className="text-xs text-gray-400">
+                                  {formatDate(
+                                    item
+                                      .transaction
+                                      .created_at
+                                  )}
+                                </span>
+                              </div>
+
+                              <span className="font-mono text-[10px] text-gray-400 sm:text-xs">
+                                {
+                                  item
+                                    .transaction
+                                    .reference_number
+                                }
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
+                }
+              )}
+            </div>
+          )}
+
+        {/* ========================================================
+            PAGINATION
+            ======================================================== */}
+
+        {!loading &&
+          filteredTransactions.length >
+            PAGE_SIZE && (
+            <div className="mt-6 flex items-center justify-between rounded-xl border border-gray-200 bg-white p-3">
+              <p className="text-xs text-gray-500 sm:text-sm">
+                Page{" "}
+                {safePage} of{" "}
+                {totalPages}
+              </p>
+
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={
+                    safePage <= 1
+                  }
+                  onClick={() =>
+                    setPage(
+                      current =>
+                        Math.max(
+                          1,
+                          current -
+                            1
+                        )
+                    )
+                  }
+                >
+                  <ChevronLeft className="mr-1 h-4 w-4" />
+                  Previous
+                </Button>
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={
+                    safePage >=
+                    totalPages
+                  }
+                  onClick={() =>
+                    setPage(
+                      current =>
+                        Math.min(
+                          totalPages,
+                          current +
+                            1
+                        )
+                    )
+                  }
+                >
+                  Next
+                  <ChevronRight className="ml-1 h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          )}
+
+        {!loading &&
+          filteredTransactions.length >
+            0 && (
+            <div className="mt-4 text-center">
+              <p className="text-xs text-gray-400">
+                Showing{" "}
+                {(safePage - 1) *
+                  PAGE_SIZE +
+                  1}
+                –
+                {Math.min(
+                  safePage *
+                    PAGE_SIZE,
+                  filteredTransactions.length
+                )}{" "}
+                of{" "}
+                {
+                  filteredTransactions.length
+                }{" "}
+                transactions
+              </p>
+            </div>
+          )}
+      </main>
+
+      {/* ==========================================================
+          TRANSACTION DETAILS DIALOG
+          ========================================================== */}
+
+      <Dialog
+        open={
+          selectedTransaction !==
+          null
+        }
+        onOpenChange={open => {
+          if (!open) {
+            setSelectedTransaction(
+              null
+            );
+          }
+        }}
+      >
+        <DialogContent className="max-h-[92vh] max-w-lg overflow-y-auto">
+          {selectedTransaction && (
+            <>
+              <DialogHeader>
+                <DialogTitle className="sr-only">
+                  Transaction details
+                </DialogTitle>
+              </DialogHeader>
+
+              <div className="pb-2">
+                {/* ==================================================
+                    DETAILS HEADER
+                    ================================================== */}
+
+                <div className="flex flex-col items-center text-center">
+                  <TransactionIcon
+                    transaction={
+                      selectedTransaction
+                    }
+                  />
+
+                  <h2 className="mt-4 text-xl font-bold text-gray-900">
+                    {
+                      selectedTransaction.title
+                    }
+                  </h2>
+
+                  <p className="mt-1 text-sm text-gray-500">
+                    {
+                      selectedTransaction.subtitle
+                    }
+                  </p>
+
+                  <div className="mt-3">
+                    <StatusBadge
+                      transaction={
+                        selectedTransaction
+                      }
+                    />
                   </div>
 
+                  <p
+                    className={`mt-4 text-3xl font-extrabold ${
+                      selectedTransaction.direction ===
+                      "incoming"
+                        ? "text-green-600"
+                        : "text-gray-900"
+                    }`}
+                  >
+                    {selectedTransaction.direction ===
+                    "incoming"
+                      ? "+"
+                      : "-"}
+                    {formatCurrency(
+                      selectedTransaction.amount
+                    )}
+                  </p>
+
+                  {selectedTransaction.fee >
+                    0 && (
+                    <p className="mt-1 text-xs text-gray-500">
+                      Total charged{" "}
+                      {formatCurrency(
+                        selectedTransaction.totalCharged
+                      )}
+                    </p>
+                  )}
                 </div>
 
+                {/* ==================================================
+                    BANK TRANSFER
+                    ================================================== */}
 
-                {/* PROVIDER REFERENCE */}
+                {selectedTransaction.kind ===
+                  "bank_transfer" && (
+                  <Card className="mt-6 border-gray-200 shadow-none">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm">
+                        Bank transfer
+                      </CardTitle>
+                    </CardHeader>
 
-                {getProviderReference(
-                  selectedTransaction
-                ) && (
+                    <CardContent>
+                      <DetailRow
+                        label={
+                          selectedTransaction.direction ===
+                          "incoming"
+                            ? "From"
+                            : "Transfer to"
+                        }
+                        value={
+                          selectedTransaction.accountName ||
+                          selectedTransaction.recipientName ||
+                          selectedTransaction.senderName
+                        }
+                      />
 
-                  <div className="flex items-center justify-between gap-3 py-3 border-b">
+                      <DetailRow
+                        label="Bank"
+                        value={
+                          selectedTransaction.bankName ||
+                          selectedTransaction.bankCode
+                        }
+                      />
 
-                    <div className="flex items-center gap-2 text-gray-500">
+                      <DetailRow
+                        label="Account name"
+                        value={
+                          selectedTransaction.accountName
+                        }
+                      />
 
-                      <ShieldCheck className="h-4 w-4" />
+                      <DetailRow
+                        label="Account number"
+                        value={
+                          selectedTransaction.accountNumber
+                        }
+                        mono
+                        copyable={
+                          Boolean(
+                            selectedTransaction.accountNumber
+                          )
+                        }
+                        onCopy={() =>
+                          copyToClipboard(
+                            selectedTransaction.accountNumber,
+                            "Account number"
+                          )
+                        }
+                      />
 
-                      <span className="text-sm">
-                        Provider Ref.
-                      </span>
+                      <DetailRow
+                        label="Amount"
+                        value={formatCurrency(
+                          selectedTransaction.amount
+                        )}
+                      />
 
-                    </div>
-
-                    <span className="text-xs font-mono truncate max-w-[55%]">
-
-                      {getProviderReference(
-                        selectedTransaction
+                      {selectedTransaction.fee >
+                        0 && (
+                        <DetailRow
+                          label="Transfer fee"
+                          value={formatCurrency(
+                            selectedTransaction.fee
+                          )}
+                        />
                       )}
 
-                    </span>
-
-                  </div>
-
+                      {selectedTransaction.fee >
+                        0 && (
+                        <DetailRow
+                          label="Total charged"
+                          value={formatCurrency(
+                            selectedTransaction.totalCharged
+                          )}
+                        />
+                      )}
+                    </CardContent>
+                  </Card>
                 )}
 
+                {/* ==================================================
+                    IYANJUPAY TRANSFER
+                    ================================================== */}
 
-                {/* TRANSACTION ID */}
+                {selectedTransaction.kind ===
+                  "wallet_transfer" && (
+                  <Card className="mt-6 border-gray-200 shadow-none">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm">
+                        IyanjuPay Wallet
+                      </CardTitle>
+                    </CardHeader>
 
-                <div className="flex items-center justify-between gap-3 py-3">
+                    <CardContent>
+                      <DetailRow
+                        label={
+                          selectedTransaction.direction ===
+                          "incoming"
+                            ? "Transfer from"
+                            : "Transfer to"
+                        }
+                        value={
+                          selectedTransaction.direction ===
+                          "incoming"
+                            ? selectedTransaction.senderName
+                            : selectedTransaction.recipientName
+                        }
+                      />
 
-                  <div className="flex items-center gap-2 text-gray-500">
+                      <DetailRow
+                        label="Phone number"
+                        value={
+                          selectedTransaction.phoneNumber
+                        }
+                        mono
+                        copyable={
+                          Boolean(
+                            selectedTransaction.phoneNumber
+                          )
+                        }
+                        onCopy={() =>
+                          copyToClipboard(
+                            selectedTransaction.phoneNumber,
+                            "Phone number"
+                          )
+                        }
+                      />
 
-                    <Hash className="h-4 w-4" />
+                      <DetailRow
+                        label="IyanjuPay Wallet"
+                        value={
+                          selectedTransaction.walletId
+                        }
+                        mono
+                        copyable={
+                          Boolean(
+                            selectedTransaction.walletId
+                          )
+                        }
+                        onCopy={() =>
+                          copyToClipboard(
+                            selectedTransaction.walletId,
+                            "Wallet ID"
+                          )
+                        }
+                      />
 
-                    <span className="text-sm">
-                      Transaction ID
-                    </span>
+                      <DetailRow
+                        label="Amount"
+                        value={formatCurrency(
+                          selectedTransaction.amount
+                        )}
+                      />
 
-                  </div>
+                      <DetailRow
+                        label="Fee"
+                        value={formatCurrency(
+                          selectedTransaction.fee
+                        )}
+                      />
+                    </CardContent>
+                  </Card>
+                )}
 
-                  <span className="text-[10px] font-mono text-gray-400 truncate max-w-[55%]">
+                {/* ==================================================
+                    AIRTIME
+                    ================================================== */}
 
-                    {selectedTransaction.id}
+                {selectedTransaction.kind ===
+                  "airtime" && (
+                  <Card className="mt-6 border-gray-200 shadow-none">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm">
+                        Airtime
+                      </CardTitle>
+                    </CardHeader>
 
-                  </span>
+                    <CardContent>
+                      <DetailRow
+                        label="Provider"
+                        value={
+                          selectedTransaction.providerName
+                        }
+                      />
 
+                      <DetailRow
+                        label="Phone number"
+                        value={
+                          selectedTransaction.phoneNumber
+                        }
+                        mono
+                        copyable
+                        onCopy={() =>
+                          copyToClipboard(
+                            selectedTransaction.phoneNumber,
+                            "Phone number"
+                          )
+                        }
+                      />
+
+                      <DetailRow
+                        label="Amount"
+                        value={formatCurrency(
+                          selectedTransaction.amount
+                        )}
+                      />
+                    </CardContent>
+                  </Card>
+                )}
+
+                {/* ==================================================
+                    DATA
+                    ================================================== */}
+
+                {selectedTransaction.kind ===
+                  "data" && (
+                  <Card className="mt-6 border-gray-200 shadow-none">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm">
+                        Data
+                      </CardTitle>
+                    </CardHeader>
+
+                    <CardContent>
+                      <DetailRow
+                        label="Provider"
+                        value={
+                          selectedTransaction.providerName
+                        }
+                      />
+
+                      <DetailRow
+                        label="Phone number"
+                        value={
+                          selectedTransaction.phoneNumber
+                        }
+                        mono
+                        copyable
+                        onCopy={() =>
+                          copyToClipboard(
+                            selectedTransaction.phoneNumber,
+                            "Phone number"
+                          )
+                        }
+                      />
+
+                      <DetailRow
+                        label="Plan"
+                        value={
+                          selectedTransaction.packageName
+                        }
+                      />
+
+                      <DetailRow
+                        label="Amount"
+                        value={formatCurrency(
+                          selectedTransaction.amount
+                        )}
+                      />
+                    </CardContent>
+                  </Card>
+                )}
+
+                {/* ==================================================
+                    ELECTRICITY
+                    ================================================== */}
+
+                {selectedTransaction.kind ===
+                  "electricity" && (
+                  <Card className="mt-6 border-gray-200 shadow-none">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm">
+                        Electricity
+                      </CardTitle>
+                    </CardHeader>
+
+                    <CardContent>
+                      <DetailRow
+                        label="Provider"
+                        value={
+                          selectedTransaction.providerName
+                        }
+                      />
+
+                      <DetailRow
+                        label="Meter number"
+                        value={
+                          selectedTransaction.meterNumber
+                        }
+                        mono
+                        copyable
+                        onCopy={() =>
+                          copyToClipboard(
+                            selectedTransaction.meterNumber,
+                            "Meter number"
+                          )
+                        }
+                      />
+
+                      <DetailRow
+                        label="Meter type"
+                        value={
+                          selectedTransaction.meterType
+                        }
+                      />
+
+                      <DetailRow
+                        label="Amount"
+                        value={formatCurrency(
+                          selectedTransaction.amount
+                        )}
+                      />
+                    </CardContent>
+                  </Card>
+                )}
+
+                {/* ==================================================
+                    CABLE
+                    ================================================== */}
+
+                {selectedTransaction.kind ===
+                  "cable" && (
+                  <Card className="mt-6 border-gray-200 shadow-none">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm">
+                        Cable TV
+                      </CardTitle>
+                    </CardHeader>
+
+                    <CardContent>
+                      <DetailRow
+                        label="Provider"
+                        value={
+                          selectedTransaction.providerName
+                        }
+                      />
+
+                      <DetailRow
+                        label="Smartcard / IUC"
+                        value={
+                          selectedTransaction.smartcardNumber
+                        }
+                        mono
+                        copyable
+                        onCopy={() =>
+                          copyToClipboard(
+                            selectedTransaction.smartcardNumber,
+                            "Smartcard/IUC number"
+                          )
+                        }
+                      />
+
+                      <DetailRow
+                        label="Package"
+                        value={
+                          selectedTransaction.packageName
+                        }
+                      />
+
+                      <DetailRow
+                        label="Amount"
+                        value={formatCurrency(
+                          selectedTransaction.amount
+                        )}
+                      />
+                    </CardContent>
+                  </Card>
+                )}
+
+                {/* ==================================================
+                    INTERNET
+                    ================================================== */}
+
+                {selectedTransaction.kind ===
+                  "internet" && (
+                  <Card className="mt-6 border-gray-200 shadow-none">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm">
+                        Internet
+                      </CardTitle>
+                    </CardHeader>
+
+                    <CardContent>
+                      <DetailRow
+                        label="Provider"
+                        value={
+                          selectedTransaction.providerName
+                        }
+                      />
+
+                      <DetailRow
+                        label="Account number"
+                        value={
+                          selectedTransaction.internetAccount
+                        }
+                        mono
+                        copyable
+                        onCopy={() =>
+                          copyToClipboard(
+                            selectedTransaction.internetAccount,
+                            "Account number"
+                          )
+                        }
+                      />
+
+                      <DetailRow
+                        label="Plan"
+                        value={
+                          selectedTransaction.packageName
+                        }
+                      />
+
+                      <DetailRow
+                        label="Amount"
+                        value={formatCurrency(
+                          selectedTransaction.amount
+                        )}
+                      />
+                    </CardContent>
+                  </Card>
+                )}
+
+                {/* ==================================================
+                    FUNDING
+                    ================================================== */}
+
+                {selectedTransaction.kind ===
+                  "funding" && (
+                  <Card className="mt-6 border-gray-200 shadow-none">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm">
+                        Wallet Funding
+                      </CardTitle>
+                    </CardHeader>
+
+                    <CardContent>
+                      <DetailRow
+                        label="From"
+                        value={
+                          selectedTransaction.senderName
+                        }
+                      />
+
+                      <DetailRow
+                        label="Bank"
+                        value={stringValue(
+                          selectedTransaction
+                            .transaction
+                            .metadata
+                            ?.sender_bank,
+                          selectedTransaction
+                            .transaction
+                            .metadata
+                            ?.sender_bank_name,
+                          selectedTransaction
+                            .transaction
+                            .metadata
+                            ?.bank_name,
+                          "Bank transfer"
+                        )}
+                      />
+
+                      <DetailRow
+                        label="Sender account"
+                        value={stringValue(
+                          selectedTransaction
+                            .transaction
+                            .metadata
+                            ?.sender_account
+                        )}
+                        mono
+                      />
+
+                      <DetailRow
+                        label="Virtual account"
+                        value={
+                          selectedTransaction.virtualAccountNumber
+                        }
+                        mono
+                        copyable
+                        onCopy={() =>
+                          copyToClipboard(
+                            selectedTransaction.virtualAccountNumber,
+                            "Virtual account number"
+                          )
+                        }
+                      />
+
+                      <DetailRow
+                        label="Amount"
+                        value={`+${formatCurrency(
+                          selectedTransaction.amount
+                        )}`}
+                      />
+                    </CardContent>
+                  </Card>
+                )}
+
+                {/* ==================================================
+                    REFUND
+                    ================================================== */}
+
+                {selectedTransaction.kind ===
+                  "refund" && (
+                  <Card className="mt-6 border-gray-200 shadow-none">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm">
+                        Refund
+                      </CardTitle>
+                    </CardHeader>
+
+                    <CardContent>
+                      <DetailRow
+                        label="Reason"
+                        value={stringValue(
+                          selectedTransaction
+                            .transaction
+                            .metadata
+                            ?.reason,
+                          "Transfer refund"
+                        )}
+                      />
+
+                      <DetailRow
+                        label="Refund amount"
+                        value={`+${formatCurrency(
+                          selectedTransaction.amount
+                        )}`}
+                      />
+
+                      <DetailRow
+                        label="Original reference"
+                        value={stringValue(
+                          selectedTransaction
+                            .transaction
+                            .metadata
+                            ?.original_reference
+                        )}
+                        mono
+                      />
+                    </CardContent>
+                  </Card>
+                )}
+
+                {/* ==================================================
+                    AMOUNT
+                    ================================================== */}
+
+                <Card className="mt-4 border-gray-200 shadow-none">
+                  <CardContent className="p-4">
+                    <DetailRow
+                      label="Amount"
+                      value={formatCurrency(
+                        selectedTransaction.amount
+                      )}
+                    />
+
+                    {selectedTransaction.fee >
+                      0 && (
+                      <DetailRow
+                        label="Fee"
+                        value={formatCurrency(
+                          selectedTransaction.fee
+                        )}
+                      />
+                    )}
+
+                    {selectedTransaction.fee >
+                      0 && (
+                      <DetailRow
+                        label="Total charged"
+                        value={formatCurrency(
+                          selectedTransaction.totalCharged
+                        )}
+                      />
+                    )}
+                  </CardContent>
+                </Card>
+
+                {/* ==================================================
+                    TRANSACTION INFORMATION
+                    ================================================== */}
+
+                <Card className="mt-4 border-gray-200 shadow-none">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm">
+                      Transaction information
+                    </CardTitle>
+                  </CardHeader>
+
+                  <CardContent>
+                    <DetailRow
+                      label="Status"
+                      value={getStatusLabel(
+                        selectedTransaction
+                      )}
+                    />
+
+                    <DetailRow
+                      label="Date"
+                      value={formatDateTime(
+                        selectedTransaction
+                          .transaction
+                          .created_at
+                      )}
+                    />
+
+                    <DetailRow
+                      label="Reference"
+                      value={
+                        selectedTransaction
+                          .transaction
+                          .reference_number
+                      }
+                      mono
+                      copyable
+                      onCopy={() =>
+                        copyToClipboard(
+                          selectedTransaction
+                            .transaction
+                            .reference_number,
+                          "Reference"
+                        )
+                      }
+                    />
+
+                    <DetailRow
+                      label="Provider reference"
+                      value={
+                        selectedTransaction
+                          .transaction
+                          .provider_reference ||
+                        ""
+                      }
+                      mono
+                      copyable={
+                        Boolean(
+                          selectedTransaction
+                            .transaction
+                            .provider_reference
+                        )
+                      }
+                      onCopy={() =>
+                        copyToClipboard(
+                          selectedTransaction
+                            .transaction
+                            .provider_reference ||
+                            "",
+                          "Provider reference"
+                        )
+                      }
+                    />
+
+                    <DetailRow
+                      label="Description"
+                      value={
+                        selectedTransaction
+                          .transaction
+                          .description ||
+                        ""
+                      }
+                    />
+                  </CardContent>
+                </Card>
+
+                {/* ==================================================
+                    ACTIONS
+                    ================================================== */}
+
+                <div className="mt-5 grid grid-cols-2 gap-3">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() =>
+                      copyToClipboard(
+                        selectedTransaction
+                          .transaction
+                          .reference_number,
+                        "Reference"
+                      )
+                    }
+                  >
+                    <Copy className="mr-2 h-4 w-4" />
+                    Copy reference
+                  </Button>
+
+                  <Button
+                    type="button"
+                    onClick={() =>
+                      printReceipt(
+                        selectedTransaction
+                      )
+                    }
+                    className="bg-purple-600 hover:bg-purple-700"
+                  >
+                    <Printer className="mr-2 h-4 w-4" />
+                    Print receipt
+                  </Button>
                 </div>
-
               </div>
-
-
-              {/* ACTIONS */}
-
-              <div className="grid grid-cols-2 gap-3 mt-6">
-
-                <Button
-                  variant="outline"
-                  onClick={() =>
-                    copyReference(
-                      selectedTransaction
-                    )
-                  }
-                  className="rounded-xl"
-                >
-
-                  <Copy className="h-4 w-4 mr-2" />
-
-                  Copy Ref
-
-                </Button>
-
-
-                <Button
-                  onClick={() =>
-                    printReceipt(
-                      selectedTransaction
-                    )
-                  }
-                  className="rounded-xl bg-purple-600 hover:bg-purple-700"
-                >
-
-                  <Printer className="h-4 w-4 mr-2" />
-
-                  Receipt
-
-                </Button>
-
-              </div>
-
-            </div>
-
-          </div>
-
-        </div>
-
-      )}
-
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
-
 };
-
 
 export default TransactionHistory;

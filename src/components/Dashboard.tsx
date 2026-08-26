@@ -76,7 +76,7 @@ type CurrentPage =
   | "support"
   | "transaction-limit"
   | "payment-pin"
-  | "send-money";
+  | "send-money"
   | "service-payment";
 
 type SelectedService = {

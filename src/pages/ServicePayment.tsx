@@ -17,6 +17,8 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 
+import PaymentPinModal from "@/components/PaymentPinModal";
+
 // ============================================================
 // TYPES
 // ============================================================
@@ -209,26 +211,20 @@ const ServicePayment = ({
     useState(false);
 
   // ==========================================================
-  // PAYMENT PIN FLOW
+  // PAYMENT PIN AUTHORIZATION
   // ==========================================================
 
-  const [pinStep, setPinStep] = useState<
-    "none" | "create" | "confirm" | "authorize"
-  >("none");
-
-  const [newPin, setNewPin] = useState("");
-  const [confirmPin, setConfirmPin] = useState("");
-
-  const [paymentPin, setPaymentPin] =
-    useState("");
-
-  const [checkingPinStatus, setCheckingPinStatus] =
-    useState(false);
-
-  const [creatingPin, setCreatingPin] =
-    useState(false);
-
-  const [verifyingPin, setVerifyingPin] =
+  /*
+   * Payment PIN creation is intentionally NOT handled here.
+   *
+   * Users must create their Payment PIN from the
+   * appropriate security/profile flow before making
+   * service payments.
+   *
+   * This component only opens PaymentPinModal to
+   * authorize the transaction.
+   */
+  const [paymentPinOpen, setPaymentPinOpen] =
     useState(false);
 
   // ==========================================================
@@ -429,15 +425,7 @@ const ServicePayment = ({
     setLoadingItems(false);
     setProcessingPayment(false);
 
-    setPinStep("none");
-
-    setNewPin("");
-    setConfirmPin("");
-    setPaymentPin("");
-
-    setCheckingPinStatus(false);
-    setCreatingPin(false);
-    setVerifyingPin(false);
+    setPaymentPinOpen(false);
   };
 
   // ==========================================================
@@ -661,12 +649,7 @@ const ServicePayment = ({
   const handleBillerChange = async (
     value: string
   ) => {
-    if (
-      processingPayment ||
-      verifyingPin ||
-      creatingPin ||
-      checkingPinStatus
-    ) {
+    if (processingPayment) {
       return;
     }
 
@@ -682,12 +665,7 @@ const ServicePayment = ({
   const handleDataPlanSelect = (
     item: BillItem
   ) => {
-    if (
-      processingPayment ||
-      verifyingPin ||
-      creatingPin ||
-      checkingPinStatus
-    ) {
+    if (processingPayment) {
       return;
     }
 
@@ -733,12 +711,7 @@ const ServicePayment = ({
   const handleItemChange = (
     value: string
   ) => {
-    if (
-      processingPayment ||
-      verifyingPin ||
-      creatingPin ||
-      checkingPinStatus
-    ) {
+    if (processingPayment) {
       return;
     }
 
@@ -755,12 +728,7 @@ const ServicePayment = ({
   const handleAmountSelect = (
     value: number
   ) => {
-    if (
-      processingPayment ||
-      verifyingPin ||
-      creatingPin ||
-      checkingPinStatus
-    ) {
+    if (processingPayment) {
       return;
     }
 
@@ -770,12 +738,7 @@ const ServicePayment = ({
   };
 
   const handleCustomAmount = () => {
-    if (
-      processingPayment ||
-      verifyingPin ||
-      creatingPin ||
-      checkingPinStatus
-    ) {
+    if (processingPayment) {
       return;
     }
 
@@ -1000,6 +963,13 @@ const ServicePayment = ({
       return false;
     }
 
+    /*
+     * Frontend balance check.
+     *
+     * This is only a user-experience check.
+     * The authoritative balance protection remains
+     * inside wallet_operation() on the server.
+     */
     if (
       amountNumber >
       Number(walletBalance)
@@ -1115,220 +1085,7 @@ const ServicePayment = ({
   };
 
   // ==========================================================
-  // CHECK PAYMENT PIN STATUS
-  // ==========================================================
-
-  const checkPaymentPinStatus =
-    async (): Promise<boolean> => {
-      try {
-        setCheckingPinStatus(true);
-        setError("");
-
-        /*
-         * Expected RPC result:
-         *
-         * {
-         *   has_payment_pin: true
-         * }
-         *
-         * or:
-         *
-         * {
-         *   has_payment_pin: false
-         * }
-         */
-
-        const {
-          data,
-          error: rpcError,
-        } =
-          await supabase.rpc(
-            "get_payment_pin_status"
-          );
-
-        if (rpcError) {
-          console.error(
-            "Payment PIN status error:",
-            rpcError
-          );
-
-          throw new Error(
-            rpcError.message ||
-              "Unable to check Payment PIN status."
-          );
-        }
-
-        const hasPaymentPin =
-          Boolean(
-            data?.has_payment_pin ??
-              data?.hasPaymentPin ??
-              data?.has_pin ??
-              data?.hasPin ??
-              false
-          );
-
-        return hasPaymentPin;
-      } catch (err: any) {
-        console.error(
-          "Failed to check Payment PIN status:",
-          err
-        );
-
-        const message =
-          err?.message ||
-          "Unable to check your Payment PIN.";
-
-        setError(message);
-
-        toast({
-          title:
-            "Payment PIN check failed",
-          description: message,
-          variant: "destructive",
-        });
-
-        return false;
-      } finally {
-        setCheckingPinStatus(false);
-      }
-    };
-
-  // ==========================================================
-  // CREATE PAYMENT PIN
-  // ==========================================================
-
-  const handleCreatePaymentPin =
-    async () => {
-      if (
-        creatingPin ||
-        verifyingPin ||
-        processingPayment
-      ) {
-        return;
-      }
-
-      if (
-        !/^\d{4}$/.test(newPin)
-      ) {
-        toast({
-          title: "Invalid PIN",
-          description:
-            "Create a 4-digit Payment PIN.",
-          variant: "destructive",
-        });
-
-        return;
-      }
-
-      if (
-        !/^\d{4}$/.test(confirmPin)
-      ) {
-        toast({
-          title: "Invalid PIN",
-          description:
-            "Confirm your 4-digit Payment PIN.",
-          variant: "destructive",
-        });
-
-        return;
-      }
-
-      if (newPin !== confirmPin) {
-        setConfirmPin("");
-
-        toast({
-          title: "PIN mismatch",
-          description:
-            "The Payment PINs do not match.",
-          variant: "destructive",
-        });
-
-        return;
-      }
-
-      try {
-        setCreatingPin(true);
-        setError("");
-
-        const {
-          data,
-          error: rpcError,
-        } =
-          await supabase.rpc(
-            "create_payment_pin",
-            {
-              _pin: newPin,
-            }
-          );
-
-        if (rpcError) {
-          console.error(
-            "Create Payment PIN error:",
-            rpcError
-          );
-
-          throw new Error(
-            rpcError.message ||
-              "Unable to create Payment PIN."
-          );
-        }
-
-        if (
-          !data ||
-          data.success !== true
-        ) {
-          throw new Error(
-            data?.message ||
-              data?.error ||
-              "Unable to create Payment PIN."
-          );
-        }
-
-        setNewPin("");
-        setConfirmPin("");
-
-        toast({
-          title:
-            "Payment PIN created",
-          description:
-            "Your Payment PIN has been created successfully.",
-        });
-
-        /*
-         * Immediately continue to authorization.
-         *
-         * The newly created PIN is NOT automatically
-         * accepted as authorization. The user must
-         * explicitly enter it again.
-         */
-
-        setPaymentPin("");
-        setPinStep("authorize");
-      } catch (err: any) {
-        console.error(
-          "Payment PIN creation failed:",
-          err
-        );
-
-        const message =
-          err?.message ||
-          "Unable to create Payment PIN.";
-
-        setError(message);
-
-        toast({
-          title:
-            "Unable to create Payment PIN",
-          description: message,
-          variant: "destructive",
-        });
-      } finally {
-        setCreatingPin(false);
-      }
-    };
-
-  // ==========================================================
-  // SHOW PIN CREATION / AUTHORIZATION
+  // OPEN PAYMENT PIN AUTHORIZATION
   // ==========================================================
 
   const handlePurchase = async () => {
@@ -1336,151 +1093,50 @@ const ServicePayment = ({
       return;
     }
 
-    if (
-      processingPayment ||
-      verifyingPin ||
-      creatingPin ||
-      checkingPinStatus
-    ) {
+    if (processingPayment) {
       return;
     }
 
     /*
-     * 1. Validate payment details first.
+     * Validate payment details first.
      */
     if (!validateForm()) {
       return;
     }
 
     /*
-     * 2. Check whether the user has a Payment PIN.
-     */
-    const hasPaymentPin =
-      await checkPaymentPinStatus();
-
-    if (!hasPaymentPin) {
-      /*
-       * No PIN exists.
-       *
-       * Show PIN creation screen.
-       */
-      setNewPin("");
-      setConfirmPin("");
-      setPaymentPin("");
-      setError("");
-
-      setPinStep("create");
-
-      return;
-    }
-
-    /*
-     * PIN already exists.
+     * Payment PIN must already exist.
      *
-     * Ask user to authorize the payment.
+     * We do NOT create a PIN here.
      */
-    setPaymentPin("");
     setError("");
-    setPinStep("authorize");
+    setPaymentPinOpen(true);
   };
 
   // ==========================================================
-  // VERIFY PIN + PURCHASE
+  // PAYMENT PIN VERIFIED
   // ==========================================================
 
-  const handlePinVerification =
+  const handlePaymentPinVerified =
     async () => {
-      if (!service) {
-        return;
-      }
-
-      if (
-        processingPayment ||
-        verifyingPin ||
-        creatingPin
-      ) {
-        return;
-      }
-
-      if (
-        !/^\d{4}$/.test(
-          paymentPin
-        )
-      ) {
-        toast({
-          title: "Invalid PIN",
-          description:
-            "Enter your 4-digit Payment PIN.",
-          variant: "destructive",
-        });
-
+      if (!service || processingPayment) {
         return;
       }
 
       try {
-        setVerifyingPin(true);
+        setPaymentPinOpen(false);
+        setProcessingPayment(true);
         setError("");
 
         /*
-         * Verify the Payment PIN.
-         */
-        const {
-          data,
-          error: pinError,
-        } =
-          await supabase.rpc(
-            "verify_payment_pin",
-            {
-              _pin: paymentPin,
-            }
-          );
-
-        if (pinError) {
-          console.error(
-            "Payment PIN verification error:",
-            pinError
-          );
-
-          throw new Error(
-            pinError.message ||
-              "Unable to verify Payment PIN."
-          );
-        }
-
-        if (
-          !data ||
-          data.success !== true
-        ) {
-          const message =
-            data?.message ||
-            "Invalid Payment PIN.";
-
-          setPaymentPin("");
-
-          toast({
-            title: "Payment PIN",
-            description: message,
-            variant: "destructive",
-          });
-
-          return;
-        }
-
-        /*
-         * PIN is valid.
-         *
-         * Build the purchase details only after
-         * successful authorization.
+         * Build purchase details only after
+         * successful Payment PIN authorization.
          */
         const details =
           buildPurchaseDetails();
 
         const sellingAmount =
           amountNumber;
-
-        setPinStep("none");
-        setPaymentPin("");
-        setProcessingPayment(true);
 
         console.log(
           "Payment PIN verified. Sending bill purchase:",
@@ -1506,10 +1162,11 @@ const ServicePayment = ({
          * IMPORTANT:
          *
          * The actual wallet debit/provider payment
-         * remains inside onPurchase / the
-         * flutterwave-bills Edge Function.
+         * remains inside onPurchase /
+         * flutterwave-bills.
          *
-         * This component only authorizes the payment.
+         * This component does NOT perform
+         * wallet_operation() directly.
          */
         await onPurchase(
           sellingAmount,
@@ -1535,47 +1192,23 @@ const ServicePayment = ({
           variant: "destructive",
         });
       } finally {
-        setVerifyingPin(false);
         setProcessingPayment(false);
       }
     };
-
-  // ==========================================================
-  // BACK FROM PIN FLOW
-  // ==========================================================
-
-  const handlePinBack = () => {
-    if (
-      processingPayment ||
-      verifyingPin ||
-      creatingPin
-    ) {
-      return;
-    }
-
-    setNewPin("");
-    setConfirmPin("");
-    setPaymentPin("");
-    setError("");
-
-    setPinStep("none");
-  };
 
   // ==========================================================
   // BACK
   // ==========================================================
 
   const handleBack = () => {
-    if (
-      processingPayment ||
-      verifyingPin ||
-      creatingPin ||
-      checkingPinStatus
-    ) {
+    if (processingPayment) {
       return;
     }
 
+    setPaymentPinOpen(false);
+
     resetForm();
+
     onBack();
   };
 
@@ -1606,7 +1239,9 @@ const ServicePayment = ({
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-50 pb-8">
 
-      {/* HEADER */}
+      {/* ======================================================
+          HEADER
+      ====================================================== */}
 
       <header className="bg-gradient-to-r from-purple-600 to-blue-600 text-white">
         <div className="max-w-3xl mx-auto px-4 sm:px-6">
@@ -1617,28 +1252,15 @@ const ServicePayment = ({
               type="button"
               variant="ghost"
               size="sm"
-              onClick={
-                pinStep !== "none"
-                  ? handlePinBack
-                  : handleBack
-              }
-              disabled={
-                processingPayment ||
-                verifyingPin ||
-                creatingPin ||
-                checkingPinStatus
-              }
+              onClick={handleBack}
+              disabled={processingPayment}
               className="text-white hover:bg-white/20"
             >
               <ArrowLeft className="h-5 w-5" />
             </Button>
 
             <h1 className="text-lg font-bold">
-              {pinStep === "create"
-                ? "Create Payment PIN"
-                : pinStep === "authorize"
-                  ? "Authorize Payment"
-                  : service.title}
+              {service.title}
             </h1>
 
           </div>
@@ -1646,489 +1268,313 @@ const ServicePayment = ({
         </div>
       </header>
 
-      {/* CONTENT */}
+      {/* ======================================================
+          CONTENT
+      ====================================================== */}
 
       <main className="max-w-3xl mx-auto px-4 sm:px-6 py-6">
 
-        {/* ==================================================
-            CREATE PAYMENT PIN
-        ================================================== */}
+        <div className="bg-white rounded-2xl shadow-sm border p-5 sm:p-6">
 
-        {pinStep === "create" ? (
-          <div className="bg-white rounded-2xl shadow-sm border p-5 sm:p-6">
+          {/* ==================================================
+              WALLET
+          ================================================== */}
 
-            <div className="text-center mb-6">
+          <div className="bg-green-50 border border-green-100 p-4 rounded-xl mb-5">
 
-              <div className="w-14 h-14 rounded-full bg-blue-100 flex items-center justify-center mx-auto mb-3">
-                <span className="text-2xl">
-                  🔐
-                </span>
-              </div>
-
-              <h2 className="text-xl font-bold text-gray-900">
-                Create Payment PIN
-              </h2>
-
-              <p className="text-sm text-gray-500 mt-2">
-                You need a Payment PIN to
-                authorize payments from your
-                wallet.
-              </p>
-
-            </div>
-
-            {/* PAYMENT SUMMARY */}
-
-            <div className="rounded-xl bg-blue-50 border border-blue-100 p-4 space-y-3 mb-6">
-
-              <div className="flex items-center justify-between gap-4">
-                <span className="text-sm text-gray-600">
-                  Service
-                </span>
-
-                <span className="text-sm font-semibold text-gray-900">
-                  {service.title}
-                </span>
-              </div>
-
-              <div className="flex items-center justify-between gap-4">
-                <span className="text-sm text-gray-600">
-                  Amount
-                </span>
-
-                <span className="font-bold text-blue-700">
-                  {formatNaira(
-                    amountNumber
-                  )}
-                </span>
-              </div>
-
-              <div className="flex items-center justify-between gap-4">
-                <span className="text-sm text-gray-600">
-                  {customerLabel}
-                </span>
-
-                <span className="text-sm font-medium text-gray-900 text-right break-all">
-                  {normaliseCustomer()}
-                </span>
-              </div>
-
-            </div>
-
-            {/* NEW PIN */}
-
-            <div className="space-y-2 mb-5">
-
-              <Label htmlFor="newPaymentPin">
-                Create 4-digit Payment PIN
-              </Label>
-
-              <Input
-                id="newPaymentPin"
-                type="password"
-                inputMode="numeric"
-                autoComplete="new-password"
-                maxLength={4}
-                value={newPin}
-                onChange={(event) => {
-                  const value =
-                    event.target.value
-                      .replace(/\D/g, "")
-                      .slice(0, 4);
-
-                  setNewPin(value);
-                  setError("");
-                }}
-                placeholder="••••"
-                disabled={creatingPin}
-                autoFocus
-                className="text-center text-2xl tracking-[0.5em]"
-              />
-
-            </div>
-
-            {/* CONFIRM PIN */}
-
-            <div className="space-y-2 mb-5">
-
-              <Label htmlFor="confirmPaymentPin">
-                Confirm Payment PIN
-              </Label>
-
-              <Input
-                id="confirmPaymentPin"
-                type="password"
-                inputMode="numeric"
-                autoComplete="new-password"
-                maxLength={4}
-                value={confirmPin}
-                onChange={(event) => {
-                  const value =
-                    event.target.value
-                      .replace(/\D/g, "")
-                      .slice(0, 4);
-
-                  setConfirmPin(value);
-                  setError("");
-                }}
-                onKeyDown={(event) => {
-                  if (
-                    event.key === "Enter" &&
-                    newPin.length === 4 &&
-                    confirmPin.length === 4 &&
-                    !creatingPin
-                  ) {
-                    handleCreatePaymentPin();
-                  }
-                }}
-                placeholder="••••"
-                disabled={creatingPin}
-                className="text-center text-2xl tracking-[0.5em]"
-              />
-
-            </div>
-
-            {error && (
-              <div className="rounded-lg bg-red-50 border border-red-200 p-3 mb-5">
-                <p className="text-sm text-red-700">
-                  {error}
-                </p>
-              </div>
-            )}
-
-            <div className="space-y-3">
-
-              <Button
-                type="button"
-                onClick={
-                  handleCreatePaymentPin
-                }
-                disabled={
-                  creatingPin ||
-                  newPin.length !== 4 ||
-                  confirmPin.length !== 4
-                }
-                className="w-full bg-blue-600 hover:bg-blue-700 h-11"
-              >
-                {creatingPin ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Creating PIN...
-                  </>
-                ) : (
-                  "Create PIN"
+            <p className="text-sm text-green-700">
+              Wallet Balance:{" "}
+              <strong>
+                {formatNaira(
+                  Number(walletBalance)
                 )}
-              </Button>
-
-              <Button
-                type="button"
-                variant="outline"
-                onClick={
-                  handlePinBack
-                }
-                disabled={creatingPin}
-                className="w-full"
-              >
-                Cancel
-              </Button>
-
-            </div>
-
-            <p className="text-xs text-gray-500 text-center mt-5">
-              Never share your Payment PIN
-              with anyone.
+              </strong>
             </p>
 
           </div>
 
-        ) : pinStep === "authorize" ? (
+          {/* ==================================================
+              LOADING BILLERS
+          ================================================== */}
 
-          /* ==================================================
-             AUTHORIZE PAYMENT
-          ================================================== */
-
-          <div className="bg-white rounded-2xl shadow-sm border p-5 sm:p-6">
-
-            <div className="text-center mb-6">
-
-              <div className="w-14 h-14 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-3">
-                <span className="text-2xl">
-                  🔐
-                </span>
-              </div>
-
-              <h2 className="text-xl font-bold text-gray-900">
-                Authorize Payment
-              </h2>
-
-              <p className="text-sm text-gray-500 mt-1">
-                Enter your 4-digit Payment PIN
-                to authorize this payment.
-              </p>
-
-              <p className="text-lg font-semibold text-green-700 mt-2">
-                {service.title}
-              </p>
-
+          {loadingBillers && (
+            <div className="flex items-center justify-center gap-2 py-4 text-sm text-gray-500">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Loading providers...
             </div>
+          )}
 
-            {/* SUMMARY */}
+          {/* ==================================================
+              PROVIDER
+          ================================================== */}
 
-            <div className="rounded-xl bg-green-50 border border-green-100 p-4 space-y-3 mb-6">
+          <div className="space-y-2 mb-5">
 
-              <div className="flex items-center justify-between gap-4">
-                <span className="text-sm text-gray-600">
-                  Amount
-                </span>
+            <div className="flex items-center justify-between">
 
-                <span className="font-bold text-green-700">
-                  {formatNaira(
-                    amountNumber
-                  )}
-                </span>
-              </div>
-
-              <div className="flex items-center justify-between gap-4">
-                <span className="text-sm text-gray-600">
-                  Provider
-                </span>
-
-                <span className="text-sm font-medium text-gray-900 text-right">
-                  {selectedBiller?.name ??
-                    selectedBiller?.short_name ??
-                    "-"}
-                </span>
-              </div>
-
-              <div className="flex items-center justify-between gap-4">
-                <span className="text-sm text-gray-600">
-                  {customerLabel}
-                </span>
-
-                <span className="text-sm font-medium text-gray-900 text-right break-all">
-                  {normaliseCustomer()}
-                </span>
-              </div>
-
-              {selectedItem && (
-                <div className="flex items-center justify-between gap-4">
-                  <span className="text-sm text-gray-600">
-                    Package
-                  </span>
-
-                  <span className="text-sm font-medium text-gray-900 text-right">
-                    {selectedItem.name ??
-                      selectedItem.short_name ??
-                      "-"}
-                  </span>
-                </div>
-              )}
-
-            </div>
-
-            {/* PIN */}
-
-            <div className="space-y-2 mb-5">
-
-              <Label htmlFor="servicePaymentPin">
-                Payment PIN
+              <Label>
+                Provider
               </Label>
 
-              <Input
-                id="servicePaymentPin"
-                type="password"
-                inputMode="numeric"
-                autoComplete="off"
-                maxLength={4}
-                value={paymentPin}
-                onChange={(event) => {
-                  const value =
-                    event.target.value
-                      .replace(
-                        /\D/g,
-                        ""
-                      )
-                      .slice(0, 4);
-
-                  setPaymentPin(value);
-                  setError("");
-                }}
-                onKeyDown={(event) => {
-                  if (
-                    event.key === "Enter" &&
-                    paymentPin.length === 4 &&
-                    !verifyingPin
-                  ) {
-                    handlePinVerification();
-                  }
-                }}
-                placeholder="••••"
-                disabled={verifyingPin}
-                autoFocus
-                className="text-center text-2xl tracking-[0.5em]"
-              />
-
-              <p className="text-xs text-gray-500 text-center">
-                Your Payment PIN is securely
-                verified before the payment
-                is processed.
-              </p>
-
-            </div>
-
-            {error && (
-              <div className="rounded-lg bg-red-50 border border-red-200 p-3 mb-5">
-                <p className="text-sm text-red-700">
-                  {error}
-                </p>
-              </div>
-            )}
-
-            <div className="space-y-3">
-
-              <Button
-                type="button"
-                onClick={
-                  handlePinVerification
-                }
-                disabled={
-                  verifyingPin ||
-                  paymentPin.length !== 4
-                }
-                className="w-full bg-green-600 hover:bg-green-700"
-              >
-                {verifyingPin ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Verifying PIN...
-                  </>
-                ) : (
-                  "Authorize Payment"
+              {!loadingBillers &&
+                !processingPayment && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={loadBillers}
+                    className="h-7 px-2"
+                  >
+                    <RefreshCw className="h-3.5 w-3.5 mr-1" />
+                    Refresh
+                  </Button>
                 )}
-              </Button>
-
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => {
-                  if (
-                    verifyingPin ||
-                    processingPayment
-                  ) {
-                    return;
-                  }
-
-                  setPaymentPin("");
-                  setError("");
-                  setPinStep("none");
-                }}
-                disabled={verifyingPin}
-                className="w-full"
-              >
-                Back
-              </Button>
 
             </div>
+
+            <select
+              value={
+                selectedBillerCode
+              }
+              onChange={(event) =>
+                handleBillerChange(
+                  event.target.value
+                )
+              }
+              disabled={
+                loadingBillers ||
+                processingPayment ||
+                billers.length === 0
+              }
+              className="w-full h-11 rounded-md border bg-background px-3 text-sm"
+            >
+
+              <option value="">
+                {loadingBillers
+                  ? "Loading providers..."
+                  : "Select provider"}
+              </option>
+
+              {billers.map(
+                (
+                  biller,
+                  index
+                ) => {
+                  const code =
+                    String(
+                      biller.biller_code ??
+                        ""
+                    );
+
+                  if (!code) {
+                    return null;
+                  }
+
+                  return (
+                    <option
+                      key={`${code}-${index}`}
+                      value={code}
+                    >
+                      {biller.name ??
+                        biller.short_name ??
+                        code}
+                    </option>
+                  );
+                }
+              )}
+
+            </select>
 
           </div>
 
-        ) : (
+          {/* ==================================================
+              DATA
+          ================================================== */}
 
-          /* ==================================================
-             NORMAL FORM
-          ================================================== */
-
-          <div className="bg-white rounded-2xl shadow-sm border p-5 sm:p-6">
-
-            {/* WALLET */}
-
-            <div className="bg-green-50 border border-green-100 p-4 rounded-xl mb-5">
-
-              <p className="text-sm text-green-700">
-                Wallet Balance:{" "}
-                <strong>
-                  {formatNaira(
-                    Number(walletBalance)
-                  )}
-                </strong>
-              </p>
-
-            </div>
-
-            {/* LOADING BILLERS */}
-
-            {loadingBillers && (
-              <div className="flex items-center justify-center gap-2 py-4 text-sm text-gray-500">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Loading providers...
-              </div>
-            )}
-
-            {/* PROVIDER */}
-
-            <div className="space-y-2 mb-5">
+          {isData ? (
+            <div className="space-y-4 mb-5">
 
               <div className="flex items-center justify-between">
 
                 <Label>
-                  Provider
+                  Data Plan
                 </Label>
 
-                {!loadingBillers &&
-                  !processingPayment &&
-                  !verifyingPin &&
-                  !creatingPin &&
-                  !checkingPinStatus && (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={
-                        loadBillers
-                      }
-                      className="h-7 px-2"
-                    >
-                      <RefreshCw className="h-3.5 w-3.5 mr-1" />
-                      Refresh
-                    </Button>
-                  )}
+                {loadingItems && (
+                  <div className="flex items-center gap-1 text-xs text-gray-500">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    Loading...
+                  </div>
+                )}
 
               </div>
 
+              {!selectedBillerCode && (
+                <div className="rounded-lg border border-dashed p-5 text-center text-sm text-gray-500">
+                  Select a provider to view
+                  data plans.
+                </div>
+              )}
+
+              {selectedBillerCode &&
+                !loadingItems &&
+                items.length === 0 && (
+                  <div className="rounded-lg border border-dashed p-5 text-center text-sm text-gray-500">
+                    No data plans are
+                    currently available.
+                  </div>
+                )}
+
+              {(
+                [
+                  "Daily",
+                  "Weekly",
+                  "Monthly",
+                  "Other",
+                ] as const
+              ).map((group) => {
+                const groupItems =
+                  dataGroups[group];
+
+                if (
+                  groupItems.length === 0
+                ) {
+                  return null;
+                }
+
+                return (
+                  <div
+                    key={group}
+                    className="space-y-2"
+                  >
+
+                    <h3 className="text-sm font-semibold text-gray-700">
+                      {group}
+                    </h3>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+
+                      {groupItems.map(
+                        (
+                          item,
+                          index
+                        ) => {
+                          const code =
+                            String(
+                              item.item_code ??
+                                ""
+                            );
+
+                          if (!code) {
+                            return null;
+                          }
+
+                          const providerPrice =
+                            getItemProviderPrice(
+                              item
+                            );
+
+                          const sellingPrice =
+                            providerPrice +
+                            DATA_MARKUP;
+
+                          const selected =
+                            selectedItemCode ===
+                            code;
+
+                          return (
+                            <button
+                              type="button"
+                              key={`${code}-${index}`}
+                              onClick={() =>
+                                handleDataPlanSelect(
+                                  item
+                                )
+                              }
+                              disabled={
+                                processingPayment
+                              }
+                              className={[
+                                "text-left rounded-xl border p-3 transition-all",
+                                "hover:border-green-500 hover:bg-green-50",
+                                selected
+                                  ? "border-green-600 bg-green-50 ring-1 ring-green-600"
+                                  : "border-gray-200 bg-white",
+                              ].join(" ")}
+                            >
+
+                              <p className="text-sm font-medium text-gray-900 line-clamp-2">
+                                {item.name ??
+                                  item.short_name ??
+                                  "Data Plan"}
+                              </p>
+
+                              <p className="text-base font-bold text-green-700 mt-2">
+                                {formatNaira(
+                                  sellingPrice
+                                )}
+                              </p>
+
+                            </button>
+                          );
+                        }
+                      )}
+
+                    </div>
+
+                  </div>
+                );
+              })}
+
+            </div>
+          ) : (
+
+            /* =================================================
+               NON-DATA PACKAGE
+            ================================================= */
+
+            <div className="space-y-2 mb-5">
+
+              <Label>
+                {isAirtime
+                  ? "Airtime Type"
+                  : "Bill Package"}
+              </Label>
+
               <select
                 value={
-                  selectedBillerCode
+                  selectedItemCode
                 }
                 onChange={(event) =>
-                  handleBillerChange(
+                  handleItemChange(
                     event.target.value
                   )
                 }
                 disabled={
-                  loadingBillers ||
+                  loadingItems ||
                   processingPayment ||
-                  verifyingPin ||
-                  creatingPin ||
-                  checkingPinStatus ||
-                  billers.length === 0
+                  !selectedBillerCode ||
+                  items.length === 0
                 }
                 className="w-full h-11 rounded-md border bg-background px-3 text-sm"
               >
 
                 <option value="">
-                  {loadingBillers
-                    ? "Loading providers..."
-                    : "Select provider"}
+                  {loadingItems
+                    ? "Loading packages..."
+                    : !selectedBillerCode
+                      ? "Select provider first"
+                      : "Select package"}
                 </option>
 
-                {billers.map(
+                {items.map(
                   (
-                    biller,
+                    item,
                     index
                   ) => {
                     const code =
                       String(
-                        biller.biller_code ??
+                        item.item_code ??
                           ""
                       );
 
@@ -2141,8 +1587,8 @@ const ServicePayment = ({
                         key={`${code}-${index}`}
                         value={code}
                       >
-                        {biller.name ??
-                          biller.short_name ??
+                        {item.name ??
+                          item.short_name ??
                           code}
                       </option>
                     );
@@ -2152,476 +1598,268 @@ const ServicePayment = ({
               </select>
 
             </div>
+          )}
 
-            {/* DATA */}
+          {/* ==================================================
+              CUSTOMER
+          ================================================== */}
 
-            {isData ? (
-              <div className="space-y-4 mb-5">
+          <div className="space-y-2 mb-5">
 
-                <div className="flex items-center justify-between">
+            <Label htmlFor="billCustomer">
+              {customerLabel}
+            </Label>
 
-                  <Label>
-                    Data Plan
-                  </Label>
+            <Input
+              id="billCustomer"
+              value={customer}
+              onChange={(event) =>
+                setCustomer(
+                  event.target.value
+                )
+              }
+              placeholder={
+                customerPlaceholder
+              }
+              disabled={
+                processingPayment
+              }
+              inputMode={
+                serviceType ===
+                    "airtime" ||
+                serviceType ===
+                    "data" ||
+                serviceType ===
+                    "electricity" ||
+                serviceType === "cable"
+                  ? "numeric"
+                  : "text"
+              }
+            />
 
-                  {loadingItems && (
-                    <div className="flex items-center gap-1 text-xs text-gray-500">
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      Loading...
-                    </div>
-                  )}
+          </div>
+
+          {/* ==================================================
+              DATA PRICE
+          ================================================== */}
+
+          {isData &&
+            selectedItem && (
+              <div className="rounded-lg bg-green-50 border border-green-100 p-4 mb-5">
+
+                <div className="flex items-center justify-between gap-4">
+
+                  <span className="text-sm text-gray-600">
+                    Selected Plan
+                  </span>
+
+                  <span className="text-sm font-medium text-right">
+                    {selectedItem.name ??
+                      selectedItem.short_name}
+                  </span>
 
                 </div>
 
-                {!selectedBillerCode && (
-                  <div className="rounded-lg border border-dashed p-5 text-center text-sm text-gray-500">
-                    Select a provider to view
-                    data plans.
-                  </div>
-                )}
+                <div className="flex items-center justify-between mt-2">
 
-                {selectedBillerCode &&
-                  !loadingItems &&
-                  items.length === 0 && (
-                    <div className="rounded-lg border border-dashed p-5 text-center text-sm text-gray-500">
-                      No data plans are
-                      currently available.
-                    </div>
-                  )}
+                  <span className="text-sm text-gray-600">
+                    Price
+                  </span>
 
-                {(
-                  [
-                    "Daily",
-                    "Weekly",
-                    "Monthly",
-                    "Other",
-                  ] as const
-                ).map((group) => {
-                  const groupItems =
-                    dataGroups[group];
+                  <span className="font-bold text-green-700">
+                    {formatNaira(
+                      dataSellingAmount
+                    )}
+                  </span>
 
-                  if (
-                    groupItems.length === 0
-                  ) {
-                    return null;
-                  }
-
-                  return (
-                    <div
-                      key={group}
-                      className="space-y-2"
-                    >
-
-                      <h3 className="text-sm font-semibold text-gray-700">
-                        {group}
-                      </h3>
-
-                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-
-                        {groupItems.map(
-                          (
-                            item,
-                            index
-                          ) => {
-                            const code =
-                              String(
-                                item.item_code ??
-                                  ""
-                              );
-
-                            if (!code) {
-                              return null;
-                            }
-
-                            const providerPrice =
-                              getItemProviderPrice(
-                                item
-                              );
-
-                            const sellingPrice =
-                              providerPrice +
-                              DATA_MARKUP;
-
-                            const selected =
-                              selectedItemCode ===
-                              code;
-
-                            return (
-                              <button
-                                type="button"
-                                key={`${code}-${index}`}
-                                onClick={() =>
-                                  handleDataPlanSelect(
-                                    item
-                                  )
-                                }
-                                disabled={
-                                  processingPayment ||
-                                  verifyingPin ||
-                                  creatingPin ||
-                                  checkingPinStatus
-                                }
-                                className={[
-                                  "text-left rounded-xl border p-3 transition-all",
-                                  "hover:border-green-500 hover:bg-green-50",
-                                  selected
-                                    ? "border-green-600 bg-green-50 ring-1 ring-green-600"
-                                    : "border-gray-200 bg-white",
-                                ].join(" ")}
-                              >
-
-                                <p className="text-sm font-medium text-gray-900 line-clamp-2">
-                                  {item.name ??
-                                    item.short_name ??
-                                    "Data Plan"}
-                                </p>
-
-                                <p className="text-base font-bold text-green-700 mt-2">
-                                  {formatNaira(
-                                    sellingPrice
-                                  )}
-                                </p>
-
-                              </button>
-                            );
-                          }
-                        )}
-
-                      </div>
-
-                    </div>
-                  );
-                })}
-
-              </div>
-            ) : (
-
-              /* =================================================
-                 NON-DATA PACKAGE
-              ================================================= */
-
-              <div className="space-y-2 mb-5">
-
-                <Label>
-                  {isAirtime
-                    ? "Airtime Type"
-                    : "Bill Package"}
-                </Label>
-
-                <select
-                  value={
-                    selectedItemCode
-                  }
-                  onChange={(event) =>
-                    handleItemChange(
-                      event.target.value
-                    )
-                  }
-                  disabled={
-                    loadingItems ||
-                    processingPayment ||
-                    verifyingPin ||
-                    creatingPin ||
-                    checkingPinStatus ||
-                    !selectedBillerCode ||
-                    items.length === 0
-                  }
-                  className="w-full h-11 rounded-md border bg-background px-3 text-sm"
-                >
-
-                  <option value="">
-                    {loadingItems
-                      ? "Loading packages..."
-                      : !selectedBillerCode
-                        ? "Select provider first"
-                        : "Select package"}
-                  </option>
-
-                  {items.map(
-                    (
-                      item,
-                      index
-                    ) => {
-                      const code =
-                        String(
-                          item.item_code ??
-                            ""
-                        );
-
-                      if (!code) {
-                        return null;
-                      }
-
-                      return (
-                        <option
-                          key={`${code}-${index}`}
-                          value={code}
-                        >
-                          {item.name ??
-                            item.short_name ??
-                            code}
-                        </option>
-                      );
-                    }
-                  )}
-
-                </select>
+                </div>
 
               </div>
             )}
 
-            {/* CUSTOMER */}
+          {/* ==================================================
+              AMOUNT
+          ================================================== */}
 
+          {!isData && (
             <div className="space-y-2 mb-5">
 
-              <Label htmlFor="billCustomer">
-                {customerLabel}
+              <Label>
+                Amount (₦)
               </Label>
 
-              <Input
-                id="billCustomer"
-                value={customer}
-                onChange={(event) =>
-                  setCustomer(
-                    event.target.value
-                  )
-                }
-                placeholder={
-                  customerPlaceholder
-                }
-                disabled={
-                  processingPayment ||
-                  verifyingPin ||
-                  creatingPin ||
-                  checkingPinStatus
-                }
-                inputMode={
-                  serviceType ===
-                      "airtime" ||
-                  serviceType ===
-                      "data" ||
-                  serviceType ===
-                      "electricity" ||
-                  serviceType === "cable"
-                    ? "numeric"
-                    : "text"
-                }
-              />
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
 
-            </div>
-
-            {/* DATA PRICE */}
-
-            {isData &&
-              selectedItem && (
-                <div className="rounded-lg bg-green-50 border border-green-100 p-4 mb-5">
-
-                  <div className="flex items-center justify-between gap-4">
-
-                    <span className="text-sm text-gray-600">
-                      Selected Plan
-                    </span>
-
-                    <span className="text-sm font-medium text-right">
-                      {selectedItem.name ??
-                        selectedItem.short_name}
-                    </span>
-
-                  </div>
-
-                  <div className="flex items-center justify-between mt-2">
-
-                    <span className="text-sm text-gray-600">
-                      Price
-                    </span>
-
-                    <span className="font-bold text-green-700">
-                      {formatNaira(
-                        dataSellingAmount
-                      )}
-                    </span>
-
-                  </div>
-
-                </div>
-              )}
-
-            {/* AMOUNT */}
-
-            {!isData && (
-              <div className="space-y-2 mb-5">
-
-                <Label>
-                  Amount (₦)
-                </Label>
-
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-
-                  {(isAirtime
-                    ? AIRTIME_AMOUNTS
-                    : BILL_AMOUNTS
-                  ).map((value) => (
-                    <button
-                      type="button"
-                      key={value}
-                      onClick={() =>
-                        handleAmountSelect(
-                          value
-                        )
-                      }
-                      disabled={
-                        processingPayment ||
-                        verifyingPin ||
-                        creatingPin ||
-                        checkingPinStatus
-                      }
-                      className={[
-                        "rounded-xl border p-3 text-center font-semibold transition-all",
-                        "hover:border-green-500 hover:bg-green-50",
-                        amount ===
-                        String(value)
-                          ? "border-green-600 bg-green-50 text-green-700 ring-1 ring-green-600"
-                          : "border-gray-200",
-                      ].join(" ")}
-                    >
-                      {formatNaira(value)}
-                    </button>
-                  ))}
-
+                {(isAirtime
+                  ? AIRTIME_AMOUNTS
+                  : BILL_AMOUNTS
+                ).map((value) => (
                   <button
                     type="button"
-                    onClick={
-                      handleCustomAmount
+                    key={value}
+                    onClick={() =>
+                      handleAmountSelect(
+                        value
+                      )
                     }
                     disabled={
-                      processingPayment ||
-                      verifyingPin ||
-                      creatingPin ||
-                      checkingPinStatus
+                      processingPayment
                     }
                     className={[
                       "rounded-xl border p-3 text-center font-semibold transition-all",
                       "hover:border-green-500 hover:bg-green-50",
-                      customAmountMode
+                      amount ===
+                      String(value)
                         ? "border-green-600 bg-green-50 text-green-700 ring-1 ring-green-600"
                         : "border-gray-200",
                     ].join(" ")}
                   >
-                    Enter Amount
+                    {formatNaira(value)}
                   </button>
+                ))}
 
-                </div>
-
-                {customAmountMode && (
-                  <Input
-                    id="billAmount"
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={amount}
-                    onChange={(event) =>
-                      setAmount(
-                        event.target.value
-                      )
-                    }
-                    placeholder="Enter exact amount"
-                    disabled={
-                      processingPayment ||
-                      verifyingPin ||
-                      creatingPin ||
-                      checkingPinStatus
-                    }
-                    autoFocus
-                  />
-                )}
-
-                {(itemMinimum > 0 ||
-                  itemMaximum > 0) && (
-                  <p className="text-xs text-gray-500">
-
-                    {itemMinimum > 0
-                      ? `Minimum: ${formatNaira(
-                          itemMinimum
-                        )}`
-                      : ""}
-
-                    {itemMinimum > 0 &&
-                    itemMaximum > 0
-                      ? " • "
-                      : ""}
-
-                    {itemMaximum > 0
-                      ? `Maximum: ${formatNaira(
-                          itemMaximum
-                        )}`
-                      : ""}
-
-                  </p>
-                )}
+                <button
+                  type="button"
+                  onClick={
+                    handleCustomAmount
+                  }
+                  disabled={
+                    processingPayment
+                  }
+                  className={[
+                    "rounded-xl border p-3 text-center font-semibold transition-all",
+                    "hover:border-green-500 hover:bg-green-50",
+                    customAmountMode
+                      ? "border-green-600 bg-green-50 text-green-700 ring-1 ring-green-600"
+                      : "border-gray-200",
+                  ].join(" ")}
+                >
+                  Enter Amount
+                </button>
 
               </div>
-            )}
 
-            {/* ERROR */}
-
-            {error && (
-              <div className="rounded-lg bg-red-50 border border-red-200 p-3 mb-5">
-                <p className="text-sm text-red-700">
-                  {error}
-                </p>
-              </div>
-            )}
-
-            {/* PURCHASE */}
-
-            <Button
-              type="button"
-              onClick={
-                handlePurchase
-              }
-              disabled={
-                loadingBillers ||
-                loadingItems ||
-                processingPayment ||
-                verifyingPin ||
-                creatingPin ||
-                checkingPinStatus ||
-                !selectedBillerCode ||
-                !selectedItemCode ||
-                !customer.trim() ||
-                !amount
-              }
-              className="w-full bg-green-600 hover:bg-green-700 h-11"
-            >
-
-              {checkingPinStatus ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Checking Payment PIN...
-                </>
-              ) : processingPayment ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Processing...
-                </>
-              ) : (
-                `Purchase ${service.title}`
+              {customAmountMode && (
+                <Input
+                  id="billAmount"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={amount}
+                  onChange={(event) =>
+                    setAmount(
+                      event.target.value
+                    )
+                  }
+                  placeholder="Enter exact amount"
+                  disabled={
+                    processingPayment
+                  }
+                  autoFocus
+                />
               )}
 
-            </Button>
+              {(itemMinimum > 0 ||
+                itemMaximum > 0) && (
+                <p className="text-xs text-gray-500">
 
-            {processingPayment && (
-              <p className="text-xs text-center text-gray-500 mt-3">
-                Please do not leave this page
-                while your payment is being
-                processed.
+                  {itemMinimum > 0
+                    ? `Minimum: ${formatNaira(
+                        itemMinimum
+                      )}`
+                    : ""}
+
+                  {itemMinimum > 0 &&
+                  itemMaximum > 0
+                    ? " • "
+                    : ""}
+
+                  {itemMaximum > 0
+                    ? `Maximum: ${formatNaira(
+                        itemMaximum
+                      )}`
+                    : ""}
+
+                </p>
+              )}
+
+            </div>
+          )}
+
+          {/* ==================================================
+              ERROR
+          ================================================== */}
+
+          {error && (
+            <div className="rounded-lg bg-red-50 border border-red-200 p-3 mb-5">
+              <p className="text-sm text-red-700">
+                {error}
               </p>
+            </div>
+          )}
+
+          {/* ==================================================
+              PURCHASE
+          ================================================== */}
+
+          <Button
+            type="button"
+            onClick={
+              handlePurchase
+            }
+            disabled={
+              loadingBillers ||
+              loadingItems ||
+              processingPayment ||
+              !selectedBillerCode ||
+              !selectedItemCode ||
+              !customer.trim() ||
+              !amount
+            }
+            className="w-full bg-green-600 hover:bg-green-700 h-11"
+          >
+
+            {processingPayment ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Processing...
+              </>
+            ) : (
+              `Purchase ${service.title}`
             )}
 
-          </div>
-        )}
+          </Button>
+
+          {processingPayment && (
+            <p className="text-xs text-center text-gray-500 mt-3">
+              Please do not leave this page
+              while your payment is being
+              processed.
+            </p>
+          )}
+
+        </div>
 
       </main>
+
+      {/* ======================================================
+          PAYMENT PIN AUTHORIZATION MODAL
+      ====================================================== */}
+
+      <PaymentPinModal
+        open={paymentPinOpen}
+        onCancel={() => {
+          if (!processingPayment) {
+            setPaymentPinOpen(false);
+          }
+        }}
+        onVerified={
+          handlePaymentPinVerified
+        }
+        title="Authorize Service Payment"
+        description="Enter your 4-digit Payment PIN to authorize this payment."
+      />
+
     </div>
   );
 };

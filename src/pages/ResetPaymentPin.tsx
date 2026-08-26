@@ -67,12 +67,12 @@ const PinField = ({
         React.ChangeEvent<HTMLInputElement>
     ) => {
 
-      const value =
+      const nextValue =
         event.target.value
           .replace(/\D/g, "")
           .slice(0, 4);
 
-      onChange(value);
+      onChange(nextValue);
     };
 
 
@@ -108,7 +108,12 @@ const PinField = ({
             )
           }
           disabled={disabled}
-          className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+          className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700 disabled:opacity-50"
+          aria-label={
+            visible
+              ? "Hide PIN"
+              : "Show PIN"
+          }
         >
           {visible ? (
             <EyeOff className="h-5 w-5" />
@@ -173,6 +178,14 @@ const ResetPaymentPin =
     // ========================================================
 
     useEffect(() => {
+
+      /*
+       * Do not attempt to load or create a
+       * Supabase password recovery session here.
+       *
+       * Payment PIN recovery uses our own
+       * one-time authorization token.
+       */
 
       const token =
         sessionStorage.getItem(
@@ -260,7 +273,10 @@ const ResetPaymentPin =
     const handleReset =
       async () => {
 
-        if (processing) {
+        if (
+          processing ||
+          success
+        ) {
           return;
         }
 
@@ -323,9 +339,9 @@ const ResetPaymentPin =
           setProcessing(true);
 
 
-          // ----------------------------------------------------
-          // Verify current authentication
-          // ----------------------------------------------------
+          // ==================================================
+          // VERIFY AUTHENTICATED USER
+          // ==================================================
 
           const {
             data: {
@@ -348,9 +364,9 @@ const ResetPaymentPin =
           }
 
 
-          // ----------------------------------------------------
-          // Call secure RPC
-          // ----------------------------------------------------
+          // ==================================================
+          // RESET PAYMENT PIN
+          // ==================================================
 
           const {
             data,
@@ -382,6 +398,10 @@ const ResetPaymentPin =
           }
 
 
+          // ==================================================
+          // VALIDATE RPC RESPONSE
+          // ==================================================
+
           if (
             !data ||
             data.success !== true
@@ -394,9 +414,9 @@ const ResetPaymentPin =
           }
 
 
-          // ----------------------------------------------------
-          // Clear sensitive values
-          // ----------------------------------------------------
+          // ==================================================
+          // CLEAR SENSITIVE DATA
+          // ==================================================
 
           setNewPin("");
           setConfirmPin("");
@@ -409,8 +429,13 @@ const ResetPaymentPin =
             AUTHORIZATION_EXPIRES_KEY
           );
 
-
           setAuthorization("");
+
+
+          // ==================================================
+          // SHOW SUCCESS
+          // ==================================================
+
           setSuccess(true);
 
 
@@ -420,6 +445,28 @@ const ResetPaymentPin =
             description:
               "Your new Payment PIN is now active.",
           });
+
+
+          // ==================================================
+          // REDIRECT TO DASHBOARD
+          // ==================================================
+          //
+          // Give the user a short moment to see the
+          // success confirmation, then return directly
+          // to the Dashboard.
+          //
+
+          window.setTimeout(() => {
+
+            navigate(
+              "/dashboard",
+              {
+                replace: true,
+              }
+            );
+
+          }, 1200);
+
 
         } catch (error: any) {
 
@@ -453,7 +500,10 @@ const ResetPaymentPin =
     const handleBack =
       () => {
 
-        if (processing) {
+        if (
+          processing ||
+          success
+        ) {
           return;
         }
 
@@ -466,21 +516,36 @@ const ResetPaymentPin =
       };
 
 
+    // ========================================================
+    // RENDER
+    // ========================================================
+
     return (
       <div className="min-h-screen bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-50">
 
         <div className="max-w-md mx-auto px-4 py-8">
 
+          {/* ==================================================
+              BACK BUTTON
+          ================================================== */}
+
           <Button
             variant="ghost"
             onClick={handleBack}
-            disabled={processing}
+            disabled={
+              processing ||
+              success
+            }
             className="mb-6 text-purple-600"
           >
             <ArrowLeft className="h-4 w-4 mr-2" />
             Back
           </Button>
 
+
+          {/* ==================================================
+              CARD
+          ================================================== */}
 
           <Card className="shadow-lg">
 
@@ -489,7 +554,9 @@ const ResetPaymentPin =
               <div className="flex items-center gap-3">
 
                 <div className="w-11 h-11 rounded-full bg-purple-100 flex items-center justify-center">
+
                   <LockKeyhole className="h-6 w-6 text-purple-600" />
+
                 </div>
 
                 <div>
@@ -511,13 +578,19 @@ const ResetPaymentPin =
 
             <CardContent className="space-y-6">
 
+              {/* =================================================
+                  SUCCESS
+              ================================================= */}
+
               {success ? (
 
                 <div className="rounded-lg border border-green-200 bg-green-50 p-5">
 
                   <div className="flex items-start gap-3">
 
-                    <CheckCircle2 className="h-6 w-6 text-green-600 shrink-0" />
+                    <CheckCircle2
+                      className="h-6 w-6 text-green-600 shrink-0"
+                    />
 
                     <div>
 
@@ -529,20 +602,11 @@ const ResetPaymentPin =
                         Your new Payment PIN is now active.
                       </p>
 
-                      <Button
-                        type="button"
-                        className="mt-4 bg-green-600 hover:bg-green-700"
-                        onClick={() =>
-                          navigate(
-                            "/payment-pin",
-                            {
-                              replace: true,
-                            }
-                          )
-                        }
-                      >
-                        Continue
-                      </Button>
+                      <p className="text-xs text-green-600 mt-3">
+                        Returning to your dashboard...
+                      </p>
+
+                      <Loader2 className="h-4 w-4 mt-3 text-green-600 animate-spin" />
 
                     </div>
 
@@ -554,11 +618,15 @@ const ResetPaymentPin =
 
                 <>
 
+                  {/* =================================================
+                      RECOVERY VERIFIED
+                  ================================================= */}
+
                   <div className="rounded-lg bg-blue-50 border border-blue-100 p-4">
 
                     <div className="flex items-start gap-3">
 
-                      <ShieldCheck className="h-5 w-5 text-blue-600 mt-0.5" />
+                      <ShieldCheck className="h-5 w-5 text-blue-600 mt-0.5 shrink-0" />
 
                       <div>
 
@@ -577,6 +645,10 @@ const ResetPaymentPin =
                   </div>
 
 
+                  {/* =================================================
+                      NEW PIN
+                  ================================================= */}
+
                   <PinField
                     label="New Payment PIN"
                     value={newPin}
@@ -584,6 +656,10 @@ const ResetPaymentPin =
                     disabled={processing}
                   />
 
+
+                  {/* =================================================
+                      CONFIRM PIN
+                  ================================================= */}
 
                   <PinField
                     label="Confirm New Payment PIN"
@@ -593,9 +669,15 @@ const ResetPaymentPin =
                   />
 
 
+                  {/* =================================================
+                      RESET BUTTON
+                  ================================================= */}
+
                   <Button
                     type="button"
-                    onClick={handleReset}
+                    onClick={
+                      handleReset
+                    }
                     disabled={
                       processing ||
                       !authorization ||
@@ -607,13 +689,19 @@ const ResetPaymentPin =
 
                     {processing ? (
                       <>
+
                         <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+
                         Resetting PIN...
+
                       </>
                     ) : (
                       <>
+
                         <LockKeyhole className="h-4 w-4 mr-2" />
+
                         Reset Payment PIN
+
                       </>
                     )}
 

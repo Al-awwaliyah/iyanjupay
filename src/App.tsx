@@ -29,6 +29,8 @@ import OnboardingBvnPage from "@/components/onboarding/OnboardingBvnPage";
 import Dashboard from "@/components/Dashboard";
 import PaymentPinPage from "@/components/onboarding/PaymentPinPage";
 import VerifyRecoveryOtp from "./pages/VerifyRecoveryOtp";
+import VerifyPaymentPinResetOtp from "@/pages/VerifyPaymentPinResetOtp";
+import ResetPaymentPin from "@/pages/ResetPaymentPin";
 import ResetPassword from "./pages/ResetPassword";
 import NotFound from "./pages/NotFound";
 
@@ -155,6 +157,15 @@ const App = () => {
               element={
                 <VerifyRecoveryOtp />
               }
+            />
+            <Route
+              path="/verify-payment-pin-reset"
+              element={<VerifyPaymentPinResetOtp />}
+            />
+
+            <Route
+              path="/reset-payment-pin"
+              element={<ResetPaymentPin />}
             />
 
             <Route

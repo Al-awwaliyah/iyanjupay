@@ -20,12 +20,22 @@ const corsHeaders = {
   "Content-Type": "application/json",
 };
 
+
+// ============================================================
+// MONEY HELPERS
+// ============================================================
+
 function roundMoney(value: number): number {
   return Math.round(value * 100) / 100;
 }
 
-function maskAccountNumber(accountNumber: string): string {
-  const clean = String(accountNumber ?? "").replace(/\D/g, "");
+
+function maskAccountNumber(
+  accountNumber: string,
+): string {
+  const clean =
+    String(accountNumber ?? "")
+      .replace(/\D/g, "");
 
   if (clean.length < 4) {
     return clean;
@@ -39,29 +49,28 @@ function maskAccountNumber(accountNumber: string): string {
 // NOTIFICATION HELPER
 // ============================================================
 //
-// Creates a transaction notification safely.
+// This function ONLY creates the notification.
+// It does not affect the transaction itself.
 //
-// Duplicate protection:
-//   user_id + transaction_id + type
+// If notification creation fails, the transaction must NOT fail.
 //
-// We intentionally do not make notification failure break
-// the financial transaction.
-//
-async function createTransactionNotification(
-  supabase: ReturnType<typeof adminClient>,
-  params: {
-    userId: string;
-    transactionId: string | null;
-    type: string;
-    title: string;
-    message: string;
-    amount?: number | null;
-    metadata?: Record<string, any>;
-  },
-) {
+// This is intentional because notifications are auxiliary data.
+// ============================================================
+
+async function createTransactionNotification(params: {
+  supabase: ReturnType<typeof adminClient>;
+  userId: string;
+  transactionId?: string | null;
+  type: string;
+  title: string;
+  message: string;
+  amount?: number | null;
+  metadata?: Record<string, any>;
+}) {
   const {
+    supabase,
     userId,
-    transactionId,
+    transactionId = null,
     type,
     title,
     message,
@@ -71,17 +80,16 @@ async function createTransactionNotification(
 
   try {
     /*
-     * ==========================================================
-     * DUPLICATE PROTECTION
-     * ==========================================================
+     * Prevent duplicate notifications for the same
+     * transaction + notification type.
      *
-     * This prevents the same transaction notification from
-     * being inserted more than once if an Edge Function is
-     * retried.
+     * This is especially useful when the Edge Function
+     * is retried.
      */
+
     if (transactionId) {
       const {
-        data: existingNotification,
+        data: existing,
         error: existingError,
       } = await supabase
         .from("notifications")
@@ -99,77 +107,74 @@ async function createTransactionNotification(
         );
       }
 
-      if (existingNotification) {
-        console.log(
-          "Transaction notification already exists:",
-          {
-            user_id: userId,
-            transaction_id: transactionId,
-            type,
-          },
-        );
-
-        return;
+      if (existing?.id) {
+        return {
+          success: true,
+          already_exists: true,
+          id: existing.id,
+        };
       }
     }
 
-    /*
-     * ==========================================================
-     * INSERT NOTIFICATION
-     * ==========================================================
-     */
     const {
+      data,
       error,
     } = await supabase
       .from("notifications")
       .insert({
         user_id: userId,
-        transaction_id: transactionId,
+
+        transaction_id:
+          transactionId,
+
         type,
+
         title,
+
         message,
-        amount,
+
+        amount:
+          amount == null
+            ? null
+            : roundMoney(amount),
+
         is_read: false,
+
         metadata,
-      });
+      })
+      .select("id")
+      .single();
 
     if (error) {
-      /*
-       * Notification failure must NEVER reverse, interrupt,
-       * or fail the financial transaction.
-       */
       console.error(
-        "Transaction notification insert failed:",
-        {
-          error,
-          user_id: userId,
-          transaction_id: transactionId,
-          type,
-        },
+        "Transaction notification creation failed:",
+        error,
       );
 
-      return;
+      return {
+        success: false,
+        error: error.message,
+      };
     }
 
-    console.log(
-      "Transaction notification created:",
-      {
-        user_id: userId,
-        transaction_id: transactionId,
-        type,
-      },
-    );
+    return {
+      success: true,
+      already_exists: false,
+      id: data?.id ?? null,
+    };
   } catch (error) {
-    /*
-     * Notifications are secondary to the financial operation.
-     *
-     * Never throw notification errors back into the transfer
-     * flow.
-     */
     console.error(
       "Unexpected notification error:",
       error,
     );
+
+    return {
+      success: false,
+      error:
+        error instanceof Error
+          ? error.message
+          : "Notification creation failed.",
+    };
   }
 }
 
@@ -210,62 +215,92 @@ function createHistoryMetadata(params: {
   return {
     history_version: 1,
 
-    transaction_type: "bank_transfer",
-    transaction_category: "transfer",
+    transaction_type:
+      "bank_transfer",
+
+    transaction_category:
+      "transfer",
 
     direction,
 
-    display_title: `Transfer to ${beneficiaryName}`,
+    display_title:
+      `Transfer to ${beneficiaryName}`,
 
-    counterparty_type: "bank_account",
-    counterparty_name: beneficiaryName,
+    counterparty_type:
+      "bank_account",
 
-    sender_name: senderName,
-    sender_platform: "IyanjuPay",
+    counterparty_name:
+      beneficiaryName,
 
-    beneficiary_name: beneficiaryName,
+    sender_name:
+      senderName,
 
-    account_number: accountNumber,
+    sender_platform:
+      "IyanjuPay",
+
+    beneficiary_name:
+      beneficiaryName,
+
+    account_number:
+      accountNumber,
+
     account_number_masked:
       maskAccountNumber(accountNumber),
 
-    account_bank: accountBank,
+    account_bank:
+      accountBank,
 
-    narration: `${senderName} - IyanjuPay`,
+    narration:
+      `${senderName} - IyanjuPay`,
 
-    transfer_amount: amount,
+    transfer_amount:
+      amount,
 
-    iyanjupay_fee: iyanjupayFee,
+    iyanjupay_fee:
+      iyanjupayFee,
 
-    electronic_fee: electronicFee,
+    electronic_fee:
+      electronicFee,
 
-    total_charged: totalCharged,
+    total_charged:
+      totalCharged,
 
-    currency: "NGN",
+    currency:
+      "NGN",
 
     status,
 
     reference,
 
-    transaction_id: transactionId,
+    transaction_id:
+      transactionId,
 
-    provider: "flutterwave",
+    provider:
+      "flutterwave",
 
-    history_amount: totalCharged,
+    history_amount:
+      totalCharged,
 
-    history_sign: "-",
+    history_sign:
+      "-",
 
     history_amount_display:
-      `-₦${totalCharged.toLocaleString("en-NG", {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-      })}`,
+      `-₦${totalCharged.toLocaleString(
+        "en-NG",
+        {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        },
+      )}`,
 
-    provider_transfer_amount: amount,
+    provider_transfer_amount:
+      amount,
 
-    flutterwave_transfer_amount: amount,
+    flutterwave_transfer_amount:
+      amount,
 
-    created_for_history: true,
+    created_for_history:
+      true,
   };
 }
 
@@ -275,12 +310,22 @@ function createHistoryMetadata(params: {
 // ============================================================
 
 Deno.serve(async (req) => {
+
+  // ==========================================================
+  // CORS
+  // ==========================================================
+
   if (req.method === "OPTIONS") {
     return new Response(null, {
       status: 204,
       headers: corsHeaders,
     });
   }
+
+
+  // ==========================================================
+  // METHOD
+  // ==========================================================
 
   if (req.method !== "POST") {
     return json(
@@ -292,8 +337,15 @@ Deno.serve(async (req) => {
     );
   }
 
+
   try {
-    const user = await getUser(req);
+
+    // ========================================================
+    // AUTHENTICATION
+    // ========================================================
+
+    const user =
+      await getUser(req);
 
     if (!user) {
       return json(
@@ -305,13 +357,14 @@ Deno.serve(async (req) => {
       );
     }
 
-    const supabase = adminClient();
 
-    /*
-     * ============================================================
-     * SENDER PROFILE
-     * ============================================================
-     */
+    const supabase =
+      adminClient();
+
+
+    // ========================================================
+    // SENDER PROFILE
+    // ========================================================
 
     const {
       data: senderProfile,
@@ -321,6 +374,7 @@ Deno.serve(async (req) => {
       .select("full_name")
       .eq("id", user.id)
       .maybeSingle();
+
 
     if (senderProfileError) {
       console.error(
@@ -339,10 +393,12 @@ Deno.serve(async (req) => {
       );
     }
 
+
     const senderName =
       String(
         senderProfile?.full_name ?? "",
       ).trim();
+
 
     if (!senderName) {
       return json(
@@ -356,11 +412,10 @@ Deno.serve(async (req) => {
       );
     }
 
-    /*
-     * ============================================================
-     * REQUEST BODY
-     * ============================================================
-     */
+
+    // ========================================================
+    // REQUEST BODY
+    // ========================================================
 
     let body: any;
 
@@ -370,41 +425,89 @@ Deno.serve(async (req) => {
       return json(
         {
           success: false,
-          error: "Invalid JSON request body.",
+          error:
+            "Invalid JSON request body.",
         },
         400,
       );
     }
 
-    const amount = roundMoney(
-      Number(body?.amount),
-    );
+
+    // ========================================================
+    // REQUEST VALUES
+    // ========================================================
+
+    const amount =
+      roundMoney(
+        Number(body?.amount),
+      );
+
 
     const accountNumber =
       String(
-        body?.account_number ?? "",
+        body?.account_number ??
+        body?.accountNumber ??
+        "",
       ).replace(/\D/g, "");
+
 
     const accountBank =
       String(
-        body?.account_bank ?? "",
+        body?.account_bank ??
+        body?.bank_code ??
+        body?.bankCode ??
+        "",
       ).trim();
+
+
+    /*
+     * IMPORTANT:
+     *
+     * Different versions of the frontend may send
+     * the beneficiary name under different property names.
+     *
+     * We accept all common variants.
+     */
 
     const beneficiaryName =
       String(
-        body?.beneficiary_name ?? "",
+        body?.beneficiary_name ??
+        body?.beneficiaryName ??
+        body?.account_name ??
+        body?.accountName ??
+        body?.bank_account_name ??
+        body?.recipient_name ??
+        body?.recipientName ??
+        "",
       ).trim();
+
+
+    /*
+     * If the frontend did not provide the beneficiary name,
+     * do NOT reject the transaction simply because of that.
+     *
+     * Flutterwave can still receive the account details.
+     *
+     * The final beneficiary information from the provider
+     * will be saved later when available.
+     */
+
+    const safeBeneficiaryName =
+      beneficiaryName ||
+      "Bank Transfer";
+
 
     const clientIdempotencyKey =
       String(
-        body?.idempotency_key ?? "",
+        body?.idempotency_key ??
+        body?.idempotencyKey ??
+        "",
       ).trim();
 
-    /*
-     * ============================================================
-     * VALIDATION
-     * ============================================================
-     */
+
+    // ========================================================
+    // VALIDATION
+    // ========================================================
 
     if (
       !Number.isFinite(amount) ||
@@ -420,6 +523,7 @@ Deno.serve(async (req) => {
       );
     }
 
+
     if (
       Math.round(amount * 100) !==
       amount * 100
@@ -434,8 +538,11 @@ Deno.serve(async (req) => {
       );
     }
 
+
     if (
-      !/^\d{10}$/.test(accountNumber)
+      !/^\d{10}$/.test(
+        accountNumber,
+      )
     ) {
       return json(
         {
@@ -447,55 +554,49 @@ Deno.serve(async (req) => {
       );
     }
 
+
     if (
-      !/^\d+$/.test(accountBank)
+      !/^\d+$/.test(
+        accountBank,
+      )
     ) {
       return json(
         {
           success: false,
-          error: "Invalid bank code.",
-        },
-        400,
-      );
-    }
-
-    if (!beneficiaryName) {
-      return json(
-        {
-          success: false,
           error:
-            "Beneficiary name is required.",
+            "Invalid bank code.",
         },
         400,
       );
     }
 
-    /*
-     * ============================================================
-     * FEES
-     * ============================================================
-     */
+
+    // ========================================================
+    // FEES
+    // ========================================================
 
     const iyanjupayFee =
       IYANJUPAY_TRANSFER_FEE;
 
+
     const electronicFee =
-      amount > ELECTRONIC_FEE_THRESHOLD
+      amount >
+      ELECTRONIC_FEE_THRESHOLD
         ? ELECTRONIC_FEE
         : 0;
+
 
     const totalCharged =
       roundMoney(
         amount +
-          iyanjupayFee +
-          electronicFee,
+        iyanjupayFee +
+        electronicFee,
       );
 
-    /*
-     * ============================================================
-     * REFERENCE
-     * ============================================================
-     */
+
+    // ========================================================
+    // REFERENCE
+    // ========================================================
 
     const reference =
       `IYJ-${crypto
@@ -504,28 +605,30 @@ Deno.serve(async (req) => {
         .slice(0, 8)
         .toUpperCase()}`;
 
+
     const transferKey =
       clientIdempotencyKey ||
       `TRANSFER_${user.id}_${crypto.randomUUID()}`;
 
+
     const narration =
       `${senderName} - IyanjuPay`;
 
-    /*
-     * ============================================================
-     * CHECK FLUTTERWAVE BALANCE
-     * ============================================================
-     */
+
+    // ========================================================
+    // FLUTTERWAVE BALANCE
+    // ========================================================
 
     let balanceResponse;
 
     try {
-      balanceResponse = await flw(
-        "/balances",
-        {
-          method: "GET",
-        },
-      );
+      balanceResponse =
+        await flw(
+          "/balances",
+          {
+            method: "GET",
+          },
+        );
     } catch (error) {
       console.error(
         "Flutterwave balance request failed:",
@@ -535,13 +638,15 @@ Deno.serve(async (req) => {
       return json(
         {
           success: false,
-          stage: "flutterwave_balance",
+          stage:
+            "flutterwave_balance",
           error:
             "Unable to verify Flutterwave balance. Please try again later.",
         },
         503,
       );
     }
+
 
     if (
       !balanceResponse.ok ||
@@ -551,7 +656,8 @@ Deno.serve(async (req) => {
       return json(
         {
           success: false,
-          stage: "flutterwave_balance",
+          stage:
+            "flutterwave_balance",
           error:
             "Unable to verify Flutterwave balance.",
           provider_error:
@@ -562,41 +668,55 @@ Deno.serve(async (req) => {
       );
     }
 
+
     const balanceData =
       balanceResponse.body?.data;
 
+
     let ngnBalance: any = null;
 
-    if (Array.isArray(balanceData)) {
+
+    if (
+      Array.isArray(balanceData)
+    ) {
       ngnBalance =
         balanceData.find(
           (item: any) =>
             String(
               item?.currency ?? "",
-            ).toUpperCase() === "NGN",
+            ).toUpperCase() ===
+            "NGN",
         );
     } else if (
       balanceData &&
-      typeof balanceData === "object"
+      typeof balanceData ===
+        "object"
     ) {
       if (
         String(
           balanceData?.currency ?? "",
-        ).toUpperCase() === "NGN"
+        ).toUpperCase() ===
+        "NGN"
       ) {
-        ngnBalance = balanceData;
+        ngnBalance =
+          balanceData;
       }
     }
 
+
     const flutterwaveAvailableBalance =
       Number(
-        ngnBalance?.available_balance ?? 0,
+        ngnBalance?.available_balance ??
+          0,
       );
+
 
     const flutterwaveLedgerBalance =
       Number(
-        ngnBalance?.ledger_balance ?? 0,
+        ngnBalance?.ledger_balance ??
+          0,
       );
+
 
     if (
       !Number.isFinite(
@@ -606,7 +726,8 @@ Deno.serve(async (req) => {
       return json(
         {
           success: false,
-          stage: "flutterwave_balance",
+          stage:
+            "flutterwave_balance",
           error:
             "Unable to determine Flutterwave available balance.",
         },
@@ -614,8 +735,10 @@ Deno.serve(async (req) => {
       );
     }
 
+
     /*
-     * Flutterwave only needs the actual transfer amount.
+     * Flutterwave only receives the actual
+     * transfer amount.
      */
 
     if (
@@ -629,37 +752,45 @@ Deno.serve(async (req) => {
             "flutterwave_balance",
           error:
             "Insufficient Flutterwave balance. Please fund your Flutterwave account.",
-          transfer_amount: amount,
-          fee: iyanjupayFee,
+          transfer_amount:
+            amount,
+          fee:
+            iyanjupayFee,
           electronic_fee:
             electronicFee,
           total_charged:
             totalCharged,
-          required: amount,
+          required:
+            amount,
           available:
             flutterwaveAvailableBalance,
-          currency: "NGN",
+          currency:
+            "NGN",
         },
         200,
       );
     }
 
-    /*
-     * ============================================================
-     * KYC RESERVATION
-     * ============================================================
-     */
+
+    // ========================================================
+    // KYC RESERVATION
+    // ========================================================
 
     const {
       data: kycReservation,
-      error: kycReservationError,
+      error:
+        kycReservationError,
     } = await supabase.rpc(
       "reserve_kyc_daily_transfer",
       {
-        _user_id: user.id,
-        _amount: amount,
+        _user_id:
+          user.id,
+
+        _amount:
+          amount,
       },
     );
+
 
     if (kycReservationError) {
       console.error(
@@ -670,13 +801,15 @@ Deno.serve(async (req) => {
       return json(
         {
           success: false,
-          stage: "kyc_limit",
+          stage:
+            "kyc_limit",
           error:
             "Unable to reserve your daily transfer limit. Please try again.",
         },
         503,
       );
     }
+
 
     if (
       !kycReservation?.success ||
@@ -685,7 +818,8 @@ Deno.serve(async (req) => {
       return json(
         {
           success: false,
-          stage: "kyc_limit",
+          stage:
+            "kyc_limit",
           error:
             kycReservation?.error ??
             "Daily transfer limit exceeded.",
@@ -700,19 +834,27 @@ Deno.serve(async (req) => {
             null,
           requested_amount:
             amount,
-          currency: "NGN",
+          currency:
+            "NGN",
         },
         400,
       );
     }
 
-    let kycReservationActive = true;
+
+    let kycReservationActive =
+      true;
+
 
     const releaseKycReservation =
       async () => {
-        if (!kycReservationActive) {
+
+        if (
+          !kycReservationActive
+        ) {
           return true;
         }
+
 
         const {
           data,
@@ -720,10 +862,14 @@ Deno.serve(async (req) => {
         } = await supabase.rpc(
           "release_kyc_daily_transfer",
           {
-            _user_id: user.id,
-            _amount: amount,
+            _user_id:
+              user.id,
+
+            _amount:
+              amount,
           },
         );
+
 
         if (
           error ||
@@ -737,33 +883,50 @@ Deno.serve(async (req) => {
           return false;
         }
 
+
         kycReservationActive =
           false;
 
         return true;
       };
 
-    /*
-     * ============================================================
-     * DEBIT USER WALLET
-     * ============================================================
-     */
+
+    // ========================================================
+    // CREATE INITIAL HISTORY METADATA
+    // ========================================================
 
     const historyMetadata =
       createHistoryMetadata({
         transactionId:
           "PENDING",
+
         reference,
+
         senderName,
-        beneficiaryName,
+
+        beneficiaryName:
+          safeBeneficiaryName,
+
         accountNumber,
+
         accountBank,
+
         amount,
+
         iyanjupayFee,
+
         electronicFee,
+
         totalCharged,
-        status: "pending",
+
+        status:
+          "pending",
       });
+
+
+    // ========================================================
+    // DEBIT USER WALLET
+    // ========================================================
 
     const {
       data: debitTransaction,
@@ -771,12 +934,17 @@ Deno.serve(async (req) => {
     } = await supabase.rpc(
       "wallet_operation",
       {
-        _user_id: user.id,
-        _operation: "DEBIT",
-        _amount: totalCharged,
+        _user_id:
+          user.id,
+
+        _operation:
+          "DEBIT",
+
+        _amount:
+          totalCharged,
 
         _description:
-          `Transfer to ${beneficiaryName}`,
+          `Transfer to ${safeBeneficiaryName}`,
 
         _idempotency_key:
           transferKey,
@@ -808,11 +976,17 @@ Deno.serve(async (req) => {
           flutterwave_ledger_balance:
             flutterwaveLedgerBalance,
 
+          beneficiary_name_provided:
+            Boolean(
+              beneficiaryName,
+            ),
+
           status:
             "pending",
         },
       },
     );
+
 
     if (debitError) {
       await releaseKycReservation();
@@ -820,7 +994,8 @@ Deno.serve(async (req) => {
       return json(
         {
           success: false,
-          stage: "wallet_debit",
+          stage:
+            "wallet_debit",
           error:
             debitError.message ||
             "Unable to debit wallet.",
@@ -829,13 +1004,15 @@ Deno.serve(async (req) => {
       );
     }
 
+
     if (!debitTransaction) {
       await releaseKycReservation();
 
       return json(
         {
           success: false,
-          stage: "wallet_debit",
+          stage:
+            "wallet_debit",
           error:
             "Wallet debit did not return a transaction.",
         },
@@ -843,95 +1020,208 @@ Deno.serve(async (req) => {
       );
     }
 
+
     const transactionId =
       debitTransaction.id;
 
-    /*
-     * ============================================================
-     * INITIATE FLUTTERWAVE TRANSFER
-     * ============================================================
-     */
+
+    // ========================================================
+    // CREATE PENDING NOTIFICATION
+    // ========================================================
+    //
+    // This is the user's outgoing transaction notification.
+    //
+    // It is created AFTER the transaction has successfully
+    // been recorded.
+    //
+    // Failure here does NOT cancel the transfer.
+    // ========================================================
+
+    await createTransactionNotification({
+      supabase,
+
+      userId:
+        user.id,
+
+      transactionId:
+
+        transactionId,
+
+      type:
+        "transaction_pending",
+
+      title:
+        "Transfer initiated",
+
+      message:
+        `Your transfer of ₦${amount.toLocaleString(
+          "en-NG",
+          {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+          },
+        )} to ${safeBeneficiaryName} has been initiated and is being processed.`,
+
+      amount:
+        amount,
+
+      metadata: {
+        transaction_type:
+          "bank_transfer",
+
+        transaction_category:
+          "transfer",
+
+        direction:
+          "outgoing",
+
+        reference,
+
+        account_number:
+          accountNumber,
+
+        account_number_masked:
+          maskAccountNumber(
+            accountNumber,
+          ),
+
+        account_bank:
+          accountBank,
+
+        beneficiary_name:
+          safeBeneficiaryName,
+
+        transfer_amount:
+          amount,
+
+        fee:
+          iyanjupayFee,
+
+        electronic_fee:
+          electronicFee,
+
+        total_charged:
+          totalCharged,
+
+        currency:
+          "NGN",
+
+        status:
+          "pending",
+      },
+    });
+
+
+    // ========================================================
+    // INITIATE FLUTTERWAVE TRANSFER
+    // ========================================================
 
     let flutterwaveResponse;
 
     try {
+
       flutterwaveResponse =
         await flw(
           "/transfers",
           {
-            method: "POST",
-            body: JSON.stringify({
-              account_bank:
-                accountBank,
+            method:
+              "POST",
 
-              account_number:
-                accountNumber,
+            body:
+              JSON.stringify({
+                account_bank:
+                  accountBank,
 
-              amount,
+                account_number:
+                  accountNumber,
 
-              currency: "NGN",
+                amount,
 
-              debit_currency:
-                "NGN",
+                currency:
+                  "NGN",
 
-              beneficiary_name:
-                beneficiaryName,
+                debit_currency:
+                  "NGN",
 
-              narration,
+                beneficiary_name:
+                  safeBeneficiaryName,
 
-              reference,
+                narration,
 
-              meta: [
-                {
-                  key:
-                    "sender_name",
-                  value:
-                    senderName,
-                },
-                {
-                  key:
-                    "sender_platform",
-                  value:
-                    "IyanjuPay",
-                },
-                {
-                  key:
-                    "iyanjupay_reference",
-                  value:
-                    reference,
-                },
-                {
-                  key:
-                    "iyanjupay_transaction_id",
-                  value:
-                    transactionId,
-                },
-                {
-                  key:
-                    "iyanjupay_transfer_amount",
-                  value:
-                    String(amount),
-                },
-              ],
-            }),
+                reference,
+
+                meta: [
+                  {
+                    key:
+                      "sender_name",
+
+                    value:
+                      senderName,
+                  },
+
+                  {
+                    key:
+                      "sender_platform",
+
+                    value:
+                      "IyanjuPay",
+                  },
+
+                  {
+                    key:
+                      "iyanjupay_reference",
+
+                    value:
+                      reference,
+                  },
+
+                  {
+                    key:
+                      "iyanjupay_transaction_id",
+
+                    value:
+                      transactionId,
+                  },
+
+                  {
+                    key:
+                      "iyanjupay_transfer_amount",
+
+                    value:
+                      String(amount),
+                  },
+                ],
+              }),
           },
         );
+
     } catch (error) {
+
       console.error(
         "Flutterwave transfer request failed:",
         error,
       );
 
+
+      // ======================================================
+      // REFUND
+      // ======================================================
+
       const refundResult =
         await supabase.rpc(
           "wallet_operation",
           {
-            _user_id: user.id,
-            _operation: "REFUND",
-            _amount: totalCharged,
+            _user_id:
+              user.id,
+
+            _operation:
+              "REFUND",
+
+            _amount:
+              totalCharged,
 
             _description:
-              `Refund for failed transfer to ${beneficiaryName}`,
+              `Refund for failed transfer to ${safeBeneficiaryName}`,
 
             _idempotency_key:
               `REFUND_${transactionId}`,
@@ -973,19 +1263,26 @@ Deno.serve(async (req) => {
           },
         );
 
+
       if (refundResult.error) {
+
         await supabase
           .from("transactions")
           .update({
-            status: "pending",
+            status:
+              "pending",
 
             metadata: {
               ...historyMetadata,
+
               transaction_id:
                 transactionId,
 
-              refund_pending: true,
-              refund_required: true,
+              refund_pending:
+                true,
+
+              refund_required:
+                true,
 
               refund_amount:
                 totalCharged,
@@ -999,76 +1296,92 @@ Deno.serve(async (req) => {
             transactionId,
           );
 
+
         /*
-         * ========================================================
-         * NOTIFICATION
-         * ========================================================
+         * Notification:
          *
-         * The financial operation requires reconciliation,
-         * therefore notify the user that the transfer requires
-         * attention rather than falsely saying it succeeded.
+         * The original pending notification remains.
+         * Add a separate refund-pending notification.
          */
 
-        await createTransactionNotification(
+        await createTransactionNotification({
           supabase,
-          {
-            userId: user.id,
-            transactionId,
-            type: "transfer_refund_pending",
-            title:
-              "Transfer refund pending",
-            message:
-              `Your transfer of ₦${totalCharged.toLocaleString(
-                "en-NG",
-                {
-                  minimumFractionDigits: 2,
-                  maximumFractionDigits: 2,
-                },
-              )} to ${beneficiaryName} failed. Your refund requires reconciliation.`,
-            amount: totalCharged,
-            metadata: {
-              reference,
-              beneficiary_name:
-                beneficiaryName,
-              account_number:
-                maskAccountNumber(
-                  accountNumber,
-                ),
-              transfer_amount:
-                amount,
-              iyanjupay_fee:
-                iyanjupayFee,
-              electronic_fee:
-                electronicFee,
-              total_charged:
-                totalCharged,
-              refund_pending: true,
-              refund_required: true,
-            },
+
+          userId:
+            user.id,
+
+          transactionId,
+
+          type:
+            "transaction_refund_pending",
+
+          title:
+            "Transfer refund pending",
+
+          message:
+            `Your transfer of ₦${amount.toLocaleString(
+              "en-NG",
+              {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              },
+            )} to ${safeBeneficiaryName} failed. Your refund requires reconciliation.`,
+
+          amount:
+            totalCharged,
+
+          metadata: {
+            reference,
+
+            transfer_amount:
+              amount,
+
+            total_charged:
+              totalCharged,
+
+            beneficiary_name:
+              safeBeneficiaryName,
+
+            status:
+              "refund_pending",
+
+            direction:
+              "outgoing",
+
+            refund_required:
+              true,
           },
-        );
+        });
+
 
         return json(
           {
             success: false,
+
             status:
               "refund_pending",
+
             error:
               "Transfer failed and automatic refund requires reconciliation.",
+
             transaction_id:
               transactionId,
+
             reference,
           },
           503,
         );
       }
 
+
       await releaseKycReservation();
+
 
       await supabase
         .from("transactions")
         .update({
-          status: "failed",
+          status:
+            "failed",
 
           metadata: {
             ...historyMetadata,
@@ -1076,9 +1389,11 @@ Deno.serve(async (req) => {
             transaction_id:
               transactionId,
 
-            status: "failed",
+            status:
+              "failed",
 
-            refunded: true,
+            refunded:
+              true,
 
             refund_amount:
               totalCharged,
@@ -1092,101 +1407,128 @@ Deno.serve(async (req) => {
           transactionId,
         );
 
-      /*
-       * ========================================================
-       * NOTIFICATION — FAILED + REFUNDED
-       * ========================================================
-       */
 
-      await createTransactionNotification(
+      // ======================================================
+      // FAILED TRANSACTION NOTIFICATION
+      // ======================================================
+
+      await createTransactionNotification({
         supabase,
-        {
-          userId: user.id,
-          transactionId,
-          type: "transfer_failed",
-          title:
-            "Bank transfer failed",
-          message:
-            `Your transfer of ₦${totalCharged.toLocaleString(
-              "en-NG",
-              {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2,
-              },
-            )} to ${beneficiaryName} failed. ₦${totalCharged.toLocaleString(
-              "en-NG",
-              {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2,
-              },
-            )} has been refunded to your wallet.`,
-          amount: totalCharged,
-          metadata: {
-            reference,
-            beneficiary_name:
-              beneficiaryName,
-            account_number:
-              maskAccountNumber(
-                accountNumber,
-              ),
-            transfer_amount:
-              amount,
-            iyanjupay_fee:
-              iyanjupayFee,
-            electronic_fee:
-              electronicFee,
-            total_charged:
-              totalCharged,
-            refunded: true,
-            refund_amount:
-              totalCharged,
-            status: "failed",
-          },
+
+        userId:
+          user.id,
+
+        transactionId,
+
+        type:
+          "transaction_failed",
+
+        title:
+          "Transfer failed",
+
+        message:
+          `Your transfer of ₦${amount.toLocaleString(
+            "en-NG",
+            {
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 2,
+            },
+          )} to ${safeBeneficiaryName} failed. ₦${totalCharged.toLocaleString(
+            "en-NG",
+            {
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 2,
+            },
+          )} has been refunded to your wallet.`,
+
+        amount:
+          totalCharged,
+
+        metadata: {
+          reference,
+
+          transfer_amount:
+            amount,
+
+          total_charged:
+            totalCharged,
+
+          beneficiary_name:
+            safeBeneficiaryName,
+
+          status:
+            "failed",
+
+          refunded:
+            true,
+
+          direction:
+            "outgoing",
         },
-      );
+      });
+
 
       return json({
-        success: false,
-        status: "failed",
-        refunded: true,
+        success:
+          false,
+
+        status:
+          "failed",
+
+        refunded:
+          true,
+
         reference,
+
         transaction_id:
           transactionId,
+
         refund_amount:
           totalCharged,
       });
     }
 
+
+    // ========================================================
+    // PROVIDER RESPONSE
+    // ========================================================
+
     const flutterwaveData =
       flutterwaveResponse.body;
 
-    /*
-     * ============================================================
-     * PROVIDER REJECTED
-     * ============================================================
-     */
+
+    // ========================================================
+    // PROVIDER REJECTED
+    // ========================================================
 
     if (
       !flutterwaveResponse.ok ||
       flutterwaveData?.status !==
         "success"
     ) {
+
       const providerError =
         flutterwaveData?.message ||
         flutterwaveData?.error?.message ||
         flutterwaveData?.error ||
         "Flutterwave could not initiate the transfer.";
 
+
       const refundResult =
         await supabase.rpc(
           "wallet_operation",
           {
-            _user_id: user.id,
-            _operation: "REFUND",
-            _amount: totalCharged,
+            _user_id:
+              user.id,
+
+            _operation:
+              "REFUND",
+
+            _amount:
+              totalCharged,
 
             _description:
-              `Refund for rejected transfer to ${beneficiaryName}`,
+              `Refund for rejected transfer to ${safeBeneficiaryName}`,
 
             _idempotency_key:
               `REFUND_${transactionId}`,
@@ -1231,11 +1573,14 @@ Deno.serve(async (req) => {
           },
         );
 
+
       if (refundResult.error) {
+
         await supabase
           .from("transactions")
           .update({
-            status: "pending",
+            status:
+              "pending",
 
             metadata: {
               ...historyMetadata,
@@ -1261,61 +1606,67 @@ Deno.serve(async (req) => {
             transactionId,
           );
 
-        /*
-         * ========================================================
-         * NOTIFICATION — REFUND PENDING
-         * ========================================================
-         */
 
-        await createTransactionNotification(
+        await createTransactionNotification({
           supabase,
-          {
-            userId: user.id,
-            transactionId,
-            type: "transfer_refund_pending",
-            title:
-              "Transfer refund pending",
-            message:
-              `Your transfer of ₦${totalCharged.toLocaleString(
-                "en-NG",
-                {
-                  minimumFractionDigits: 2,
-                  maximumFractionDigits: 2,
-                },
-              )} to ${beneficiaryName} was rejected. Your refund requires reconciliation.`,
-            amount: totalCharged,
-            metadata: {
-              reference,
-              beneficiary_name:
-                beneficiaryName,
-              account_number:
-                maskAccountNumber(
-                  accountNumber,
-                ),
-              transfer_amount:
-                amount,
-              iyanjupay_fee:
-                iyanjupayFee,
-              electronic_fee:
-                electronicFee,
-              total_charged:
-                totalCharged,
-              provider_error:
-                providerError,
-              refund_pending: true,
-              refund_required: true,
-            },
+
+          userId:
+            user.id,
+
+          transactionId,
+
+          type:
+            "transaction_refund_pending",
+
+          title:
+            "Transfer refund pending",
+
+          message:
+            `Your transfer to ${safeBeneficiaryName} was rejected by the payment provider. Your refund requires reconciliation.`,
+
+          amount:
+            totalCharged,
+
+          metadata: {
+            reference,
+
+            transfer_amount:
+              amount,
+
+            total_charged:
+              totalCharged,
+
+            beneficiary_name:
+              safeBeneficiaryName,
+
+            provider_error:
+              providerError,
+
+            status:
+              "refund_pending",
+
+            direction:
+              "outgoing",
+
+            refund_required:
+              true,
           },
-        );
+        });
+
 
         return json(
           {
-            success: false,
+            success:
+              false,
+
             status:
               "refund_pending",
+
             error:
               "Flutterwave rejected the transfer but automatic refund requires retry.",
+
             reference,
+
             transaction_id:
               transactionId,
           },
@@ -1323,12 +1674,15 @@ Deno.serve(async (req) => {
         );
       }
 
+
       await releaseKycReservation();
+
 
       await supabase
         .from("transactions")
         .update({
-          status: "failed",
+          status:
+            "failed",
 
           metadata: {
             ...historyMetadata,
@@ -1336,12 +1690,14 @@ Deno.serve(async (req) => {
             transaction_id:
               transactionId,
 
-            status: "failed",
+            status:
+              "failed",
 
             provider_error:
               providerError,
 
-            refunded: true,
+            refunded:
+              true,
 
             refund_amount:
               totalCharged,
@@ -1355,78 +1711,94 @@ Deno.serve(async (req) => {
           transactionId,
         );
 
-      /*
-       * ========================================================
-       * NOTIFICATION — PROVIDER REJECTED + REFUNDED
-       * ========================================================
-       */
 
-      await createTransactionNotification(
+      // ======================================================
+      // PROVIDER REJECTION NOTIFICATION
+      // ======================================================
+
+      await createTransactionNotification({
         supabase,
-        {
-          userId: user.id,
-          transactionId,
-          type: "transfer_failed",
-          title:
-            "Bank transfer failed",
-          message:
-            `Your transfer of ₦${totalCharged.toLocaleString(
-              "en-NG",
-              {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2,
-              },
-            )} to ${beneficiaryName} was rejected. ₦${totalCharged.toLocaleString(
-              "en-NG",
-              {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2,
-              },
-            )} has been refunded to your wallet.`,
-          amount: totalCharged,
-          metadata: {
-            reference,
-            beneficiary_name:
-              beneficiaryName,
-            account_number:
-              maskAccountNumber(
-                accountNumber,
-              ),
-            transfer_amount:
-              amount,
-            iyanjupay_fee:
-              iyanjupayFee,
-            electronic_fee:
-              electronicFee,
-            total_charged:
-              totalCharged,
-            provider_error:
-              providerError,
-            refunded: true,
-            refund_amount:
-              totalCharged,
-            status: "failed",
-          },
+
+        userId:
+          user.id,
+
+        transactionId,
+
+        type:
+          "transaction_failed",
+
+        title:
+          "Transfer failed",
+
+        message:
+          `Your transfer of ₦${amount.toLocaleString(
+            "en-NG",
+            {
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 2,
+            },
+          )} to ${safeBeneficiaryName} was rejected. ₦${totalCharged.toLocaleString(
+            "en-NG",
+            {
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 2,
+            },
+          )} has been refunded to your wallet.`,
+
+        amount:
+          totalCharged,
+
+        metadata: {
+          reference,
+
+          transfer_amount:
+            amount,
+
+          total_charged:
+            totalCharged,
+
+          beneficiary_name:
+            safeBeneficiaryName,
+
+          provider_error:
+            providerError,
+
+          status:
+            "failed",
+
+          refunded:
+            true,
+
+          direction:
+            "outgoing",
         },
-      );
+      });
+
 
       return json({
-        success: false,
-        status: "failed",
-        refunded: true,
+        success:
+          false,
+
+        status:
+          "failed",
+
+        refunded:
+          true,
+
         reference,
+
         transaction_id:
           transactionId,
+
         refund_amount:
           totalCharged,
       });
     }
 
-    /*
-     * ============================================================
-     * ACCEPTED BY FLUTTERWAVE
-     * ============================================================
-     */
+
+    // ========================================================
+    // ACCEPTED BY FLUTTERWAVE
+    // ========================================================
 
     const flutterwaveTransferId =
       flutterwaveData?.data?.id
@@ -1435,35 +1807,55 @@ Deno.serve(async (req) => {
           )
         : null;
 
+
     const transferStatus =
       String(
         flutterwaveData?.data?.status ??
           "NEW",
       ).toUpperCase();
 
+
     /*
      * Never mark successful here.
+     *
+     * Flutterwave can return 200 / success while the
+     * transfer is still queued.
      */
+
 
     const pendingMetadata =
       createHistoryMetadata({
         transactionId,
+
         reference,
+
         senderName,
-        beneficiaryName,
+
+        beneficiaryName:
+          safeBeneficiaryName,
+
         accountNumber,
+
         accountBank,
+
         amount,
+
         iyanjupayFee,
+
         electronicFee,
+
         totalCharged,
-        status: "pending",
+
+        status:
+          "pending",
       });
+
 
     await supabase
       .from("transactions")
       .update({
-        status: "pending",
+        status:
+          "pending",
 
         provider:
           "flutterwave",
@@ -1498,64 +1890,39 @@ Deno.serve(async (req) => {
         transactionId,
       );
 
-    /*
-     * ============================================================
-     * NOTIFICATION — TRANSFER PENDING
-     * ============================================================
-     *
-     * This is NOT a success notification.
-     *
-     * Flutterwave has only accepted/queued the request.
-     */
 
-    await createTransactionNotification(
-      supabase,
-      {
-        userId: user.id,
-        transactionId,
-        type: "transfer_pending",
-        title:
-          "Bank transfer processing",
-        message:
-          `Your transfer of ₦${totalCharged.toLocaleString(
-            "en-NG",
-            {
-              minimumFractionDigits: 2,
-              maximumFractionDigits: 2,
-            },
-          )} to ${beneficiaryName} is being processed.`,
-        amount: totalCharged,
-        metadata: {
-          reference,
-          beneficiary_name:
-            beneficiaryName,
-          account_number:
-            maskAccountNumber(
-              accountNumber,
-            ),
-          account_bank:
-            accountBank,
-          transfer_amount:
-            amount,
-          iyanjupay_fee:
-            iyanjupayFee,
-          electronic_fee:
-            electronicFee,
-          total_charged:
-            totalCharged,
-          flutterwave_transfer_id:
-            flutterwaveTransferId,
-          flutterwave_status:
-            transferStatus,
-          status: "pending",
-        },
-      },
-    );
+    // ========================================================
+    // IMPORTANT:
+    // ========================================================
+    //
+    // The pending notification was already created after
+    // wallet debit.
+    //
+    // We deliberately DO NOT create another pending
+    // notification here.
+    //
+    // This prevents:
+    //
+    // Transfer initiated
+    // Transfer initiated
+    //
+    // from appearing twice.
+    //
+    // The Flutterwave webhook should later create/update
+    // the SUCCESSFUL or FAILED notification.
+    // ========================================================
+
+
+    // ========================================================
+    // RESPONSE
+    // ========================================================
 
     return json({
-      success: true,
+      success:
+        true,
 
-      status: "pending",
+      status:
+        "pending",
 
       message:
         "Transfer has been initiated and is being processed.",
@@ -1583,9 +1950,12 @@ Deno.serve(async (req) => {
       total_charged:
         totalCharged,
 
-      currency: "NGN",
+      currency:
+        "NGN",
     });
+
   } catch (error) {
+
     console.error(
       "FLUTTERWAVE TRANSFER INTERNAL ERROR:",
       error,
@@ -1593,8 +1963,12 @@ Deno.serve(async (req) => {
 
     return json(
       {
-        success: false,
-        stage: "internal",
+        success:
+          false,
+
+        stage:
+          "internal",
+
         error:
           error instanceof Error
             ? error.message

@@ -86,7 +86,7 @@ const OnboardingBvnPage = () => {
               message = body.error;
             }
           } catch {
-            // Keep original message.
+            // Keep original error.
           }
         }
 
@@ -116,12 +116,9 @@ const OnboardingBvnPage = () => {
     async () => {
       try {
         const {
-          data: {
-            user,
-          },
+          data: { user },
           error: userError,
-        } =
-          await supabase.auth.getUser();
+        } = await supabase.auth.getUser();
 
         if (userError) {
           throw userError;
@@ -172,11 +169,14 @@ const OnboardingBvnPage = () => {
         setKyc(statusData);
 
         // ------------------------------------------------------
-        // Already verified
+        // ALREADY VERIFIED
+        //
+        // Do NOT send through "/".
+        // Go directly to dashboard.
         // ------------------------------------------------------
 
         if (verified) {
-          navigate("/", {
+          navigate("/dashboard", {
             replace: true,
           });
 
@@ -244,19 +244,9 @@ const OnboardingBvnPage = () => {
       setVerifying(true);
 
       try {
-        /*
-         * IMPORTANT:
-         *
-         * We intentionally send ONLY the BVN.
-         *
-         * We do not send:
-         * - full_name
-         * - phone_number
-         * - date_of_birth
-         * - address
-         *
-         * PROVN is responsible for verifying the BVN.
-         */
+        // ------------------------------------------------------
+        // VERIFY BVN
+        // ------------------------------------------------------
 
         const result =
           await invokeBvn({
@@ -274,41 +264,8 @@ const OnboardingBvnPage = () => {
           );
         }
 
-        setKyc({
-          verified: true,
-
-          kyc_level:
-            Number(
-              result?.kyc_level ??
-                2,
-            ),
-
-          kyc_status:
-            String(
-              result?.kyc_status ??
-                "verified",
-            ),
-
-          bvn_masked:
-            result?.bvn_masked ??
-            `******${digits.slice(-4)}`,
-
-          bvn_verified_at:
-            result?.bvn_verified_at ??
-            new Date().toISOString(),
-        });
-
-        setBvn("");
-
-        toast({
-          title:
-            "BVN verified successfully",
-          description:
-            "Your account has been upgraded to KYC Tier 2.",
-        });
-
         // ------------------------------------------------------
-        // FINAL DATABASE STATUS CHECK
+        // VERIFY THAT DATABASE STATE IS REALLY SAVED
         // ------------------------------------------------------
 
         const status =
@@ -328,10 +285,51 @@ const OnboardingBvnPage = () => {
         }
 
         // ------------------------------------------------------
-        // ONBOARDING COMPLETE
+        // UPDATE LOCAL STATE
         // ------------------------------------------------------
 
-        navigate("/", {
+        setKyc({
+          verified: true,
+
+          kyc_level:
+            Number(
+              status?.kyc_level ?? 2,
+            ),
+
+          kyc_status:
+            String(
+              status?.kyc_status ??
+                "verified",
+            ),
+
+          bvn_masked:
+            status?.bvn_masked ??
+            `******${digits.slice(-4)}`,
+
+          bvn_verified_at:
+            status?.bvn_verified_at ??
+            new Date().toISOString(),
+        });
+
+        setBvn("");
+
+        toast({
+          title:
+            "BVN verified successfully",
+          description:
+            "Your account has been upgraded to KYC Tier 2.",
+        });
+
+        // ------------------------------------------------------
+        // ONBOARDING COMPLETE
+        //
+        // CRITICAL:
+        // Go directly to dashboard.
+        //
+        // Do NOT navigate to "/".
+        // ------------------------------------------------------
+
+        navigate("/dashboard", {
           replace: true,
         });
       } catch (error: any) {
@@ -458,9 +456,7 @@ const OnboardingBvnPage = () => {
               <Button
                 type="button"
                 className="w-full bg-blue-600 hover:bg-blue-700"
-                onClick={
-                  handleVerifyBvn
-                }
+                onClick={handleVerifyBvn}
                 disabled={
                   verifying ||
                   bvn.length !== 11

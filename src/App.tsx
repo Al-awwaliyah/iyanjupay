@@ -27,6 +27,7 @@ import VerifyEmailOtp from "./pages/VerifyEmailOtp";
 import OnboardingPage from "@/components/onboarding/OnboardingPage";
 import OnboardingBvnPage from "@/components/onboarding/OnboardingBvnPage";
 import Dashboard from "@/components/Dashboard";
+import TransactionProcessing from "./pages/TransactionProcessing";
 import PaymentPinPage from "@/components/onboarding/PaymentPinPage";
 import VerifyRecoveryOtp from "./pages/VerifyRecoveryOtp";
 import VerifyPaymentPinResetOtp from "@/pages/VerifyPaymentPinResetOtp";
@@ -125,13 +126,7 @@ const App = () => {
                 email verification when their profile is
                 incomplete.
 
-                Flow:
-
-                Email verification
-                    ↓
-                Profile completion
-                    ↓
-                BVN verification
+               
             */}
 
             <Route
@@ -163,6 +158,11 @@ const App = () => {
               element={<VerifyPaymentPinResetOtp />}
             />
 
+            <Route
+              path="/transaction-processing"
+              element={<TransactionProcessing />}
+            />
+            
             <Route
               path="/reset-payment-pin"
               element={<ResetPaymentPin />}

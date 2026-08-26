@@ -96,21 +96,6 @@ type DashboardTransaction = {
   created_at: string;
 };
 
-type OnboardingProfile = {
-  full_name: string | null;
-  phone_number: string | null;
-  gender: string | null;
-  date_of_birth: string | null;
-  address: string | null;
-
-  bvn: string | null;
-  nin: string | null;
-
-  bvn_verified: boolean | null;
-  kyc_status: string | null;
-  kyc_level: number | null;
-};
-
 const SUPPORTED_BILL_SERVICES: BillService[] = [
   "airtime",
   "data",
@@ -155,9 +140,7 @@ const MONEY_OUT_TYPES = new Set([
   "payout",
 ]);
 
-const normalizeText = (
-  value: unknown
-): string => {
+const normalizeText = (value: unknown): string => {
   return String(value ?? "")
     .trim()
     .toLowerCase()
@@ -195,22 +178,23 @@ const isMoneyOutTransaction = (
     transaction.description
   );
 
-  const metadata =
-    transaction.metadata ?? {};
+  const metadata = transaction.metadata ?? {};
 
-  const metadataDirection =
-    normalizeText(
-      metadata.direction
-    );
+  const metadataDirection = normalizeText(
+    metadata?.direction
+  );
 
-  const metadataType =
-    normalizeText(metadata.type);
+  const metadataType = normalizeText(
+    metadata?.type
+  );
 
-  const metadataTransactionType =
-    normalizeText(
-      metadata.transaction_type
-    );
+  const metadataTransactionType = normalizeText(
+    metadata?.transaction_type
+  );
 
+  /*
+   * Explicit incoming transactions.
+   */
   if (
     type === "credit" ||
     type === "funding" ||
@@ -225,6 +209,9 @@ const isMoneyOutTransaction = (
     return false;
   }
 
+  /*
+   * Explicit outgoing transactions.
+   */
   if (
     type === "debit" ||
     metadataDirection === "debit" ||
@@ -234,13 +221,14 @@ const isMoneyOutTransaction = (
     return true;
   }
 
+  /*
+   * Known outgoing types.
+   */
   if (
     MONEY_OUT_TYPES.has(type) ||
     MONEY_OUT_TYPES.has(category) ||
     MONEY_OUT_TYPES.has(metadataType) ||
-    MONEY_OUT_TYPES.has(
-      metadataTransactionType
-    )
+    MONEY_OUT_TYPES.has(metadataTransactionType)
   ) {
     return true;
   }
@@ -258,98 +246,9 @@ const isMoneyOutTransaction = (
     "debit",
   ];
 
-  return moneyOutWords.some(
-    word =>
-      description.includes(word)
+  return moneyOutWords.some((word) =>
+    description.includes(word)
   );
-};
-
-/*
- * ============================================================
- * PROFILE COMPLETION
- * ============================================================
- *
- * IMPORTANT:
- *
- * nickname is intentionally NOT included.
- *
- * The personal information page only needs to be completed
- * once.
- * ============================================================
- */
-
-const isProfileComplete = (
-  profile: OnboardingProfile
-): boolean => {
-  const requiredFields = [
-    profile.full_name,
-    profile.phone_number,
-    profile.gender,
-    profile.date_of_birth,
-    profile.address,
-  ];
-
-  return requiredFields.every(
-    value =>
-      typeof value === "string" &&
-      value.trim().length > 0
-  );
-};
-
-/*
- * ============================================================
- * KYC COMPLETION
- * ============================================================
- */
-
-const isKycComplete = (
-  profile: OnboardingProfile
-): boolean => {
-  /*
-   * Primary onboarding path:
-   *
-   * BVN has been successfully verified.
-   */
-  if (
-    profile.bvn_verified === true
-  ) {
-    return true;
-  }
-
-  /*
-   * Existing verified KYC account.
-   */
-  const kycStatus =
-    normalizeText(
-      profile.kyc_status
-    );
-
-  if (
-    kycStatus === "verified" &&
-    (
-      Boolean(profile.bvn?.trim()) ||
-      Boolean(profile.nin?.trim())
-    )
-  ) {
-    return true;
-  }
-
-  /*
-   * Existing KYC level 2+ account.
-   */
-  if (
-    Number(
-      profile.kyc_level ?? 0
-    ) >= 2 &&
-    (
-      Boolean(profile.bvn?.trim()) ||
-      Boolean(profile.nin?.trim())
-    )
-  ) {
-    return true;
-  }
-
-  return false;
 };
 
 const Dashboard = () => {
@@ -359,21 +258,16 @@ const Dashboard = () => {
     signOut,
   } = useAuth();
 
+  const { toast } = useToast();
+
   /*
    * ============================================================
-   * ONBOARDING GATE
+   * PAGE
    * ============================================================
    */
 
-  const [
-    onboardingChecking,
-    setOnboardingChecking,
-  ] = useState(true);
-
-  const [
-    onboardingError,
-    setOnboardingError,
-  ] = useState<string | null>(null);
+  const [currentPage, setCurrentPage] =
+    useState<CurrentPage>("home");
 
   /*
    * ============================================================
@@ -383,7 +277,7 @@ const Dashboard = () => {
 
   const {
     wallet,
-    loading,
+    loading: walletLoading,
     refreshWallet,
   } = useWallet(user?.id);
 
@@ -393,365 +287,65 @@ const Dashboard = () => {
    * ============================================================
    */
 
-  const [
-    fundModalOpen,
-    setFundModalOpen,
-  ] = useState(false);
+  const [fundModalOpen, setFundModalOpen] =
+    useState(false);
 
-  const [
-    serviceModalOpen,
-    setServiceModalOpen,
-  ] = useState(false);
+  const [serviceModalOpen, setServiceModalOpen] =
+    useState(false);
 
-  const [
-    transferModalOpen,
-    setTransferModalOpen,
-  ] = useState(false);
+  const [transferModalOpen, setTransferModalOpen] =
+    useState(false);
 
-  const [
-    qrModalOpen,
-    setQrModalOpen,
-  ] = useState(false);
+  const [qrModalOpen, setQrModalOpen] =
+    useState(false);
 
-  const [
-    selectedService,
-    setSelectedService,
-  ] = useState<SelectedService | null>(
-    null
-  );
+  const [selectedService, setSelectedService] =
+    useState<SelectedService | null>(null);
 
-  const [
-    showBalance,
-    setShowBalance,
-  ] = useState(true);
-
-  const [
-    currentPage,
-    setCurrentPage,
-  ] = useState<CurrentPage>("home");
+  const [showBalance, setShowBalance] =
+    useState(true);
 
   /*
    * ============================================================
-   * STATISTICS
+   * STATS
    * ============================================================
    */
 
-  const [
-    stats,
-    setStats,
-  ] = useState<TransactionStats>({
-    monthlySpent: 0,
-    monthlyTransactions: 0,
-    successRate: 100,
-  });
+  const [stats, setStats] =
+    useState<TransactionStats>({
+      monthlySpent: 0,
+      monthlyTransactions: 0,
+      successRate: 100,
+    });
 
-  const [
-    statsLoading,
-    setStatsLoading,
-  ] = useState(true);
-
-  const { toast } = useToast();
+  const [statsLoading, setStatsLoading] =
+    useState(true);
 
   /*
    * ============================================================
-   * ONBOARDING STATUS CHECK
+   * AUTH REDIRECT
    * ============================================================
    *
    * IMPORTANT:
    *
-   * We DO NOT call supabase.auth.getSession() here.
+   * There is NO onboarding check here.
    *
-   * useAuth() has already loaded the authenticated user.
+   * BVN onboarding is completed before navigating to this page.
+   * The dashboard must therefore NOT query profiles and wait for
+   * onboarding verification again.
    *
-   * This prevents the Dashboard from getting stuck waiting
-   * for a second session request.
    * ============================================================
    */
 
   useEffect(() => {
-    let cancelled = false;
+    if (authLoading) {
+      return;
+    }
 
-    const checkOnboarding = async () => {
-      /*
-       * Wait until useAuth has completed.
-       */
-      if (authLoading) {
-        return;
-      }
-
-      /*
-       * No authenticated user.
-       */
-      if (!user?.id) {
-        if (!cancelled) {
-          setOnboardingChecking(false);
-        }
-
-        return;
-      }
-
-      setOnboardingChecking(true);
-      setOnboardingError(null);
-
-      try {
-        /*
-         * Query the profile directly.
-         */
-        const {
-          data: profile,
-          error,
-        } = await supabase
-          .from("profiles")
-          .select(
-            `
-              full_name,
-              phone_number,
-              gender,
-              date_of_birth,
-              address,
-              bvn,
-              nin,
-              bvn_verified,
-              kyc_status,
-              kyc_level
-            `
-          )
-          .eq(
-            "id",
-            user.id
-          )
-          .maybeSingle();
-
-        if (cancelled) {
-          return;
-        }
-
-        if (error) {
-          console.error(
-            "Dashboard onboarding profile error:",
-            error
-          );
-
-          throw new Error(
-            "We could not verify your onboarding status."
-          );
-        }
-
-        /*
-         * No profile.
-         *
-         * Send the user to the personal information page.
-         */
-        if (!profile) {
-          window.location.replace(
-            "/onboarding"
-          );
-
-          return;
-        }
-
-        const onboardingProfile =
-          profile as OnboardingProfile;
-
-        /*
-         * --------------------------------------------------------
-         * PERSONAL INFORMATION
-         * --------------------------------------------------------
-         */
-
-        if (
-          !isProfileComplete(
-            onboardingProfile
-          )
-        ) {
-          console.log(
-            "Dashboard gate: personal information incomplete."
-          );
-
-          window.location.replace(
-            "/onboarding"
-          );
-
-          return;
-        }
-
-        /*
-         * --------------------------------------------------------
-         * BVN / KYC
-         * --------------------------------------------------------
-         */
-
-        if (
-          !isKycComplete(
-            onboardingProfile
-          )
-        ) {
-          console.log(
-            "Dashboard gate: BVN verification incomplete."
-          );
-
-          window.location.replace(
-            "/onboarding/bvn"
-          );
-
-          return;
-        }
-
-        /*
-         * --------------------------------------------------------
-         * COMPLETE
-         * --------------------------------------------------------
-         *
-         * At this point:
-         *
-         * Personal information = complete
-         * BVN/KYC = complete
-         *
-         * Therefore the user goes directly to Dashboard.
-         *
-         * We do NOT redirect to personal information again.
-         * We do NOT show uploaded documents again.
-         */
-
-        console.log(
-          "Dashboard gate: onboarding completed."
-        );
-
-        if (!cancelled) {
-          setOnboardingChecking(false);
-          setOnboardingError(null);
-        }
-      } catch (error: any) {
-        if (cancelled) {
-          return;
-        }
-
-        console.error(
-          "Dashboard onboarding check failed:",
-          error
-        );
-
-        setOnboardingError(
-          error?.message ||
-            "We could not verify your onboarding status."
-        );
-
-        setOnboardingChecking(false);
-      }
-    };
-
-    checkOnboarding();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    user?.id,
-    authLoading,
-  ]);
-
-  /*
-   * ============================================================
-   * RETRY
-   * ============================================================
-   */
-
-  const retryOnboardingCheck =
-    useCallback(() => {
-      setOnboardingError(null);
-      setOnboardingChecking(true);
-
-      /*
-       * Re-run the component's profile check without
-       * forcing a full page reload.
-       */
-      if (!user?.id) {
-        setOnboardingChecking(false);
-        return;
-      }
-
-      const retry = async () => {
-        try {
-          const {
-            data: profile,
-            error,
-          } = await supabase
-            .from("profiles")
-            .select(
-              `
-                full_name,
-                phone_number,
-                gender,
-                date_of_birth,
-                address,
-                bvn,
-                nin,
-                bvn_verified,
-                kyc_status,
-                kyc_level
-              `
-            )
-            .eq(
-              "id",
-              user.id
-            )
-            .maybeSingle();
-
-          if (error) {
-            throw error;
-          }
-
-          if (!profile) {
-            window.location.replace(
-              "/onboarding"
-            );
-            return;
-          }
-
-          const onboardingProfile =
-            profile as OnboardingProfile;
-
-          if (
-            !isProfileComplete(
-              onboardingProfile
-            )
-          ) {
-            window.location.replace(
-              "/onboarding"
-            );
-            return;
-          }
-
-          if (
-            !isKycComplete(
-              onboardingProfile
-            )
-          ) {
-            window.location.replace(
-              "/onboarding/bvn"
-            );
-            return;
-          }
-
-          setOnboardingError(null);
-          setOnboardingChecking(false);
-        } catch (error: any) {
-          console.error(
-            "Retry onboarding check failed:",
-            error
-          );
-
-          setOnboardingError(
-            error?.message ||
-              "We could not verify your onboarding status."
-          );
-
-          setOnboardingChecking(false);
-        }
-      };
-
-      retry();
-    }, [user?.id]);
+    if (!user) {
+      window.location.replace("/");
+    }
+  }, [authLoading, user]);
 
   /*
    * ============================================================
@@ -759,93 +353,82 @@ const Dashboard = () => {
    * ============================================================
    */
 
-  const extractFunctionError =
-    async (
-      error: any,
-      fallback = "Unable to process your request."
-    ): Promise<string> => {
-      console.error(
-        "Supabase function error:",
-        error
-      );
+  const extractFunctionError = async (
+    error: any,
+    fallback = "Unable to process your request."
+  ): Promise<string> => {
+    console.error(
+      "Supabase function error:",
+      error
+    );
 
-      try {
-        if (
-          error?.context &&
-          typeof error.context.json ===
-            "function"
-        ) {
-          const response =
-            error.context;
-
-          let payload: any = null;
-
-          try {
-            payload =
-              await response.json();
-          } catch {
-            payload = null;
-          }
-
-          if (payload?.error) {
-            return String(
-              payload.error
-            );
-          }
-
-          if (payload?.message) {
-            return String(
-              payload.message
-            );
-          }
-
-          if (
-            payload?.provider_message
-          ) {
-            return String(
-              payload.provider_message
-            );
-          }
-
-          if (
-            payload?.provider_response
-              ?.message
-          ) {
-            return String(
-              payload.provider_response
-                .message
-            );
-          }
-
-          if (
-            payload?.provider_response
-              ?.data?.message
-          ) {
-            return String(
-              payload.provider_response
-                .data.message
-            );
-          }
-        }
-      } catch (parseError) {
-        console.error(
-          "Could not parse function error:",
-          parseError
-        );
-      }
-
+    try {
       if (
-        error?.message &&
-        error.message !==
-          "Edge Function returned a non-2xx status code"
+        error?.context &&
+        typeof error.context.json === "function"
       ) {
-        return String(
-          error.message
-        );
-      }
+        const response = error.context;
 
-      return fallback;
-    };
+        let payload: any = null;
+
+        try {
+          payload = await response.json();
+        } catch {
+          payload = null;
+        }
+
+        console.error(
+          "Edge Function response:",
+          payload
+        );
+
+        if (payload?.error) {
+          return String(payload.error);
+        }
+
+        if (payload?.message) {
+          return String(payload.message);
+        }
+
+        if (payload?.provider_message) {
+          return String(
+            payload.provider_message
+          );
+        }
+
+        if (
+          payload?.provider_response?.message
+        ) {
+          return String(
+            payload.provider_response.message
+          );
+        }
+
+        if (
+          payload?.provider_response?.data?.message
+        ) {
+          return String(
+            payload.provider_response.data.message
+          );
+        }
+      }
+    } catch (parseError) {
+      console.error(
+        "Could not parse Edge Function error:",
+        parseError
+      );
+    }
+
+    if (
+      error?.message &&
+      error.message !==
+        "Edge Function returned a non-2xx status code"
+    ) {
+      return String(error.message);
+    }
+
+    return fallback;
+  };
 
   /*
    * ============================================================
@@ -887,30 +470,13 @@ const Dashboard = () => {
               created_at
             `
           )
-          .eq(
-            "user_id",
-            user.id
-          )
-          .order(
-            "created_at",
-            {
-              ascending: false,
-            }
-          );
-
-        if (error) {
-          console.error(
-            "Failed to load dashboard statistics:",
-            error
-          );
-
-          setStats({
-            monthlySpent: 0,
-            monthlyTransactions: 0,
-            successRate: 0,
+          .eq("user_id", user.id)
+          .order("created_at", {
+            ascending: false,
           });
 
-          return;
+        if (error) {
+          throw error;
         }
 
         const transactions =
@@ -918,35 +484,32 @@ const Dashboard = () => {
 
         const now = new Date();
 
-        const monthStart =
-          new Date(
-            now.getFullYear(),
-            now.getMonth(),
-            1,
-            0,
-            0,
-            0,
-            0
-          );
+        const monthStart = new Date(
+          now.getFullYear(),
+          now.getMonth(),
+          1,
+          0,
+          0,
+          0,
+          0
+        );
 
-        const monthEnd =
-          new Date(
-            now.getFullYear(),
-            now.getMonth() + 1,
-            1,
-            0,
-            0,
-            0,
-            0
-          );
+        const monthEnd = new Date(
+          now.getFullYear(),
+          now.getMonth() + 1,
+          1,
+          0,
+          0,
+          0,
+          0
+        );
 
         const monthlyTransactions =
           transactions.filter(
-            transaction => {
-              const createdAt =
-                new Date(
-                  transaction.created_at
-                );
+            (transaction) => {
+              const createdAt = new Date(
+                transaction.created_at
+              );
 
               return (
                 createdAt >= monthStart &&
@@ -958,7 +521,7 @@ const Dashboard = () => {
         const monthlySpent =
           monthlyTransactions
             .filter(
-              transaction =>
+              (transaction) =>
                 isSuccessfulTransaction(
                   transaction
                 ) &&
@@ -967,49 +530,34 @@ const Dashboard = () => {
                 )
             )
             .reduce(
-              (
-                total,
-                transaction
-              ) => {
-                const amount =
-                  Number(
-                    transaction.amount
-                  );
+              (total, transaction) => {
+                const amount = Number(
+                  transaction.amount
+                );
 
                 if (
-                  !Number.isFinite(
-                    amount
-                  )
+                  !Number.isFinite(amount)
                 ) {
                   return total;
                 }
 
-                return (
-                  total + amount
-                );
+                return total + amount;
               },
               0
             );
 
         const successfulCount =
           transactions.filter(
-            transaction =>
-              isSuccessfulTransaction(
-                transaction
-              )
+            isSuccessfulTransaction
           ).length;
 
         const failedCount =
           transactions.filter(
-            transaction =>
-              isFailedTransaction(
-                transaction
-              )
+            isFailedTransaction
           ).length;
 
         const terminalTransactions =
-          successfulCount +
-          failedCount;
+          successfulCount + failedCount;
 
         const successRate =
           terminalTransactions === 0
@@ -1043,128 +591,117 @@ const Dashboard = () => {
     }, [user?.id]);
 
   useEffect(() => {
-    if (
-      onboardingChecking ||
-      onboardingError ||
-      !user?.id
-    ) {
+    if (authLoading || !user) {
       return;
     }
 
     loadDashboardStats();
   }, [
+    authLoading,
+    user,
     loadDashboardStats,
-    onboardingChecking,
-    onboardingError,
-    user?.id,
   ]);
 
   /*
    * ============================================================
-   * TRANSACTION REALTIME
+   * REALTIME TRANSACTIONS
    * ============================================================
    */
 
   useEffect(() => {
-    if (
-      !user?.id ||
-      onboardingChecking ||
-      onboardingError
-    ) {
+    if (!user?.id) {
       return;
     }
 
-    const channel =
-      supabase
-        .channel(
-          `dashboard-transactions-${user.id}`
-        )
-        .on(
-          "postgres_changes",
-          {
-            event: "*",
-            schema: "public",
-            table: "transactions",
-            filter: `user_id=eq.${user.id}`,
-          },
-          () => {
-            loadDashboardStats();
-          }
-        )
-        .subscribe();
+    const channel = supabase
+      .channel(
+        `dashboard-transactions-${user.id}`
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "transactions",
+          filter: `user_id=eq.${user.id}`,
+        },
+        () => {
+          loadDashboardStats();
+        }
+      )
+      .subscribe();
 
     return () => {
-      supabase.removeChannel(
-        channel
-      );
+      supabase.removeChannel(channel);
     };
   }, [
     user?.id,
     loadDashboardStats,
-    onboardingChecking,
-    onboardingError,
   ]);
 
   /*
    * ============================================================
    * WALLET BOOTSTRAP
    * ============================================================
+   *
+   * Only runs after authentication.
+   *
+   * No onboarding dependency.
+   * ============================================================
    */
 
   useEffect(() => {
-    if (
-      !user?.id ||
-      onboardingChecking ||
-      onboardingError
-    ) {
+    if (!user?.id) {
       return;
     }
 
     let cancelled = false;
 
-    const bootstrapWallet =
-      async () => {
-        try {
-          const {
-            data,
-            error,
-          } =
-            await supabase.functions.invoke(
-              "wallet-bootstrap",
-              {
-                body: {},
-              }
-            );
-
-          if (cancelled) {
-            return;
-          }
-
-          if (error) {
-            console.error(
-              "Wallet bootstrap error:",
-              error
-            );
-
-            return;
-          }
-
-          console.log(
-            "Wallet bootstrap:",
-            data
+    const bootstrapWallet = async () => {
+      try {
+        const {
+          data,
+          error,
+        } =
+          await supabase.functions.invoke(
+            "wallet-bootstrap",
+            {
+              body: {},
+            }
           );
 
-          await refreshWallet();
-          await loadDashboardStats();
-        } catch (error) {
-          if (!cancelled) {
-            console.error(
-              "Wallet bootstrap failed:",
-              error
-            );
-          }
+        if (cancelled) {
+          return;
         }
-      };
+
+        if (error) {
+          console.error(
+            "Wallet bootstrap error:",
+            error
+          );
+
+          return;
+        }
+
+        console.log(
+          "Wallet bootstrap:",
+          data
+        );
+
+        await refreshWallet();
+
+        await loadDashboardStats();
+      } catch (error) {
+        if (cancelled) {
+          return;
+        }
+
+        console.error(
+          "Wallet bootstrap failed:",
+          error
+        );
+      }
+    };
 
     bootstrapWallet();
 
@@ -1175,57 +712,7 @@ const Dashboard = () => {
     user?.id,
     refreshWallet,
     loadDashboardStats,
-    onboardingChecking,
-    onboardingError,
   ]);
-
-  /*
-   * ============================================================
-   * MANUAL DEPOSIT SYNC
-   * ============================================================
-   */
-
-  const syncDeposits = async () => {
-    if (!user) return;
-
-    try {
-      const {
-        data,
-        error,
-      } =
-        await supabase.functions.invoke(
-          "flutterwave-sync-deposits",
-          {
-            body: {},
-          }
-        );
-
-      console.log(
-        "Deposit sync:",
-        {
-          data,
-          error,
-        }
-      );
-
-      if (error) {
-        console.error(
-          "Deposit sync failed:",
-          error
-        );
-
-        return;
-      }
-
-      await refreshWallet();
-      await loadDashboardStats();
-    } catch (error) {
-      console.error(
-        "Deposit sync error:",
-        error
-      );
-    }
-  };
 
   /*
    * ============================================================
@@ -1236,96 +723,84 @@ const Dashboard = () => {
   const services = [
     {
       title: "Buy Airtime",
-      description:
-        "Recharge your phone",
+      description: "Recharge your phone",
       icon: Smartphone,
       color: "bg-blue-500",
       type: "airtime",
     },
     {
       title: "Buy Data",
-      description:
-        "Internet data bundles",
+      description: "Internet data bundles",
       icon: Wifi,
       color: "bg-purple-500",
       type: "data",
     },
     {
       title: "Electricity",
-      description:
-        "Pay electricity bills",
+      description: "Pay electricity bills",
       icon: Zap,
       color: "bg-yellow-500",
       type: "electricity",
     },
     {
       title: "Cable TV",
-      description:
-        "DSTV, GOTV, Startimes",
+      description: "DSTV, GOTV, Startimes",
       icon: CreditCard,
       color: "bg-red-500",
       type: "cable",
     },
     {
       title: "Transfer Money",
-      description:
-        "Send money to others",
+      description: "Send money to others",
       icon: Send,
       color: "bg-green-500",
       type: "transfer",
     },
     {
       title: "Internet Bills",
-      description:
-        "Pay internet bills",
+      description: "Pay internet bills",
       icon: Wifi,
       color: "bg-indigo-500",
       type: "internet",
     },
     {
       title: "Insurance",
-      description:
-        "Pay insurance premiums",
+      description: "Pay insurance premiums",
       icon: Shield,
       color: "bg-teal-500",
       type: "insurance",
     },
     {
       title: "Gift Cards",
-      description:
-        "Buy digital gift cards",
+      description: "Buy digital gift cards",
       icon: Gift,
       color: "bg-pink-500",
       type: "giftcards",
     },
     {
       title: "Betting",
-      description:
-        "Fund betting accounts",
+      description: "Fund betting accounts",
       icon: Gamepad2,
       color: "bg-orange-500",
       type: "betting",
     },
     {
       title: "Flight Booking",
-      description:
-        "Book domestic flights",
+      description: "Book domestic flights",
       icon: Plane,
       color: "bg-sky-500",
       type: "flight",
     },
     {
       title: "Hotel Booking",
-      description:
-        "Book hotel rooms",
+      description: "Book hotel rooms",
       icon: Home,
       color: "bg-emerald-500",
       type: "hotel",
     },
     {
       title: "Transport",
-      description:
-        "Book bus tickets",
+      description: "Book bus tickets",
       icon: Car,
       color: "bg-gray-500",
       type: "transport",
@@ -1341,9 +816,7 @@ const Dashboard = () => {
   const handleServiceClick = (
     service: typeof services[number]
   ) => {
-    if (
-      service.type === "transfer"
-    ) {
+    if (service.type === "transfer") {
       setTransferModalOpen(true);
       return;
     }
@@ -1364,8 +837,7 @@ const Dashboard = () => {
 
     setSelectedService({
       title: service.title,
-      type:
-        service.type as BillService,
+      type: service.type as BillService,
     });
 
     setServiceModalOpen(true);
@@ -1393,13 +865,10 @@ const Dashboard = () => {
       );
     }
 
-    const service =
-      selectedService.type;
+    const service = selectedService.type;
 
     if (
-      !SUPPORTED_BILL_SERVICES.includes(
-        service
-      )
+      !SUPPORTED_BILL_SERVICES.includes(service)
     ) {
       throw new Error(
         `${selectedService.title} is not currently supported.`
@@ -1415,26 +884,21 @@ const Dashboard = () => {
       );
     }
 
-    const currentBalance =
-      Number(
-        wallet?.balance ?? 0
-      );
+    const currentBalance = Number(
+      wallet?.balance ?? 0
+    );
 
-    if (
-      amount >
-      currentBalance
-    ) {
+    if (amount > currentBalance) {
       throw new Error(
         "Insufficient wallet balance. Please fund your wallet."
       );
     }
 
-    const billerCode =
-      String(
-        details?.biller_code ??
-          details?.billerCode ??
-          ""
-      ).trim();
+    const billerCode = String(
+      details?.biller_code ??
+        details?.billerCode ??
+        ""
+    ).trim();
 
     if (!billerCode) {
       throw new Error(
@@ -1442,12 +906,11 @@ const Dashboard = () => {
       );
     }
 
-    const itemCode =
-      String(
-        details?.item_code ??
-          details?.itemCode ??
-          ""
-      ).trim();
+    const itemCode = String(
+      details?.item_code ??
+        details?.itemCode ??
+        ""
+    ).trim();
 
     if (!itemCode) {
       throw new Error(
@@ -1455,12 +918,11 @@ const Dashboard = () => {
       );
     }
 
-    const country =
-      String(
-        details?.country ?? "NG"
-      )
-        .trim()
-        .toUpperCase();
+    const country = String(
+      details?.country ?? "NG"
+    )
+      .trim()
+      .toUpperCase();
 
     if (country !== "NG") {
       throw new Error(
@@ -1468,32 +930,30 @@ const Dashboard = () => {
       );
     }
 
-    let customer =
-      String(
-        details?.customer ??
-          details?.customer_id ??
-          details?.customerId ??
-          details?.phoneNumber ??
-          details?.phone ??
-          details?.meterNumber ??
-          details?.meter_number ??
-          details?.smartCardNumber ??
-          details?.smartcardNumber ??
-          details?.smartcard_number ??
-          details?.accountNumber ??
-          details?.account_number ??
-          ""
-      ).trim();
+    let customer = String(
+      details?.customer ??
+        details?.customer_id ??
+        details?.customerId ??
+        details?.phoneNumber ??
+        details?.phone ??
+        details?.meterNumber ??
+        details?.meter_number ??
+        details?.smartCardNumber ??
+        details?.smartcardNumber ??
+        details?.smartcard_number ??
+        details?.accountNumber ??
+        details?.account_number ??
+        ""
+    ).trim();
 
     if (
       service === "airtime" ||
       service === "data"
     ) {
-      customer =
-        customer.replace(
-          /\s+/g,
-          ""
-        );
+      customer = customer.replace(
+        /\s+/g,
+        ""
+      );
     }
 
     if (!customer) {
@@ -1523,9 +983,7 @@ const Dashboard = () => {
       }
     }
 
-    if (
-      service === "electricity"
-    ) {
+    if (service === "electricity") {
       if (!details?.provider) {
         throw new Error(
           "Please select an electricity provider."
@@ -1553,9 +1011,7 @@ const Dashboard = () => {
       }
     }
 
-    if (
-      service === "internet"
-    ) {
+    if (service === "internet") {
       if (!details?.provider) {
         throw new Error(
           "Please select an internet provider."
@@ -1579,6 +1035,12 @@ const Dashboard = () => {
       item_code: itemCode,
     };
 
+    toast({
+      title: "Processing payment",
+      description:
+        `Processing ${selectedService.title.toLowerCase()}...`,
+    });
+
     try {
       const {
         data,
@@ -1591,25 +1053,23 @@ const Dashboard = () => {
               action: "pay",
               service,
               amount,
-              biller_code:
-                billerCode,
-              item_code:
-                itemCode,
+              biller_code: billerCode,
+              item_code: itemCode,
               customer,
               country,
-              details:
-                paymentDetails,
+              details: paymentDetails,
             },
           }
         );
 
       if (error) {
-        throw new Error(
+        const message =
           await extractFunctionError(
             error,
             "Unable to process bill payment."
-          )
-        );
+          );
+
+        throw new Error(message);
       }
 
       if (
@@ -1658,7 +1118,7 @@ const Dashboard = () => {
 
   /*
    * ============================================================
-   * TRANSFER
+   * BANK TRANSFER
    * ============================================================
    */
 
@@ -1668,12 +1128,10 @@ const Dashboard = () => {
   ) => {
     if (!user) {
       toast({
-        title:
-          "Authentication required",
+        title: "Authentication required",
         description:
           "Please log in again.",
-        variant:
-          "destructive",
+        variant: "destructive",
       });
 
       return;
@@ -1687,28 +1145,25 @@ const Dashboard = () => {
         title: "Invalid amount",
         description:
           "Please enter a valid transfer amount.",
-        variant:
-          "destructive",
+        variant: "destructive",
       });
 
       return;
     }
 
+    /*
+     * IyanjuPay transfers must not reach this handler.
+     */
     if (
-      details?.type ===
-        "iyanjupay" ||
-      details?.transferType ===
-        "iyanjupay" ||
-      details?.recipientType ===
-        "iyanjupay"
+      details?.type === "iyanjupay" ||
+      details?.transferType === "iyanjupay" ||
+      details?.recipientType === "iyanjupay"
     ) {
       toast({
-        title:
-          "Transfer routing error",
+        title: "Transfer routing error",
         description:
           "Please try the IyanjuPay transfer again.",
-        variant:
-          "destructive",
+        variant: "destructive",
       });
 
       return;
@@ -1716,31 +1171,24 @@ const Dashboard = () => {
 
     if (
       wallet &&
-      amount >
-        Number(wallet.balance)
+      amount > Number(wallet.balance)
     ) {
       toast({
-        title:
-          "Insufficient Balance",
+        title: "Insufficient Balance",
         description:
           "Please fund your wallet to continue.",
-        variant:
-          "destructive",
+        variant: "destructive",
       });
 
       return;
     }
 
-    if (
-      !details?.accountNumber
-    ) {
+    if (!details?.accountNumber) {
       toast({
-        title:
-          "Invalid recipient",
+        title: "Invalid recipient",
         description:
           "Recipient bank account is missing.",
-        variant:
-          "destructive",
+        variant: "destructive",
       });
 
       return;
@@ -1751,8 +1199,7 @@ const Dashboard = () => {
         title: "Invalid bank",
         description:
           "Recipient bank code is missing.",
-        variant:
-          "destructive",
+        variant: "destructive",
       });
 
       return;
@@ -1760,12 +1207,10 @@ const Dashboard = () => {
 
     if (!details?.recipient) {
       toast({
-        title:
-          "Invalid recipient",
+        title: "Invalid recipient",
         description:
           "Verified recipient name is missing.",
-        variant:
-          "destructive",
+        variant: "destructive",
       });
 
       return;
@@ -1776,8 +1221,7 @@ const Dashboard = () => {
         `transfer_${user.id}_${Date.now()}_${crypto.randomUUID()}`;
 
       toast({
-        title:
-          "Processing transfer",
+        title: "Processing transfer",
         description:
           "Please wait while we send your money.",
       });
@@ -1812,12 +1256,13 @@ const Dashboard = () => {
         );
 
       if (error) {
-        throw new Error(
+        const message =
           await extractFunctionError(
             error,
             "Unable to process bank transfer."
-          )
-        );
+          );
+
+        throw new Error(message);
       }
 
       if (
@@ -1837,8 +1282,7 @@ const Dashboard = () => {
       setTransferModalOpen(false);
 
       toast({
-        title:
-          "Transfer Processing",
+        title: "Transfer Processing",
         description:
           data?.message ||
           `₦${amount.toLocaleString()} sent to ${details.recipient}.`,
@@ -1850,13 +1294,11 @@ const Dashboard = () => {
       );
 
       toast({
-        title:
-          "Transfer Failed",
+        title: "Transfer Failed",
         description:
           error?.message ||
           "Unable to complete the bank transfer.",
-        variant:
-          "destructive",
+        variant: "destructive",
       });
     }
   };
@@ -1873,12 +1315,8 @@ const Dashboard = () => {
         <div className="text-center">
           <Loader2 className="h-12 w-12 animate-spin text-purple-600 mx-auto" />
 
-          <h2 className="mt-4 text-lg font-semibold text-gray-900">
+          <p className="mt-4 text-gray-600">
             Loading your account...
-          </h2>
-
-          <p className="mt-1 text-sm text-gray-600">
-            Please wait.
           </p>
         </div>
       </div>
@@ -1892,92 +1330,20 @@ const Dashboard = () => {
    */
 
   if (!user) {
-    window.location.replace("/");
-    return null;
-  }
-
-  /*
-   * ============================================================
-   * ONBOARDING CHECK
-   * ============================================================
-   */
-
-  if (onboardingChecking) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-50 p-4">
-        <div className="text-center">
-          <Loader2 className="h-12 w-12 animate-spin text-purple-600 mx-auto" />
-
-          <h2 className="mt-4 text-lg font-semibold text-gray-900">
-            Checking your account...
-          </h2>
-
-          <p className="mt-1 text-sm text-gray-600">
-            Please wait while we verify your onboarding status.
-          </p>
-        </div>
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-purple-600" />
       </div>
     );
   }
 
   /*
    * ============================================================
-   * ONBOARDING ERROR
+   * INTERNAL PAGE ROUTING
    * ============================================================
    */
 
-  if (onboardingError) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-50 p-4">
-        <Card className="w-full max-w-md shadow-lg">
-          <CardContent className="p-6 text-center">
-            <div className="mx-auto w-12 h-12 rounded-full bg-red-100 flex items-center justify-center">
-              <Shield className="h-6 w-6 text-red-600" />
-            </div>
-
-            <h2 className="mt-4 text-xl font-bold text-gray-900">
-              Unable to verify your account
-            </h2>
-
-            <p className="mt-2 text-sm text-gray-600">
-              {onboardingError}
-            </p>
-
-            <div className="mt-6 space-y-3">
-              <Button
-                type="button"
-                onClick={
-                  retryOnboardingCheck
-                }
-                className="w-full bg-purple-600 hover:bg-purple-700"
-              >
-                Try Again
-              </Button>
-
-              <Button
-                type="button"
-                variant="outline"
-                onClick={signOut}
-                className="w-full"
-              >
-                Sign Out
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
-  /*
-   * ============================================================
-   * PAGE ROUTING
-   * ============================================================
-   */
-
-  if (
-    currentPage === "profile"
-  ) {
+  if (currentPage === "profile") {
     return (
       <ProfilePage
         onBack={() =>
@@ -1987,9 +1353,7 @@ const Dashboard = () => {
     );
   }
 
-  if (
-    currentPage === "history"
-  ) {
+  if (currentPage === "history") {
     return (
       <TransactionHistory
         onBack={() =>
@@ -1999,9 +1363,7 @@ const Dashboard = () => {
     );
   }
 
-  if (
-    currentPage === "rewards"
-  ) {
+  if (currentPage === "rewards") {
     return (
       <RewardsPage
         onBack={() =>
@@ -2011,9 +1373,7 @@ const Dashboard = () => {
     );
   }
 
-  if (
-    currentPage === "cards"
-  ) {
+  if (currentPage === "cards") {
     return (
       <CardsPage
         onBack={() =>
@@ -2036,9 +1396,7 @@ const Dashboard = () => {
     );
   }
 
-  if (
-    currentPage === "support"
-  ) {
+  if (currentPage === "support") {
     return (
       <SupportPage
         onBack={() =>
@@ -2096,11 +1454,11 @@ const Dashboard = () => {
    * ============================================================
    */
 
-  if (loading) {
+  if (walletLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-purple-50 to-blue-50">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto" />
+          <Loader2 className="h-12 w-12 animate-spin text-purple-600 mx-auto" />
 
           <p className="mt-4 text-gray-600">
             Loading your wallet...
@@ -2122,6 +1480,7 @@ const Dashboard = () => {
     <div className="fixed bottom-0 left-0 right-0 z-40 bg-white border-t border-gray-200 px-4 py-2">
       <div className="max-w-7xl mx-auto">
         <div className="flex justify-around">
+
           <Button
             variant={
               page === "home"
@@ -2152,9 +1511,7 @@ const Dashboard = () => {
             }
             size="sm"
             onClick={() =>
-              setCurrentPage(
-                "rewards"
-              )
+              setCurrentPage("rewards")
             }
             className={`flex flex-col items-center gap-1 px-6 py-3 ${
               page === "rewards"
@@ -2211,6 +1568,7 @@ const Dashboard = () => {
               Me
             </span>
           </Button>
+
         </div>
       </div>
     </div>
@@ -2225,11 +1583,15 @@ const Dashboard = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-50 pb-20">
 
+      {/* HEADER */}
+
       <header className="bg-gradient-to-r from-purple-600 to-blue-600 text-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+
           <div className="flex justify-between items-center h-16">
 
             <div className="flex items-center">
+
               <div className="w-8 h-8 bg-white rounded-full flex items-center justify-center mr-3">
                 <span className="text-purple-600 font-bold text-sm">
                   IP
@@ -2239,9 +1601,11 @@ const Dashboard = () => {
               <h1 className="text-xl font-bold">
                 IyanjuPay
               </h1>
+
             </div>
 
             <div className="flex items-center gap-2">
+
               <Button
                 variant="ghost"
                 size="sm"
@@ -2283,14 +1647,20 @@ const Dashboard = () => {
               >
                 <LogOut className="h-4 w-4" />
               </Button>
+
             </div>
+
           </div>
+
         </div>
       </header>
+
+      {/* MAIN */}
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
 
         <div className="mb-6">
+
           <h2 className="text-2xl font-bold text-gray-900 mb-1">
             Hello! 👋
           </h2>
@@ -2298,26 +1668,40 @@ const Dashboard = () => {
           <p className="text-gray-600">
             What would you like to do today?
           </p>
+
         </div>
 
+        {/* WALLET */}
+
         <div className="mb-6">
+
           <Card className="bg-gradient-to-r from-purple-600 to-blue-600 text-white border-0 shadow-lg">
+
             <CardContent className="p-6">
 
               <div className="flex justify-between items-start mb-4">
 
                 <div>
+
                   <p className="text-purple-100 text-sm mb-1">
                     Total Balance
                   </p>
 
                   <div className="flex items-center gap-2">
+
                     <span className="text-3xl font-bold">
                       ₦
                       {showBalance
                         ? Number(
-                            wallet?.balance ?? 0
-                          ).toLocaleString()
+                            wallet?.balance ??
+                              0
+                          ).toLocaleString(
+                            "en-NG",
+                            {
+                              minimumFractionDigits: 0,
+                              maximumFractionDigits: 2,
+                            }
+                          )
                         : "****"}
                     </span>
 
@@ -2326,7 +1710,7 @@ const Dashboard = () => {
                       size="sm"
                       onClick={() =>
                         setShowBalance(
-                          previous =>
+                          (previous) =>
                             !previous
                         )
                       }
@@ -2338,10 +1722,13 @@ const Dashboard = () => {
                         <Eye className="h-4 w-4" />
                       )}
                     </Button>
+
                   </div>
+
                 </div>
 
                 <div className="text-right">
+
                   <p className="text-purple-100 text-sm">
                     Wallet ID
                   </p>
@@ -2350,6 +1737,7 @@ const Dashboard = () => {
                     {wallet?.wallet_id ||
                       "—"}
                   </p>
+
                 </div>
 
               </div>
@@ -2368,7 +1756,9 @@ const Dashboard = () => {
 
                 <Button
                   onClick={() =>
-                    setTransferModalOpen(true)
+                    setTransferModalOpen(
+                      true
+                    )
                   }
                   variant="outline"
                   className="flex-1 bg-white text-purple-600 hover:bg-gray-100 font-semibold"
@@ -2380,20 +1770,23 @@ const Dashboard = () => {
               </div>
 
             </CardContent>
+
           </Card>
+
         </div>
 
+        {/* SERVICES */}
+
         <div className="mb-6">
+
           <h3 className="text-lg font-semibold text-gray-900 mb-4">
             Services
           </h3>
 
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+
             {services.map(
-              (
-                service,
-                index
-              ) => (
+              (service, index) => (
                 <ServiceCard
                   key={`${service.type}-${index}`}
                   title={service.title}
@@ -2410,16 +1803,22 @@ const Dashboard = () => {
                 />
               )
             )}
+
           </div>
+
         </div>
+
+        {/* STATS */}
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
 
           <Card className="bg-white shadow-sm">
             <CardContent className="p-4">
+
               <div className="flex items-center justify-between">
 
                 <div>
+
                   <p className="text-sm text-gray-600">
                     This Month
                   </p>
@@ -2439,6 +1838,7 @@ const Dashboard = () => {
                   <p className="text-xs text-gray-500">
                     Total Spent
                   </p>
+
                 </div>
 
                 <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center">
@@ -2446,14 +1846,17 @@ const Dashboard = () => {
                 </div>
 
               </div>
+
             </CardContent>
           </Card>
 
           <Card className="bg-white shadow-sm">
             <CardContent className="p-4">
+
               <div className="flex items-center justify-between">
 
                 <div>
+
                   <p className="text-sm text-gray-600">
                     Transactions
                   </p>
@@ -2467,6 +1870,7 @@ const Dashboard = () => {
                   <p className="text-xs text-gray-500">
                     This Month
                   </p>
+
                 </div>
 
                 <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
@@ -2474,14 +1878,17 @@ const Dashboard = () => {
                 </div>
 
               </div>
+
             </CardContent>
           </Card>
 
           <Card className="bg-white shadow-sm">
             <CardContent className="p-4">
+
               <div className="flex items-center justify-between">
 
                 <div>
+
                   <p className="text-sm text-gray-600">
                     Success Rate
                   </p>
@@ -2495,6 +1902,7 @@ const Dashboard = () => {
                   <p className="text-xs text-gray-500">
                     All Time
                   </p>
+
                 </div>
 
                 <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center">
@@ -2502,15 +1910,19 @@ const Dashboard = () => {
                 </div>
 
               </div>
+
             </CardContent>
           </Card>
 
         </div>
+
       </main>
 
-      {renderBottomNav(
-        currentPage
-      )}
+      {/* BOTTOM NAVIGATION */}
+
+      {renderBottomNav(currentPage)}
+
+      {/* FUND WALLET */}
 
       <FundWalletModal
         isOpen={fundModalOpen}
@@ -2523,6 +1935,8 @@ const Dashboard = () => {
         }}
       />
 
+      {/* BILL PAYMENT */}
+
       <ServiceModal
         isOpen={serviceModalOpen}
         onClose={() => {
@@ -2533,10 +1947,10 @@ const Dashboard = () => {
         walletBalance={Number(
           wallet?.balance ?? 0
         )}
-        onPurchase={
-          handlePurchase
-        }
+        onPurchase={handlePurchase}
       />
+
+      {/* TRANSFER */}
 
       <TransferModal
         isOpen={transferModalOpen}
@@ -2546,10 +1960,10 @@ const Dashboard = () => {
         walletBalance={Number(
           wallet?.balance ?? 0
         )}
-        onTransfer={
-          handleTransfer
-        }
+        onTransfer={handleTransfer}
       />
+
+      {/* QR */}
 
       <QRCodeModal
         isOpen={qrModalOpen}
@@ -2561,12 +1975,12 @@ const Dashboard = () => {
           ""
         }
         userName={
-          user?.email ||
-          "User"
+          user?.email || "User"
         }
       />
 
       <WhatsAppFloat />
+
     </div>
   );
 };

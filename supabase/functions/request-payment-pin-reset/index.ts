@@ -1,4 +1,7 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  createClient,
+} from "https://esm.sh/@supabase/supabase-js@2";
+
 import nodemailer from "npm:nodemailer";
 
 // ============================================================
@@ -12,7 +15,9 @@ const SUPABASE_ANON_KEY =
   Deno.env.get("SUPABASE_ANON_KEY")!;
 
 const SUPABASE_SERVICE_ROLE_KEY =
-  Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+  Deno.env.get(
+    "SUPABASE_SERVICE_ROLE_KEY"
+  )!;
 
 const SMTP_HOST =
   Deno.env.get("BREVO_SMTP_HOST")!;
@@ -36,8 +41,9 @@ const FROM_NAME =
   "IyanjuPay";
 
 const RESET_SECRET =
-  Deno.env.get("PAYMENT_PIN_RESET_SECRET")!;
-
+  Deno.env.get(
+    "PAYMENT_PIN_RESET_SECRET"
+  );
 
 // ============================================================
 // CORS
@@ -50,7 +56,6 @@ const corsHeaders = {
   "Access-Control-Allow-Methods":
     "POST, OPTIONS",
 };
-
 
 // ============================================================
 // RESPONSE
@@ -73,22 +78,35 @@ function json(
   );
 }
 
-
 // ============================================================
-// OTP
+// SHA-256
 // ============================================================
 
-function generateOtp(): string {
-  const array =
-    new Uint32Array(1);
+async function sha256(
+  value: string
+): Promise<string> {
+  const encoder =
+    new TextEncoder();
 
-  crypto.getRandomValues(array);
+  const data =
+    encoder.encode(value);
 
-  return String(
-    array[0] % 1000000
-  ).padStart(6, "0");
+  const hash =
+    await crypto.subtle.digest(
+      "SHA-256",
+      data
+    );
+
+  return Array.from(
+    new Uint8Array(hash)
+  )
+    .map((byte) =>
+      byte
+        .toString(16)
+        .padStart(2, "0")
+    )
+    .join("");
 }
-
 
 // ============================================================
 // HMAC SHA-256
@@ -110,7 +128,9 @@ async function hmacSha256(
   const key =
     await crypto.subtle.importKey(
       "raw",
-      encoder.encode(RESET_SECRET),
+      encoder.encode(
+        RESET_SECRET
+      ),
       {
         name: "HMAC",
         hash: "SHA-256",
@@ -137,6 +157,23 @@ async function hmacSha256(
     .join("");
 }
 
+// ============================================================
+// RANDOM OTP
+// ============================================================
+
+function generateOtp(): string {
+
+  const bytes =
+    new Uint32Array(1);
+
+  crypto.getRandomValues(
+    bytes
+  );
+
+  return String(
+    bytes[0] % 1_000_000
+  ).padStart(6, "0");
+}
 
 // ============================================================
 // MAIN
@@ -144,34 +181,26 @@ async function hmacSha256(
 
 Deno.serve(async (req) => {
 
-  // ==========================================================
-  // OPTIONS
-  // ==========================================================
-
   if (req.method === "OPTIONS") {
     return new Response(
       "ok",
       {
-        headers: corsHeaders,
+        headers:
+          corsHeaders,
       }
     );
   }
-
-
-  // ==========================================================
-  // METHOD
-  // ==========================================================
 
   if (req.method !== "POST") {
     return json(
       {
         success: false,
-        message: "Method not allowed",
+        message:
+          "Method not allowed.",
       },
       405
     );
   }
-
 
   try {
 
@@ -195,7 +224,6 @@ Deno.serve(async (req) => {
       );
     }
 
-
     const userClient =
       createClient(
         SUPABASE_URL,
@@ -210,7 +238,6 @@ Deno.serve(async (req) => {
         }
       );
 
-
     const {
       data: {
         user,
@@ -219,16 +246,10 @@ Deno.serve(async (req) => {
     } =
       await userClient.auth.getUser();
 
-
     if (
       userError ||
       !user
     ) {
-      console.error(
-        "Authentication error:",
-        userError
-      );
-
       return json(
         {
           success: false,
@@ -238,7 +259,6 @@ Deno.serve(async (req) => {
         401
       );
     }
-
 
     // ========================================================
     // EMAIL
@@ -255,7 +275,6 @@ Deno.serve(async (req) => {
       );
     }
 
-
     if (!user.email_confirmed_at) {
       return json(
         {
@@ -267,15 +286,13 @@ Deno.serve(async (req) => {
       );
     }
 
-
     const email =
       user.email
         .trim()
         .toLowerCase();
 
-
     // ========================================================
-    // SERVICE ROLE CLIENT
+    // ADMIN CLIENT
     // ========================================================
 
     const admin =
@@ -283,7 +300,6 @@ Deno.serve(async (req) => {
         SUPABASE_URL,
         SUPABASE_SERVICE_ROLE_KEY
       );
-
 
     // ========================================================
     // VERIFY PAYMENT PIN EXISTS
@@ -294,7 +310,9 @@ Deno.serve(async (req) => {
       error: pinError,
     } =
       await admin
-        .from("payment_pins")
+        .from(
+          "payment_pins"
+        )
         .select("user_id")
         .eq(
           "user_id",
@@ -302,9 +320,7 @@ Deno.serve(async (req) => {
         )
         .maybeSingle();
 
-
     if (pinError) {
-
       console.error(
         "Payment PIN lookup error:",
         pinError
@@ -320,7 +336,6 @@ Deno.serve(async (req) => {
       );
     }
 
-
     if (!pinRecord) {
       return json(
         {
@@ -331,7 +346,6 @@ Deno.serve(async (req) => {
         400
       );
     }
-
 
     // ========================================================
     // RATE LIMIT
@@ -365,9 +379,7 @@ Deno.serve(async (req) => {
         .limit(1)
         .maybeSingle();
 
-
     if (recentError) {
-
       console.error(
         "Reset challenge lookup error:",
         recentError
@@ -383,7 +395,6 @@ Deno.serve(async (req) => {
       );
     }
 
-
     if (recentChallenge) {
 
       const createdAt =
@@ -395,9 +406,7 @@ Deno.serve(async (req) => {
         Date.now() -
         createdAt;
 
-
       if (age < 60_000) {
-
         return json(
           {
             success: false,
@@ -408,7 +417,6 @@ Deno.serve(async (req) => {
         );
       }
     }
-
 
     // ========================================================
     // INVALIDATE OLD CHALLENGES
@@ -435,9 +443,7 @@ Deno.serve(async (req) => {
           null
         );
 
-
     if (invalidateError) {
-
       console.error(
         "Challenge invalidation error:",
         invalidateError
@@ -453,7 +459,6 @@ Deno.serve(async (req) => {
       );
     }
 
-
     // ========================================================
     // GENERATE OTP
     // ========================================================
@@ -461,12 +466,10 @@ Deno.serve(async (req) => {
     const otp =
       generateOtp();
 
-
     const otpHash =
       await hmacSha256(
         otp
       );
-
 
     // ========================================================
     // EXPIRATION
@@ -478,17 +481,11 @@ Deno.serve(async (req) => {
           10 * 60 * 1000
       ).toISOString();
 
-
     // ========================================================
     // CREATE CHALLENGE
     //
     // IMPORTANT:
-    //
-    // The database column is:
-    //
-    //     otp_hash
-    //
-    // NOT otp_digest.
+    // Store in otp_hash, NOT otp_digest.
     // ========================================================
 
     const {
@@ -529,12 +526,10 @@ Deno.serve(async (req) => {
         )
         .single();
 
-
     if (
       challengeError ||
       !challenge
     ) {
-
       console.error(
         "Challenge creation error:",
         challengeError
@@ -550,9 +545,8 @@ Deno.serve(async (req) => {
       );
     }
 
-
     // ========================================================
-    // BREVO SMTP TRANSPORT
+    // BREVO SMTP
     // ========================================================
 
     const transporter =
@@ -575,131 +569,81 @@ Deno.serve(async (req) => {
         },
       });
 
-
     // ========================================================
     // SEND EMAIL
     // ========================================================
 
-    try {
+    await transporter.sendMail({
 
-      await transporter.sendMail({
+      from:
+        `"${FROM_NAME}" <${FROM_EMAIL}>`,
 
-        from:
-          `"${FROM_NAME}" <${FROM_EMAIL}>`,
+      to:
+        email,
 
-        to:
-          email,
+      subject:
+        "IyanjuPay Payment PIN Reset Code",
 
-        subject:
-          "IyanjuPay Payment PIN Reset Code",
-
-        text:
-          `Your IyanjuPay Payment PIN reset code is ${otp}.
+      text:
+        `Your IyanjuPay Payment PIN reset code is ${otp}.
 
 This code expires in 10 minutes.
 
-If you did not request a Payment PIN reset, you can safely ignore this email.
+If you did not request a Payment PIN reset, please secure your account immediately.
 
 Never share this code or your Payment PIN with anyone.`,
 
-        html: `
-          <div
-            style="
-              font-family:Arial,sans-serif;
-              max-width:600px;
-              margin:auto;
-              padding:24px;
-            "
-          >
+      html: `
+        <div style="
+          font-family:Arial,sans-serif;
+          max-width:600px;
+          margin:auto;
+          padding:24px;
+        ">
 
-            <h2 style="color:#082A63">
-              IyanjuPay Payment PIN Reset
-            </h2>
+          <h2 style="color:#082A63">
+            IyanjuPay Payment PIN Reset
+          </h2>
 
-            <p>
-              We received a request to reset
-              your Payment PIN.
-            </p>
+          <p>
+            We received a request to reset your Payment PIN.
+          </p>
 
-            <p>
-              Your verification code is:
-            </p>
+          <p>
+            Your verification code is:
+          </p>
 
-            <div
-              style="
-                font-size:32px;
-                font-weight:bold;
-                letter-spacing:8px;
-                text-align:center;
-                padding:20px;
-                background:#f3f6fa;
-                border-radius:8px;
-                color:#082A63;
-              "
-            >
-              ${otp}
-            </div>
-
-            <p>
-              This code expires in
-              <strong>10 minutes</strong>.
-            </p>
-
-            <p style="color:#666">
-              If you did not request this reset,
-              you can safely ignore this email.
-            </p>
-
-            <p
-              style="
-                color:#999;
-                font-size:12px;
-              "
-            >
-              Never share your verification
-              code or Payment PIN with anyone.
-            </p>
-
+          <div style="
+            font-size:32px;
+            font-weight:bold;
+            letter-spacing:8px;
+            text-align:center;
+            padding:20px;
+            background:#f3f6fa;
+            border-radius:8px;
+            color:#082A63;
+          ">
+            ${otp}
           </div>
-        `,
-      });
 
-    } catch (mailError) {
+          <p>
+            This code expires in
+            <strong>10 minutes</strong>.
+          </p>
 
-      console.error(
-        "Brevo SMTP email error:",
-        mailError
-      );
+          <p style="color:#666">
+            If you did not request this reset,
+            you can safely ignore this email.
+          </p>
 
+          <p style="color:#999;font-size:12px">
+            Never share your verification code
+            or Payment PIN with anyone.
+          </p>
 
-      // ------------------------------------------------------
-      // Do not leave an active challenge if email failed.
-      // ------------------------------------------------------
-
-      await admin
-        .from(
-          "payment_pin_reset_challenges"
-        )
-        .update({
-          used_at:
-            new Date().toISOString(),
-        })
-        .eq(
-          "id",
-          challenge.id
-        );
-
-
-      return json(
-        {
-          success: false,
-          message:
-            "Unable to send the Payment PIN recovery email.",
-        },
-        500
-      );
-    }
-
+        </div>
+      `,
+    });
 
     // ========================================================
     // SUCCESS
@@ -729,7 +673,9 @@ Never share this code or your Payment PIN with anyone.`,
       {
         success: false,
         message:
-          "Unable to start Payment PIN recovery.",
+          error instanceof Error
+            ? error.message
+            : "Unable to start Payment PIN recovery.",
       },
       500
     );

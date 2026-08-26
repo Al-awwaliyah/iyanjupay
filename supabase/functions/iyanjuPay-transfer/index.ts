@@ -1,5 +1,11 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
+/**
+ * ============================================================
+ * IyanjuPay — Internal Wallet Transfer
+ * ============================================================
+ */
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
@@ -12,6 +18,11 @@ const corsHeaders = {
 const ELECTRONIC_FEE = 50;
 const ELECTRONIC_FEE_THRESHOLD = 10000;
 
+/**
+ * ============================================================
+ * RESPONSE HELPER
+ * ============================================================
+ */
 function response(
   body: Record<string, unknown>,
   status = 200,
@@ -25,11 +36,13 @@ function response(
   );
 }
 
-function maskWalletId(
-  walletId: string,
-) {
-  const value =
-    String(walletId ?? "");
+/**
+ * ============================================================
+ * MASK WALLET ID
+ * ============================================================
+ */
+function maskWalletId(walletId: string) {
+  const value = String(walletId ?? "");
 
   if (value.length <= 4) {
     return value;
@@ -38,13 +51,28 @@ function maskWalletId(
   return `xxxx${value.slice(-4)}`;
 }
 
+/**
+ * ============================================================
+ * MAIN
+ * ============================================================
+ */
 Deno.serve(async (req) => {
+  /**
+   * ----------------------------------------------------------
+   * CORS
+   * ----------------------------------------------------------
+   */
   if (req.method === "OPTIONS") {
     return new Response("ok", {
       headers: corsHeaders,
     });
   }
 
+  /**
+   * ----------------------------------------------------------
+   * METHOD
+   * ----------------------------------------------------------
+   */
   if (req.method !== "POST") {
     return response(
       {
@@ -56,95 +84,168 @@ Deno.serve(async (req) => {
   }
 
   try {
+    /**
+     * ========================================================
+     * SUPABASE ENVIRONMENT
+     * ========================================================
+     */
     const supabaseUrl =
-      Deno.env.get(
-        "SUPABASE_URL",
-      ) ?? "";
+      Deno.env.get("SUPABASE_URL") ?? "";
 
     const serviceRoleKey =
-      Deno.env.get(
-        "SUPABASE_SERVICE_ROLE_KEY",
-      ) ?? "";
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 
-    const anonKey =
-      Deno.env.get(
-        "SUPABASE_ANON_KEY",
-      ) ?? "";
+    if (!supabaseUrl || !serviceRoleKey) {
+      console.error(
+        "Missing Supabase environment variables.",
+      );
 
-    if (
-      !supabaseUrl ||
-      !serviceRoleKey ||
-      !anonKey
-    ) {
-      throw new Error(
-        "Supabase environment variables are not configured.",
+      return response(
+        {
+          success: false,
+          error:
+            "Supabase environment variables are not configured.",
+        },
+        500,
       );
     }
 
+    /**
+     * ========================================================
+     * AUTHENTICATION
+     * ========================================================
+     *
+     * IMPORTANT:
+     *
+     * We explicitly read the Authorization header and extract
+     * the Bearer JWT.
+     *
+     * This avoids relying on a second anon-key client to
+     * propagate the authorization state.
+     */
     const authHeader =
-      req.headers.get(
-        "Authorization",
-      );
+      req.headers.get("Authorization");
 
     if (!authHeader) {
+      console.error(
+        "IyanjuPay transfer: Authorization header missing.",
+      );
+
       return response(
         {
           success: false,
-          error: "Unauthorized",
+          error: "Authentication required",
         },
         401,
       );
     }
 
-    const userClient =
-      createClient(
-        supabaseUrl,
-        anonKey,
-        {
-          global: {
-            headers: {
-              Authorization:
-                authHeader,
-            },
-          },
-        },
+    const tokenMatch =
+      authHeader.match(
+        /^Bearer\s+(.+)$/i,
       );
 
-    const {
-      data: {
-        user,
-      },
-      error: userError,
-    } =
-      await userClient.auth.getUser();
+    if (!tokenMatch) {
+      console.error(
+        "IyanjuPay transfer: Invalid Authorization header.",
+      );
 
-    if (
-      userError ||
-      !user
-    ) {
       return response(
         {
           success: false,
-          error: "Unauthorized",
+          error: "Invalid authentication token.",
         },
         401,
       );
     }
 
+    const accessToken =
+      tokenMatch[1].trim();
+
+    if (!accessToken) {
+      return response(
+        {
+          success: false,
+          error: "Authentication required",
+        },
+        401,
+      );
+    }
+
+    /**
+     * ========================================================
+     * ADMIN CLIENT
+     * ========================================================
+     */
     const admin =
       createClient(
         supabaseUrl,
         serviceRoleKey,
         {
           auth: {
-            autoRefreshToken:
-              false,
-            persistSession:
-              false,
+            autoRefreshToken: false,
+            persistSession: false,
           },
         },
       );
 
+    /**
+     * ========================================================
+     * VALIDATE AUTHENTICATED USER
+     * ========================================================
+     *
+     * We explicitly pass the JWT to getUser().
+     */
+    const {
+      data: authData,
+      error: authError,
+    } =
+      await admin.auth.getUser(
+        accessToken,
+      );
+
+    if (authError) {
+      console.error(
+        "IyanjuPay transfer authentication failed:",
+        authError,
+      );
+
+      return response(
+        {
+          success: false,
+          error: "Authentication required",
+        },
+        401,
+      );
+    }
+
+    const user =
+      authData?.user;
+
+    if (!user) {
+      console.error(
+        "IyanjuPay transfer: authenticated user not found.",
+      );
+
+      return response(
+        {
+          success: false,
+          error: "Authentication required",
+        },
+        401,
+      );
+    }
+
+    console.log(
+      "IyanjuPay transfer authenticated user:",
+      user.id,
+    );
+
+    /**
+     * ========================================================
+     * PARSE REQUEST BODY
+     * ========================================================
+     */
     let body: any;
 
     try {
@@ -153,13 +254,17 @@ Deno.serve(async (req) => {
       return response(
         {
           success: false,
-          error:
-            "Invalid request body.",
+          error: "Invalid request body.",
         },
         400,
       );
     }
 
+    /**
+     * ========================================================
+     * REQUEST VALUES
+     * ========================================================
+     */
     const walletId =
       String(
         body?.wallet_id ??
@@ -185,9 +290,12 @@ Deno.serve(async (req) => {
           "",
       ).trim();
 
-    if (
-      !/^\d{8}$/.test(walletId)
-    ) {
+    /**
+     * ========================================================
+     * VALIDATE WALLET ID
+     * ========================================================
+     */
+    if (!/^\d{8}$/.test(walletId)) {
       return response(
         {
           success: false,
@@ -198,6 +306,11 @@ Deno.serve(async (req) => {
       );
     }
 
+    /**
+     * ========================================================
+     * VALIDATE AMOUNT
+     * ========================================================
+     */
     if (
       !Number.isFinite(amount) ||
       amount <= 0
@@ -226,19 +339,26 @@ Deno.serve(async (req) => {
       );
     }
 
-    /*
-     * ============================================================
+    /**
+     * ========================================================
      * FIND SENDER WALLET
-     * ============================================================
+     * ========================================================
      */
-
     const {
       data: senderWallet,
       error: senderWalletError,
     } = await admin
       .from("wallets")
       .select(
-        "id, user_id, wallet_id, balance, held_balance, currency, status",
+        `
+        id,
+        user_id,
+        wallet_id,
+        balance,
+        held_balance,
+        currency,
+        status
+        `,
       )
       .eq(
         "user_id",
@@ -247,6 +367,11 @@ Deno.serve(async (req) => {
       .maybeSingle();
 
     if (senderWalletError) {
+      console.error(
+        "Sender wallet lookup failed:",
+        senderWalletError,
+      );
+
       throw senderWalletError;
     }
 
@@ -261,6 +386,11 @@ Deno.serve(async (req) => {
       );
     }
 
+    /**
+     * ========================================================
+     * SENDER WALLET STATUS
+     * ========================================================
+     */
     if (
       senderWallet.status !==
       "active"
@@ -275,19 +405,26 @@ Deno.serve(async (req) => {
       );
     }
 
-    /*
-     * ============================================================
-     * FIND RECIPIENT
-     * ============================================================
+    /**
+     * ========================================================
+     * FIND RECIPIENT WALLET
+     * ========================================================
      */
-
     const {
       data: recipientWallet,
       error: recipientWalletError,
     } = await admin
       .from("wallets")
       .select(
-        "id, user_id, wallet_id, balance, held_balance, currency, status",
+        `
+        id,
+        user_id,
+        wallet_id,
+        balance,
+        held_balance,
+        currency,
+        status
+        `,
       )
       .eq(
         "wallet_id",
@@ -296,6 +433,11 @@ Deno.serve(async (req) => {
       .maybeSingle();
 
     if (recipientWalletError) {
+      console.error(
+        "Recipient wallet lookup failed:",
+        recipientWalletError,
+      );
+
       throw recipientWalletError;
     }
 
@@ -310,6 +452,11 @@ Deno.serve(async (req) => {
       );
     }
 
+    /**
+     * ========================================================
+     * PREVENT SELF TRANSFER
+     * ========================================================
+     */
     if (
       recipientWallet.user_id ===
       user.id
@@ -324,6 +471,11 @@ Deno.serve(async (req) => {
       );
     }
 
+    /**
+     * ========================================================
+     * RECIPIENT STATUS
+     * ========================================================
+     */
     if (
       recipientWallet.status !==
       "active"
@@ -338,6 +490,11 @@ Deno.serve(async (req) => {
       );
     }
 
+    /**
+     * ========================================================
+     * CURRENCY
+     * ========================================================
+     */
     if (
       senderWallet.currency !==
       recipientWallet.currency
@@ -352,12 +509,11 @@ Deno.serve(async (req) => {
       );
     }
 
-    /*
-     * ============================================================
+    /**
+     * ========================================================
      * GET SENDER / RECIPIENT NAMES
-     * ============================================================
+     * ========================================================
      */
-
     const {
       data: senderProfile,
     } = await admin
@@ -392,18 +548,22 @@ Deno.serve(async (req) => {
           "IyanjuPay User",
       ).trim();
 
-    /*
-     * ============================================================
+    /**
+     * ========================================================
      * ELECTRONIC FEE
-     * ============================================================
+     * ========================================================
      *
-     * IMPORTANT:
+     * IyanjuPay-to-IyanjuPay:
      *
-     * IyanjuPay internal transfers have NO ₦10 fee.
+     * Base transfer fee = ₦0
      *
-     * ₦50 electronic fee applies at ₦10,000 and above.
+     * Electronic fee:
+     *   < ₦10,000  = ₦0
+     *   >= ₦10,000 = ₦50
+     *
+     * The electronic fee is charged AFTER the internal
+     * transfer succeeds.
      */
-
     const electronicFee =
       amount >=
       ELECTRONIC_FEE_THRESHOLD
@@ -414,12 +574,11 @@ Deno.serve(async (req) => {
       amount +
       electronicFee;
 
-    /*
-     * ============================================================
-     * RESERVE KYC LIMIT
-     * ============================================================
+    /**
+     * ========================================================
+     * RESERVE KYC DAILY LIMIT
+     * ========================================================
      */
-
     const {
       data: kycReservation,
       error: kycReservationError,
@@ -432,6 +591,11 @@ Deno.serve(async (req) => {
     );
 
     if (kycReservationError) {
+      console.error(
+        "KYC reservation failed:",
+        kycReservationError,
+      );
+
       return response(
         {
           success: false,
@@ -473,6 +637,11 @@ Deno.serve(async (req) => {
 
     let kycReservationActive = true;
 
+    /**
+     * ========================================================
+     * RELEASE KYC RESERVATION
+     * ========================================================
+     */
     const releaseKycReservation =
       async () => {
         if (!kycReservationActive) {
@@ -508,12 +677,11 @@ Deno.serve(async (req) => {
         return true;
       };
 
-    /*
-     * ============================================================
+    /**
+     * ========================================================
      * ATOMIC INTERNAL TRANSFER
-     * ============================================================
+     * ========================================================
      */
-
     const {
       data,
       error,
@@ -543,13 +711,15 @@ Deno.serve(async (req) => {
       await releaseKycReservation();
 
       console.error(
-        "Internal transfer failed:",
+        "Internal transfer RPC failed:",
         error,
       );
 
       return response(
         {
           success: false,
+          stage:
+            "internal_transfer",
           error:
             error.message ||
             "Unable to complete IyanjuPay transfer.",
@@ -565,12 +735,11 @@ Deno.serve(async (req) => {
       result.transaction_id ??
       null;
 
-    /*
-     * ============================================================
-     * COMPLETE KYC
-     * ============================================================
+    /**
+     * ========================================================
+     * COMPLETE KYC LIMIT
+     * ========================================================
      */
-
     const {
       data: kycCompletion,
       error: kycCompletionError,
@@ -592,18 +761,15 @@ Deno.serve(async (req) => {
           kycCompletion,
       );
 
-      /*
-       * The money transfer has already succeeded.
+      /**
+       * Transfer already succeeded.
        *
-       * We DO NOT reverse it simply because
-       * the KYC accounting finalization failed.
-       *
-       * Store reconciliation information.
+       * Do NOT reverse the successful wallet transfer.
        */
-
       await admin
         .from("transactions")
         .update({
+          status: "successful",
           metadata: {
             history_version: 1,
 
@@ -636,10 +802,13 @@ Deno.serve(async (req) => {
             beneficiary_name:
               recipientName,
 
+            narration,
+
             transfer_amount:
               amount,
 
-            iyanjupay_fee: 0,
+            iyanjupay_fee:
+              0,
 
             electronic_fee:
               electronicFee,
@@ -647,9 +816,11 @@ Deno.serve(async (req) => {
             total_charged:
               totalCharged,
 
-            currency: "NGN",
+            currency:
+              senderWallet.currency,
 
-            status: "completed",
+            status:
+              "successful",
 
             reference:
               result.reference ??
@@ -661,7 +832,8 @@ Deno.serve(async (req) => {
             history_amount:
               totalCharged,
 
-            history_sign: "-",
+            history_sign:
+              "-",
 
             history_amount_display:
               `-₦${totalCharged.toLocaleString(
@@ -686,13 +858,17 @@ Deno.serve(async (req) => {
           transactionId,
         );
 
+      kycReservationActive =
+        false;
+
       return response({
         success: true,
 
         transfer_type:
           "iyanjupay",
 
-        status: "completed",
+        status:
+          "completed",
 
         kyc_status:
           "completion_pending",
@@ -730,12 +906,11 @@ Deno.serve(async (req) => {
     kycReservationActive =
       false;
 
-    /*
-     * ============================================================
-     * ELECTRONIC FEE
-     * ============================================================
+    /**
+     * ========================================================
+     * CHARGE ELECTRONIC FEE
+     * ========================================================
      */
-
     let electronicFeeCharged =
       false;
 
@@ -745,9 +920,7 @@ Deno.serve(async (req) => {
     let electronicFeeError:
       string | null = null;
 
-    if (
-      electronicFee > 0
-    ) {
+    if (electronicFee > 0) {
       const feeKey =
         `ELECTRONIC_FEE_${transactionId}`;
 
@@ -757,9 +930,11 @@ Deno.serve(async (req) => {
       } = await admin.rpc(
         "wallet_operation",
         {
-          _user_id: user.id,
+          _user_id:
+            user.id,
 
-          _operation: "DEBIT",
+          _operation:
+            "DEBIT",
 
           _amount:
             electronicFee,
@@ -791,7 +966,8 @@ Deno.serve(async (req) => {
             electronic_fee:
               electronicFee,
 
-            currency: "NGN",
+            currency:
+              senderWallet.currency,
           },
         },
       );
@@ -818,28 +994,36 @@ Deno.serve(async (req) => {
       }
     }
 
-    /*
-     * ============================================================
-     * FINAL TRANSACTION METADATA
-     * ============================================================
+    /**
+     * ========================================================
+     * FINAL AMOUNT
+     * ========================================================
      */
-
     const finalFee =
       electronicFeeCharged
         ? electronicFee
         : 0;
 
     const finalTotal =
-      amount + finalFee;
+      amount +
+      finalFee;
 
     const finalReference =
       result.reference ??
       null;
 
-    await admin
+    /**
+     * ========================================================
+     * UPDATE TRANSACTION HISTORY
+     * ========================================================
+     */
+    const {
+      error: transactionUpdateError,
+    } = await admin
       .from("transactions")
       .update({
-        status: "successful",
+        status:
+          "successful",
 
         metadata: {
           history_version: 1,
@@ -850,7 +1034,8 @@ Deno.serve(async (req) => {
           transaction_category:
             "transfer",
 
-          direction: "DEBIT",
+          direction:
+            "DEBIT",
 
           display_title:
             `Transfer to ${recipientName}`,
@@ -878,7 +1063,8 @@ Deno.serve(async (req) => {
           transfer_amount:
             amount,
 
-          iyanjupay_fee: 0,
+          iyanjupay_fee:
+            0,
 
           electronic_fee:
             electronicFee,
@@ -895,7 +1081,8 @@ Deno.serve(async (req) => {
           total_charged:
             finalTotal,
 
-          currency: "NGN",
+          currency:
+            senderWallet.currency,
 
           status:
             "successful",
@@ -909,7 +1096,8 @@ Deno.serve(async (req) => {
           history_amount:
             finalTotal,
 
-          history_sign: "-",
+          history_sign:
+            "-",
 
           history_amount_display:
             `-₦${finalTotal.toLocaleString(
@@ -937,13 +1125,26 @@ Deno.serve(async (req) => {
         transactionId,
       );
 
+    if (transactionUpdateError) {
+      console.error(
+        "Transaction metadata update failed:",
+        transactionUpdateError,
+      );
+    }
+
+    /**
+     * ========================================================
+     * SUCCESS
+     * ========================================================
+     */
     return response({
       success: true,
 
       transfer_type:
         "iyanjupay",
 
-      status: "completed",
+      status:
+        "completed",
 
       reference:
         finalReference,

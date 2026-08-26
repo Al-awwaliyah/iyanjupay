@@ -85,9 +85,7 @@ const PinField = ({
           disabled={disabled}
           className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700 disabled:opacity-50"
           aria-label={
-            visible
-              ? "Hide PIN"
-              : "Show PIN"
+            visible ? "Hide PIN" : "Show PIN"
           }
         >
           {visible ? (
@@ -140,12 +138,6 @@ const PaymentPinPage = ({
       return;
     }
 
-    /*
-     * ----------------------------------------------------------
-     * Validate current PIN
-     * ----------------------------------------------------------
-     */
-
     if (!/^\d{4}$/.test(currentPin)) {
       toast({
         title: "Invalid current PIN",
@@ -156,12 +148,6 @@ const PaymentPinPage = ({
 
       return;
     }
-
-    /*
-     * ----------------------------------------------------------
-     * Validate new PIN
-     * ----------------------------------------------------------
-     */
 
     if (!/^\d{4}$/.test(newPin)) {
       toast({
@@ -174,12 +160,6 @@ const PaymentPinPage = ({
       return;
     }
 
-    /*
-     * ----------------------------------------------------------
-     * Validate confirmation
-     * ----------------------------------------------------------
-     */
-
     if (newPin !== confirmPin) {
       toast({
         title: "PINs do not match",
@@ -190,12 +170,6 @@ const PaymentPinPage = ({
 
       return;
     }
-
-    /*
-     * ----------------------------------------------------------
-     * Prevent same PIN
-     * ----------------------------------------------------------
-     */
 
     if (currentPin === newPin) {
       toast({
@@ -211,12 +185,6 @@ const PaymentPinPage = ({
     try {
       setProcessing(true);
       setSuccess(false);
-
-      /*
-       * --------------------------------------------------------
-       * Call secure database RPC
-       * --------------------------------------------------------
-       */
 
       const {
         data,
@@ -241,12 +209,6 @@ const PaymentPinPage = ({
         );
       }
 
-      /*
-       * --------------------------------------------------------
-       * Handle RPC response
-       * --------------------------------------------------------
-       */
-
       if (
         !data ||
         data.success !== true
@@ -256,12 +218,6 @@ const PaymentPinPage = ({
             "Unable to change payment PIN."
         );
       }
-
-      /*
-       * --------------------------------------------------------
-       * Clear PIN values immediately
-       * --------------------------------------------------------
-       */
 
       setCurrentPin("");
       setNewPin("");
@@ -297,25 +253,26 @@ const PaymentPinPage = ({
    * RESET PAYMENT PIN
    * ============================================================
    *
-   * Flow:
+   * Custom recovery flow:
    *
-   * Payment PIN page
+   * PaymentPinPage
    *       ↓
-   * Get authenticated user's email
+   * payment-pin-reset-request
    *       ↓
-   * resetPasswordForEmail()
-   *       ↓
-   * Recovery OTP
+   * Brevo SMTP
    *       ↓
    * VerifyPaymentPinResetOtp
-   *       ↓
-   * ResetPaymentPin
-   *       ↓
-   * reset_payment_pin RPC
    *
-   * The email is only used to initiate the recovery request.
-   * The actual reset is protected by the recovery session
-   * inside the database RPC.
+   * The email is obtained from the authenticated
+   * Supabase session/server.
+   *
+   * We do NOT use:
+   *
+   * resetPasswordForEmail()
+   *
+   * and we do NOT depend on:
+   *
+   * auth.jwt().amr = recovery
    *
    * ============================================================
    */
@@ -333,10 +290,8 @@ const PaymentPinPage = ({
     try {
       /*
        * --------------------------------------------------------
-       * Get currently authenticated user
+       * Confirm the user is authenticated.
        * --------------------------------------------------------
-       *
-       * Do not accept an email entered manually by the user.
        */
 
       const {
@@ -357,12 +312,6 @@ const PaymentPinPage = ({
         );
       }
 
-      /*
-       * --------------------------------------------------------
-       * Make sure the user is authenticated
-       * --------------------------------------------------------
-       */
-
       if (!user) {
         toast({
           title: "Authentication required",
@@ -376,7 +325,10 @@ const PaymentPinPage = ({
 
       /*
        * --------------------------------------------------------
-       * Get account email
+       * Email must exist.
+       *
+       * The Edge Function will independently verify the
+       * authenticated user and use the server-side email.
        * --------------------------------------------------------
        */
 
@@ -398,13 +350,49 @@ const PaymentPinPage = ({
 
       /*
        * --------------------------------------------------------
-       * Store email temporarily
+       * Request custom PIN reset OTP.
        * --------------------------------------------------------
+       */
+
+      const {
+        data,
+        error,
+      } =
+        await supabase.functions.invoke(
+          "payment-pin-reset-request",
+          {
+            body: {},
+          }
+        );
+
+      if (error) {
+        console.error(
+          "Payment PIN reset request error:",
+          error
+        );
+
+        throw new Error(
+          error.message ||
+            "Unable to send the Payment PIN reset code."
+        );
+      }
+
+      if (
+        !data ||
+        data.success !== true
+      ) {
+        throw new Error(
+          data?.message ||
+            "Unable to send the Payment PIN reset code."
+        );
+      }
+
+      /*
+       * --------------------------------------------------------
+       * Store email only for display on OTP page.
        *
-       * This is only used by the OTP page to display the
-       * account email and perform verifyOtp().
-       *
-       * It is NOT treated as authentication.
+       * It is NOT authentication.
+       * --------------------------------------------------------
        */
 
       sessionStorage.setItem(
@@ -412,61 +400,11 @@ const PaymentPinPage = ({
         email
       );
 
-      /*
-       * --------------------------------------------------------
-       * Request Supabase recovery code
-       * --------------------------------------------------------
-       */
-
-      const {
-        error,
-      } =
-        await supabase.auth.resetPasswordForEmail(
-          email,
-          {
-            redirectTo:
-              `${window.location.origin}/reset-payment-pin`,
-          }
-        );
-
-      if (error) {
-        console.error(
-          "Payment PIN recovery request error:",
-          error
-        );
-
-        /*
-         * Do not leave stale recovery information
-         * if the request failed.
-         */
-
-        sessionStorage.removeItem(
-          "iyanjupay_payment_pin_reset_email"
-        );
-
-        throw new Error(
-          error.message ||
-            "Unable to send the Payment PIN recovery code."
-        );
-      }
-
-      /*
-       * --------------------------------------------------------
-       * Notify user
-       * --------------------------------------------------------
-       */
-
       toast({
         title: "Reset code sent",
         description:
-          "A 6-digit recovery code has been sent to your account email.",
+          "A 6-digit Payment PIN reset code has been sent to your email.",
       });
-
-      /*
-       * --------------------------------------------------------
-       * Go to recovery OTP page
-       * --------------------------------------------------------
-       */
 
       navigate(
         "/verify-payment-pin-reset",
@@ -514,9 +452,7 @@ const PaymentPinPage = ({
     <div className="min-h-screen bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-50">
       <div className="max-w-2xl mx-auto px-4 py-6">
 
-        {/* =====================================================
-            HEADER
-            ===================================================== */}
+        {/* HEADER */}
 
         <div className="flex items-center gap-4 mb-6">
           <Button
@@ -538,9 +474,7 @@ const PaymentPinPage = ({
           </h1>
         </div>
 
-        {/* =====================================================
-            SECURITY CARD
-            ===================================================== */}
+        {/* SECURITY CARD */}
 
         <Card className="mb-6 border-0 shadow-md">
           <CardContent className="p-5">
@@ -566,9 +500,7 @@ const PaymentPinPage = ({
           </CardContent>
         </Card>
 
-        {/* =====================================================
-            CHANGE PAYMENT PIN
-            ===================================================== */}
+        {/* CHANGE PIN */}
 
         <Card className="shadow-md">
           <CardHeader>
@@ -594,8 +526,6 @@ const PaymentPinPage = ({
 
           <CardContent className="space-y-5">
 
-            {/* Current PIN */}
-
             <PinField
               label="Current Payment PIN"
               value={currentPin}
@@ -605,8 +535,6 @@ const PaymentPinPage = ({
                 resetProcessing
               }
             />
-
-            {/* New PIN */}
 
             <PinField
               label="New Payment PIN"
@@ -618,8 +546,6 @@ const PaymentPinPage = ({
               }
             />
 
-            {/* Confirm PIN */}
-
             <PinField
               label="Confirm New Payment PIN"
               value={confirmPin}
@@ -629,10 +555,6 @@ const PaymentPinPage = ({
                 resetProcessing
               }
             />
-
-            {/* =================================================
-                SUCCESS MESSAGE
-                ================================================= */}
 
             {success && (
               <div className="rounded-lg border border-green-200 bg-green-50 p-4">
@@ -654,15 +576,9 @@ const PaymentPinPage = ({
               </div>
             )}
 
-            {/* =================================================
-                CHANGE BUTTON
-                ================================================= */}
-
             <Button
               type="button"
-              onClick={
-                handleChangePin
-              }
+              onClick={handleChangePin}
               disabled={
                 processing ||
                 resetProcessing ||
@@ -688,9 +604,7 @@ const PaymentPinPage = ({
           </CardContent>
         </Card>
 
-        {/* =====================================================
-            RESET PAYMENT PIN
-            ===================================================== */}
+        {/* RESET PIN */}
 
         <Card className="mt-4 shadow-md">
           <CardContent className="p-5">
@@ -708,8 +622,9 @@ const PaymentPinPage = ({
                 </h3>
 
                 <p className="text-sm text-gray-600 mt-1">
-                  Reset your PIN using secure account
-                  verification.
+                  Reset your PIN using a secure
+                  verification code sent to your
+                  account email.
                 </p>
 
                 <Button
@@ -744,9 +659,7 @@ const PaymentPinPage = ({
           </CardContent>
         </Card>
 
-        {/* =====================================================
-            SECURITY NOTICE
-            ===================================================== */}
+        {/* SECURITY NOTICE */}
 
         <div className="mt-5 rounded-lg bg-gray-50 border p-4">
           <p className="text-xs text-gray-500 text-center">

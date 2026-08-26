@@ -30,6 +30,7 @@ import Dashboard from "@/components/Dashboard";
 import SendMoney from "./pages/SendMoney";
 import TransactionProcessing from "./pages/TransactionProcessing";
 import PaymentPinPage from "@/components/onboarding/PaymentPinPage";
+import ServicePayment from "./pages/ServicePayment";
 import VerifyRecoveryOtp from "./pages/VerifyRecoveryOtp";
 import VerifyPaymentPinResetOtp from "@/pages/VerifyPaymentPinResetOtp";
 import ResetPaymentPin from "@/pages/ResetPaymentPin";
@@ -174,6 +175,11 @@ const App = () => {
               element={<ResetPaymentPin />}
             />
 
+            <Route
+              path="/service-payment"
+              element={<ServicePayment />}
+            />
+            
             <Route
               path="/reset-password"
               element={<ResetPassword />}

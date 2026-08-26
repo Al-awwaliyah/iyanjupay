@@ -18,9 +18,7 @@ const SMTP_HOST =
   Deno.env.get("BREVO_SMTP_HOST")!;
 
 const SMTP_PORT =
-  Number(
-    Deno.env.get("BREVO_SMTP_PORT") || "587"
-  );
+  Number(Deno.env.get("BREVO_SMTP_PORT") || "587");
 
 const SMTP_USER =
   Deno.env.get("BREVO_SMTP_USER")!;
@@ -32,8 +30,11 @@ const FROM_EMAIL =
   Deno.env.get("BREVO_FROM_EMAIL")!;
 
 const FROM_NAME =
-  Deno.env.get("BREVO_FROM_NAME") ||
-  "IyanjuPay";
+  Deno.env.get("BREVO_FROM_NAME") || "IyanjuPay";
+
+const RESET_SECRET =
+  Deno.env.get("PAYMENT_PIN_RESET_SECRET")!;
+
 
 // ============================================================
 // CORS
@@ -47,14 +48,15 @@ const corsHeaders = {
     "POST, OPTIONS",
 };
 
+
 // ============================================================
-// RESPONSE
+// JSON RESPONSE
 // ============================================================
 
 function json(
   body: unknown,
   status = 200
-) {
+): Response {
   return new Response(
     JSON.stringify(body),
     {
@@ -67,41 +69,59 @@ function json(
   );
 }
 
+
 // ============================================================
-// SHA-256
+// SHA-256 / HMAC HELPER
 // ============================================================
 
-async function sha256Hex(
+async function hmacSha256(
   value: string
 ): Promise<string> {
+
+  if (!RESET_SECRET) {
+    throw new Error(
+      "PAYMENT_PIN_RESET_SECRET is not configured."
+    );
+  }
+
   const encoder =
     new TextEncoder();
 
-  const data =
-    encoder.encode(value);
+  const key =
+    await crypto.subtle.importKey(
+      "raw",
+      encoder.encode(RESET_SECRET),
+      {
+        name: "HMAC",
+        hash: "SHA-256",
+      },
+      false,
+      ["sign"]
+    );
 
-  const hashBuffer =
-    await crypto.subtle.digest(
-      "SHA-256",
-      data
+  const signature =
+    await crypto.subtle.sign(
+      "HMAC",
+      key,
+      encoder.encode(value)
     );
 
   return Array.from(
-    new Uint8Array(hashBuffer)
+    new Uint8Array(signature)
   )
     .map((byte) =>
-      byte
-        .toString(16)
-        .padStart(2, "0")
+      byte.toString(16).padStart(2, "0")
     )
     .join("");
 }
+
 
 // ============================================================
 // RANDOM OTP
 // ============================================================
 
 function generateOtp(): string {
+
   const bytes =
     new Uint32Array(1);
 
@@ -112,14 +132,16 @@ function generateOtp(): string {
   ).padStart(6, "0");
 }
 
+
 // ============================================================
 // MAIN
 // ============================================================
 
 Deno.serve(async (req) => {
-  // ==========================================================
+
+  // ----------------------------------------------------------
   // OPTIONS
-  // ==========================================================
+  // ----------------------------------------------------------
 
   if (req.method === "OPTIONS") {
     return new Response(
@@ -130,9 +152,10 @@ Deno.serve(async (req) => {
     );
   }
 
-  // ==========================================================
+
+  // ----------------------------------------------------------
   // METHOD
-  // ==========================================================
+  // ----------------------------------------------------------
 
   if (req.method !== "POST") {
     return json(
@@ -144,69 +167,26 @@ Deno.serve(async (req) => {
     );
   }
 
+
   try {
-    // ========================================================
-    // ENVIRONMENT VALIDATION
-    // ========================================================
-
-    if (
-      !SUPABASE_URL ||
-      !SUPABASE_ANON_KEY ||
-      !SUPABASE_SERVICE_ROLE_KEY
-    ) {
-      console.error(
-        "Supabase environment variables are missing."
-      );
-
-      return json(
-        {
-          success: false,
-          message:
-            "Server configuration error.",
-        },
-        500
-      );
-    }
-
-    if (
-      !SMTP_HOST ||
-      !SMTP_USER ||
-      !SMTP_PASSWORD ||
-      !FROM_EMAIL
-    ) {
-      console.error(
-        "Brevo SMTP environment variables are missing."
-      );
-
-      return json(
-        {
-          success: false,
-          message:
-            "Email service is not configured.",
-        },
-        500
-      );
-    }
 
     // ========================================================
     // AUTHENTICATION
     // ========================================================
 
     const authHeader =
-      req.headers.get(
-        "Authorization"
-      );
+      req.headers.get("Authorization");
 
     if (!authHeader) {
       return json(
         {
           success: false,
-          message:
-            "Authentication required.",
+          message: "Authentication required.",
         },
         401
       );
     }
+
 
     const userClient =
       createClient(
@@ -215,12 +195,12 @@ Deno.serve(async (req) => {
         {
           global: {
             headers: {
-              Authorization:
-                authHeader,
+              Authorization: authHeader,
             },
           },
         }
       );
+
 
     const {
       data: {
@@ -230,10 +210,8 @@ Deno.serve(async (req) => {
     } =
       await userClient.auth.getUser();
 
-    if (
-      userError ||
-      !user
-    ) {
+
+    if (userError || !user) {
       console.error(
         "Authentication error:",
         userError
@@ -249,8 +227,9 @@ Deno.serve(async (req) => {
       );
     }
 
+
     // ========================================================
-    // EMAIL
+    // EMAIL VALIDATION
     // ========================================================
 
     if (!user.email) {
@@ -264,6 +243,7 @@ Deno.serve(async (req) => {
       );
     }
 
+
     if (!user.email_confirmed_at) {
       return json(
         {
@@ -275,13 +255,13 @@ Deno.serve(async (req) => {
       );
     }
 
+
     const email =
-      user.email
-        .trim()
-        .toLowerCase();
+      user.email.trim().toLowerCase();
+
 
     // ========================================================
-    // ADMIN CLIENT
+    // SERVICE ROLE CLIENT
     // ========================================================
 
     const admin =
@@ -290,8 +270,9 @@ Deno.serve(async (req) => {
         SUPABASE_SERVICE_ROLE_KEY
       );
 
+
     // ========================================================
-    // VERIFY PAYMENT PIN EXISTS
+    // CHECK PAYMENT PIN
     // ========================================================
 
     const {
@@ -301,11 +282,9 @@ Deno.serve(async (req) => {
       await admin
         .from("payment_pins")
         .select("user_id")
-        .eq(
-          "user_id",
-          user.id
-        )
+        .eq("user_id", user.id)
         .maybeSingle();
+
 
     if (pinError) {
       console.error(
@@ -323,6 +302,7 @@ Deno.serve(async (req) => {
       );
     }
 
+
     if (!pinRecord) {
       return json(
         {
@@ -334,6 +314,7 @@ Deno.serve(async (req) => {
       );
     }
 
+
     // ========================================================
     // RATE LIMIT
     // ========================================================
@@ -343,20 +324,12 @@ Deno.serve(async (req) => {
       error: recentError,
     } =
       await admin
-        .from(
-          "payment_pin_reset_challenges"
-        )
+        .from("payment_pin_reset_challenges")
         .select(
           "id, created_at, expires_at, used_at"
         )
-        .eq(
-          "user_id",
-          user.id
-        )
-        .is(
-          "used_at",
-          null
-        )
+        .eq("user_id", user.id)
+        .is("used_at", null)
         .order(
           "created_at",
           {
@@ -365,6 +338,7 @@ Deno.serve(async (req) => {
         )
         .limit(1)
         .maybeSingle();
+
 
     if (recentError) {
       console.error(
@@ -382,15 +356,16 @@ Deno.serve(async (req) => {
       );
     }
 
+
     if (recentChallenge) {
+
       const createdAt =
         new Date(
           recentChallenge.created_at
         ).getTime();
 
       const age =
-        Date.now() -
-        createdAt;
+        Date.now() - createdAt;
 
       if (age < 60_000) {
         return json(
@@ -404,37 +379,28 @@ Deno.serve(async (req) => {
       }
     }
 
+
     // ========================================================
     // INVALIDATE OLD CHALLENGES
     // ========================================================
 
     const {
-      error:
-        invalidateChallengeError,
+      error: invalidateError,
     } =
       await admin
-        .from(
-          "payment_pin_reset_challenges"
-        )
+        .from("payment_pin_reset_challenges")
         .update({
           used_at:
             new Date().toISOString(),
         })
-        .eq(
-          "user_id",
-          user.id
-        )
-        .is(
-          "used_at",
-          null
-        );
+        .eq("user_id", user.id)
+        .is("used_at", null);
 
-    if (
-      invalidateChallengeError
-    ) {
+
+    if (invalidateError) {
       console.error(
         "Old challenge invalidation error:",
-        invalidateChallengeError
+        invalidateError
       );
 
       return json(
@@ -447,48 +413,6 @@ Deno.serve(async (req) => {
       );
     }
 
-    // ========================================================
-    // INVALIDATE OLD AUTHORIZATIONS
-    // ========================================================
-
-    const {
-      error:
-        invalidateAuthorizationError,
-    } =
-      await admin
-        .from(
-          "payment_pin_reset_authorizations"
-        )
-        .update({
-          used_at:
-            new Date().toISOString(),
-        })
-        .eq(
-          "user_id",
-          user.id
-        )
-        .is(
-          "used_at",
-          null
-        );
-
-    if (
-      invalidateAuthorizationError
-    ) {
-      console.error(
-        "Old authorization invalidation error:",
-        invalidateAuthorizationError
-      );
-
-      return json(
-        {
-          success: false,
-          message:
-            "Unable to start Payment PIN recovery.",
-        },
-        500
-      );
-    }
 
     // ========================================================
     // GENERATE OTP
@@ -497,14 +421,10 @@ Deno.serve(async (req) => {
     const otp =
       generateOtp();
 
-    // ========================================================
-    // HASH OTP
-    // ========================================================
 
     const otpHash =
-      await sha256Hex(
-        otp
-      );
+      await hmacSha256(otp);
+
 
     // ========================================================
     // EXPIRATION
@@ -516,52 +436,41 @@ Deno.serve(async (req) => {
           10 * 60 * 1000
       ).toISOString();
 
+
     // ========================================================
     // CREATE CHALLENGE
+    //
+    // IMPORTANT:
+    // Database column is otp_hash.
     // ========================================================
 
     const {
       data: challenge,
-      error:
-        challengeError,
+      error: challengeError,
     } =
       await admin
         .from(
           "payment_pin_reset_challenges"
         )
         .insert({
-          user_id:
-            user.id,
-
+          user_id: user.id,
           email,
-
-          otp_hash:
-            otpHash,
-
-          expires_at:
-            expiresAt,
-
-          attempts:
-            0,
-
-          max_attempts:
-            5,
-
-          verified_at:
-            null,
-
-          used_at:
-            null,
+          otp_hash: otpHash,
+          expires_at: expiresAt,
+          attempts: 0,
+          max_attempts: 5,
+          verified_at: null,
+          used_at: null,
         })
-        .select(
-          "id"
-        )
+        .select("id")
         .single();
+
 
     if (
       challengeError ||
       !challenge
     ) {
+
       console.error(
         "Challenge creation error:",
         challengeError
@@ -577,41 +486,35 @@ Deno.serve(async (req) => {
       );
     }
 
+
     // ========================================================
     // BREVO SMTP
     // ========================================================
 
     const transporter =
       nodemailer.createTransport({
-        host:
-          SMTP_HOST,
-
-        port:
-          SMTP_PORT,
-
-        secure:
-          SMTP_PORT === 465,
-
+        host: SMTP_HOST,
+        port: SMTP_PORT,
+        secure: SMTP_PORT === 465,
         auth: {
-          user:
-            SMTP_USER,
-
-          pass:
-            SMTP_PASSWORD,
+          user: SMTP_USER,
+          pass: SMTP_PASSWORD,
         },
       });
+
 
     // ========================================================
     // SEND EMAIL
     // ========================================================
 
     try {
+
       await transporter.sendMail({
+
         from:
           `"${FROM_NAME}" <${FROM_EMAIL}>`,
 
-        to:
-          email,
+        to: email,
 
         subject:
           "IyanjuPay Payment PIN Reset Code",
@@ -626,12 +529,15 @@ If you did not request a Payment PIN reset, please secure your account immediate
 Never share this code or your Payment PIN with anyone.`,
 
         html: `
-          <div style="
-            font-family:Arial,sans-serif;
-            max-width:600px;
-            margin:auto;
-            padding:24px;
-          ">
+          <div
+            style="
+              font-family:Arial,sans-serif;
+              max-width:600px;
+              margin:auto;
+              padding:24px;
+              color:#333;
+            "
+          >
 
             <h2 style="color:#082A63">
               IyanjuPay Payment PIN Reset
@@ -645,16 +551,18 @@ Never share this code or your Payment PIN with anyone.`,
               Your verification code is:
             </p>
 
-            <div style="
-              font-size:32px;
-              font-weight:bold;
-              letter-spacing:8px;
-              text-align:center;
-              padding:20px;
-              background:#f3f6fa;
-              border-radius:8px;
-              color:#082A63;
-            ">
+            <div
+              style="
+                font-size:32px;
+                font-weight:bold;
+                letter-spacing:8px;
+                text-align:center;
+                padding:20px;
+                background:#f3f6fa;
+                border-radius:8px;
+                color:#082A63;
+              "
+            >
               ${otp}
             </div>
 
@@ -668,7 +576,12 @@ Never share this code or your Payment PIN with anyone.`,
               you can safely ignore this email.
             </p>
 
-            <p style="color:#999;font-size:12px">
+            <p
+              style="
+                color:#999;
+                font-size:12px;
+              "
+            >
               Never share your verification code
               or Payment PIN with anyone.
             </p>
@@ -676,21 +589,20 @@ Never share this code or your Payment PIN with anyone.`,
           </div>
         `,
       });
-    } catch (mailError) {
+
+    } catch (emailError) {
+
       console.error(
-        "Brevo SMTP send error:",
-        mailError
+        "Brevo SMTP error:",
+        emailError
       );
 
-      // Do not leave an unusable challenge active.
+      // Remove the challenge if email failed.
       await admin
         .from(
           "payment_pin_reset_challenges"
         )
-        .update({
-          used_at:
-            new Date().toISOString(),
-        })
+        .delete()
         .eq(
           "id",
           challenge.id
@@ -705,6 +617,7 @@ Never share this code or your Payment PIN with anyone.`,
         500
       );
     }
+
 
     // ========================================================
     // SUCCESS
@@ -723,7 +636,9 @@ Never share this code or your Payment PIN with anyone.`,
         expiresAt,
     });
 
+
   } catch (error) {
+
     console.error(
       "Payment PIN reset request error:",
       error
@@ -733,7 +648,9 @@ Never share this code or your Payment PIN with anyone.`,
       {
         success: false,
         message:
-          "Unable to start Payment PIN recovery.",
+          error instanceof Error
+            ? error.message
+            : "Unable to start Payment PIN recovery.",
       },
       500
     );

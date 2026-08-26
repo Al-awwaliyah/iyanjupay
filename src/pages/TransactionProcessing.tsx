@@ -13,6 +13,7 @@ import {
   Loader2,
   RefreshCw,
   Send,
+  Receipt,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -21,9 +22,25 @@ import { useToast } from "@/hooks/use-toast";
 
 import { supabase } from "@/integrations/supabase/client";
 
-type TransferType =
+// ============================================================
+// TYPES
+// ============================================================
+
+type TransactionType =
+  | "iyanjupay"
+  | "bank"
+  | "bill";
+
+type LegacyTransferType =
   | "iyanjupay"
   | "bank";
+
+type BillService =
+  | "airtime"
+  | "data"
+  | "electricity"
+  | "cable"
+  | "internet";
 
 type TransactionStatus =
   | "processing"
@@ -31,8 +48,29 @@ type TransactionStatus =
   | "pending"
   | "failed";
 
+// ============================================================
+// PROPS
+// ============================================================
+
 interface TransactionProcessingPageProps {
-  transferType: TransferType;
+  /**
+   * New unified transaction type.
+   *
+   * Preferred:
+   *
+   * "iyanjupay"
+   * "bank"
+   * "bill"
+   */
+  transactionType?: TransactionType;
+
+  /**
+   * Kept temporarily so the existing Dashboard
+   * transfer flow does not break while we migrate it.
+   *
+   * This can be removed after Dashboard is updated.
+   */
+  transferType?: LegacyTransferType;
 
   amount: number;
 
@@ -49,7 +87,11 @@ interface TransactionProcessingPageProps {
     | void;
 }
 
-interface TransferResult {
+// ============================================================
+// RESULT
+// ============================================================
+
+interface TransactionResult {
   success?: boolean;
 
   status?: string;
@@ -68,6 +110,10 @@ interface TransferResult {
 
   transferId?: string;
 
+  bill_payment_id?: string;
+
+  billPaymentId?: string;
+
   credit_transaction_id?: string;
 
   amount?: number;
@@ -80,41 +126,58 @@ interface TransferResult {
 
   recipient_wallet_id?: string;
 
+  customer?: string;
+
+  biller_code?: string;
+
+  item_code?: string;
+
+  provider?: string;
+
   data?: any;
+
+  [key: string]: any;
 }
+
+// ============================================================
+// COMPONENT
+// ============================================================
 
 /**
  * ============================================================
  * TRANSACTION PROCESSING PAGE
  * ============================================================
  *
- * This page is responsible for EXECUTING the already
- * PIN-authorized transfer.
+ * This page executes an already PIN-authorized transaction.
  *
- * SendMoneyPage:
+ * Transfer:
  *
- * Recipient
- *    ↓
- * Amount
- *    ↓
  * Review
- *    ↓
+ *   ↓
  * Payment PIN
- *    ↓
+ *   ↓
  * THIS PAGE
- *    ↓
- * Edge Function
- *    ↓
- * Success / Pending / Failed
+ *   ↓
+ * Transfer Edge Function
  *
- * Important:
+ * Bill:
  *
- * PaymentPinModal has already authorized the transaction
- * before this page is reached.
+ * Review
+ *   ↓
+ * Payment PIN
+ *   ↓
+ * THIS PAGE
+ *   ↓
+ * flutterwave-bills
  *
- * This page therefore does NOT ask for the PIN again.
+ * IMPORTANT:
+ *
+ * This page does NOT collect or verify the Payment PIN.
+ *
+ * PIN authorization happens before this page.
  */
 const TransactionProcessingPage = ({
+  transactionType,
   transferType,
   amount,
   details,
@@ -124,13 +187,42 @@ const TransactionProcessingPage = ({
 }: TransactionProcessingPageProps) => {
   const { toast } = useToast();
 
+  // ==========================================================
+  // RESOLVE TRANSACTION TYPE
+  // ==========================================================
+
+  /**
+   * Prefer the new transactionType.
+   *
+   * Fall back to transferType temporarily so
+   * existing transfer callers continue working.
+   */
+  const resolvedTransactionType: TransactionType =
+    transactionType ??
+    transferType ??
+    "bank";
+
+  const isBill =
+    resolvedTransactionType === "bill";
+
+  const isIyanjuPay =
+    resolvedTransactionType ===
+    "iyanjupay";
+
+  const isBank =
+    resolvedTransactionType === "bank";
+
+  // ==========================================================
+  // STATE
+  // ==========================================================
+
   const [status, setStatus] =
     useState<TransactionStatus>(
       "processing"
     );
 
   const [result, setResult] =
-    useState<TransferResult | null>(
+    useState<TransactionResult | null>(
       null
     );
 
@@ -140,14 +232,10 @@ const TransactionProcessingPage = ({
   const [retrying, setRetrying] =
     useState(false);
 
-  /*
-   * Prevent duplicate execution caused by:
-   *
-   * - React re-render
-   * - StrictMode
-   * - multiple callbacks
-   * - accidental double click
-   */
+  // ==========================================================
+  // DUPLICATE EXECUTION PROTECTION
+  // ==========================================================
+
   const executionStartedRef =
     useRef(false);
 
@@ -161,7 +249,7 @@ const TransactionProcessingPage = ({
   }, []);
 
   // ==========================================================
-  // EXTRACT ERROR MESSAGE
+  // EXTRACT FUNCTION ERROR
   // ==========================================================
 
   const extractFunctionError =
@@ -189,27 +277,74 @@ const TransactionProcessingPage = ({
             message;
         }
       } catch {
-        // Keep original error.
+        // Keep original message.
       }
 
       return message;
     };
 
   // ==========================================================
+  // DISPLAY NAMES
+  // ==========================================================
+
+  const getBillServiceName =
+    (): string => {
+      const service =
+        String(
+          details?.service ??
+            details?.type ??
+            ""
+        ).toLowerCase();
+
+      switch (service) {
+        case "airtime":
+          return "Airtime";
+
+        case "data":
+          return "Data";
+
+        case "electricity":
+          return "Electricity";
+
+        case "cable":
+          return "Cable TV";
+
+        case "internet":
+          return "Internet";
+
+        default:
+          return "Bill Payment";
+      }
+    };
+
+  const billServiceName =
+    getBillServiceName();
+
+  const transactionName =
+    isBill
+      ? billServiceName
+      : "Transfer";
+
+  // ==========================================================
   // NORMALIZE STATUS
   // ==========================================================
 
   const normalizeStatus = (
-    response: TransferResult
+    response: TransactionResult
   ): TransactionStatus => {
     const rawStatus =
       String(
         response?.status ||
           response?.data?.status ||
+          response?.data?.transaction_status ||
           ""
       )
         .trim()
         .toLowerCase();
+
+    // --------------------------------------------------------
+    // SUCCESS
+    // --------------------------------------------------------
 
     if (
       [
@@ -218,10 +353,16 @@ const TransactionProcessingPage = ({
         "completed",
         "complete",
         "succeeded",
+        "paid",
+        "successful_payment",
       ].includes(rawStatus)
     ) {
       return "success";
     }
+
+    // --------------------------------------------------------
+    // PENDING
+    // --------------------------------------------------------
 
     if (
       [
@@ -231,10 +372,16 @@ const TransactionProcessingPage = ({
         "new",
         "initiated",
         "awaiting",
+        "in_progress",
+        "submitted",
       ].includes(rawStatus)
     ) {
       return "pending";
     }
+
+    // --------------------------------------------------------
+    // FAILED
+    // --------------------------------------------------------
 
     if (
       [
@@ -244,20 +391,26 @@ const TransactionProcessingPage = ({
         "canceled",
         "reversed",
         "rejected",
+        "declined",
+        "error",
       ].includes(rawStatus)
     ) {
       return "failed";
     }
 
-    /*
-     * Existing IyanjuPay function uses
-     * success: true for successful transfers.
-     */
+    // --------------------------------------------------------
+    // SUCCESS BOOLEAN
+    // --------------------------------------------------------
+
     if (
       response?.success === true
     ) {
       return "success";
     }
+
+    // --------------------------------------------------------
+    // FAILURE BOOLEAN
+    // --------------------------------------------------------
 
     if (
       response?.success === false
@@ -265,27 +418,32 @@ const TransactionProcessingPage = ({
       return "failed";
     }
 
+    // --------------------------------------------------------
+    // UNKNOWN
+    // --------------------------------------------------------
+
     /*
-     * If the Edge Function returned without
-     * a clear status, treat it as pending rather
-     * than falsely telling the user the transfer
-     * succeeded.
+     * Never falsely display success.
+     *
+     * If the backend did not provide a definitive
+     * status, treat it as pending.
      */
     return "pending";
   };
 
   // ==========================================================
-  // EXECUTE TRANSFER
+  // EXECUTE TRANSACTION
   // ==========================================================
 
-  const executeTransfer =
+  const executeTransaction =
     useCallback(
       async (
         allowDuplicateGuard = false
       ) => {
-        /*
-         * Duplicate protection.
-         */
+        // ----------------------------------------------------
+        // DUPLICATE PROTECTION
+        // ----------------------------------------------------
+
         if (
           executionStartedRef.current &&
           !allowDuplicateGuard
@@ -311,13 +469,10 @@ const TransactionProcessingPage = ({
           > = {};
 
           // ==================================================
-          // IYANJUPAY
+          // IYANJUPAY TRANSFER
           // ==================================================
 
-          if (
-            transferType ===
-            "iyanjupay"
-          ) {
+          if (isIyanjuPay) {
             functionName =
               "iyanjuPay-transfer";
 
@@ -338,12 +493,10 @@ const TransactionProcessingPage = ({
           }
 
           // ==================================================
-          // BANK
+          // BANK TRANSFER
           // ==================================================
 
-          if (
-            transferType === "bank"
-          ) {
+          if (isBank) {
             functionName =
               "flutterwave-transfer";
 
@@ -371,21 +524,150 @@ const TransactionProcessingPage = ({
             };
           }
 
+          // ==================================================
+          // BILL PAYMENT
+          // ==================================================
+
+          if (isBill) {
+            functionName =
+              "flutterwave-bills";
+
+            const service =
+              String(
+                details?.service ??
+                  details?.type ??
+                  ""
+              ).toLowerCase();
+
+            const billerCode =
+              String(
+                details?.biller_code ??
+                  details?.billerCode ??
+                  ""
+              ).trim();
+
+            const itemCode =
+              String(
+                details?.item_code ??
+                  details?.itemCode ??
+                  ""
+              ).trim();
+
+            const customer =
+              String(
+                details?.customer ??
+                  ""
+              ).trim();
+
+            const country =
+              details?.country ||
+              "NG";
+
+            /*
+             * IMPORTANT:
+             *
+             * The Payment PIN is deliberately NOT
+             * included anywhere in this request.
+             *
+             * PIN authorization has already happened.
+             *
+             * The backend must independently:
+             *
+             * - authenticate the user
+             * - validate the bill
+             * - calculate the real provider price
+             * - enforce wallet balance
+             * - debit the wallet safely
+             * - call Flutterwave
+             * - maintain idempotency
+             */
+            body = {
+              action: "pay",
+
+              service,
+
+              amount,
+
+              biller_code:
+                billerCode,
+
+              item_code:
+                itemCode,
+
+              customer,
+
+              country,
+
+              details: {
+                ...details,
+
+                /*
+                 * Explicitly prevent accidental PIN
+                 * propagation if a caller ever attaches
+                 * it to details.
+                 */
+                paymentPin:
+                  undefined,
+
+                pin:
+                  undefined,
+              },
+
+              idempotency_key:
+                idempotencyKey,
+            };
+          }
+
+          // ==================================================
+          // VALIDATE FUNCTION
+          // ==================================================
+
           if (!functionName) {
             throw new Error(
-              "Invalid transfer type."
+              "Invalid transaction type."
             );
           }
 
+          // ==================================================
+          // LOG SAFE TRANSACTION INFORMATION
+          // ==================================================
+
           console.log(
-            "Executing authorized transfer:",
+            "Executing authorized transaction:",
             {
               functionName,
-              transferType,
+
+              transactionType:
+                resolvedTransactionType,
+
               amount,
+
               idempotencyKey,
+
+              service:
+                isBill
+                  ? details?.service
+                  : undefined,
+
+              biller_code:
+                isBill
+                  ? details?.biller_code
+                  : undefined,
+
+              item_code:
+                isBill
+                  ? details?.item_code
+                  : undefined,
+
+              /*
+               * Do NOT log payment PIN.
+               */
             }
           );
+
+          // ==================================================
+          // CALL EDGE FUNCTION
+          // ==================================================
 
           const {
             data,
@@ -398,64 +680,66 @@ const TransactionProcessingPage = ({
               }
             );
 
+          // ==================================================
+          // RESPONSE LOG
+          // ==================================================
+
           console.log(
-            "Transfer Edge Function response:",
+            "Transaction Edge Function response:",
             data
           );
+
+          // ==================================================
+          // FUNCTION ERROR
+          // ==================================================
 
           if (error) {
             const message =
               await extractFunctionError(
                 error,
-                "Unable to process this transfer."
+                `Unable to process this ${transactionName.toLowerCase()}.`
               );
 
             throw new Error(message);
           }
 
-          /*
-           * The Edge Function must return an object.
-           */
+          // ==================================================
+          // EMPTY RESPONSE
+          // ==================================================
+
           if (!data) {
             throw new Error(
-              "No response was received from the transfer service."
+              `No response was received from the ${transactionName.toLowerCase()} service.`
             );
           }
 
-          /*
-           * Some Supabase functions return:
-           *
-           * {
-           *   success: true,
-           *   ...
-           * }
-           *
-           * Others may return:
-           *
-           * {
-           *   success: true,
-           *   data: {...}
-           * }
-           *
-           * Preserve the complete response.
-           */
-          const response =
-            data as TransferResult;
+          // ==================================================
+          // NORMALIZED RESPONSE
+          // ==================================================
 
-          /*
-           * Explicit backend error.
-           */
+          const response =
+            data as TransactionResult;
+
+          // ==================================================
+          // EXPLICIT BACKEND ERROR
+          // ==================================================
+
           if (
             response.success ===
               false &&
-            !response.status
+            !response.status &&
+            !response.data?.status
           ) {
             throw new Error(
               response.error ||
                 response.message ||
-                "Transfer failed."
+                `${transactionName} failed.`
             );
           }
+
+          // ==================================================
+          // DETERMINE STATUS
+          // ==================================================
 
           const normalizedStatus =
             normalizeStatus(
@@ -469,9 +753,14 @@ const TransactionProcessingPage = ({
           }
 
           setResult(response);
+
           setStatus(
             normalizedStatus
           );
+
+          // ==================================================
+          // SUCCESS
+          // ==================================================
 
           if (
             normalizedStatus ===
@@ -479,16 +768,27 @@ const TransactionProcessingPage = ({
           ) {
             toast({
               title:
-                "Transfer Successful",
+                isBill
+                  ? `${billServiceName} Successful`
+                  : "Transfer Successful",
+
               description:
                 response.message ||
                 `₦${amount.toLocaleString(
                   "en-NG"
-                )} transfer completed successfully.`,
+                )} ${
+                  isBill
+                    ? `${billServiceName.toLowerCase()} payment`
+                    : "transfer"
+                } completed successfully.`,
             });
 
             return;
           }
+
+          // ==================================================
+          // PENDING
+          // ==================================================
 
           if (
             normalizedStatus ===
@@ -496,23 +796,30 @@ const TransactionProcessingPage = ({
           ) {
             toast({
               title:
-                "Transfer Pending",
+                isBill
+                  ? `${billServiceName} Pending`
+                  : "Transfer Pending",
+
               description:
                 response.message ||
-                "Your transfer has been submitted and is awaiting final confirmation.",
+                `Your ${
+                  isBill
+                    ? billServiceName.toLowerCase()
+                    : "transfer"
+                } has been submitted and is awaiting final confirmation.`,
             });
 
             return;
           }
 
-          /*
-           * Failed status returned normally
-           * by backend.
-           */
+          // ==================================================
+          // FAILED
+          // ==================================================
+
           setErrorMessage(
             response.error ||
               response.message ||
-              "The transfer could not be completed."
+              `The ${transactionName.toLowerCase()} could not be completed.`
           );
         } catch (error: any) {
           console.error(
@@ -530,17 +837,23 @@ const TransactionProcessingPage = ({
 
           setStatus("failed");
 
-          setErrorMessage(
+          const message =
             error?.message ||
-              "Unable to complete this transfer."
+            `Unable to complete this ${transactionName.toLowerCase()}.`;
+
+          setErrorMessage(
+            message
           );
 
           toast({
             title:
-              "Transfer Failed",
+              isBill
+                ? `${billServiceName} Failed`
+                : "Transfer Failed",
+
             description:
-              error?.message ||
-              "Unable to complete this transfer.",
+              message,
+
             variant:
               "destructive",
           });
@@ -550,8 +863,13 @@ const TransactionProcessingPage = ({
         amount,
         details,
         idempotencyKey,
+        isBank,
+        isBill,
+        isIyanjuPay,
+        resolvedTransactionType,
+        billServiceName,
+        transactionName,
         toast,
-        transferType,
       ]
     );
 
@@ -566,45 +884,41 @@ const TransactionProcessingPage = ({
       return;
     }
 
-    void executeTransfer();
-  }, [executeTransfer]);
+    void executeTransaction();
+  }, [
+    executeTransaction,
+  ]);
 
   // ==========================================================
   // RETRY
   // ==========================================================
 
-  const handleRetry = async () => {
-    /*
-     * VERY IMPORTANT:
-     *
-     * Do NOT generate a new idempotency key
-     * during retry.
-     *
-     * Reusing the same key protects against
-     * accidentally charging the wallet twice
-     * if the first request actually reached
-     * the backend but the frontend timed out.
-     */
-    if (retrying) {
-      return;
-    }
-
-    setRetrying(true);
-
-    /*
-     * Permit one retry execution.
-     */
-    executionStartedRef.current =
-      false;
-
-    try {
-      await executeTransfer();
-    } finally {
-      if (mountedRef.current) {
-        setRetrying(false);
+  const handleRetry =
+    async () => {
+      if (retrying) {
+        return;
       }
-    }
-  };
+
+      setRetrying(true);
+
+      /*
+       * IMPORTANT:
+       *
+       * Reuse the SAME idempotency key.
+       *
+       * Never create a new key for retry.
+       */
+      executionStartedRef.current =
+        false;
+
+      try {
+        await executeTransaction();
+      } finally {
+        if (mountedRef.current) {
+          setRetrying(false);
+        }
+      }
+    };
 
   // ==========================================================
   // DISPLAY HELPERS
@@ -617,8 +931,11 @@ const TransactionProcessingPage = ({
     result?.transactionId ||
     result?.transfer_id ||
     result?.transferId ||
+    result?.bill_payment_id ||
+    result?.billPaymentId ||
     result?.data?.transaction_id ||
     result?.data?.transfer_id ||
+    result?.data?.bill_payment_id ||
     "";
 
   const transactionId =
@@ -626,7 +943,13 @@ const TransactionProcessingPage = ({
     result?.transactionId ||
     result?.data?.transaction_id ||
     result?.credit_transaction_id ||
+    result?.bill_payment_id ||
+    result?.billPaymentId ||
     "";
+
+  // ==========================================================
+  // TRANSFER DISPLAY
+  // ==========================================================
 
   const recipient =
     details?.recipient ||
@@ -642,6 +965,72 @@ const TransactionProcessingPage = ({
   const accountNumber =
     details?.accountNumber ||
     "";
+
+  // ==========================================================
+  // BILL DISPLAY
+  // ==========================================================
+
+  const billProvider =
+    details?.provider ||
+    details?.biller?.name ||
+    details?.biller?.short_name ||
+    result?.provider ||
+    result?.data?.provider ||
+    "Provider";
+
+  const billCustomer =
+    details?.customer ||
+    "";
+
+  const billPackage =
+    details?.item?.name ||
+    details?.item?.short_name ||
+    details?.packageName ||
+    "";
+
+  const billCustomerLabel =
+    details?.customerLabel ||
+    (
+      details?.service ===
+        "airtime" ||
+      details?.service ===
+        "data"
+        ? "Phone Number"
+        : details?.service ===
+            "electricity"
+          ? "Meter Number"
+          : details?.service ===
+              "cable"
+            ? "Smart Card / Decoder"
+            : details?.service ===
+                "internet"
+              ? "Account Number"
+              : "Customer"
+    );
+
+  // ==========================================================
+  // PAGE TITLE
+  // ==========================================================
+
+  const processingTitle =
+    isBill
+      ? `Processing ${billServiceName}`
+      : "Processing Transfer";
+
+  const successTitle =
+    isBill
+      ? `${billServiceName} Successful`
+      : "Transfer Successful";
+
+  const pendingTitle =
+    isBill
+      ? `${billServiceName} Pending`
+      : "Transfer Pending";
+
+  const failedTitle =
+    isBill
+      ? `${billServiceName} Failed`
+      : "Transfer Failed";
 
   // ==========================================================
   // PROCESSING UI
@@ -660,11 +1049,17 @@ const TransactionProcessingPage = ({
             <div className="flex items-center h-16">
 
               <div className="flex items-center gap-2">
-                <Send className="h-5 w-5" />
+
+                {isBill ? (
+                  <Receipt className="h-5 w-5" />
+                ) : (
+                  <Send className="h-5 w-5" />
+                )}
 
                 <h1 className="text-lg sm:text-xl font-bold">
-                  Transaction Processing
+                  {processingTitle}
                 </h1>
+
               </div>
 
             </div>
@@ -684,51 +1079,118 @@ const TransactionProcessingPage = ({
             </div>
 
             <h2 className="text-2xl font-bold text-gray-900">
-              Processing Transfer
+              {processingTitle}
             </h2>
 
             <p className="text-gray-600 mt-2">
-              Please wait while we securely process your transfer.
+              Please wait while we securely process your{" "}
+              {isBill
+                ? `${billServiceName.toLowerCase()} payment`
+                : "transfer"}
+              .
             </p>
 
             <p className="text-sm text-gray-500 mt-5">
-              Do not close this page or submit the transfer again.
+              Do not close this page or submit the transaction again.
             </p>
 
             <div className="mt-7 rounded-xl bg-gray-50 border p-4 text-left space-y-3">
 
-              <div className="flex justify-between gap-4">
-                <span className="text-gray-500">
-                  Recipient
-                </span>
-
-                <span className="font-semibold text-gray-900 text-right">
-                  {recipient}
-                </span>
-              </div>
-
-              {transferType ===
-                "bank" && (
+              {isBill ? (
                 <>
                   <div className="flex justify-between gap-4">
+
                     <span className="text-gray-500">
-                      Bank
+                      Service
                     </span>
 
                     <span className="font-semibold text-gray-900 text-right">
-                      {bank}
+                      {billServiceName}
                     </span>
+
                   </div>
 
                   <div className="flex justify-between gap-4">
+
                     <span className="text-gray-500">
-                      Account
+                      Provider
                     </span>
 
-                    <span className="font-semibold text-gray-900">
-                      {accountNumber}
+                    <span className="font-semibold text-gray-900 text-right">
+                      {billProvider}
                     </span>
+
                   </div>
+
+                  {billCustomer && (
+                    <div className="flex justify-between gap-4">
+
+                      <span className="text-gray-500">
+                        {billCustomerLabel}
+                      </span>
+
+                      <span className="font-semibold text-gray-900 text-right break-all">
+                        {billCustomer}
+                      </span>
+
+                    </div>
+                  )}
+
+                  {billPackage && (
+                    <div className="flex justify-between gap-4">
+
+                      <span className="text-gray-500">
+                        Package
+                      </span>
+
+                      <span className="font-semibold text-gray-900 text-right">
+                        {billPackage}
+                      </span>
+
+                    </div>
+                  )}
+                </>
+              ) : (
+                <>
+                  <div className="flex justify-between gap-4">
+
+                    <span className="text-gray-500">
+                      Recipient
+                    </span>
+
+                    <span className="font-semibold text-gray-900 text-right">
+                      {recipient}
+                    </span>
+
+                  </div>
+
+                  {isBank && (
+                    <>
+                      <div className="flex justify-between gap-4">
+
+                        <span className="text-gray-500">
+                          Bank
+                        </span>
+
+                        <span className="font-semibold text-gray-900 text-right">
+                          {bank}
+                        </span>
+
+                      </div>
+
+                      <div className="flex justify-between gap-4">
+
+                        <span className="text-gray-500">
+                          Account
+                        </span>
+
+                        <span className="font-semibold text-gray-900">
+                          {accountNumber}
+                        </span>
+
+                      </div>
+                    </>
+                  )}
                 </>
               )}
 
@@ -764,7 +1226,9 @@ const TransactionProcessingPage = ({
   // SUCCESS UI
   // ==========================================================
 
-  if (status === "success") {
+  if (
+    status === "success"
+  ) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-green-50 via-blue-50 to-indigo-50">
 
@@ -775,11 +1239,13 @@ const TransactionProcessingPage = ({
             <div className="flex items-center h-16">
 
               <div className="flex items-center gap-2">
+
                 <CheckCircle2 className="h-5 w-5" />
 
                 <h1 className="text-lg sm:text-xl font-bold">
-                  Transfer Successful
+                  {successTitle}
                 </h1>
+
               </div>
 
             </div>
@@ -801,11 +1267,15 @@ const TransactionProcessingPage = ({
               </div>
 
               <h2 className="text-2xl font-bold text-gray-900">
-                Transfer Successful
+                {successTitle}
               </h2>
 
               <p className="text-gray-600 mt-2">
-                Your transfer has been completed successfully.
+                Your{" "}
+                {isBill
+                  ? `${billServiceName.toLowerCase()} payment`
+                  : "transfer"}{" "}
+                has been completed successfully.
               </p>
 
               <p className="text-4xl font-bold text-green-700 mt-6">
@@ -823,29 +1293,16 @@ const TransactionProcessingPage = ({
 
             <div className="mt-8 rounded-xl bg-gray-50 border p-4 space-y-4">
 
-              <div className="flex justify-between gap-4">
-
-                <span className="text-gray-500">
-                  Recipient
-                </span>
-
-                <span className="font-semibold text-gray-900 text-right">
-                  {recipient}
-                </span>
-
-              </div>
-
-              {transferType ===
-                "bank" && (
+              {isBill ? (
                 <>
                   <div className="flex justify-between gap-4">
 
                     <span className="text-gray-500">
-                      Bank
+                      Service
                     </span>
 
                     <span className="font-semibold text-gray-900 text-right">
-                      {bank}
+                      {billServiceName}
                     </span>
 
                   </div>
@@ -853,14 +1310,84 @@ const TransactionProcessingPage = ({
                   <div className="flex justify-between gap-4">
 
                     <span className="text-gray-500">
-                      Account
+                      Provider
                     </span>
 
-                    <span className="font-semibold text-gray-900">
-                      {accountNumber}
+                    <span className="font-semibold text-gray-900 text-right">
+                      {billProvider}
                     </span>
 
                   </div>
+
+                  {billCustomer && (
+                    <div className="flex justify-between gap-4">
+
+                      <span className="text-gray-500">
+                        {billCustomerLabel}
+                      </span>
+
+                      <span className="font-semibold text-gray-900 text-right break-all">
+                        {billCustomer}
+                      </span>
+
+                    </div>
+                  )}
+
+                  {billPackage && (
+                    <div className="flex justify-between gap-4">
+
+                      <span className="text-gray-500">
+                        Package
+                      </span>
+
+                      <span className="font-semibold text-gray-900 text-right">
+                        {billPackage}
+                      </span>
+
+                    </div>
+                  )}
+                </>
+              ) : (
+                <>
+                  <div className="flex justify-between gap-4">
+
+                    <span className="text-gray-500">
+                      Recipient
+                    </span>
+
+                    <span className="font-semibold text-gray-900 text-right">
+                      {recipient}
+                    </span>
+
+                  </div>
+
+                  {isBank && (
+                    <>
+                      <div className="flex justify-between gap-4">
+
+                        <span className="text-gray-500">
+                          Bank
+                        </span>
+
+                        <span className="font-semibold text-gray-900 text-right">
+                          {bank}
+                        </span>
+
+                      </div>
+
+                      <div className="flex justify-between gap-4">
+
+                        <span className="text-gray-500">
+                          Account
+                        </span>
+
+                        <span className="font-semibold text-gray-900">
+                          {accountNumber}
+                        </span>
+
+                      </div>
+                    </>
+                  )}
                 </>
               )}
 
@@ -907,6 +1434,7 @@ const TransactionProcessingPage = ({
           </div>
 
         </main>
+
       </div>
     );
   }
@@ -915,7 +1443,9 @@ const TransactionProcessingPage = ({
   // PENDING UI
   // ==========================================================
 
-  if (status === "pending") {
+  if (
+    status === "pending"
+  ) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-yellow-50 via-blue-50 to-indigo-50">
 
@@ -926,11 +1456,13 @@ const TransactionProcessingPage = ({
             <div className="flex items-center h-16">
 
               <div className="flex items-center gap-2">
+
                 <Clock3 className="h-5 w-5" />
 
                 <h1 className="text-lg sm:text-xl font-bold">
-                  Transfer Pending
+                  {pendingTitle}
                 </h1>
+
               </div>
 
             </div>
@@ -952,11 +1484,15 @@ const TransactionProcessingPage = ({
               </div>
 
               <h2 className="text-2xl font-bold text-gray-900">
-                Transfer Pending
+                {pendingTitle}
               </h2>
 
               <p className="text-gray-600 mt-2">
-                Your transfer has been submitted but is still awaiting final confirmation.
+                Your{" "}
+                {isBill
+                  ? `${billServiceName.toLowerCase()} payment`
+                  : "transfer"}{" "}
+                has been submitted but is still awaiting final confirmation.
               </p>
 
               <p className="text-4xl font-bold text-gray-900 mt-6">
@@ -975,7 +1511,13 @@ const TransactionProcessingPage = ({
             <div className="mt-8 rounded-xl bg-yellow-50 border border-yellow-200 p-4">
 
               <p className="text-sm text-yellow-800">
-                Please do not submit the same transfer again. The existing transaction is being processed using the same transaction reference.
+
+                Please do not submit the same{" "}
+                {isBill
+                  ? "payment"
+                  : "transfer"}{" "}
+                again. The existing transaction is being processed using the same transaction reference.
+
               </p>
 
             </div>
@@ -1007,6 +1549,7 @@ const TransactionProcessingPage = ({
           </div>
 
         </main>
+
       </div>
     );
   }
@@ -1041,7 +1584,7 @@ const TransactionProcessingPage = ({
               <XCircle className="h-5 w-5" />
 
               <h1 className="text-lg sm:text-xl font-bold">
-                Transfer Failed
+                {failedTitle}
               </h1>
 
             </div>
@@ -1065,11 +1608,14 @@ const TransactionProcessingPage = ({
             </div>
 
             <h2 className="text-2xl font-bold text-gray-900">
-              Transfer Failed
+              {failedTitle}
             </h2>
 
             <p className="text-gray-600 mt-2">
-              We could not complete this transfer.
+              We could not complete this{" "}
+              {isBill
+                ? `${billServiceName.toLowerCase()} payment`
+                : "transfer"}.
             </p>
 
           </div>
@@ -1078,24 +1624,66 @@ const TransactionProcessingPage = ({
 
             <p className="text-sm font-medium text-red-800">
               {errorMessage ||
-                "The transfer could not be completed."}
+                `The ${isBill ? billServiceName.toLowerCase() : "transfer"} could not be completed.`}
             </p>
 
           </div>
 
           <div className="mt-5 rounded-xl bg-gray-50 border p-4 space-y-3">
 
-            <div className="flex justify-between gap-4">
+            {isBill ? (
+              <>
+                <div className="flex justify-between gap-4">
 
-              <span className="text-gray-500">
-                Recipient
-              </span>
+                  <span className="text-gray-500">
+                    Service
+                  </span>
 
-              <span className="font-semibold text-gray-900 text-right">
-                {recipient}
-              </span>
+                  <span className="font-semibold text-gray-900 text-right">
+                    {billServiceName}
+                  </span>
 
-            </div>
+                </div>
+
+                <div className="flex justify-between gap-4">
+
+                  <span className="text-gray-500">
+                    Provider
+                  </span>
+
+                  <span className="font-semibold text-gray-900 text-right">
+                    {billProvider}
+                  </span>
+
+                </div>
+
+                {billCustomer && (
+                  <div className="flex justify-between gap-4">
+
+                    <span className="text-gray-500">
+                      {billCustomerLabel}
+                    </span>
+
+                    <span className="font-semibold text-gray-900 text-right break-all">
+                      {billCustomer}
+                    </span>
+
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="flex justify-between gap-4">
+
+                <span className="text-gray-500">
+                  Recipient
+                </span>
+
+                <span className="font-semibold text-gray-900 text-right">
+                  {recipient}
+                </span>
+
+              </div>
+            )}
 
             <div className="flex justify-between gap-4">
 
@@ -1173,6 +1761,7 @@ const TransactionProcessingPage = ({
         </div>
 
       </main>
+
     </div>
   );
 };

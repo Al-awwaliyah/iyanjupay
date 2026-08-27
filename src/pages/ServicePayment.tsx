@@ -34,7 +34,7 @@ import { useToast } from "@/hooks/use-toast";
 
 import { supabase } from "@/integrations/supabase/client";
 
-import PaymentPinModal from "@/components/wallet/PaymentPinModal";
+import PaymentPinModal from "@/components/security/PaymentPinModal";
 import TransactionProcessingPage from "@/pages/TransactionProcessing";
 
 // ============================================================

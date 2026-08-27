@@ -22,6 +22,20 @@ const corsHeaders = {
 
 
 // ============================================================
+// USER-SAFE ERROR
+// ============================================================
+//
+// Never expose Flutterwave/provider/internal implementation
+// details to the frontend.
+//
+// Detailed errors are logged server-side only.
+// ============================================================
+
+const TEMPORARY_SERVICE_ERROR =
+  "We're experiencing a temporary technical issue. Please try again in a few minutes.";
+
+
+// ============================================================
 // MONEY HELPERS
 // ============================================================
 
@@ -385,7 +399,6 @@ Deno.serve(async (req) => {
       return json(
         {
           success: false,
-          stage: "sender_profile",
           error:
             "Unable to retrieve your profile information.",
         },
@@ -404,7 +417,6 @@ Deno.serve(async (req) => {
       return json(
         {
           success: false,
-          stage: "sender_profile",
           error:
             "Your profile name is required before you can make a bank transfer.",
         },
@@ -638,10 +650,10 @@ Deno.serve(async (req) => {
       return json(
         {
           success: false,
-          stage:
-            "flutterwave_balance",
+          code:
+            "TEMPORARY_SERVICE_ERROR",
           error:
-            "Unable to verify Flutterwave balance. Please try again later.",
+            TEMPORARY_SERVICE_ERROR,
         },
         503,
       );
@@ -653,16 +665,27 @@ Deno.serve(async (req) => {
       balanceResponse.body?.status !==
         "success"
     ) {
+      console.error(
+        "Flutterwave balance verification failed:",
+        {
+          reference,
+          user_id: user.id,
+          provider_status:
+            balanceResponse.body?.status ?? null,
+          provider_message:
+            balanceResponse.body?.message ?? null,
+          provider_response:
+            balanceResponse.body ?? null,
+        },
+      );
+
       return json(
         {
           success: false,
-          stage:
-            "flutterwave_balance",
+          code:
+            "TEMPORARY_SERVICE_ERROR",
           error:
-            "Unable to verify Flutterwave balance.",
-          provider_error:
-            balanceResponse.body?.message ??
-            null,
+            TEMPORARY_SERVICE_ERROR,
         },
         503,
       );
@@ -723,13 +746,27 @@ Deno.serve(async (req) => {
         flutterwaveAvailableBalance,
       )
     ) {
+      console.error(
+        "Flutterwave available balance could not be determined:",
+        {
+          reference,
+          user_id: user.id,
+          available_balance:
+            ngnBalance?.available_balance ?? null,
+          ledger_balance:
+            ngnBalance?.ledger_balance ?? null,
+          provider_response:
+            balanceResponse.body ?? null,
+        },
+      );
+
       return json(
         {
           success: false,
-          stage:
-            "flutterwave_balance",
+          code:
+            "TEMPORARY_SERVICE_ERROR",
           error:
-            "Unable to determine Flutterwave available balance.",
+            TEMPORARY_SERVICE_ERROR,
         },
         503,
       );
@@ -739,35 +776,40 @@ Deno.serve(async (req) => {
     /*
      * Flutterwave only receives the actual
      * transfer amount.
+     *
+     * IMPORTANT:
+     *
+     * The actual Flutterwave balance is NEVER returned
+     * to the frontend.
      */
 
     if (
       flutterwaveAvailableBalance <
       amount
     ) {
+      console.error(
+        "Flutterwave payout balance is insufficient for transfer:",
+        {
+          reference,
+          user_id: user.id,
+          transfer_amount:
+            amount,
+          flutterwave_available_balance:
+            flutterwaveAvailableBalance,
+          flutterwave_ledger_balance:
+            flutterwaveLedgerBalance,
+        },
+      );
+
       return json(
         {
           success: false,
-          stage:
-            "flutterwave_balance",
+          code:
+            "TEMPORARY_SERVICE_ERROR",
           error:
-            "Insufficient Flutterwave balance. Please fund your Flutterwave account.",
-          transfer_amount:
-            amount,
-          fee:
-            iyanjupayFee,
-          electronic_fee:
-            electronicFee,
-          total_charged:
-            totalCharged,
-          required:
-            amount,
-          available:
-            flutterwaveAvailableBalance,
-          currency:
-            "NGN",
+            TEMPORARY_SERVICE_ERROR,
         },
-        200,
+        503,
       );
     }
 
@@ -991,14 +1033,18 @@ Deno.serve(async (req) => {
     if (debitError) {
       await releaseKycReservation();
 
+      console.error(
+        "Wallet debit failed:",
+        debitError,
+      );
+
       return json(
         {
           success: false,
           stage:
             "wallet_debit",
           error:
-            debitError.message ||
-            "Unable to debit wallet.",
+            "Unable to complete the transfer. Please try again.",
         },
         400,
       );
@@ -1008,13 +1054,19 @@ Deno.serve(async (req) => {
     if (!debitTransaction) {
       await releaseKycReservation();
 
+      console.error(
+        "Wallet debit did not return a transaction.",
+        {
+          reference,
+          user_id: user.id,
+        },
+      );
+
       return json(
         {
           success: false,
-          stage:
-            "wallet_debit",
           error:
-            "Wallet debit did not return a transaction.",
+            "Unable to complete the transfer. Please try again.",
         },
         500,
       );
@@ -1027,14 +1079,6 @@ Deno.serve(async (req) => {
 
     // ========================================================
     // CREATE PENDING NOTIFICATION
-    // ========================================================
-    //
-    // This is the user's outgoing transaction notification.
-    //
-    // It is created AFTER the transaction has successfully
-    // been recorded.
-    //
-    // Failure here does NOT cancel the transfer.
     // ========================================================
 
     await createTransactionNotification({
@@ -1266,6 +1310,11 @@ Deno.serve(async (req) => {
 
       if (refundResult.error) {
 
+        console.error(
+          "Automatic refund failed:",
+          refundResult.error,
+        );
+
         await supabase
           .from("transactions")
           .update({
@@ -1361,8 +1410,11 @@ Deno.serve(async (req) => {
             status:
               "refund_pending",
 
+            code:
+              "REFUND_PENDING",
+
             error:
-              "Transfer failed and automatic refund requires reconciliation.",
+              "The transfer could not be completed and your refund requires reconciliation.",
 
             transaction_id:
               transactionId,
@@ -1514,6 +1566,27 @@ Deno.serve(async (req) => {
         "Flutterwave could not initiate the transfer.";
 
 
+      /*
+       * IMPORTANT:
+       *
+       * providerError is kept for INTERNAL logging/metadata.
+       * It is NEVER returned to the frontend.
+       */
+
+      console.error(
+        "Flutterwave rejected transfer:",
+        {
+          reference,
+          transaction_id:
+            transactionId,
+          provider_error:
+            providerError,
+          provider_response:
+            flutterwaveData,
+        },
+      );
+
+
       const refundResult =
         await supabase.rpc(
           "wallet_operation",
@@ -1576,6 +1649,11 @@ Deno.serve(async (req) => {
 
       if (refundResult.error) {
 
+        console.error(
+          "Automatic refund for rejected transfer failed:",
+          refundResult.error,
+        );
+
         await supabase
           .from("transactions")
           .update({
@@ -1622,7 +1700,7 @@ Deno.serve(async (req) => {
             "Transfer refund pending",
 
           message:
-            `Your transfer to ${safeBeneficiaryName} was rejected by the payment provider. Your refund requires reconciliation.`,
+            `Your transfer to ${safeBeneficiaryName} could not be completed. Your refund requires reconciliation.`,
 
           amount:
             totalCharged,
@@ -1638,9 +1716,6 @@ Deno.serve(async (req) => {
 
             beneficiary_name:
               safeBeneficiaryName,
-
-            provider_error:
-              providerError,
 
             status:
               "refund_pending",
@@ -1662,8 +1737,11 @@ Deno.serve(async (req) => {
             status:
               "refund_pending",
 
+            code:
+              "REFUND_PENDING",
+
             error:
-              "Flutterwave rejected the transfer but automatic refund requires retry.",
+              "The transfer could not be completed and your refund requires reconciliation.",
 
             reference,
 
@@ -1693,6 +1771,12 @@ Deno.serve(async (req) => {
             status:
               "failed",
 
+            /*
+             * Internal provider details are retained
+             * for reconciliation/debugging.
+             *
+             * They are NOT returned by the API.
+             */
             provider_error:
               providerError,
 
@@ -1760,8 +1844,10 @@ Deno.serve(async (req) => {
           beneficiary_name:
             safeBeneficiaryName,
 
-          provider_error:
-            providerError,
+          /*
+           * Provider error intentionally NOT stored
+           * in user-facing notification metadata.
+           */
 
           status:
             "failed",
@@ -1872,6 +1958,12 @@ Deno.serve(async (req) => {
           flutterwave_status:
             transferStatus,
 
+          /*
+           * Full provider response is retained internally
+           * for reconciliation/debugging.
+           *
+           * It is NOT returned to the frontend here.
+           */
           flutterwave_response:
             flutterwaveData,
 
@@ -1956,6 +2048,18 @@ Deno.serve(async (req) => {
 
   } catch (error) {
 
+    // ========================================================
+    // GLOBAL INTERNAL ERROR
+    // ========================================================
+    //
+    // IMPORTANT:
+    //
+    // Never return error.message to the client.
+    //
+    // The complete internal error remains available in
+    // Supabase Edge Function logs.
+    // ========================================================
+
     console.error(
       "FLUTTERWAVE TRANSFER INTERNAL ERROR:",
       error,
@@ -1966,15 +2070,13 @@ Deno.serve(async (req) => {
         success:
           false,
 
-        stage:
-          "internal",
+        code:
+          "TEMPORARY_SERVICE_ERROR",
 
         error:
-          error instanceof Error
-            ? error.message
-            : "Internal server error.",
+          TEMPORARY_SERVICE_ERROR,
       },
-      500,
+      503,
     );
   }
 });

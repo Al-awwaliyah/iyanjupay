@@ -17,7 +17,7 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 
-import PaymentModal from "@/component/security/PaymentPinModal";
+import PaymentModal from "@/components/security/PaymentPinModal";
 import TransactionProcessing from "@/pages/TransactionProcessing";
 
 // ============================================================

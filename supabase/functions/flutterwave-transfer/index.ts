@@ -5,6 +5,8 @@ import {
   flw,
 } from "../_shared/auth.ts";
 
+
+
 const IYANJUPAY_TRANSFER_FEE = 10;
 const ELECTRONIC_FEE = 50;
 const ELECTRONIC_FEE_THRESHOLD = 5000;
@@ -51,6 +53,8 @@ function maskAccountNumber(
 // It does not affect the transaction itself.
 //
 // If notification creation fails, the transaction must NOT fail.
+//
+// This is intentional because notifications are auxiliary data.
 // ============================================================
 
 async function createTransactionNotification(params: {
@@ -78,6 +82,9 @@ async function createTransactionNotification(params: {
     /*
      * Prevent duplicate notifications for the same
      * transaction + notification type.
+     *
+     * This is especially useful when the Edge Function
+     * is retried.
      */
 
     if (transactionId) {
@@ -115,8 +122,7 @@ async function createTransactionNotification(params: {
     } = await supabase
       .from("notifications")
       .insert({
-        user_id:
-          userId,
+        user_id: userId,
 
         transaction_id:
           transactionId,
@@ -132,8 +138,7 @@ async function createTransactionNotification(params: {
             ? null
             : roundMoney(amount),
 
-        is_read:
-          false,
+        is_read: false,
 
         metadata,
       })
@@ -208,8 +213,7 @@ function createHistoryMetadata(params: {
   } = params;
 
   return {
-    history_version:
-      1,
+    history_version: 1,
 
     transaction_type:
       "bank_transfer",
@@ -257,17 +261,6 @@ function createHistoryMetadata(params: {
 
     electronic_fee:
       electronicFee,
-
-    /*
-     * IMPORTANT:
-     *
-     * During pending state, totalCharged is the amount
-     * actually debited from the wallet:
-     *
-     * transfer amount + IyanjuPay fee
-     *
-     * The electronic fee is only charged after SUCCESS.
-     */
 
     total_charged:
       totalCharged,
@@ -392,8 +385,7 @@ Deno.serve(async (req) => {
       return json(
         {
           success: false,
-          stage:
-            "sender_profile",
+          stage: "sender_profile",
           error:
             "Unable to retrieve your profile information.",
         },
@@ -412,8 +404,7 @@ Deno.serve(async (req) => {
       return json(
         {
           success: false,
-          stage:
-            "sender_profile",
+          stage: "sender_profile",
           error:
             "Your profile name is required before you can make a bank transfer.",
         },
@@ -469,6 +460,15 @@ Deno.serve(async (req) => {
       ).trim();
 
 
+    /*
+     * IMPORTANT:
+     *
+     * Different versions of the frontend may send
+     * the beneficiary name under different property names.
+     *
+     * We accept all common variants.
+     */
+
     const beneficiaryName =
       String(
         body?.beneficiary_name ??
@@ -481,6 +481,16 @@ Deno.serve(async (req) => {
         "",
       ).trim();
 
+
+    /*
+     * If the frontend did not provide the beneficiary name,
+     * do NOT reject the transaction simply because of that.
+     *
+     * Flutterwave can still receive the account details.
+     *
+     * The final beneficiary information from the provider
+     * will be saved later when available.
+     */
 
     const safeBeneficiaryName =
       beneficiaryName ||
@@ -569,50 +579,12 @@ Deno.serve(async (req) => {
       IYANJUPAY_TRANSFER_FEE;
 
 
-    /*
-     * Electronic fee:
-     *
-     * - calculated now
-     * - NOT charged now
-     * - charged only after Flutterwave confirms SUCCESS
-     */
-
     const electronicFee =
       amount >
       ELECTRONIC_FEE_THRESHOLD
         ? ELECTRONIC_FEE
         : 0;
 
-
-    /*
-     * ========================================================
-     * INITIAL CHARGE
-     * ========================================================
-     *
-     * This is what the wallet pays immediately:
-     *
-     * transfer amount + IyanjuPay fee
-     *
-     * The electronic fee is deliberately excluded.
-     */
-
-    const initialCharged =
-      roundMoney(
-        amount +
-        iyanjupayFee,
-      );
-
-
-    /*
-     * ========================================================
-     * FINAL CHARGE
-     * ========================================================
-     *
-     * This is the eventual total if the transfer succeeds.
-     *
-     * The additional electronic fee is charged by the
-     * successful-transfer webhook.
-     */
 
     const totalCharged =
       roundMoney(
@@ -701,8 +673,7 @@ Deno.serve(async (req) => {
       balanceResponse.body?.data;
 
 
-    let ngnBalance: any =
-      null;
+    let ngnBalance: any = null;
 
 
     if (
@@ -766,9 +737,8 @@ Deno.serve(async (req) => {
 
 
     /*
-     * ========================================================
-     * FLUTTERWAVE ONLY RECEIVES THE TRANSFER AMOUNT
-     * ========================================================
+     * Flutterwave only receives the actual
+     * transfer amount.
      */
 
     if (
@@ -782,36 +752,18 @@ Deno.serve(async (req) => {
             "flutterwave_balance",
           error:
             "Insufficient Flutterwave balance. Please fund your Flutterwave account.",
-
           transfer_amount:
             amount,
-
           fee:
             iyanjupayFee,
-
           electronic_fee:
             electronicFee,
-
-          /*
-           * Amount that would be debited immediately.
-           */
-
-          initial_charged:
-            initialCharged,
-
-          /*
-           * Eventual amount if successful.
-           */
-
           total_charged:
             totalCharged,
-
           required:
             amount,
-
           available:
             flutterwaveAvailableBalance,
-
           currency:
             "NGN",
         },
@@ -833,11 +785,6 @@ Deno.serve(async (req) => {
       {
         _user_id:
           user.id,
-
-        /*
-         * Fees do not count toward the
-         * daily transfer limit.
-         */
 
         _amount:
           amount,
@@ -876,22 +823,17 @@ Deno.serve(async (req) => {
           error:
             kycReservation?.error ??
             "Daily transfer limit exceeded.",
-
           kyc_level:
             kycReservation?.kyc_level ??
             null,
-
           daily_limit:
             kycReservation?.daily_limit ??
             null,
-
           remaining:
             kycReservation?.remaining ??
             null,
-
           requested_amount:
             amount,
-
           currency:
             "NGN",
         },
@@ -952,21 +894,6 @@ Deno.serve(async (req) => {
     // ========================================================
     // CREATE INITIAL HISTORY METADATA
     // ========================================================
-    //
-    // IMPORTANT:
-    //
-    // totalCharged here means the amount actually removed
-    // from the wallet NOW.
-    //
-    // Therefore:
-    //
-    // ₦10,000 transfer
-    // + ₦10 IyanjuPay fee
-    // = ₦10,010 initial debit
-    //
-    // The ₦50 electronic fee is NOT included in this
-    // pending history amount.
-    // ========================================================
 
     const historyMetadata =
       createHistoryMetadata({
@@ -990,8 +917,7 @@ Deno.serve(async (req) => {
 
         electronicFee,
 
-        totalCharged:
-          initialCharged,
+        totalCharged,
 
         status:
           "pending",
@@ -1000,17 +926,6 @@ Deno.serve(async (req) => {
 
     // ========================================================
     // DEBIT USER WALLET
-    // ========================================================
-    //
-    // CRITICAL FIX:
-    //
-    // Debit only:
-    //
-    // transfer amount + IyanjuPay fee
-    //
-    // NOT:
-    //
-    // transfer amount + IyanjuPay fee + electronic fee
     // ========================================================
 
     const {
@@ -1026,7 +941,7 @@ Deno.serve(async (req) => {
           "DEBIT",
 
         _amount:
-          initialCharged,
+          totalCharged,
 
         _description:
           `Transfer to ${safeBeneficiaryName}`,
@@ -1046,46 +961,14 @@ Deno.serve(async (req) => {
         _metadata: {
           ...historyMetadata,
 
-          /*
-           * KYC
-           */
-
           kyc_limit_reserved:
             true,
 
           kyc_reserved_amount:
             amount,
 
-          /*
-           * Provider amount
-           */
-
           flutterwave_transfer_amount:
             amount,
-
-          /*
-           * Initial wallet debit
-           */
-
-          initial_charged:
-            initialCharged,
-
-          /*
-           * Eventual charge after successful transfer
-           */
-
-          total_charged:
-            totalCharged,
-
-          electronic_fee_due:
-            electronicFee,
-
-          electronic_fee_charged:
-            false,
-
-          /*
-           * Provider balances
-           */
 
           flutterwave_available_balance:
             flutterwaveAvailableBalance,
@@ -1145,6 +1028,14 @@ Deno.serve(async (req) => {
     // ========================================================
     // CREATE PENDING NOTIFICATION
     // ========================================================
+    //
+    // This is the user's outgoing transaction notification.
+    //
+    // It is created AFTER the transaction has successfully
+    // been recorded.
+    //
+    // Failure here does NOT cancel the transfer.
+    // ========================================================
 
     await createTransactionNotification({
       supabase,
@@ -1152,7 +1043,9 @@ Deno.serve(async (req) => {
       userId:
         user.id,
 
-      transactionId,
+      transactionId:
+
+        transactionId,
 
       type:
         "transaction_pending",
@@ -1168,11 +1061,6 @@ Deno.serve(async (req) => {
             maximumFractionDigits: 2,
           },
         )} to ${safeBeneficiaryName} has been initiated and is being processed.`,
-
-      /*
-       * Notification amount represents the transfer itself,
-       * not the eventual electronic fee.
-       */
 
       amount:
         amount,
@@ -1212,22 +1100,8 @@ Deno.serve(async (req) => {
         electronic_fee:
           electronicFee,
 
-        /*
-         * What was actually debited now.
-         */
-
-        initial_charged:
-          initialCharged,
-
-        /*
-         * What the final charge will be if successful.
-         */
-
         total_charged:
           totalCharged,
-
-        electronic_fee_charged:
-          false,
 
         currency:
           "NGN",
@@ -1260,16 +1134,6 @@ Deno.serve(async (req) => {
 
                 account_number:
                   accountNumber,
-
-                /*
-                 * CRITICAL:
-                 *
-                 * Flutterwave receives ONLY the transfer
-                 * amount.
-                 *
-                 * IyanjuPay's ₦10 fee and electronic fee
-                 * are not sent to Flutterwave.
-                 */
 
                 amount,
 
@@ -1326,26 +1190,6 @@ Deno.serve(async (req) => {
                     value:
                       String(amount),
                   },
-
-                  {
-                    key:
-                      "iyanjupay_fee",
-
-                    value:
-                      String(
-                        iyanjupayFee,
-                      ),
-                  },
-
-                  {
-                    key:
-                      "electronic_fee_due",
-
-                    value:
-                      String(
-                        electronicFee,
-                      ),
-                  },
                 ],
               }),
           },
@@ -1362,15 +1206,6 @@ Deno.serve(async (req) => {
       // ======================================================
       // REFUND
       // ======================================================
-      //
-      // CRITICAL FIX:
-      //
-      // Refund only what was actually debited:
-      //
-      // initialCharged
-      //
-      // NOT totalCharged.
-      // ======================================================
 
       const refundResult =
         await supabase.rpc(
@@ -1383,7 +1218,7 @@ Deno.serve(async (req) => {
               "REFUND",
 
             _amount:
-              initialCharged,
+              totalCharged,
 
             _description:
               `Refund for failed transfer to ${safeBeneficiaryName}`,
@@ -1416,17 +1251,6 @@ Deno.serve(async (req) => {
               original_electronic_fee:
                 electronicFee,
 
-              /*
-               * Amount actually debited.
-               */
-
-              original_initial_charged:
-                initialCharged,
-
-              /*
-               * Eventual successful charge.
-               */
-
               original_total_charged:
                 totalCharged,
 
@@ -1434,7 +1258,7 @@ Deno.serve(async (req) => {
                 "Flutterwave request failed",
 
               refunded_amount:
-                initialCharged,
+                totalCharged,
             },
           },
         );
@@ -1454,12 +1278,6 @@ Deno.serve(async (req) => {
               transaction_id:
                 transactionId,
 
-              initial_charged:
-                initialCharged,
-
-              total_charged:
-                totalCharged,
-
               refund_pending:
                 true,
 
@@ -1467,7 +1285,7 @@ Deno.serve(async (req) => {
                 true,
 
               refund_amount:
-                initialCharged,
+                totalCharged,
 
               refund_error:
                 refundResult.error.message,
@@ -1478,6 +1296,13 @@ Deno.serve(async (req) => {
             transactionId,
           );
 
+
+        /*
+         * Notification:
+         *
+         * The original pending notification remains.
+         * Add a separate refund-pending notification.
+         */
 
         await createTransactionNotification({
           supabase,
@@ -1500,25 +1325,16 @@ Deno.serve(async (req) => {
                 minimumFractionDigits: 2,
                 maximumFractionDigits: 2,
               },
-            )} to ${safeBeneficiaryName} failed. Your ₦${initialCharged.toLocaleString(
-              "en-NG",
-              {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2,
-              },
-            )} refund requires reconciliation.`,
+            )} to ${safeBeneficiaryName} failed. Your refund requires reconciliation.`,
 
           amount:
-            initialCharged,
+            totalCharged,
 
           metadata: {
             reference,
 
             transfer_amount:
               amount,
-
-            initial_charged:
-              initialCharged,
 
             total_charged:
               totalCharged,
@@ -1552,9 +1368,6 @@ Deno.serve(async (req) => {
               transactionId,
 
             reference,
-
-            refund_amount:
-              initialCharged,
           },
           503,
         );
@@ -1582,21 +1395,8 @@ Deno.serve(async (req) => {
             refunded:
               true,
 
-            /*
-             * Actual refunded amount.
-             */
-
             refund_amount:
-              initialCharged,
-
-            initial_charged:
-              initialCharged,
-
-            total_charged:
               totalCharged,
-
-            electronic_fee_charged:
-              false,
 
             kyc_limit_released:
               true,
@@ -1633,7 +1433,7 @@ Deno.serve(async (req) => {
               minimumFractionDigits: 2,
               maximumFractionDigits: 2,
             },
-          )} to ${safeBeneficiaryName} failed. ₦${initialCharged.toLocaleString(
+          )} to ${safeBeneficiaryName} failed. ₦${totalCharged.toLocaleString(
             "en-NG",
             {
               minimumFractionDigits: 2,
@@ -1642,16 +1442,13 @@ Deno.serve(async (req) => {
           )} has been refunded to your wallet.`,
 
         amount:
-          initialCharged,
+          totalCharged,
 
         metadata: {
           reference,
 
           transfer_amount:
             amount,
-
-          initial_charged:
-            initialCharged,
 
           total_charged:
             totalCharged,
@@ -1687,7 +1484,7 @@ Deno.serve(async (req) => {
           transactionId,
 
         refund_amount:
-          initialCharged,
+          totalCharged,
       });
     }
 
@@ -1717,10 +1514,6 @@ Deno.serve(async (req) => {
         "Flutterwave could not initiate the transfer.";
 
 
-      // ======================================================
-      // REFUND ACTUAL INITIAL DEBIT
-      // ======================================================
-
       const refundResult =
         await supabase.rpc(
           "wallet_operation",
@@ -1732,7 +1525,7 @@ Deno.serve(async (req) => {
               "REFUND",
 
             _amount:
-              initialCharged,
+              totalCharged,
 
             _description:
               `Refund for rejected transfer to ${safeBeneficiaryName}`,
@@ -1765,9 +1558,6 @@ Deno.serve(async (req) => {
               original_electronic_fee:
                 electronicFee,
 
-              original_initial_charged:
-                initialCharged,
-
               original_total_charged:
                 totalCharged,
 
@@ -1778,7 +1568,7 @@ Deno.serve(async (req) => {
                 flutterwaveData,
 
               refunded_amount:
-                initialCharged,
+                totalCharged,
             },
           },
         );
@@ -1798,12 +1588,6 @@ Deno.serve(async (req) => {
               transaction_id:
                 transactionId,
 
-              initial_charged:
-                initialCharged,
-
-              total_charged:
-                totalCharged,
-
               refund_required:
                 true,
 
@@ -1811,7 +1595,7 @@ Deno.serve(async (req) => {
                 true,
 
               refund_amount:
-                initialCharged,
+                totalCharged,
 
               refund_error:
                 refundResult.error.message,
@@ -1838,25 +1622,16 @@ Deno.serve(async (req) => {
             "Transfer refund pending",
 
           message:
-            `Your transfer to ${safeBeneficiaryName} was rejected by the payment provider. Your ₦${initialCharged.toLocaleString(
-              "en-NG",
-              {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2,
-              },
-            )} refund requires reconciliation.`,
+            `Your transfer to ${safeBeneficiaryName} was rejected by the payment provider. Your refund requires reconciliation.`,
 
           amount:
-            initialCharged,
+            totalCharged,
 
           metadata: {
             reference,
 
             transfer_amount:
               amount,
-
-            initial_charged:
-              initialCharged,
 
             total_charged:
               totalCharged,
@@ -1894,9 +1669,6 @@ Deno.serve(async (req) => {
 
             transaction_id:
               transactionId,
-
-            refund_amount:
-              initialCharged,
           },
           503,
         );
@@ -1928,16 +1700,7 @@ Deno.serve(async (req) => {
               true,
 
             refund_amount:
-              initialCharged,
-
-            initial_charged:
-              initialCharged,
-
-            total_charged:
               totalCharged,
-
-            electronic_fee_charged:
-              false,
 
             kyc_limit_released:
               true,
@@ -1974,7 +1737,7 @@ Deno.serve(async (req) => {
               minimumFractionDigits: 2,
               maximumFractionDigits: 2,
             },
-          )} to ${safeBeneficiaryName} was rejected. ₦${initialCharged.toLocaleString(
+          )} to ${safeBeneficiaryName} was rejected. ₦${totalCharged.toLocaleString(
             "en-NG",
             {
               minimumFractionDigits: 2,
@@ -1983,16 +1746,13 @@ Deno.serve(async (req) => {
           )} has been refunded to your wallet.`,
 
         amount:
-          initialCharged,
+          totalCharged,
 
         metadata: {
           reference,
 
           transfer_amount:
             amount,
-
-          initial_charged:
-            initialCharged,
 
           total_charged:
             totalCharged,
@@ -2031,7 +1791,7 @@ Deno.serve(async (req) => {
           transactionId,
 
         refund_amount:
-          initialCharged,
+          totalCharged,
       });
     }
 
@@ -2056,23 +1816,12 @@ Deno.serve(async (req) => {
 
 
     /*
-     * IMPORTANT:
+     * Never mark successful here.
      *
-     * Never mark the transaction successful here.
-     *
-     * Flutterwave may return:
-     *
-     * HTTP 200
-     * status = success
-     * transfer status = NEW
-     *
-     * The webhook must confirm the final status.
+     * Flutterwave can return 200 / success while the
+     * transfer is still queued.
      */
 
-
-    // ========================================================
-    // PENDING HISTORY
-    // ========================================================
 
     const pendingMetadata =
       createHistoryMetadata({
@@ -2095,15 +1844,7 @@ Deno.serve(async (req) => {
 
         electronicFee,
 
-        /*
-         * IMPORTANT:
-         *
-         * Pending transaction history reflects the actual
-         * amount debited NOW.
-         */
-
-        totalCharged:
-          initialCharged,
+        totalCharged,
 
         status:
           "pending",
@@ -2125,10 +1866,6 @@ Deno.serve(async (req) => {
         metadata: {
           ...pendingMetadata,
 
-          /*
-           * Provider
-           */
-
           flutterwave_transfer_id:
             flutterwaveTransferId,
 
@@ -2138,84 +1875,42 @@ Deno.serve(async (req) => {
           flutterwave_response:
             flutterwaveData,
 
-          /*
-           * KYC
-           */
-
           kyc_limit_reserved:
             true,
 
           kyc_reserved_amount:
             amount,
 
-          /*
-           * Charges
-           */
-
-          transfer_amount:
-            amount,
-
-          iyanjupay_fee:
-            iyanjupayFee,
-
-          electronic_fee:
-            electronicFee,
-
           electronic_fee_due:
             electronicFee,
-
-          electronic_fee_charged:
-            false,
-
-          /*
-           * Actual debit at initiation.
-           */
-
-          initial_charged:
-            initialCharged,
-
-          /*
-           * Eventual total after successful completion.
-           */
-
-          final_total_charged:
-            totalCharged,
-
-          /*
-           * Keep total_charged equal to what was actually
-           * debited while pending.
-           *
-           * The webhook will replace this with the final
-           * amount after successful completion.
-           */
-
-          total_charged:
-            initialCharged,
-
-          /*
-           * Explicit state.
-           */
-
-          transfer_completed:
-            false,
-
-          transfer_failed:
-            false,
-
-          refund_required:
-            false,
-
-          refunded:
-            false,
-
-          status:
-            "pending",
         },
       })
       .eq(
         "id",
         transactionId,
       );
+
+
+    // ========================================================
+    // IMPORTANT:
+    // ========================================================
+    //
+    // The pending notification was already created after
+    // wallet debit.
+    //
+    // We deliberately DO NOT create another pending
+    // notification here.
+    //
+    // This prevents:
+    //
+    // Transfer initiated
+    // Transfer initiated
+    //
+    // from appearing twice.
+    //
+    // The Flutterwave webhook should later create/update
+    // the SUCCESSFUL or FAILED notification.
+    // ========================================================
 
 
     // ========================================================
@@ -2246,36 +1941,14 @@ Deno.serve(async (req) => {
       transfer_amount:
         amount,
 
-      /*
-       * IyanjuPay fee charged immediately.
-       */
-
       fee:
         iyanjupayFee,
-
-      /*
-       * Electronic fee due only after SUCCESS.
-       */
 
       electronic_fee:
         electronicFee,
 
-      /*
-       * Actual wallet debit now.
-       */
-
-      initial_charged:
-        initialCharged,
-
-      /*
-       * Final amount if transfer succeeds.
-       */
-
       total_charged:
         totalCharged,
-
-      electronic_fee_charged:
-        false,
 
       currency:
         "NGN",

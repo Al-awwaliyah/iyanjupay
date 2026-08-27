@@ -34,7 +34,7 @@ interface ServicePaymentProps {
 
   onBack: () => void;
 
-  onPurchase: (
+  onPurchase?: (
     amount: number,
     details: Record<string, any>
   ) => Promise<void>;
@@ -42,6 +42,7 @@ interface ServicePaymentProps {
 
 interface Biller {
   id?: number | string;
+
   name?: string;
   biller_code?: string;
   category?: string;
@@ -191,6 +192,10 @@ function getDataGroup(
   return "Other";
 }
 
+function createIdempotencyKey(): string {
+  return `BILL_${crypto.randomUUID()}`;
+}
+
 // ============================================================
 // COMPONENT
 // ============================================================
@@ -214,32 +219,21 @@ const ServicePayment = ({
   // PAYMENT MODAL
   // ==========================================================
 
-  const [paymentModalOpen, setPaymentModalOpen] =
+  const [showPaymentModal, setShowPaymentModal] =
     useState(false);
+
+  const [paymentDetails, setPaymentDetails] =
+    useState<Record<string, any> | null>(null);
 
   // ==========================================================
   // TRANSACTION PROCESSING
   // ==========================================================
 
-  const [
-    transactionProcessing,
-    setTransactionProcessing,
-  ] = useState(false);
+  const [showTransactionProcessing, setShowTransactionProcessing] =
+    useState(false);
 
-  const [
-    transactionAmount,
-    setTransactionAmount,
-  ] = useState(0);
-
-  const [
-    transactionDetails,
-    setTransactionDetails,
-  ] = useState<Record<string, any>>({});
-
-  const [
-    transactionIdempotencyKey,
-    setTransactionIdempotencyKey,
-  ] = useState("");
+  const [transactionData, setTransactionData] =
+    useState<Record<string, any> | null>(null);
 
   // ==========================================================
   // CATALOGUE
@@ -439,12 +433,11 @@ const ServicePayment = ({
     setLoadingItems(false);
     setProcessingPayment(false);
 
-    setPaymentModalOpen(false);
+    setShowPaymentModal(false);
+    setPaymentDetails(null);
 
-    setTransactionProcessing(false);
-    setTransactionAmount(0);
-    setTransactionDetails({});
-    setTransactionIdempotencyKey("");
+    setShowTransactionProcessing(false);
+    setTransactionData(null);
   };
 
   // ==========================================================
@@ -668,10 +661,7 @@ const ServicePayment = ({
   const handleBillerChange = async (
     value: string
   ) => {
-    if (
-      processingPayment ||
-      transactionProcessing
-    ) {
+    if (processingPayment) {
       return;
     }
 
@@ -687,10 +677,7 @@ const ServicePayment = ({
   const handleDataPlanSelect = (
     item: BillItem
   ) => {
-    if (
-      processingPayment ||
-      transactionProcessing
-    ) {
+    if (processingPayment) {
       return;
     }
 
@@ -736,10 +723,7 @@ const ServicePayment = ({
   const handleItemChange = (
     value: string
   ) => {
-    if (
-      processingPayment ||
-      transactionProcessing
-    ) {
+    if (processingPayment) {
       return;
     }
 
@@ -756,10 +740,7 @@ const ServicePayment = ({
   const handleAmountSelect = (
     value: number
   ) => {
-    if (
-      processingPayment ||
-      transactionProcessing
-    ) {
+    if (processingPayment) {
       return;
     }
 
@@ -769,10 +750,7 @@ const ServicePayment = ({
   };
 
   const handleCustomAmount = () => {
-    if (
-      processingPayment ||
-      transactionProcessing
-    ) {
+    if (processingPayment) {
       return;
     }
 
@@ -1090,6 +1068,9 @@ const ServicePayment = ({
 
       type: serviceType,
 
+      service:
+        serviceType,
+
       country: "NG",
 
       customerLabel,
@@ -1120,10 +1101,7 @@ const ServicePayment = ({
       return;
     }
 
-    if (
-      processingPayment ||
-      transactionProcessing
-    ) {
+    if (processingPayment) {
       return;
     }
 
@@ -1131,112 +1109,188 @@ const ServicePayment = ({
       return;
     }
 
+    const details =
+      buildPurchaseDetails();
+
+    setPaymentDetails(details);
     setError("");
-    setPaymentModalOpen(true);
+    setShowPaymentModal(true);
   };
 
   // ==========================================================
   // PAYMENT MODAL CONFIRMATION
-  //
-  // IMPORTANT:
-  // PaymentModal handles the PIN.
-  // ServicePayment does NOT send the PIN to
-  // flutterwave-bills.
   // ==========================================================
 
-  const handlePaymentConfirmed = async (
-    ...args: any[]
+  const handlePaymentConfirm = async (
+    pin?: string
   ) => {
     if (!service) {
       return;
     }
 
-    if (
-      processingPayment ||
-      transactionProcessing
-    ) {
+    if (processingPayment) {
       return;
     }
 
     try {
-      setPaymentModalOpen(false);
       setProcessingPayment(true);
       setError("");
 
       const details =
+        paymentDetails ??
         buildPurchaseDetails();
 
       const sellingAmount =
-        amountNumber;
+        Number(
+          details.selling_amount ??
+            amountNumber
+        );
+
+      // ------------------------------------------------------
+      // PAYMENT PIN
+      // ------------------------------------------------------
+
+      if (
+        pin !== undefined &&
+        !/^\d{4}$/.test(pin)
+      ) {
+        throw new Error(
+          "Enter your 4-digit payment PIN."
+        );
+      }
 
       /*
-       * One idempotency key belongs to this
-       * complete bill-payment attempt.
+       * If PaymentModal already verifies the PIN internally,
+       * this callback receives the verified PIN and we simply
+       * continue.
        *
-       * TransactionProcessingPage and the
-       * bill-payment Edge Function use it.
+       * If PaymentModal passes no PIN because it performs the
+       * verification itself, payment also continues.
        */
+
+      // ------------------------------------------------------
+      // IDEMPOTENCY
+      // ------------------------------------------------------
+
       const idempotencyKey =
-        `BILL_${crypto.randomUUID()}`;
+        createIdempotencyKey();
 
-      setTransactionAmount(
-        sellingAmount
-      );
+      // ------------------------------------------------------
+      // TRANSACTION DATA
+      // ------------------------------------------------------
 
-      setTransactionDetails({
-        ...details,
+      const transaction = {
+        transactionType: "bill",
 
-        service: serviceType,
+        amount: sellingAmount,
 
-        amount:
-          sellingAmount,
-
-        country: "NG",
+        service:
+          details.service ??
+          serviceType,
 
         biller_code:
-          selectedBillerCode,
+          details.biller_code,
 
         item_code:
-          selectedItemCode,
+          details.item_code,
 
         customer:
           details.customer,
 
+        provider:
+          details.provider,
+
+        provider_amount:
+          details.provider_amount,
+
+        selling_amount:
+          sellingAmount,
+
+        data_markup:
+          details.data_markup ?? 0,
+
+        country: "NG",
+
         idempotency_key:
           idempotencyKey,
-      });
 
-      setTransactionIdempotencyKey(
-        idempotencyKey
-      );
-
-      console.log(
-        "Payment confirmed. Starting transaction processing:",
-        {
-          transactionType:
-            "bill",
-
-          amount:
-            sellingAmount,
-
+        reference:
           idempotencyKey,
 
-          details,
-        }
+        details,
+      };
+
+      console.log(
+        "Starting service transaction:",
+        transaction
       );
 
-      setTransactionProcessing(true);
+      // ------------------------------------------------------
+      // CLOSE PAYMENT MODAL
+      // ------------------------------------------------------
+
+      setShowPaymentModal(false);
+
+      // ------------------------------------------------------
+      // START TRANSACTION PROCESSING
+      // ------------------------------------------------------
+
+      setTransactionData(transaction);
+
+      setShowTransactionProcessing(true);
+
+      /*
+       * IMPORTANT:
+       *
+       * We intentionally DO NOT call resetForm() here.
+       *
+       * TransactionProcessingPage must remain in control of
+       * the transaction until it gets SUCCESS / FAILED /
+       * PENDING.
+       */
+
+      if (
+        typeof onPurchase === "function"
+      ) {
+        /*
+         * Keep compatibility with the existing parent.
+         *
+         * The parent callback is optional now, so ServicePayment
+         * itself does not crash with:
+         *
+         * TypeError: r is not a function
+         */
+        await onPurchase(
+          sellingAmount,
+          {
+            ...details,
+
+            transactionType:
+              "bill",
+
+            idempotency_key:
+              idempotencyKey,
+
+            reference:
+              idempotencyKey,
+          }
+        );
+      }
     } catch (err: any) {
       console.error(
-        "Payment confirmation failed:",
+        "Service payment processing failed:",
         err
       );
 
       const message =
         err?.message ||
-        "Unable to start payment processing.";
+        "Unable to complete this payment.";
 
       setError(message);
+
+      setShowPaymentModal(false);
+
+      setShowTransactionProcessing(false);
 
       toast({
         title: "Payment failed",
@@ -1249,55 +1303,31 @@ const ServicePayment = ({
   };
 
   // ==========================================================
-  // TRANSACTION DONE
+  // TRANSACTION COMPLETE
   // ==========================================================
 
-  const handleTransactionDone = async (
+  const handleTransactionComplete = (
     result?: any
   ) => {
     console.log(
-      "Bill transaction processing completed:",
+      "Service transaction completed:",
       result
     );
 
-    setTransactionProcessing(false);
-    setProcessingPayment(false);
+    setShowTransactionProcessing(false);
+    setTransactionData(null);
 
-    /*
-     * Keep the parent callback compatible with
-     * the existing Dashboard implementation.
-     *
-     * TransactionProcessingPage has already
-     * processed the bill through flutterwave-bills.
-     */
-    try {
-      await onPurchase(
-        transactionAmount,
-        transactionDetails
-      );
-    } catch (error) {
-      console.error(
-        "Parent purchase callback failed:",
-        error
-      );
-    }
+    setAmount("");
+    setCustomer("");
+    setSelectedItemCode("");
+
+    setError("");
 
     toast({
-      title:
-        result?.status === "pending"
-          ? "Payment Processing"
-          : "Payment Successful",
-
+      title: "Payment completed",
       description:
-        result?.message ||
-        (
-          result?.status === "pending"
-            ? `${service?.title ?? "Payment"} is being verified.`
-            : `${service?.title ?? "Payment"} was completed successfully.`
-        ),
+        `${service?.title ?? "Payment"} was processed successfully.`,
     });
-
-    resetForm();
   };
 
   // ==========================================================
@@ -1305,16 +1335,9 @@ const ServicePayment = ({
   // ==========================================================
 
   const handleTransactionBack = () => {
-    if (processingPayment) {
-      return;
-    }
-
-    setTransactionProcessing(false);
-    setTransactionAmount(0);
-    setTransactionDetails({});
-    setTransactionIdempotencyKey("");
-
-    setError("");
+    setShowTransactionProcessing(false);
+    setTransactionData(null);
+    setProcessingPayment(false);
   };
 
   // ==========================================================
@@ -1322,10 +1345,11 @@ const ServicePayment = ({
   // ==========================================================
 
   const handleBack = () => {
-    if (
-      processingPayment ||
-      transactionProcessing
-    ) {
+    if (processingPayment) {
+      return;
+    }
+
+    if (showTransactionProcessing) {
       return;
     }
 
@@ -1358,42 +1382,22 @@ const ServicePayment = ({
   // ==========================================================
 
   if (
-    transactionProcessing &&
-    transactionIdempotencyKey
+    showTransactionProcessing &&
+    transactionData
   ) {
     return (
       <TransactionProcessingPage
         transactionType="bill"
-        amount={transactionAmount}
-        details={{
-          ...transactionDetails,
-
-          /*
-           * Explicitly identify the bill service.
-           */
-          service: serviceType,
-
-          /*
-           * Keep the exact provider/customer
-           * information available to the
-           * transaction processor.
-           */
-          biller_code:
-            transactionDetails.biller_code,
-
-          item_code:
-            transactionDetails.item_code,
-
-          customer:
-            transactionDetails.customer,
-
-          country: "NG",
-        }}
-        idempotencyKey={
-          transactionIdempotencyKey
+        amount={
+          Number(
+            transactionData.amount ?? 0
+          )
         }
-        onDone={
-          handleTransactionDone
+        details={
+          transactionData
+        }
+        onComplete={
+          handleTransactionComplete
         }
         onBack={
           handleTransactionBack
@@ -1422,8 +1426,7 @@ const ServicePayment = ({
               size="sm"
               onClick={handleBack}
               disabled={
-                processingPayment ||
-                transactionProcessing
+                processingPayment
               }
               className="text-white hover:bg-white/20"
             >
@@ -1442,6 +1445,8 @@ const ServicePayment = ({
       {/* CONTENT */}
 
       <main className="max-w-3xl mx-auto px-4 sm:px-6 py-6">
+
+        {/* NORMAL FORM */}
 
         <div className="bg-white rounded-2xl shadow-sm border p-5 sm:p-6">
 
@@ -1480,8 +1485,7 @@ const ServicePayment = ({
               </Label>
 
               {!loadingBillers &&
-                !processingPayment &&
-                !transactionProcessing && (
+                !processingPayment && (
                   <Button
                     type="button"
                     variant="ghost"
@@ -1510,7 +1514,6 @@ const ServicePayment = ({
               disabled={
                 loadingBillers ||
                 processingPayment ||
-                transactionProcessing ||
                 billers.length === 0
               }
               className="w-full h-11 rounded-md border bg-background px-3 text-sm"
@@ -1657,8 +1660,7 @@ const ServicePayment = ({
                                 )
                               }
                               disabled={
-                                processingPayment ||
-                                transactionProcessing
+                                processingPayment
                               }
                               className={[
                                 "text-left rounded-xl border p-3 transition-all",
@@ -1695,9 +1697,7 @@ const ServicePayment = ({
             </div>
           ) : (
 
-            /* =================================================
-               NON-DATA PACKAGE
-               ================================================= */
+            /* NON-DATA PACKAGE */
 
             <div className="space-y-2 mb-5">
 
@@ -1719,7 +1719,6 @@ const ServicePayment = ({
                 disabled={
                   loadingItems ||
                   processingPayment ||
-                  transactionProcessing ||
                   !selectedBillerCode ||
                   items.length === 0
                 }
@@ -1787,8 +1786,7 @@ const ServicePayment = ({
                 customerPlaceholder
               }
               disabled={
-                processingPayment ||
-                transactionProcessing
+                processingPayment
               }
               inputMode={
                 serviceType ===
@@ -1865,8 +1863,7 @@ const ServicePayment = ({
                       )
                     }
                     disabled={
-                      processingPayment ||
-                      transactionProcessing
+                      processingPayment
                     }
                     className={[
                       "rounded-xl border p-3 text-center font-semibold transition-all",
@@ -1887,8 +1884,7 @@ const ServicePayment = ({
                     handleCustomAmount
                   }
                   disabled={
-                    processingPayment ||
-                    transactionProcessing
+                    processingPayment
                   }
                   className={[
                     "rounded-xl border p-3 text-center font-semibold transition-all",
@@ -1917,8 +1913,7 @@ const ServicePayment = ({
                   }
                   placeholder="Enter exact amount"
                   disabled={
-                    processingPayment ||
-                    transactionProcessing
+                    processingPayment
                   }
                   autoFocus
                 />
@@ -1972,7 +1967,6 @@ const ServicePayment = ({
               loadingBillers ||
               loadingItems ||
               processingPayment ||
-              transactionProcessing ||
               !selectedBillerCode ||
               !selectedItemCode ||
               !customer.trim() ||
@@ -1984,7 +1978,7 @@ const ServicePayment = ({
             {processingPayment ? (
               <>
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                Preparing Payment...
+                Processing...
               </>
             ) : (
               `Purchase ${service.title}`
@@ -1998,58 +1992,36 @@ const ServicePayment = ({
 
       {/* ======================================================
           PAYMENT MODAL
+         ====================================================== */}
 
-          PaymentModal is responsible for collecting and
-          verifying the user's Payment PIN.
-
-          The PIN is NOT forwarded to flutterwave-bills.
-          ====================================================== */}
-
-      {paymentModalOpen && (
-        <PaymentModal
-          open={paymentModalOpen}
-          amount={amountNumber}
-          title={`Confirm ${service.title}`}
-          details={{
-            service: serviceType,
-
-            amount:
-              amountNumber,
-
-            provider:
-              selectedBiller?.name ??
-              selectedBiller?.short_name ??
-              "",
-
-            customer:
-              normaliseCustomer(),
-
-            biller_code:
-              selectedBillerCode,
-
-            item_code:
-              selectedItemCode,
-
-            country: "NG",
-
-            item:
-              selectedItem,
-
-            biller:
-              selectedBiller,
-          }}
-          onClose={() => {
-            if (processingPayment) {
-              return;
+      {showPaymentModal &&
+        paymentDetails && (
+          <PaymentModal
+            open={showPaymentModal}
+            amount={
+              Number(
+                paymentDetails.selling_amount ??
+                  amountNumber
+              )
             }
+            details={
+              paymentDetails
+            }
+            onClose={() => {
+              if (
+                processingPayment
+              ) {
+                return;
+              }
 
-            setPaymentModalOpen(false);
-          }}
-          onConfirm={
-            handlePaymentConfirmed
-          }
-        />
-      )}
+              setShowPaymentModal(false);
+              setPaymentDetails(null);
+            }}
+            onConfirm={
+              handlePaymentConfirm
+            }
+          />
+        )}
 
     </div>
   );

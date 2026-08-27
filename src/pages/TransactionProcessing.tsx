@@ -471,13 +471,13 @@ const TransactionProcessingPage = ({
         initialResponse: TransactionResult
       ): Promise<TransactionResult> => {
         /*
-         * Wait exactly 5 seconds.
+         * Wait exactly 8 seconds.
          */
         await new Promise<void>(
           (resolve) => {
             setTimeout(
               resolve,
-              5000
+              8000
             );
           }
         );

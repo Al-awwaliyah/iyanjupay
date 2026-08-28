@@ -42,8 +42,7 @@ import FundWalletModal from "./modals/FundWalletModal";
 import ServicePayment from "@/pages/ServicePayment";
 import QRCodeModal from "./modals/QRCodeModal";
 import WhatsAppFloat from "./WhatsAppFloat";
-import SupportChat from "./SupportChat";
-
+import SupportChat from "./support/SupportChat";
 import SendMoneyPage from "@/pages/SendMoney";
 
 import ProfilePage from "./profile/ProfilePage";

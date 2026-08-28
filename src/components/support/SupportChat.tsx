@@ -86,6 +86,59 @@ const SupportChat = ({
   }, []);
 
   // ============================================================
+  // LOAD MESSAGES
+  // ============================================================
+
+  const loadMessages = async (
+    conversationId: string
+  ) => {
+    const {
+      data,
+      error,
+    } = await supabase
+      .from("support_messages")
+      .select("*")
+      .eq(
+        "conversation_id",
+        conversationId
+      )
+      .order("created_at", {
+        ascending: true,
+      });
+
+    if (error) {
+      throw error;
+    }
+
+    setMessages(
+      (data ?? []) as SupportMessage[]
+    );
+
+    scrollToBottom();
+
+    const unreadIds =
+      (data ?? [])
+        .filter(
+          (item: any) =>
+            item.sender_type === "admin" &&
+            !item.read_at
+        )
+        .map(
+          (item: any) => item.id
+        );
+
+    if (unreadIds.length > 0) {
+      await supabase
+        .from("support_messages")
+        .update({
+          read_at:
+            new Date().toISOString(),
+        })
+        .in("id", unreadIds);
+    }
+  };
+
+  // ============================================================
   // LOAD OPEN CONVERSATION
   // ============================================================
 
@@ -123,7 +176,11 @@ const SupportChat = ({
           .from("support_conversations")
           .select("*")
           .eq("user_id", userId)
-          .not("status", "eq", "closed")
+          .not(
+            "status",
+            "eq",
+            "closed"
+          )
           .order("updated_at", {
             ascending: false,
           })
@@ -162,59 +219,6 @@ const SupportChat = ({
     }, [open, toast]);
 
   // ============================================================
-  // LOAD MESSAGES
-  // ============================================================
-
-  const loadMessages = async (
-    conversationId: string
-  ) => {
-    const {
-      data,
-      error,
-    } = await supabase
-      .from("support_messages")
-      .select("*")
-      .eq(
-        "conversation_id",
-        conversationId
-      )
-      .order("created_at", {
-        ascending: true,
-      });
-
-    if (error) {
-      throw error;
-    }
-
-    setMessages(
-      (data ?? []) as SupportMessage[]
-    );
-
-    scrollToBottom();
-
-    // Mark incoming messages as read.
-    const unreadIds =
-      (data ?? [])
-        .filter(
-          (item: any) =>
-            item.sender_type === "admin" &&
-            !item.read_at
-        )
-        .map(
-          (item: any) => item.id
-        );
-
-    if (unreadIds.length > 0) {
-      await supabase
-        .from("support_messages")
-        .update({
-          read_at: new Date().toISOString(),
-        })
-        .in("id", unreadIds);
-    }
-  };
-
-  // ============================================================
   // INITIAL LOAD
   // ============================================================
 
@@ -224,14 +228,20 @@ const SupportChat = ({
     }
 
     loadConversation();
-  }, [open, loadConversation]);
+  }, [
+    open,
+    loadConversation,
+  ]);
 
   // ============================================================
   // REALTIME
   // ============================================================
 
   useEffect(() => {
-    if (!open || !conversation?.id) {
+    if (
+      !open ||
+      !conversation?.id
+    ) {
       return;
     }
 
@@ -260,7 +270,8 @@ const SupportChat = ({
           if (
             current.some(
               (item) =>
-                item.id === incoming.id
+                item.id ===
+                incoming.id
             )
           ) {
             return current;
@@ -356,7 +367,9 @@ const SupportChat = ({
           data,
           error,
         } = await supabase
-          .from("support_conversations")
+          .from(
+            "support_conversations"
+          )
           .insert({
             user_id: userId,
             subject:
@@ -383,7 +396,8 @@ const SupportChat = ({
         );
 
         toast({
-          title: "Unable to start chat",
+          title:
+            "Unable to start chat",
           description:
             error?.message ||
             "Please try again.",
@@ -557,7 +571,6 @@ const SupportChat = ({
 
   return (
     <div className="fixed inset-0 z-[100] bg-black/40 flex items-end sm:items-center justify-center p-0 sm:p-4">
-
       <div className="w-full sm:max-w-md h-[100dvh] sm:h-[680px] bg-white sm:rounded-2xl shadow-2xl overflow-hidden flex flex-col">
 
         {/* HEADER */}
@@ -613,7 +626,6 @@ const SupportChat = ({
               <Loader2 className="h-6 w-6 animate-spin text-purple-600" />
             </div>
           ) : !conversation ? (
-
             <div className="h-full flex flex-col items-center justify-center text-center px-6">
 
               <div className="w-16 h-16 rounded-full bg-purple-100 flex items-center justify-center mb-4">
@@ -645,84 +657,75 @@ const SupportChat = ({
               </Button>
 
             </div>
-
           ) : (
-
             <div className="space-y-3">
 
               {messages.length === 0 && (
                 <div className="text-center py-8">
-
                   <p className="text-sm text-gray-500">
                     Send a message and our support team will respond.
                   </p>
-
                 </div>
               )}
 
-              {messages.map(
-                (item) => {
-                  const isUser =
-                    item.sender_type ===
-                    "user";
+              {messages.map((item) => {
+                const isUser =
+                  item.sender_type ===
+                  "user";
 
-                  return (
+                return (
+                  <div
+                    key={item.id}
+                    className={`flex ${
+                      isUser
+                        ? "justify-end"
+                        : "justify-start"
+                    }`}
+                  >
                     <div
-                      key={item.id}
-                      className={`flex ${
+                      className={[
+                        "max-w-[82%] rounded-2xl px-4 py-3",
                         isUser
-                          ? "justify-end"
-                          : "justify-start"
-                      }`}
+                          ? "bg-purple-600 text-white rounded-br-md"
+                          : "bg-white border text-gray-900 rounded-bl-md shadow-sm",
+                      ].join(" ")}
                     >
 
-                      <div
-                        className={[
-                          "max-w-[82%] rounded-2xl px-4 py-3",
+                      {!isUser && (
+                        <p className="text-xs font-semibold text-purple-600 mb-1">
+                          IyanjuPay Support
+                        </p>
+                      )}
+
+                      <p className="text-sm whitespace-pre-wrap break-words">
+                        {item.message}
+                      </p>
+
+                      <p
+                        className={`text-[10px] mt-1 ${
                           isUser
-                            ? "bg-purple-600 text-white rounded-br-md"
-                            : "bg-white border text-gray-900 rounded-bl-md shadow-sm",
-                        ].join(" ")}
+                            ? "text-white/70"
+                            : "text-gray-400"
+                        }`}
                       >
-
-                        {!isUser && (
-                          <p className="text-xs font-semibold text-purple-600 mb-1">
-                            IyanjuPay Support
-                          </p>
+                        {new Date(
+                          item.created_at
+                        ).toLocaleTimeString(
+                          "en-NG",
+                          {
+                            hour: "2-digit",
+                            minute:
+                              "2-digit",
+                          }
                         )}
-
-                        <p className="text-sm whitespace-pre-wrap break-words">
-                          {item.message}
-                        </p>
-
-                        <p
-                          className={`text-[10px] mt-1 ${
-                            isUser
-                              ? "text-white/70"
-                              : "text-gray-400"
-                          }`}
-                        >
-                          {new Date(
-                            item.created_at
-                          ).toLocaleTimeString(
-                            "en-NG",
-                            {
-                              hour: "2-digit",
-                              minute:
-                                "2-digit",
-                            }
-                          )}
-                        </p>
-
-                      </div>
+                      </p>
 
                     </div>
-                  );
-                }
-              )}
+                  </div>
+                );
+              })}
 
               <div ref={messagesEndRef} />
-
             </div>
           )}
 
@@ -747,9 +750,7 @@ const SupportChat = ({
                   type="button"
                   variant="outline"
                   onClick={() => {
-                    setConversation(
-                      null
-                    );
+                    setConversation(null);
                     setMessages([]);
                   }}
                 >
@@ -758,7 +759,6 @@ const SupportChat = ({
 
               </div>
             ) : (
-
               <div className="flex items-center gap-2">
 
                 <Input
@@ -802,7 +802,6 @@ const SupportChat = ({
         )}
 
       </div>
-
     </div>
   );
 };

@@ -1,10 +1,10 @@
-import React, {  useCallback,  useEffect,  useMemo,  useState, } from "react";
-import {  AlertCircle,  CheckCircle2,  Clock3,  Eye,  FileText,  Loader2,  Plus,  RefreshCw,  Search,  X,  XCircle, } from "lucide-react";
+import React, { useCallback,  useEffect, useMemo, useState, } from "react";
+
+import {  AlertCircle, ArrowLeft, CheckCircle2, Clock3, Eye, FileText, Loader2, Plus, RefreshCw, Search, X, XCircle, } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-
 
 interface UserDispute {
   id: string;
@@ -30,48 +30,32 @@ interface UserDispute {
   total_count?: number;
 }
 
-
 interface UserTransaction {
   id: string;
   amount: number | string;
-
   currency: string;
-
   description: string | null;
-
   status: string;
-
   reference_number: string;
-
   created_at: string;
-
   transaction_type: string;
-
   category: string | null;
-
   provider: string | null;
-
   provider_reference: string | null;
 }
 
-
 const PAGE_SIZE = 20;
-
 
 const formatMoney = (
   amount: number | string,
   currency = "NGN",
 ) => {
-  return new Intl.NumberFormat(
-    "en-NG",
-    {
-      style: "currency",
-      currency,
-      maximumFractionDigits: 2,
-    },
-  ).format(Number(amount || 0));
+  return new Intl.NumberFormat("en-NG", {
+    style: "currency",
+    currency,
+    maximumFractionDigits: 2,
+  }).format(Number(amount || 0));
 };
-
 
 const formatDate = (
   value: string | null,
@@ -80,15 +64,11 @@ const formatDate = (
     return "—";
   }
 
-  return new Intl.DateTimeFormat(
-    "en-NG",
-    {
-      dateStyle: "medium",
-      timeStyle: "short",
-    },
-  ).format(new Date(value));
+  return new Intl.DateTimeFormat("en-NG", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(new Date(value));
 };
-
 
 const normalizeStatus = (
   value: string,
@@ -97,7 +77,6 @@ const normalizeStatus = (
     .trim()
     .toLowerCase();
 };
-
 
 const statusClasses = (
   status: string,
@@ -119,7 +98,6 @@ const statusClasses = (
       return "bg-gray-100 text-gray-600";
   }
 };
-
 
 const statusIcon = (
   status: string,
@@ -152,13 +130,11 @@ const statusIcon = (
   }
 };
 
-
 const priorityClasses = (
   priority: string,
 ) => {
   switch (
-    String(priority || "")
-      .toLowerCase()
+    String(priority || "").toLowerCase()
   ) {
     case "urgent":
       return "bg-red-100 text-red-700";
@@ -177,7 +153,6 @@ const priorityClasses = (
   }
 };
 
-
 const transactionTypeLabel = (
   value: string,
 ) => {
@@ -188,8 +163,13 @@ const transactionTypeLabel = (
     );
 };
 
+interface UserDisputesPageProps {
+  onBack: () => void;
+}
 
-const UserDisputesPage = () => {
+const UserDisputesPage = ({
+  onBack,
+}: UserDisputesPageProps) => {
   const { toast } = useToast();
 
   const [disputes, setDisputes] =
@@ -243,7 +223,6 @@ const UserDisputesPage = () => {
   const [priority, setPriority] =
     useState("normal");
 
-
   const totalPages = useMemo(() => {
     return Math.max(
       1,
@@ -252,7 +231,6 @@ const UserDisputesPage = () => {
       ),
     );
   }, [totalCount]);
-
 
   // ==========================================================
   // FETCH DISPUTES
@@ -306,7 +284,8 @@ const UserDisputesPage = () => {
           );
 
           toast({
-            title: "Unable to load disputes",
+            title:
+              "Unable to load disputes",
             description:
               error?.message ||
               "Something went wrong while loading your disputes.",
@@ -328,11 +307,9 @@ const UserDisputesPage = () => {
       ],
     );
 
-
   useEffect(() => {
     fetchDisputes();
   }, [fetchDisputes]);
-
 
   // ==========================================================
   // FETCH USER TRANSACTIONS FOR CREATE DISPUTE
@@ -421,7 +398,6 @@ const UserDisputesPage = () => {
       [toast],
     );
 
-
   // ==========================================================
   // CREATE DISPUTE
   // ==========================================================
@@ -430,7 +406,8 @@ const UserDisputesPage = () => {
     async () => {
       if (!selectedTransactionId) {
         toast({
-          title: "Select a transaction",
+          title:
+            "Select a transaction",
           description:
             "Please select the transaction you want to dispute.",
           variant: "destructive",
@@ -512,7 +489,6 @@ const UserDisputesPage = () => {
       }
     };
 
-
   // ==========================================================
   // SEARCH
   // ==========================================================
@@ -524,14 +500,12 @@ const UserDisputesPage = () => {
     );
   };
 
-
   const clearFilters = () => {
     setSearchInput("");
     setSearch("");
     setStatus("");
     setPage(1);
   };
-
 
   const openCreateModal =
     async () => {
@@ -544,7 +518,6 @@ const UserDisputesPage = () => {
       }
     };
 
-
   // ==========================================================
   // RENDER
   // ==========================================================
@@ -552,21 +525,40 @@ const UserDisputesPage = () => {
   return (
     <div className="p-4 sm:p-6 lg:p-8 space-y-6">
 
-      {/* HEADER */}
+      {/* =====================================================
+          HEADER
+          ===================================================== */}
 
       <section>
 
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
 
-          <div>
+          <div className="flex items-center gap-4">
 
-            <h1 className="text-2xl font-bold text-gray-900">
-              Disputes
-            </h1>
+            {/* BACK BUTTON */}
 
-            <p className="text-sm text-gray-500 mt-1">
-              Report and track issues with your transactions.
-            </p>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={onBack}
+              className="text-purple-600 shrink-0"
+            >
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              Back
+            </Button>
+
+            <div>
+
+              <h1 className="text-2xl font-bold text-gray-900">
+                Disputes
+              </h1>
+
+              <p className="text-sm text-gray-500 mt-1">
+                Report and track issues with your transactions.
+              </p>
+
+            </div>
 
           </div>
 
@@ -597,7 +589,6 @@ const UserDisputesPage = () => {
               onClick={openCreateModal}
             >
               <Plus className="h-4 w-4 mr-2" />
-
               New dispute
             </Button>
 
@@ -607,8 +598,9 @@ const UserDisputesPage = () => {
 
       </section>
 
-
-      {/* FILTERS */}
+      {/* =====================================================
+          FILTERS
+          ===================================================== */}
 
       <section className="bg-white border rounded-2xl p-4">
 
@@ -680,7 +672,6 @@ const UserDisputesPage = () => {
             onClick={handleSearch}
           >
             <Search className="h-4 w-4 mr-2" />
-
             Search
           </Button>
 
@@ -699,8 +690,9 @@ const UserDisputesPage = () => {
 
       </section>
 
-
-      {/* RECORDS */}
+      {/* =====================================================
+          RECORDS
+          ===================================================== */}
 
       <section className="bg-white border rounded-2xl overflow-hidden">
 
@@ -715,7 +707,6 @@ const UserDisputesPage = () => {
           </p>
 
         </div>
-
 
         {loading ? (
 
@@ -820,7 +811,6 @@ const UserDisputesPage = () => {
 
                       </td>
 
-
                       <td className="px-5 py-4">
 
                         <p className="font-medium text-gray-900">
@@ -839,7 +829,6 @@ const UserDisputesPage = () => {
 
                       </td>
 
-
                       <td className="px-5 py-4 text-right font-bold">
 
                         {
@@ -850,7 +839,6 @@ const UserDisputesPage = () => {
                         }
 
                       </td>
-
 
                       <td className="px-5 py-4">
 
@@ -865,7 +853,6 @@ const UserDisputesPage = () => {
                         </span>
 
                       </td>
-
 
                       <td className="px-5 py-4">
 
@@ -889,7 +876,6 @@ const UserDisputesPage = () => {
 
                       </td>
 
-
                       <td className="px-5 py-4 whitespace-nowrap text-xs text-gray-500">
 
                         {
@@ -899,7 +885,6 @@ const UserDisputesPage = () => {
                         }
 
                       </td>
-
 
                       <td className="px-5 py-4 text-right">
 
@@ -933,7 +918,6 @@ const UserDisputesPage = () => {
           </div>
 
         )}
-
 
         {/* PAGINATION */}
 
@@ -1006,10 +990,9 @@ const UserDisputesPage = () => {
 
       </section>
 
-
       {/* ======================================================
           CREATE DISPUTE MODAL
-      ====================================================== */}
+          ====================================================== */}
 
       {showCreate && (
 
@@ -1052,7 +1035,6 @@ const UserDisputesPage = () => {
               </Button>
 
             </div>
-
 
             <div className="p-5 space-y-5">
 
@@ -1120,7 +1102,6 @@ const UserDisputesPage = () => {
 
               </div>
 
-
               {/* REASON */}
 
               <div>
@@ -1175,7 +1156,6 @@ const UserDisputesPage = () => {
 
               </div>
 
-
               {/* PRIORITY */}
 
               <div>
@@ -1210,7 +1190,6 @@ const UserDisputesPage = () => {
 
               </div>
 
-
               {/* DESCRIPTION */}
 
               <div>
@@ -1233,7 +1212,6 @@ const UserDisputesPage = () => {
 
               </div>
 
-
               <div className="rounded-xl bg-blue-50 border border-blue-100 p-4">
 
                 <p className="text-xs text-blue-700 leading-relaxed">
@@ -1241,7 +1219,6 @@ const UserDisputesPage = () => {
                 </p>
 
               </div>
-
 
               <Button
                 type="button"
@@ -1273,10 +1250,9 @@ const UserDisputesPage = () => {
 
       )}
 
-
       {/* ======================================================
           DETAILS MODAL
-      ====================================================== */}
+          ====================================================== */}
 
       {selectedDispute && (
 
@@ -1319,7 +1295,6 @@ const UserDisputesPage = () => {
               </Button>
 
             </div>
-
 
             <div className="p-5 space-y-5">
 
@@ -1377,7 +1352,6 @@ const UserDisputesPage = () => {
                 </div>
 
               </div>
-
 
               {/* TRANSACTION */}
 
@@ -1457,7 +1431,6 @@ const UserDisputesPage = () => {
 
               </div>
 
-
               {/* ISSUE */}
 
               <div className="rounded-2xl border p-5">
@@ -1490,7 +1463,6 @@ const UserDisputesPage = () => {
                 </p>
 
               </div>
-
 
               {/* ADMIN RESPONSE */}
 
@@ -1561,6 +1533,5 @@ const UserDisputesPage = () => {
     </div>
   );
 };
-
 
 export default UserDisputesPage;

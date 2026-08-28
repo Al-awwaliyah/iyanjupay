@@ -8,11 +8,8 @@ import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-  CardFooter,
 } from "@/components/ui/card";
+
 import {
   LogOut,
   User,
@@ -55,6 +52,7 @@ import CustomerServicePage from "./me/CustomerServicePage";
 import SupportPage from "./me/SupportPage";
 import TransactionLimitPage from "./me/TransactionLimitPage";
 import PaymentPinPage from "./me/PaymentPinPage";
+import DisputesPage from "./disputes/DisputesPage";
 
 import { useAuth } from "@/hooks/useAuth";
 import { useWallet } from "@/hooks/useWallet";
@@ -79,6 +77,7 @@ type CurrentPage =
   | "support"
   | "transaction-limit"
   | "payment-pin"
+  | "disputes"
   | "send-money"
   | "service-payment";
 
@@ -858,10 +857,6 @@ const Dashboard = () => {
   const handleServiceClick = (
     service: (typeof services)[number]
   ) => {
-    /*
-     * Transfer Money opens
-     * the full Send Money page.
-     */
     if (
       service.type === "transfer"
     ) {
@@ -872,10 +867,6 @@ const Dashboard = () => {
       return;
     }
 
-    /*
-     * Only currently implemented
-     * bill services are allowed.
-     */
     if (
       !SUPPORTED_BILL_SERVICES.includes(
         service.type as BillService
@@ -1664,6 +1655,27 @@ const Dashboard = () => {
   }
 
   /*
+   * ============================================================
+   * DISPUTES
+   * ============================================================
+   */
+
+  if (
+    currentPage ===
+    "disputes"
+  ) {
+    return (
+      <DisputesPage
+        onBack={() =>
+          setCurrentPage(
+            "me"
+          )
+        }
+      />
+    );
+  }
+
+  /*
    * ME PAGE
    */
 
@@ -1706,6 +1718,11 @@ const Dashboard = () => {
         onPaymentPinClick={() =>
           setCurrentPage(
             "payment-pin"
+          )
+        }
+        onDisputesClick={() =>
+          setCurrentPage(
+            "disputes"
           )
         }
       />

@@ -8,7 +8,6 @@ import React, {
 import {
   Activity,
   ArrowDownToLine,
-  ArrowUpFromLine,
   Building2,
   CheckCircle2,
   ChevronLeft,
@@ -34,7 +33,6 @@ import { Input } from "@/components/ui/input";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 
-
 interface AdminTransaction {
   id: string;
   user_id: string;
@@ -51,7 +49,6 @@ interface AdminTransaction {
   reference_number: string;
 
   created_at: string | null;
-
   updated_at: string | null;
 
   currency: string;
@@ -67,29 +64,22 @@ interface AdminTransaction {
   completed_at: string | null;
 
   chargeback_status: string | null;
-
   chargeback_amount: number | string | null;
-
   chargeback_reference: string | null;
-
   chargeback_at: string | null;
 
   user_full_name: string | null;
-
   user_email: string | null;
-
   user_phone: string | null;
 
   total_count: number;
 }
 
-
 const PAGE_SIZE = 25;
 
-
-// ============================================================
-// HELPERS
-// ============================================================
+/* ============================================================
+ * HELPERS
+ * ============================================================ */
 
 const formatMoney = (
   amount: number | string,
@@ -97,46 +87,34 @@ const formatMoney = (
 ) => {
   const value = Number(amount || 0);
 
-  return new Intl.NumberFormat(
-    "en-NG",
-    {
-      style: "currency",
-      currency,
-      maximumFractionDigits: 2,
-    },
-  ).format(value);
+  return new Intl.NumberFormat("en-NG", {
+    style: "currency",
+    currency,
+    maximumFractionDigits: 2,
+  }).format(value);
 };
 
+const formatDate = (value: string | null) => {
+  if (!value) return "—";
 
-const formatDate = (
-  value: string | null,
-) => {
-  if (!value) {
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
     return "—";
   }
 
-  return new Intl.DateTimeFormat(
-    "en-NG",
-    {
-      dateStyle: "medium",
-      timeStyle: "short",
-    },
-  ).format(new Date(value));
+  return new Intl.DateTimeFormat("en-NG", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(date);
 };
 
-
-const normalizeStatus = (
-  status: string,
-) => {
-  return String(status || "")
+const normalizeStatus = (status: string) =>
+  String(status || "")
     .trim()
     .toLowerCase();
-};
 
-
-const statusClasses = (
-  status: string,
-) => {
+const statusClasses = (status: string) => {
   switch (normalizeStatus(status)) {
     case "completed":
     case "successful":
@@ -159,67 +137,47 @@ const statusClasses = (
   }
 };
 
-
-const statusIcon = (
-  status: string,
-) => {
+const statusIcon = (status: string) => {
   switch (normalizeStatus(status)) {
     case "completed":
     case "successful":
     case "success":
-      return (
-        <CheckCircle2 className="h-3.5 w-3.5" />
-      );
+      return <CheckCircle2 className="h-3.5 w-3.5" />;
 
     case "pending":
     case "processing":
     case "queued":
-      return (
-        <Clock3 className="h-3.5 w-3.5" />
-      );
+      return <Clock3 className="h-3.5 w-3.5" />;
 
     case "failed":
     case "cancelled":
     case "canceled":
     case "reversed":
-      return (
-        <XCircle className="h-3.5 w-3.5" />
-      );
+      return <XCircle className="h-3.5 w-3.5" />;
 
     default:
-      return (
-        <Activity className="h-3.5 w-3.5" />
-      );
+      return <Activity className="h-3.5 w-3.5" />;
   }
 };
 
-
-const transactionTypeLabel = (
-  value: string,
-) => {
+const transactionTypeLabel = (value: string) => {
   return String(value || "")
     .replace(/_/g, " ")
-    .replace(/\b\w/g, (char) =>
-      char.toUpperCase(),
-    );
+    .replace(/\b\w/g, (char) => char.toUpperCase());
 };
 
-
-// ============================================================
-// METADATA HELPERS
-// ============================================================
+/* ============================================================
+ * METADATA HELPERS
+ * ============================================================ */
 
 const getMetadata = (
   transaction: AdminTransaction,
-) => {
-  return (
-    transaction.metadata &&
+): Record<string, any> => {
+  return transaction.metadata &&
     typeof transaction.metadata === "object"
-      ? transaction.metadata
-      : {}
-  );
+    ? transaction.metadata
+    : {};
 };
-
 
 const getMetadataValue = (
   transaction: AdminTransaction,
@@ -228,7 +186,7 @@ const getMetadataValue = (
   const metadata = getMetadata(transaction);
 
   for (const key of keys) {
-    const value = metadata?.[key];
+    const value = metadata[key];
 
     if (
       value !== undefined &&
@@ -242,49 +200,36 @@ const getMetadataValue = (
   return null;
 };
 
-
 const isBankTransfer = (
   transaction: AdminTransaction,
 ) => {
   const metadata = getMetadata(transaction);
 
   return (
-    transaction.transaction_type ===
-      "transfer" &&
+    transaction.transaction_type === "transfer" &&
     (
       transaction.category === "transfer" ||
-      metadata.transaction_type ===
-        "bank_transfer" ||
-      metadata.counterparty_type ===
-        "bank_account" ||
+      metadata.transaction_type === "bank_transfer" ||
+      metadata.counterparty_type === "bank_account" ||
       Boolean(
         metadata.account_number ||
         metadata.account_number_masked ||
-        metadata.account_bank
+        metadata.account_bank ||
+        metadata.bank_code
       )
     )
   );
 };
 
+const maskAccountNumber = (accountNumber: string) => {
+  const clean = String(accountNumber || "").replace(/\D/g, "");
 
-const maskAccountNumber = (
-  accountNumber: string,
-) => {
-  const clean =
-    String(accountNumber || "")
-      .replace(/\D/g, "");
+  if (!clean) return "—";
 
-  if (!clean) {
-    return "—";
-  }
-
-  if (clean.length < 4) {
-    return clean;
-  }
+  if (clean.length < 4) return clean;
 
   return `xxxxxx${clean.slice(-4)}`;
 };
-
 
 const getRecipientName = (
   transaction: AdminTransaction,
@@ -300,11 +245,9 @@ const getRecipientName = (
       "accountName",
       "bank_account_name",
       "counterparty_name",
-    ) ||
-    "Unknown recipient"
+    ) || "Unknown recipient"
   );
 };
-
 
 const getRecipientBank = (
   transaction: AdminTransaction,
@@ -328,26 +271,29 @@ const getRecipientBank = (
   );
 };
 
-
 const getRecipientAccount = (
   transaction: AdminTransaction,
 ) => {
-  const raw =
-    getMetadataValue(
-      transaction,
-      "account_number",
-      "accountNumber",
-    );
+  const raw = getMetadataValue(
+    transaction,
+    "account_number",
+    "accountNumber",
+    "account_number_masked",
+  );
 
-  if (!raw) {
-    return "—";
+  if (!raw) return "—";
+
+  const value = String(raw);
+
+  if (
+    value.toLowerCase().includes("x") ||
+    value.includes("*")
+  ) {
+    return value;
   }
 
-  return maskAccountNumber(
-    String(raw),
-  );
+  return maskAccountNumber(value);
 };
-
 
 const getRecipientWalletId = (
   transaction: AdminTransaction,
@@ -361,7 +307,6 @@ const getRecipientWalletId = (
   );
 };
 
-
 const getRecipientEmail = (
   transaction: AdminTransaction,
 ) => {
@@ -373,7 +318,6 @@ const getRecipientEmail = (
     "beneficiaryEmail",
   );
 };
-
 
 const getRecipientPhone = (
   transaction: AdminTransaction,
@@ -387,45 +331,12 @@ const getRecipientPhone = (
   );
 };
 
-
-const copyToClipboard = async (
-  value: string,
-  label: string,
-  toast: ReturnType<typeof useToast>["toast"],
-) => {
-  try {
-    await navigator.clipboard.writeText(
-      value,
-    );
-
-    toast({
-      title: "Copied",
-      description:
-        `${label} copied to clipboard.`,
-    });
-  } catch (error) {
-    console.error(
-      "Clipboard copy failed:",
-      error,
-    );
-
-    toast({
-      title: "Copy failed",
-      description:
-        `Unable to copy ${label}.`,
-      variant: "destructive",
-    });
-  }
-};
-
-
-// ============================================================
-// COMPONENT
-// ============================================================
+/* ============================================================
+ * COMPONENT
+ * ============================================================ */
 
 const AdminTransactionsPage = () => {
   const { toast } = useToast();
-
 
   const [transactions, setTransactions] =
     useState<AdminTransaction[]>([]);
@@ -462,140 +373,105 @@ const AdminTransactionsPage = () => {
   const [
     selectedTransaction,
     setSelectedTransaction,
-  ] =
-    useState<AdminTransaction | null>(
-      null,
-    );
+  ] = useState<AdminTransaction | null>(null);
 
+  /* ==========================================================
+   * PAGINATION
+   * ========================================================== */
 
   const totalPages = useMemo(() => {
     return Math.max(
       1,
-      Math.ceil(
-        totalCount / PAGE_SIZE,
-      ),
+      Math.ceil(totalCount / PAGE_SIZE),
     );
   }, [totalCount]);
 
+  /* ==========================================================
+   * FETCH
+   * ========================================================== */
 
-  // ==========================================================
-  // FETCH TRANSACTIONS
-  // ==========================================================
+  const fetchTransactions = useCallback(
+    async (showRefresh = false) => {
+      if (showRefresh) {
+        setRefreshing(true);
+      } else {
+        setLoading(true);
+      }
 
-  const fetchTransactions =
-    useCallback(
-      async (
-        showRefresh = false,
-      ) => {
-        if (showRefresh) {
-          setRefreshing(true);
-        } else {
-          setLoading(true);
+      try {
+        const {
+          data,
+          error,
+        } = await supabase.rpc(
+          "admin_get_transactions",
+          {
+            p_page: page,
+            p_page_size: PAGE_SIZE,
+            p_search: search.trim() || null,
+            p_status: status || null,
+            p_transaction_type:
+              transactionType || null,
+            p_category: category || null,
+            p_date_from: null,
+            p_date_to: null,
+          },
+        );
+
+        if (error) {
+          throw error;
         }
 
-        try {
-          const {
-            data,
-            error,
-          } = await supabase.rpc(
-            "admin_get_transactions",
-            {
-              p_page: page,
+        const rows =
+          (data || []) as AdminTransaction[];
 
-              p_page_size:
-                PAGE_SIZE,
+        setTransactions(rows);
 
-              p_search:
-                search.trim() || null,
+        setTotalCount(
+          Number(rows[0]?.total_count || 0),
+        );
+      } catch (error: any) {
+        console.error(
+          "Admin transactions fetch failed:",
+          error,
+        );
 
-              p_status:
-                status || null,
+        toast({
+          title: "Unable to load transactions",
+          description:
+            error?.message ||
+            "Something went wrong while loading transactions.",
+          variant: "destructive",
+        });
 
-              p_transaction_type:
-                transactionType ||
-                null,
-
-              p_category:
-                category || null,
-
-              p_date_from:
-                null,
-
-              p_date_to:
-                null,
-            },
-          );
-
-          if (error) {
-            throw error;
-          }
-
-          const rows =
-            (data || []) as
-              AdminTransaction[];
-
-          setTransactions(rows);
-
-          setTotalCount(
-            Number(
-              rows[0]?.total_count ||
-                0,
-            ),
-          );
-        } catch (error: any) {
-          console.error(
-            "Admin transactions fetch failed:",
-            error,
-          );
-
-          toast({
-            title:
-              "Unable to load transactions",
-
-            description:
-              error?.message ||
-              "Something went wrong while loading transactions.",
-
-            variant:
-              "destructive",
-          });
-
-          setTransactions([]);
-
-          setTotalCount(0);
-        } finally {
-          setLoading(false);
-          setRefreshing(false);
-        }
-      },
-      [
-        page,
-        search,
-        status,
-        transactionType,
-        category,
-        toast,
-      ],
-    );
-
+        setTransactions([]);
+        setTotalCount(0);
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
+      }
+    },
+    [
+      page,
+      search,
+      status,
+      transactionType,
+      category,
+      toast,
+    ],
+  );
 
   useEffect(() => {
     fetchTransactions();
   }, [fetchTransactions]);
 
-
-  // ==========================================================
-  // SEARCH / FILTERS
-  // ==========================================================
+  /* ==========================================================
+   * SEARCH / FILTERS
+   * ========================================================== */
 
   const handleSearch = () => {
     setPage(1);
-
-    setSearch(
-      searchInput.trim(),
-    );
+    setSearch(searchInput.trim());
   };
-
 
   const clearFilters = () => {
     setSearchInput("");
@@ -606,35 +482,57 @@ const AdminTransactionsPage = () => {
     setPage(1);
   };
 
-
-  const hasFilters =
-    Boolean(
-      search ||
+  const hasFilters = Boolean(
+    search ||
       status ||
       transactionType ||
       category,
-    );
+  );
 
+  /* ==========================================================
+   * CLIPBOARD
+   * ========================================================== */
 
-  // ==========================================================
-  // RENDER
-  // ==========================================================
+  const copyToClipboard = async (
+    value: string,
+    label: string,
+  ) => {
+    try {
+      await navigator.clipboard.writeText(value);
+
+      toast({
+        title: "Copied",
+        description:
+          `${label} copied to clipboard.`,
+      });
+    } catch (error) {
+      console.error(
+        "Clipboard copy failed:",
+        error,
+      );
+
+      toast({
+        title: "Copy failed",
+        description:
+          `Unable to copy ${label}.`,
+        variant: "destructive",
+      });
+    }
+  };
+
+  /* ==========================================================
+   * RENDER
+   * ========================================================== */
 
   return (
     <AdminLayout>
-
       <div className="p-4 sm:p-6 lg:p-8 space-y-6">
 
-        {/* ==================================================
-            HEADER
-        ================================================== */}
+        {/* HEADER */}
 
         <section>
-
           <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-
             <div>
-
               <h2 className="text-2xl font-bold text-gray-900">
                 Transactions
               </h2>
@@ -643,9 +541,7 @@ const AdminTransactionsPage = () => {
                 Monitor customer wallet and payment
                 transactions across IyanjuPay.
               </p>
-
             </div>
-
 
             <Button
               type="button"
@@ -654,12 +550,10 @@ const AdminTransactionsPage = () => {
                 fetchTransactions(true)
               }
               disabled={
-                loading ||
-                refreshing
+                loading || refreshing
               }
               className="w-full sm:w-auto"
             >
-
               {refreshing ? (
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
               ) : (
@@ -667,37 +561,24 @@ const AdminTransactionsPage = () => {
               )}
 
               Refresh
-
             </Button>
-
           </div>
-
         </section>
 
-
-        {/* ==================================================
-            FILTERS
-        ================================================== */}
+        {/* FILTERS */}
 
         <section className="bg-white border rounded-2xl p-4">
-
           <div className="flex items-center gap-2 mb-4">
-
             <Filter className="h-4 w-4 text-purple-600" />
 
             <h3 className="font-semibold text-gray-900">
               Transaction Filters
             </h3>
-
           </div>
-
 
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-3">
 
-            {/* SEARCH */}
-
             <div className="xl:col-span-2 relative">
-
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
 
               <Input
@@ -717,24 +598,16 @@ const AdminTransactionsPage = () => {
                 placeholder="Search reference, customer, email, recipient..."
                 className="pl-9"
               />
-
             </div>
-
-
-            {/* STATUS */}
 
             <select
               value={status}
               onChange={(event) => {
-                setStatus(
-                  event.target.value,
-                );
-
+                setStatus(event.target.value);
                 setPage(1);
               }}
               className="h-10 rounded-md border border-input bg-background px-3 text-sm"
             >
-
               <option value="">
                 All statuses
               </option>
@@ -755,6 +628,10 @@ const AdminTransactionsPage = () => {
                 Processing
               </option>
 
+              <option value="queued">
+                Queued
+              </option>
+
               <option value="failed">
                 Failed
               </option>
@@ -763,10 +640,10 @@ const AdminTransactionsPage = () => {
                 Reversed
               </option>
 
+              <option value="cancelled">
+                Cancelled
+              </option>
             </select>
-
-
-            {/* TYPE */}
 
             <select
               value={transactionType}
@@ -779,7 +656,6 @@ const AdminTransactionsPage = () => {
               }}
               className="h-10 rounded-md border border-input bg-background px-3 text-sm"
             >
-
               <option value="">
                 All transaction types
               </option>
@@ -815,11 +691,7 @@ const AdminTransactionsPage = () => {
               <option value="internet">
                 Internet
               </option>
-
             </select>
-
-
-            {/* CATEGORY */}
 
             <select
               value={category}
@@ -832,7 +704,6 @@ const AdminTransactionsPage = () => {
               }}
               className="h-10 rounded-md border border-input bg-background px-3 text-sm"
             >
-
               <option value="">
                 All categories
               </option>
@@ -868,69 +739,44 @@ const AdminTransactionsPage = () => {
               <option value="internet">
                 Internet
               </option>
-
             </select>
-
           </div>
 
-
           <div className="flex flex-wrap items-center gap-2 mt-3">
-
             <Button
               type="button"
               size="sm"
-              onClick={
-                handleSearch
-              }
+              onClick={handleSearch}
             >
-
               <Search className="h-4 w-4 mr-2" />
-
               Search
-
             </Button>
-
 
             {hasFilters && (
               <Button
                 type="button"
                 size="sm"
                 variant="ghost"
-                onClick={
-                  clearFilters
-                }
+                onClick={clearFilters}
               >
-
                 <XCircle className="h-4 w-4 mr-2" />
-
                 Clear filters
-
               </Button>
             )}
-
           </div>
-
         </section>
 
-
-        {/* ==================================================
-            SUMMARY
-        ================================================== */}
+        {/* SUMMARY */}
 
         <section className="grid grid-cols-1 sm:grid-cols-3 gap-4">
 
           <div className="bg-white border rounded-2xl p-5">
-
             <div className="flex items-center gap-3">
-
               <div className="w-10 h-10 rounded-xl bg-purple-100 flex items-center justify-center">
-
                 <Activity className="h-5 w-5 text-purple-600" />
-
               </div>
 
               <div>
-
                 <p className="text-xs text-gray-500">
                   Matching Transactions
                 </p>
@@ -938,26 +784,17 @@ const AdminTransactionsPage = () => {
                 <p className="text-xl font-bold text-gray-900">
                   {totalCount.toLocaleString()}
                 </p>
-
               </div>
-
             </div>
-
           </div>
 
-
           <div className="bg-white border rounded-2xl p-5">
-
             <div className="flex items-center gap-3">
-
               <div className="w-10 h-10 rounded-xl bg-green-100 flex items-center justify-center">
-
                 <ArrowDownToLine className="h-5 w-5 text-green-600" />
-
               </div>
 
               <div>
-
                 <p className="text-xs text-gray-500">
                   Current Page
                 </p>
@@ -965,26 +802,17 @@ const AdminTransactionsPage = () => {
                 <p className="text-xl font-bold text-gray-900">
                   {transactions.length.toLocaleString()}
                 </p>
-
               </div>
-
             </div>
-
           </div>
 
-
           <div className="bg-white border rounded-2xl p-5">
-
             <div className="flex items-center gap-3">
-
               <div className="w-10 h-10 rounded-xl bg-blue-100 flex items-center justify-center">
-
                 <Activity className="h-5 w-5 text-blue-600" />
-
               </div>
 
               <div>
-
                 <p className="text-xs text-gray-500">
                   Page
                 </p>
@@ -992,24 +820,17 @@ const AdminTransactionsPage = () => {
                 <p className="text-xl font-bold text-gray-900">
                   {page} / {totalPages}
                 </p>
-
               </div>
-
             </div>
-
           </div>
 
         </section>
 
-
-        {/* ==================================================
-            TABLE
-        ================================================== */}
+        {/* TABLE */}
 
         <section className="bg-white border rounded-2xl overflow-hidden">
 
           <div className="px-5 py-4 border-b">
-
             <h3 className="font-bold text-gray-900">
               Transaction Records
             </h3>
@@ -1017,32 +838,19 @@ const AdminTransactionsPage = () => {
             <p className="text-xs text-gray-500 mt-1">
               Latest transactions appear first.
             </p>
-
           </div>
 
-
           {loading ? (
-
             <div className="py-20 flex items-center justify-center">
-
               <div className="flex items-center gap-2 text-sm text-gray-500">
-
                 <Loader2 className="h-5 w-5 animate-spin text-purple-600" />
-
                 Loading transactions...
-
               </div>
-
             </div>
-
           ) : transactions.length === 0 ? (
-
             <div className="py-20 text-center">
-
               <div className="w-12 h-12 rounded-xl bg-gray-100 flex items-center justify-center mx-auto">
-
                 <Activity className="h-6 w-6 text-gray-400" />
-
               </div>
 
               <p className="font-semibold text-gray-900 mt-4">
@@ -1052,19 +860,12 @@ const AdminTransactionsPage = () => {
               <p className="text-sm text-gray-500 mt-1">
                 Try changing your search or filters.
               </p>
-
             </div>
-
           ) : (
-
             <div className="overflow-x-auto">
-
               <table className="w-full text-sm">
-
                 <thead className="bg-gray-50 border-b">
-
                   <tr>
-
                     <th className="text-left px-5 py-3 font-semibold text-gray-500 whitespace-nowrap">
                       Transaction
                     </th>
@@ -1096,68 +897,38 @@ const AdminTransactionsPage = () => {
                     <th className="text-right px-5 py-3 font-semibold text-gray-500">
                       Action
                     </th>
-
                   </tr>
-
                 </thead>
 
-
                 <tbody className="divide-y">
-
                   {transactions.map(
                     (transaction) => {
-
                       const bankTransfer =
                         isBankTransfer(
                           transaction,
                         );
 
-                      const recipientName =
-                        getRecipientName(
-                          transaction,
-                        );
-
-                      const recipientBank =
-                        getRecipientBank(
-                          transaction,
-                        );
-
-                      const recipientAccount =
-                        getRecipientAccount(
-                          transaction,
-                        );
-
                       return (
                         <tr
-                          key={
-                            transaction.id
-                          }
+                          key={transaction.id}
                           className="hover:bg-gray-50 transition"
                         >
 
                           {/* TRANSACTION */}
 
                           <td className="px-5 py-4">
-
                             <div className="max-w-[220px]">
-
                               <p className="font-semibold text-gray-900 truncate">
-
-                                {
-                                  transaction.description ||
+                                {transaction.description ||
                                   transactionTypeLabel(
                                     transaction.transaction_type,
-                                  )
-                                }
-
+                                  )}
                               </p>
 
                               <p className="text-[11px] text-gray-400 font-mono mt-1 truncate">
-
                                 {
                                   transaction.reference_number
                                 }
-
                               </p>
 
                               {transaction.provider && (
@@ -1167,103 +938,67 @@ const AdminTransactionsPage = () => {
                                   }
                                 </p>
                               )}
-
                             </div>
-
                           </td>
-
 
                           {/* CUSTOMER */}
 
                           <td className="px-5 py-4">
-
                             <div className="max-w-[190px]">
-
                               <p className="font-medium text-gray-900 truncate">
-
-                                {
-                                  transaction.user_full_name ||
-                                  "Unknown customer"
-                                }
-
+                                {transaction.user_full_name ||
+                                  "Unknown customer"}
                               </p>
 
                               <p className="text-[11px] text-gray-400 truncate mt-1">
-
-                                {
-                                  transaction.user_email ||
+                                {transaction.user_email ||
                                   transaction.user_phone ||
-                                  "—"
-                                }
-
+                                  "—"}
                               </p>
-
                             </div>
-
                           </td>
-
 
                           {/* RECIPIENT */}
 
                           <td className="px-5 py-4">
-
                             {bankTransfer ? (
-
                               <div className="max-w-[220px]">
-
                                 <div className="flex items-center gap-2">
-
                                   <Building2 className="h-4 w-4 text-purple-500 shrink-0" />
 
                                   <p className="font-semibold text-gray-900 truncate">
-                                    {
-                                      recipientName
-                                    }
+                                    {getRecipientName(
+                                      transaction,
+                                    )}
                                   </p>
-
                                 </div>
 
                                 <p className="text-[11px] text-gray-500 mt-1 truncate">
-
-                                  {
-                                    recipientBank
-                                  }
-
+                                  {getRecipientBank(
+                                    transaction,
+                                  )}
                                 </p>
 
                                 <p className="text-[11px] text-gray-400 font-mono mt-1">
-
-                                  {
-                                    recipientAccount
-                                  }
-
+                                  {getRecipientAccount(
+                                    transaction,
+                                  )}
                                 </p>
-
                               </div>
-
                             ) : (
-
                               <span className="text-gray-400">
                                 —
                               </span>
-
                             )}
-
                           </td>
-
 
                           {/* TYPE */}
 
                           <td className="px-5 py-4 whitespace-nowrap">
-
                             <span className="text-gray-700">
-
-                              {
-                                transactionTypeLabel(
-                                  transaction.transaction_type,
-                                )
-                              }
-
+                              {transactionTypeLabel(
+                                transaction.transaction_type,
+                              )}
                             </span>
 
                             {transaction.category && (
@@ -1273,32 +1008,22 @@ const AdminTransactionsPage = () => {
                                 }
                               </p>
                             )}
-
                           </td>
-
 
                           {/* AMOUNT */}
 
                           <td className="px-5 py-4 text-right whitespace-nowrap">
-
                             <span className="font-bold text-gray-900">
-
-                              {
-                                formatMoney(
-                                  transaction.amount,
-                                  transaction.currency,
-                                )
-                              }
-
+                              {formatMoney(
+                                transaction.amount,
+                                transaction.currency,
+                              )}
                             </span>
-
                           </td>
-
 
                           {/* STATUS */}
 
                           <td className="px-5 py-4 whitespace-nowrap">
-
                             <span
                               className={`
                                 inline-flex
@@ -1314,43 +1039,27 @@ const AdminTransactionsPage = () => {
                                 )}
                               `}
                             >
+                              {statusIcon(
+                                transaction.status,
+                              )}
 
-                              {
-                                statusIcon(
-                                  transaction.status,
-                                )
-                              }
-
-                              {
-                                transaction.status
-                              }
-
+                              {transaction.status}
                             </span>
-
                           </td>
-
 
                           {/* DATE */}
 
                           <td className="px-5 py-4 whitespace-nowrap">
-
                             <span className="text-gray-600 text-xs">
-
-                              {
-                                formatDate(
-                                  transaction.created_at,
-                                )
-                              }
-
+                              {formatDate(
+                                transaction.created_at,
+                              )}
                             </span>
-
                           </td>
-
 
                           {/* ACTION */}
 
                           <td className="px-5 py-4 text-right">
-
                             <Button
                               type="button"
                               variant="ghost"
@@ -1361,81 +1070,47 @@ const AdminTransactionsPage = () => {
                                 )
                               }
                             >
-
                               <Eye className="h-4 w-4 mr-1" />
-
                               View
-
                             </Button>
-
                           </td>
 
                         </tr>
                       );
                     },
                   )}
-
                 </tbody>
-
               </table>
-
             </div>
-
           )}
 
-
-          {/* ==================================================
-              PAGINATION
-          ================================================== */}
+          {/* PAGINATION */}
 
           {!loading &&
             transactions.length > 0 && (
-
               <div className="border-t px-5 py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
 
                 <p className="text-xs text-gray-500">
-
                   Showing{" "}
-
                   <span className="font-semibold text-gray-700">
-
-                    {
-                      (page - 1) *
+                    {(page - 1) *
                       PAGE_SIZE +
-                      1
-                    }
-
+                      1}
                   </span>{" "}
-
-                  –
-
+                  –{" "}
                   <span className="font-semibold text-gray-700">
-
-                    {
-                      Math.min(
-                        page *
-                          PAGE_SIZE,
-                        totalCount,
-                      )
-                    }
-
+                    {Math.min(
+                      page * PAGE_SIZE,
+                      totalCount,
+                    )}
                   </span>{" "}
-
                   of{" "}
-
                   <span className="font-semibold text-gray-700">
-
-                    {
-                      totalCount
-                    }
-
+                    {totalCount}
                   </span>
-
                 </p>
 
-
                 <div className="flex items-center gap-2">
-
                   <Button
                     type="button"
                     variant="outline"
@@ -1445,30 +1120,21 @@ const AdminTransactionsPage = () => {
                       loading
                     }
                     onClick={() =>
-                      setPage(
-                        (value) =>
-                          Math.max(
-                            1,
-                            value - 1,
-                          ),
+                      setPage((value) =>
+                        Math.max(
+                          1,
+                          value - 1,
+                        ),
                       )
                     }
                   >
-
                     <ChevronLeft className="h-4 w-4 mr-1" />
-
                     Previous
-
                   </Button>
 
-
                   <span className="text-xs text-gray-500 px-2">
-
-                    {page} /{" "}
-                    {totalPages}
-
+                    {page} / {totalPages}
                   </span>
-
 
                   <Button
                     type="button"
@@ -1480,72 +1146,55 @@ const AdminTransactionsPage = () => {
                       loading
                     }
                     onClick={() =>
-                      setPage(
-                        (value) =>
-                          Math.min(
-                            totalPages,
-                            value + 1,
-                          ),
+                      setPage((value) =>
+                        Math.min(
+                          totalPages,
+                          value + 1,
+                        ),
                       )
                     }
                   >
-
                     Next
-
                     <ChevronRight className="h-4 w-4 ml-1" />
-
                   </Button>
-
                 </div>
 
               </div>
             )}
-
         </section>
 
-
-        {/* ==================================================
+        {/* ====================================================
             TRANSACTION DETAILS MODAL
-        ================================================== */}
+        ==================================================== */}
 
         {selectedTransaction && (
-
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
 
             <button
               type="button"
               aria-label="Close transaction details"
               onClick={() =>
-                setSelectedTransaction(
-                  null,
-                )
+                setSelectedTransaction(null)
               }
               className="absolute inset-0 bg-black/40"
             />
-
 
             <div className="relative w-full max-w-3xl max-h-[90vh] overflow-y-auto bg-white rounded-2xl shadow-xl">
 
               {/* MODAL HEADER */}
 
               <div className="sticky top-0 z-10 bg-white border-b px-5 py-4 flex items-center justify-between">
-
                 <div>
-
                   <h3 className="font-bold text-gray-900">
                     Transaction Details
                   </h3>
 
                   <p className="text-xs text-gray-400 mt-1 font-mono">
-
                     {
                       selectedTransaction.reference_number
                     }
-
                   </p>
-
                 </div>
-
 
                 <Button
                   type="button"
@@ -1557,37 +1206,25 @@ const AdminTransactionsPage = () => {
                     )
                   }
                 >
-
                   <XCircle className="h-5 w-5" />
-
                 </Button>
-
               </div>
-
 
               <div className="p-5 space-y-5">
 
-                {/* ==================================================
-                    AMOUNT
-                ================================================== */}
+                {/* AMOUNT */}
 
                 <div className="rounded-2xl bg-gray-50 border p-5 text-center">
-
                   <p className="text-xs text-gray-500">
                     Transaction Amount
                   </p>
 
                   <p className="text-3xl font-bold text-gray-900 mt-2">
-
-                    {
-                      formatMoney(
-                        selectedTransaction.amount,
-                        selectedTransaction.currency,
-                      )
-                    }
-
+                    {formatMoney(
+                      selectedTransaction.amount,
+                      selectedTransaction.currency,
+                    )}
                   </p>
-
 
                   <span
                     className={`
@@ -1605,97 +1242,68 @@ const AdminTransactionsPage = () => {
                       )}
                     `}
                   >
-
-                    {
-                      statusIcon(
-                        selectedTransaction.status,
-                      )
-                    }
+                    {statusIcon(
+                      selectedTransaction.status,
+                    )}
 
                     {
                       selectedTransaction.status
                     }
-
                   </span>
-
                 </div>
 
-
-                {/* ==================================================
-                    CUSTOMER
-                ================================================== */}
+                {/* CUSTOMER */}
 
                 <div className="rounded-2xl border p-5">
-
                   <div className="flex items-center gap-2 mb-4">
-
                     <User className="h-4 w-4 text-purple-600" />
 
                     <h4 className="font-bold text-gray-900">
                       Customer
                     </h4>
-
                   </div>
-
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
 
                     <div>
-
                       <p className="text-xs text-gray-400">
                         Full Name
                       </p>
 
                       <p className="text-sm font-semibold text-gray-900 mt-1">
-                        {
-                          selectedTransaction.user_full_name ||
-                          "Unknown customer"
-                        }
+                        {selectedTransaction.user_full_name ||
+                          "Unknown customer"}
                       </p>
-
                     </div>
 
-
                     <div>
-
                       <p className="text-xs text-gray-400">
                         Email
                       </p>
 
                       <p className="text-sm font-semibold text-gray-900 mt-1 break-all">
-                        {
-                          selectedTransaction.user_email ||
-                          "—"
-                        }
+                        {selectedTransaction.user_email ||
+                          "—"}
                       </p>
-
                     </div>
 
-
                     <div>
-
                       <p className="text-xs text-gray-400">
                         Phone
                       </p>
 
                       <p className="text-sm font-semibold text-gray-900 mt-1">
-                        {
-                          selectedTransaction.user_phone ||
-                          "—"
-                        }
+                        {selectedTransaction.user_phone ||
+                          "—"}
                       </p>
-
                     </div>
 
-
                     <div>
-
                       <p className="text-xs text-gray-400">
                         User ID
                       </p>
 
                       <div className="flex items-center gap-2 mt-1">
-
                         <p className="text-xs font-mono text-gray-700 break-all">
                           {
                             selectedTransaction.user_id
@@ -1709,40 +1317,28 @@ const AdminTransactionsPage = () => {
                             copyToClipboard(
                               selectedTransaction.user_id,
                               "User ID",
-                              toast,
                             )
                           }
                         >
-
                           <Copy className="h-3.5 w-3.5" />
-
                         </button>
-
                       </div>
-
                     </div>
 
                   </div>
-
                 </div>
 
-
-                {/* ==================================================
-                    RECIPIENT
-                ================================================== */}
+                {/* RECIPIENT */}
 
                 {isBankTransfer(
                   selectedTransaction,
                 ) && (
-
                   <div className="rounded-2xl border border-purple-200 bg-purple-50/40 p-5">
 
                     <div className="flex items-center gap-2 mb-4">
-
                       <Building2 className="h-5 w-5 text-purple-600" />
 
                       <div>
-
                         <h4 className="font-bold text-gray-900">
                           Recipient Details
                         </h4>
@@ -1750,98 +1346,69 @@ const AdminTransactionsPage = () => {
                         <p className="text-xs text-gray-500">
                           Information required for transfer investigation and recipient support.
                         </p>
-
                       </div>
-
                     </div>
-
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
 
-                      {/* RECIPIENT NAME */}
-
                       <div className="bg-white rounded-xl border p-3">
-
                         <p className="text-[11px] text-gray-400">
                           Recipient Name
                         </p>
 
                         <p className="text-sm font-semibold text-gray-900 mt-1">
-                          {
-                            getRecipientName(
-                              selectedTransaction,
-                            )
-                          }
+                          {getRecipientName(
+                            selectedTransaction,
+                          )}
                         </p>
-
                       </div>
 
-
-                      {/* BANK */}
-
                       <div className="bg-white rounded-xl border p-3">
-
                         <p className="text-[11px] text-gray-400">
                           Recipient Bank
                         </p>
 
                         <p className="text-sm font-semibold text-gray-900 mt-1">
-                          {
-                            getRecipientBank(
-                              selectedTransaction,
-                            )
-                          }
+                          {getRecipientBank(
+                            selectedTransaction,
+                          )}
                         </p>
-
                       </div>
 
-
-                      {/* ACCOUNT */}
-
                       <div className="bg-white rounded-xl border p-3">
-
                         <p className="text-[11px] text-gray-400">
                           Account Number
                         </p>
 
                         <p className="text-sm font-mono font-semibold text-gray-900 mt-1">
-                          {
-                            getRecipientAccount(
-                              selectedTransaction,
-                            )
-                          }
+                          {getRecipientAccount(
+                            selectedTransaction,
+                          )}
                         </p>
-
                       </div>
-
-
-                      {/* RECIPIENT WALLET ID */}
 
                       {getRecipientWalletId(
                         selectedTransaction,
                       ) && (
-
                         <div className="bg-white rounded-xl border p-3">
-
                           <p className="text-[11px] text-gray-400">
                             Recipient Wallet ID
                           </p>
 
                           <div className="flex items-center gap-2 mt-1">
-
                             <Wallet className="h-4 w-4 text-purple-500" />
 
-                            <p className="text-sm font-mono font-semibold text-gray-900">
-                              {
+                            <p className="text-sm font-mono font-semibold text-gray-900 break-all">
+                              {String(
                                 getRecipientWalletId(
                                   selectedTransaction,
-                                )
-                              }
+                                ),
+                              )}
                             </p>
 
                             <button
                               type="button"
-                              className="text-gray-400 hover:text-gray-700"
+                              className="text-gray-400 hover:text-gray-700 shrink-0"
                               onClick={() =>
                                 copyToClipboard(
                                   String(
@@ -1850,90 +1417,62 @@ const AdminTransactionsPage = () => {
                                     ),
                                   ),
                                   "Recipient Wallet ID",
-                                  toast,
                                 )
                               }
                             >
-
                               <Copy className="h-3.5 w-3.5" />
-
                             </button>
-
                           </div>
-
                         </div>
-
                       )}
-
-
-                      {/* RECIPIENT EMAIL */}
 
                       {getRecipientEmail(
                         selectedTransaction,
                       ) && (
-
                         <div className="bg-white rounded-xl border p-3">
-
                           <p className="text-[11px] text-gray-400">
                             Recipient Email
                           </p>
 
                           <div className="flex items-center gap-2 mt-1">
-
-                            <Mail className="h-4 w-4 text-gray-400" />
+                            <Mail className="h-4 w-4 text-gray-400 shrink-0" />
 
                             <p className="text-sm font-semibold text-gray-900 break-all">
-                              {
+                              {String(
                                 getRecipientEmail(
                                   selectedTransaction,
-                                )
-                              }
+                                ),
+                              )}
                             </p>
-
                           </div>
-
                         </div>
-
                       )}
-
-
-                      {/* RECIPIENT PHONE */}
 
                       {getRecipientPhone(
                         selectedTransaction,
                       ) && (
-
                         <div className="bg-white rounded-xl border p-3">
-
                           <p className="text-[11px] text-gray-400">
                             Recipient Phone
                           </p>
 
                           <div className="flex items-center gap-2 mt-1">
-
-                            <Phone className="h-4 w-4 text-gray-400" />
+                            <Phone className="h-4 w-4 text-gray-400 shrink-0" />
 
                             <p className="text-sm font-semibold text-gray-900">
-                              {
+                              {String(
                                 getRecipientPhone(
                                   selectedTransaction,
-                                )
-                              }
+                                ),
+                              )}
                             </p>
-
                           </div>
-
                         </div>
-
                       )}
 
                     </div>
 
-
-                    {/* SUPPORT NOTE */}
-
                     <div className="mt-4 rounded-xl bg-white border p-4">
-
                       <p className="text-xs font-semibold text-gray-700">
                         Recipient support
                       </p>
@@ -1941,106 +1480,85 @@ const AdminTransactionsPage = () => {
                       <p className="text-xs text-gray-500 mt-1 leading-relaxed">
                         Use the recipient details above to identify the beneficiary when investigating a failed, pending, reversed, or disputed bank transfer.
                       </p>
-
                     </div>
-
                   </div>
-
                 )}
 
-
-                {/* ==================================================
-                    GENERAL TRANSACTION DETAILS
-                ================================================== */}
+                {/* TRANSACTION INFORMATION */}
 
                 <div className="rounded-2xl border p-5">
-
                   <div className="flex items-center gap-2 mb-4">
-
                     <Activity className="h-4 w-4 text-blue-600" />
 
                     <h4 className="font-bold text-gray-900">
                       Transaction Information
                     </h4>
-
                   </div>
-
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
 
                     <div>
-
                       <p className="text-xs text-gray-400">
                         Transaction Type
                       </p>
 
                       <p className="text-sm font-semibold text-gray-900 mt-1">
-                        {
-                          transactionTypeLabel(
-                            selectedTransaction.transaction_type,
-                          )
-                        }
+                        {transactionTypeLabel(
+                          selectedTransaction.transaction_type,
+                        )}
                       </p>
-
                     </div>
 
-
                     <div>
-
                       <p className="text-xs text-gray-400">
                         Category
                       </p>
 
                       <p className="text-sm font-semibold text-gray-900 mt-1">
-                        {
-                          selectedTransaction.category ||
-                          "—"
-                        }
+                        {selectedTransaction.category ||
+                          "—"}
                       </p>
-
                     </div>
 
-
                     <div>
-
                       <p className="text-xs text-gray-400">
                         Provider
                       </p>
 
                       <p className="text-sm font-semibold text-gray-900 mt-1">
-                        {
-                          selectedTransaction.provider ||
-                          "—"
-                        }
+                        {selectedTransaction.provider ||
+                          "—"}
                       </p>
-
                     </div>
 
-
                     <div>
-
                       <p className="text-xs text-gray-400">
                         Provider Reference
                       </p>
 
                       <p className="text-sm font-mono text-gray-700 mt-1 break-all">
-                        {
-                          selectedTransaction.provider_reference ||
-                          "—"
-                        }
+                        {selectedTransaction.provider_reference ||
+                          "—"}
                       </p>
-
                     </div>
 
+                    <div>
+                      <p className="text-xs text-gray-400">
+                        Wallet ID
+                      </p>
+
+                      <p className="text-xs font-mono text-gray-700 mt-1 break-all">
+                        {selectedTransaction.wallet_id ||
+                          "—"}
+                      </p>
+                    </div>
 
                     <div>
-
                       <p className="text-xs text-gray-400">
                         Transaction ID
                       </p>
 
                       <div className="flex items-center gap-2 mt-1">
-
                         <p className="text-xs font-mono text-gray-700 break-all">
                           {
                             selectedTransaction.id
@@ -2054,28 +1572,20 @@ const AdminTransactionsPage = () => {
                             copyToClipboard(
                               selectedTransaction.id,
                               "Transaction ID",
-                              toast,
                             )
                           }
                         >
-
                           <Copy className="h-3.5 w-3.5" />
-
                         </button>
-
                       </div>
-
                     </div>
 
-
                     <div>
-
                       <p className="text-xs text-gray-400">
                         Reference
                       </p>
 
                       <div className="flex items-center gap-2 mt-1">
-
                         <p className="text-xs font-mono text-gray-700 break-all">
                           {
                             selectedTransaction.reference_number
@@ -2089,92 +1599,65 @@ const AdminTransactionsPage = () => {
                             copyToClipboard(
                               selectedTransaction.reference_number,
                               "Transaction reference",
-                              toast,
                             )
                           }
                         >
-
                           <Copy className="h-3.5 w-3.5" />
-
                         </button>
-
                       </div>
-
                     </div>
 
-
                     <div>
-
                       <p className="text-xs text-gray-400">
                         Created
                       </p>
 
                       <p className="text-sm text-gray-700 mt-1">
-                        {
-                          formatDate(
-                            selectedTransaction.created_at,
-                          )
-                        }
+                        {formatDate(
+                          selectedTransaction.created_at,
+                        )}
                       </p>
-
                     </div>
 
-
                     <div>
-
                       <p className="text-xs text-gray-400">
                         Updated
                       </p>
 
                       <p className="text-sm text-gray-700 mt-1">
-                        {
-                          formatDate(
-                            selectedTransaction.updated_at,
-                          )
-                        }
+                        {formatDate(
+                          selectedTransaction.updated_at,
+                        )}
                       </p>
-
                     </div>
 
-
                     <div>
-
                       <p className="text-xs text-gray-400">
                         Completed
                       </p>
 
                       <p className="text-sm text-gray-700 mt-1">
-                        {
-                          formatDate(
-                            selectedTransaction.completed_at,
-                          )
-                        }
+                        {formatDate(
+                          selectedTransaction.completed_at,
+                        )}
                       </p>
-
                     </div>
 
                   </div>
-
                 </div>
 
-
-                {/* ==================================================
-                    CHARGEBACK
-                ================================================== */}
+                {/* CHARGEBACK */}
 
                 {selectedTransaction.chargeback_status && (
-
                   <div className="rounded-xl border border-orange-200 bg-orange-50 p-4">
 
                     <p className="font-semibold text-orange-800 text-sm">
                       Chargeback Information
                     </p>
 
-
                     <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
 
                       <div>
-
                         <p className="text-[11px] text-orange-600">
                           Status
                         </p>
@@ -2184,137 +1667,94 @@ const AdminTransactionsPage = () => {
                             selectedTransaction.chargeback_status
                           }
                         </p>
-
                       </div>
 
-
                       <div>
-
                         <p className="text-[11px] text-orange-600">
                           Amount
                         </p>
 
                         <p className="text-sm font-semibold text-orange-900">
-
-                          {
-                            formatMoney(
-                              selectedTransaction.chargeback_amount ||
-                                0,
-                              selectedTransaction.currency,
-                            )
-                          }
-
+                          {formatMoney(
+                            selectedTransaction.chargeback_amount ||
+                              0,
+                            selectedTransaction.currency,
+                          )}
                         </p>
-
                       </div>
 
-
                       <div>
-
                         <p className="text-[11px] text-orange-600">
                           Reference
                         </p>
 
                         <p className="text-sm font-mono text-orange-900 break-all">
-                          {
-                            selectedTransaction.chargeback_reference ||
-                            "—"
-                          }
+                          {selectedTransaction.chargeback_reference ||
+                            "—"}
                         </p>
-
                       </div>
 
-
                       <div>
-
                         <p className="text-[11px] text-orange-600">
                           Date
                         </p>
 
                         <p className="text-sm text-orange-900">
-                          {
-                            formatDate(
-                              selectedTransaction.chargeback_at,
-                            )
-                          }
+                          {formatDate(
+                            selectedTransaction.chargeback_at,
+                          )}
                         </p>
-
                       </div>
 
                     </div>
-
                   </div>
-
                 )}
 
-
-                {/* ==================================================
-                    DESCRIPTION
-                ================================================== */}
+                {/* DESCRIPTION */}
 
                 <div>
-
                   <p className="text-xs text-gray-400">
                     Description
                   </p>
 
                   <p className="text-sm text-gray-700 mt-1">
-                    {
-                      selectedTransaction.description ||
-                      "No description"
-                    }
+                    {selectedTransaction.description ||
+                      "No description"}
                   </p>
-
                 </div>
 
-
-                {/* ==================================================
-                    RAW METADATA
-                ================================================== */}
+                {/* RAW METADATA */}
 
                 {Object.keys(
                   getMetadata(
                     selectedTransaction,
                   ),
                 ).length > 0 && (
-
                   <details className="rounded-xl border bg-gray-50">
-
                     <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-gray-700">
                       Internal transaction metadata
                     </summary>
 
                     <div className="border-t p-4">
-
                       <pre className="text-[11px] text-gray-600 whitespace-pre-wrap break-all overflow-x-auto">
-                        {
-                          JSON.stringify(
-                            selectedTransaction.metadata,
-                            null,
-                            2,
-                          )
-                        }
+                        {JSON.stringify(
+                          selectedTransaction.metadata,
+                          null,
+                          2,
+                        )}
                       </pre>
-
                     </div>
-
                   </details>
-
                 )}
 
               </div>
-
             </div>
-
           </div>
-
         )}
 
       </div>
-
     </AdminLayout>
   );
 };
-
 
 export default AdminTransactionsPage;

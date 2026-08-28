@@ -95,20 +95,22 @@ interface SupportAdmin {
 /*
  * IMPORTANT:
  *
- * get_support_customer_details() returns `user_id`,
- * NOT `id`.
+ * The RPC get_support_customer_details()
+ * returns `user_id`, NOT `id`.
  *
- * Raw BVN/NIN values are intentionally NOT loaded
- * into the frontend.
+ * Do not change this back to `id`.
+ *
+ * Raw BVN/NIN values are intentionally NOT
+ * returned to the frontend.
  */
 interface UserProfile {
   user_id: string;
   full_name: string | null;
-  nickname: string | null;
-  email: string | null;
   phone_number: string | null;
+  nickname: string | null;
   gender: string | null;
   date_of_birth: string | null;
+  email: string | null;
   address: string | null;
   kyc_level: number | null;
   kyc_status: string | null;
@@ -720,14 +722,9 @@ const AdminSupportPage = () => {
     useCallback(
       async (
         rows: Conversation[]
-      ): Promise<
-        Map<string, UserProfile>
-      > => {
+      ): Promise<Map<string, UserProfile>> => {
         const profileMap =
-          new Map<
-            string,
-            UserProfile
-          >();
+          new Map<string, UserProfile>();
 
         const userIds = Array.from(
           new Set(
@@ -767,14 +764,22 @@ const AdminSupportPage = () => {
           const profiles =
             (data ?? []) as UserProfile[];
 
+          /*
+           * IMPORTANT:
+           *
+           * The SQL RPC returns:
+           *
+           *   user_id
+           *
+           * NOT:
+           *
+           *   id
+           *
+           * Therefore the map MUST use
+           * profile.user_id.
+           */
           profiles.forEach(
             (profile) => {
-              /*
-               * IMPORTANT:
-               *
-               * The RPC returns `user_id`,
-               * not `id`.
-               */
               if (profile.user_id) {
                 profileMap.set(
                   profile.user_id,
@@ -783,6 +788,7 @@ const AdminSupportPage = () => {
               }
             }
           );
+
         } catch (error) {
           console.error(
             "Support customer details loading failed:",
@@ -814,6 +820,7 @@ const AdminSupportPage = () => {
         return rows.map(
           (conversation) => ({
             ...conversation,
+
             profile:
               profileMap.get(
                 conversation.user_id
@@ -920,9 +927,7 @@ const AdminSupportPage = () => {
     useCallback(
       async (
         userId: string
-      ): Promise<
-        UserProfile | null
-      > => {
+      ): Promise<UserProfile | null> => {
         if (!userId) {
           return null;
         }
@@ -950,15 +955,7 @@ const AdminSupportPage = () => {
           const profile =
             (data?.[0] as
               | UserProfile
-              | undefined) ??
-            null;
-
-          if (
-            !profile ||
-            profile.user_id !== userId
-          ) {
-            return null;
-          }
+              | undefined) ?? null;
 
           return profile;
         } catch (error) {
@@ -1244,8 +1241,9 @@ const AdminSupportPage = () => {
                     ? {
                         ...conversation,
                         profile:
+                          conversation.profile ??
                           item.profile ??
-                          conversation.profile,
+                          null,
                       }
                     : item
                 )

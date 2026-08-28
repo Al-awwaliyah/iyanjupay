@@ -95,19 +95,20 @@ interface SupportAdmin {
 /*
  * IMPORTANT:
  *
- * This interface intentionally matches only what
- * get_support_customer_details() returns.
+ * get_support_customer_details() returns `user_id`,
+ * NOT `id`.
  *
- * Raw BVN/NIN values are NOT loaded into the frontend.
+ * Raw BVN/NIN values are intentionally NOT loaded
+ * into the frontend.
  */
 interface UserProfile {
-  id: string;
+  user_id: string;
   full_name: string | null;
-  phone_number: string | null;
   nickname: string | null;
+  email: string | null;
+  phone_number: string | null;
   gender: string | null;
   date_of_birth: string | null;
-  email: string | null;
   address: string | null;
   kyc_level: number | null;
   kyc_status: string | null;
@@ -763,14 +764,25 @@ const AdminSupportPage = () => {
             return profileMap;
           }
 
-          (
-            (data ?? []) as UserProfile[]
-          ).forEach((profile) => {
-            profileMap.set(
-              profile.id,
-              profile
-            );
-          });
+          const profiles =
+            (data ?? []) as UserProfile[];
+
+          profiles.forEach(
+            (profile) => {
+              /*
+               * IMPORTANT:
+               *
+               * The RPC returns `user_id`,
+               * not `id`.
+               */
+              if (profile.user_id) {
+                profileMap.set(
+                  profile.user_id,
+                  profile
+                );
+              }
+            }
+          );
         } catch (error) {
           console.error(
             "Support customer details loading failed:",
@@ -935,12 +947,20 @@ const AdminSupportPage = () => {
             return null;
           }
 
-          return (
+          const profile =
             (data?.[0] as
               | UserProfile
               | undefined) ??
-            null
-          );
+            null;
+
+          if (
+            !profile ||
+            profile.user_id !== userId
+          ) {
+            return null;
+          }
+
+          return profile;
         } catch (error) {
           console.error(
             "Single support customer profile error:",
@@ -1162,6 +1182,10 @@ const AdminSupportPage = () => {
           const conversation =
             withProfiles[0];
 
+          if (!conversation) {
+            return;
+          }
+
           setConversations(
             (current) => {
               if (
@@ -1206,6 +1230,10 @@ const AdminSupportPage = () => {
 
           const conversation =
             withProfiles[0];
+
+          if (!conversation) {
+            return;
+          }
 
           setConversations(
             (current) =>

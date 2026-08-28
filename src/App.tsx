@@ -37,7 +37,7 @@ import AdminSupportPage from "@/pages/admin/AdminSupportPage";
 import AdminDashboardPage from "@/pages/admin/AdminDashboardPage";
 import AdminCustomersPage from "@/pages/admin/AdminCustomersPage";
 import AdminTransactionsPage from "@/pages/admin/AdminTransactionsPage";
-import AdminDisputesPage from "./AdminDisputesPage";
+import AdminDisputesPage from "@/pages/admin/AdminDisputesPage";
 import VerifyPaymentPinResetOtp from "@/pages/VerifyPaymentPinResetOtp";
 import ResetPaymentPin from "@/pages/ResetPaymentPin";
 import ResetPassword from "./pages/ResetPassword";

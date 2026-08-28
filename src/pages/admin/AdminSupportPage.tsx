@@ -14,19 +14,19 @@ import {
   Filter,
   Headphones,
   Loader2,
+  Mail,
+  MapPin,
+  CalendarDays,
   MessageCircle,
   MoreVertical,
+  Phone,
   RefreshCw,
   Search,
   Send,
   Shield,
+  ShieldCheck,
   User,
   X,
-  Mail,
-  Phone,
-  MapPin,
-  CalendarDays,
-  ShieldCheck,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -92,6 +92,14 @@ interface SupportAdmin {
   created_by: string | null;
 }
 
+/*
+ * IMPORTANT:
+ *
+ * This interface intentionally matches only what
+ * get_support_customer_details() returns.
+ *
+ * Raw BVN/NIN values are NOT loaded into the frontend.
+ */
 interface UserProfile {
   id: string;
   full_name: string | null;
@@ -101,19 +109,11 @@ interface UserProfile {
   date_of_birth: string | null;
   email: string | null;
   address: string | null;
-  bvn: string | null;
-  nin: string | null;
   kyc_level: number | null;
-  created_at: string | null;
-  updated_at: string | null;
-  bvn_verified: boolean;
-  bvn_verified_at: string | null;
   kyc_status: string | null;
-  bvn_first_name: string | null;
-  bvn_last_name: string | null;
+  bvn_verified: boolean;
   phone_verified: boolean;
-  phone_verified_at: string | null;
-  bvn_masked: string | null;
+  created_at: string | null;
 }
 
 interface ConversationWithProfile
@@ -186,8 +186,8 @@ const STATUS_LABELS: Record<
   string
 > = {
   open: "Open",
-  waiting_user: "Waiting User",
   waiting_admin: "Waiting Admin",
+  waiting_user: "Waiting User",
   resolved: "Resolved",
   closed: "Closed",
 };
@@ -393,18 +393,6 @@ const getProfileDisplayName = (
     profile.full_name.trim()
   ) {
     return profile.full_name.trim();
-  }
-
-  const bvnName = [
-    profile.bvn_first_name,
-    profile.bvn_last_name,
-  ]
-    .filter(Boolean)
-    .join(" ")
-    .trim();
-
-  if (bvnName) {
-    return bvnName;
   }
 
   if (
@@ -724,7 +712,7 @@ const AdminSupportPage = () => {
     }, [adminRecord]);
 
   // ==========================================================
-  // LOAD USER PROFILES
+  // LOAD USER PROFILES THROUGH SECURE RPC
   // ==========================================================
 
   const loadProfilesForConversations =
@@ -759,38 +747,16 @@ const AdminSupportPage = () => {
           const {
             data,
             error,
-          } = await supabase
-            .from("profiles")
-            .select(
-              `
-                id,
-                full_name,
-                phone_number,
-                nickname,
-                gender,
-                date_of_birth,
-                email,
-                address,
-                bvn,
-                nin,
-                kyc_level,
-                created_at,
-                updated_at,
-                bvn_verified,
-                bvn_verified_at,
-                kyc_status,
-                bvn_first_name,
-                bvn_last_name,
-                phone_verified,
-                phone_verified_at,
-                bvn_masked
-              `
-            )
-            .in("id", userIds);
+          } = await supabase.rpc(
+            "get_support_customer_details",
+            {
+              p_user_ids: userIds,
+            }
+          );
 
           if (error) {
             console.error(
-              "Failed to load customer profiles:",
+              "Failed to load support customer details:",
               error
             );
 
@@ -807,7 +773,7 @@ const AdminSupportPage = () => {
           });
         } catch (error) {
           console.error(
-            "Customer profile loading failed:",
+            "Support customer details loading failed:",
             error
           );
         }
@@ -818,7 +784,7 @@ const AdminSupportPage = () => {
     );
 
   // ==========================================================
-  // ATTACH PROFILES TO CONVERSATIONS
+  // ATTACH PROFILES
   // ==========================================================
 
   const attachProfiles =
@@ -935,7 +901,7 @@ const AdminSupportPage = () => {
     );
 
   // ==========================================================
-  // LOAD SINGLE CUSTOMER PROFILE
+  // LOAD SINGLE CUSTOMER PROFILE THROUGH SECURE RPC
   // ==========================================================
 
   const loadSingleProfile =
@@ -953,39 +919,16 @@ const AdminSupportPage = () => {
           const {
             data,
             error,
-          } = await supabase
-            .from("profiles")
-            .select(
-              `
-                id,
-                full_name,
-                phone_number,
-                nickname,
-                gender,
-                date_of_birth,
-                email,
-                address,
-                bvn,
-                nin,
-                kyc_level,
-                created_at,
-                updated_at,
-                bvn_verified,
-                bvn_verified_at,
-                kyc_status,
-                bvn_first_name,
-                bvn_last_name,
-                phone_verified,
-                phone_verified_at,
-                bvn_masked
-              `
-            )
-            .eq("id", userId)
-            .maybeSingle();
+          } = await supabase.rpc(
+            "get_support_customer_details",
+            {
+              p_user_ids: [userId],
+            }
+          );
 
           if (error) {
             console.error(
-              "Failed to load customer profile:",
+              "Failed to load support customer profile:",
               error
             );
 
@@ -993,11 +936,14 @@ const AdminSupportPage = () => {
           }
 
           return (
-            data as UserProfile | null
+            (data?.[0] as
+              | UserProfile
+              | undefined) ??
+            null
           );
         } catch (error) {
           console.error(
-            "Single customer profile error:",
+            "Single support customer profile error:",
             error
           );
 
@@ -1522,10 +1468,15 @@ const AdminSupportPage = () => {
             profile?.phone_number,
             profile?.address,
             profile?.gender,
-            profile?.bvn_masked,
             profile?.kyc_status,
+            profile?.kyc_level,
           ]
-            .filter(Boolean)
+            .filter(
+              (value) =>
+                value !== null &&
+                value !== undefined &&
+                String(value).trim() !== ""
+            )
             .join(" ")
             .toLowerCase();
 
@@ -2380,8 +2331,6 @@ const AdminSupportPage = () => {
 
                       <div className="flex items-start gap-3">
 
-                        {/* AVATAR */}
-
                         <div
                           className={`
                             w-10 h-10 rounded-full
@@ -2805,21 +2754,20 @@ const AdminSupportPage = () => {
                       <div className="rounded-lg bg-white border p-3">
 
                         <p className="text-[10px] uppercase tracking-wide text-gray-400">
-                          BVN
+                          BVN Verification
                         </p>
 
-                        <p className="text-sm font-medium text-gray-900 mt-1">
-                          {
-                            selectedProfile?.bvn_masked ||
-                            "Not available"
-                          }
-                        </p>
-
-                        {selectedProfile?.bvn_verified && (
-                          <span className="inline-flex mt-1 text-[10px] px-2 py-1 rounded-full bg-green-100 text-green-700">
-                            Verified
-                          </span>
-                        )}
+                        <span
+                          className={`inline-flex mt-1 text-[10px] px-2 py-1 rounded-full ${
+                            selectedProfile?.bvn_verified
+                              ? "bg-green-100 text-green-700"
+                              : "bg-gray-100 text-gray-600"
+                          }`}
+                        >
+                          {selectedProfile?.bvn_verified
+                            ? "Verified"
+                            : "Not verified"}
+                        </span>
 
                       </div>
 
@@ -2831,10 +2779,8 @@ const AdminSupportPage = () => {
                           NIN
                         </p>
 
-                        <p className="text-sm font-medium text-gray-900 mt-1">
-                          {selectedProfile?.nin
-                            ? "Available"
-                            : "Not available"}
+                        <p className="text-sm font-medium text-gray-500 mt-1">
+                          Protected
                         </p>
 
                       </div>

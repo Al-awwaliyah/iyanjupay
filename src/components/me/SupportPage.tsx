@@ -10,11 +10,17 @@ import {
   Building2,
   AlertCircle,
   CreditCard,
+  MessageCircle,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+} from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+
+import SupportChat from "../support/SupportChat";
 
 interface SupportPageProps {
   onBack: () => void;
@@ -107,6 +113,12 @@ const SupportPage = ({
   const [openIndex, setOpenIndex] =
     useState<number | null>(null);
 
+  /*
+   * Live support chat
+   */
+  const [supportChatOpen, setSupportChatOpen] =
+    useState(false);
+
   const filteredFAQs = useMemo(() => {
     const query =
       search.trim().toLowerCase();
@@ -142,7 +154,7 @@ const SupportPage = ({
     <div className="min-h-screen bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-50 pb-8">
       <div className="max-w-4xl mx-auto px-4 py-6">
 
-        {/* Header */}
+        {/* HEADER */}
         <div className="flex items-center gap-4 mb-6">
           <Button
             variant="ghost"
@@ -159,9 +171,10 @@ const SupportPage = ({
           </h1>
         </div>
 
-        {/* Search Header */}
+        {/* SEARCH / FAQ HEADER */}
         <Card className="mb-6 overflow-hidden border-0 shadow-lg">
           <CardContent className="p-6 bg-gradient-to-r from-purple-600 to-blue-600 text-white">
+
             <div className="flex items-center gap-3 mb-2">
               <HelpCircle className="h-7 w-7" />
 
@@ -186,6 +199,43 @@ const SupportPage = ({
                 className="pl-10 bg-white text-gray-900 border-0"
               />
             </div>
+
+          </CardContent>
+        </Card>
+
+        {/* CHAT WITH SUPPORT */}
+        <Card className="mb-6 overflow-hidden border-0 shadow-md">
+          <CardContent className="p-0">
+
+            <button
+              type="button"
+              onClick={() =>
+                setSupportChatOpen(true)
+              }
+              className="w-full p-5 text-left hover:bg-gray-50 transition-colors"
+            >
+              <div className="flex items-center gap-4">
+
+                <div className="w-12 h-12 rounded-full bg-purple-100 flex items-center justify-center shrink-0">
+                  <MessageCircle className="h-6 w-6 text-purple-600" />
+                </div>
+
+                <div className="flex-1">
+                  <h3 className="font-semibold text-gray-900">
+                    Chat with Support
+                  </h3>
+
+                  <p className="text-sm text-gray-600 mt-1">
+                    Can't find what you're looking for?
+                    Chat directly with our support team.
+                  </p>
+                </div>
+
+                <MessageCircle className="h-5 w-5 text-purple-500" />
+
+              </div>
+            </button>
+
           </CardContent>
         </Card>
 
@@ -195,6 +245,7 @@ const SupportPage = ({
           {filteredFAQs.length === 0 ? (
             <Card>
               <CardContent className="p-8 text-center">
+
                 <HelpCircle className="h-10 w-10 text-gray-400 mx-auto mb-3" />
 
                 <h3 className="font-semibold text-gray-900">
@@ -204,12 +255,14 @@ const SupportPage = ({
                 <p className="text-sm text-gray-600 mt-1">
                   Try another search term.
                 </p>
+
               </CardContent>
             </Card>
           ) : (
             filteredFAQs.map(
               (item, index) => {
                 const Icon = item.icon;
+
                 const isOpen =
                   openIndex === index;
 
@@ -248,6 +301,7 @@ const SupportPage = ({
                               : ""
                           }`}
                         />
+
                       </div>
                     </button>
 
@@ -258,6 +312,7 @@ const SupportPage = ({
                         </p>
                       </div>
                     )}
+
                   </Card>
                 );
               }
@@ -266,9 +321,10 @@ const SupportPage = ({
 
         </div>
 
-        {/* Contact Support */}
+        {/* CONTACT SUPPORT */}
         <Card className="mt-6">
           <CardContent className="p-5">
+
             <div className="flex items-start gap-3">
               <HelpCircle className="h-5 w-5 text-purple-600 mt-1" />
 
@@ -278,15 +334,36 @@ const SupportPage = ({
                 </h3>
 
                 <p className="text-sm text-gray-600 mt-1">
-                  If you cannot find an answer here, open Customer Service
-                  from the Me section to contact support.
+                  If you cannot find an answer above,
+                  use Chat with Support to contact our
+                  support team directly.
                 </p>
+
+                <Button
+                  type="button"
+                  onClick={() =>
+                    setSupportChatOpen(true)
+                  }
+                  className="mt-4 bg-purple-600 hover:bg-purple-700"
+                >
+                  <MessageCircle className="h-4 w-4 mr-2" />
+                  Chat with Support
+                </Button>
               </div>
             </div>
+
           </CardContent>
         </Card>
 
       </div>
+
+      {/* SUPPORT CHAT */}
+      <SupportChat
+        open={supportChatOpen}
+        onClose={() =>
+          setSupportChatOpen(false)
+        }
+      />
     </div>
   );
 };

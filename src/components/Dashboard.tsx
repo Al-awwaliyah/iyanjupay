@@ -53,7 +53,7 @@ import CardsPage from "./cards/CardsPage";
 import MePage from "./me/MePage";
 
 import CustomerServicePage from "./me/CustomerServicePage";
-import SupportChat from "./support/SupportChat";
+import SupportPage from "./me/SupportPage";
 import TransactionLimitPage from "./me/TransactionLimitPage";
 import PaymentPinPage from "./me/PaymentPinPage";
 

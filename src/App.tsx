@@ -37,6 +37,7 @@ import AdminSupportPage from "@/pages/admin/AdminSupportPage";
 import AdminDashboardPage from "@/pages/admin/AdminDashboardPage";
 import AdminCustomersPage from "@/pages/admin/AdminCustomersPage";
 import AdminTransactionsPage from "@/pages/admin/AdminTransactionsPage";
+import AdminDisputesPage from "./AdminDisputesPage";
 import VerifyPaymentPinResetOtp from "@/pages/VerifyPaymentPinResetOtp";
 import ResetPaymentPin from "@/pages/ResetPaymentPin";
 import ResetPassword from "./pages/ResetPassword";
@@ -205,6 +206,11 @@ const App = () => {
               element={<AdminSupportPage />}
             />
 
+            <Route
+              path="/admin/disputes"
+              element={<AdminDisputesPage />}
+            />
+            
             <Route
               path="/admin/transactions"
               element={<AdminTransactionsPage />}

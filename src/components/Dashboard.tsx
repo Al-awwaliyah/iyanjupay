@@ -52,7 +52,7 @@ import CustomerServicePage from "./me/CustomerServicePage";
 import SupportPage from "./me/SupportPage";
 import TransactionLimitPage from "./me/TransactionLimitPage";
 import PaymentPinPage from "./me/PaymentPinPage";
-import DisputesPage from "./disputes/DisputesPage";
+import DisputesPage from "./disputes/UserDisputesPage";
 
 import { useAuth } from "@/hooks/useAuth";
 import { useWallet } from "@/hooks/useWallet";

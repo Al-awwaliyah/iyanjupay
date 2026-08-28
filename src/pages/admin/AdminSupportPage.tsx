@@ -87,6 +87,27 @@ interface SupportAdmin {
   created_by: string | null;
 }
 
+interface CustomerProfile {
+  id: string;
+  full_name: string | null;
+  email: string | null;
+  phone_number: string | null;
+  nickname: string | null;
+  gender: string | null;
+  date_of_birth: string | null;
+  address: string | null;
+  bvn_masked: string | null;
+  nin: string | null;
+  kyc_level: number | null;
+  kyc_status: string | null;
+  phone_verified: boolean | null;
+  phone_verified_at: string | null;
+  bvn_verified: boolean | null;
+  bvn_verified_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 // ============================================================
 // CONSTANTS
 // ============================================================
@@ -211,6 +232,25 @@ const shortId = (value: string | null): string => {
   return `${value.slice(0, 8)}...${value.slice(-4)}`;
 };
 
+const getCustomerName = (
+  profile: CustomerProfile | undefined,
+  userId: string
+): string => {
+  if (profile?.full_name?.trim()) {
+    return profile.full_name.trim();
+  }
+
+  if (profile?.nickname?.trim()) {
+    return profile.nickname.trim();
+  }
+
+  if (profile?.email?.trim()) {
+    return profile.email.trim();
+  }
+
+  return `User ${shortId(userId)}`;
+};
+
 const getPriorityClasses = (
   priority: ConversationPriority
 ): string => {
@@ -310,6 +350,13 @@ const AdminSupportPage = () => {
         selectedConversationId,
       ]
     );
+
+  // ==========================================================
+  // CUSTOMER PROFILES
+  // ==========================================================
+
+  const [customerProfiles, setCustomerProfiles] =
+    useState<Record<string, CustomerProfile>>({});
 
   // ==========================================================
   // MESSAGES
@@ -482,7 +529,7 @@ const AdminSupportPage = () => {
     }, [adminRecord]);
 
   // ==========================================================
-  // LOAD CONVERSATIONS
+  // LOAD CONVERSATIONS + CUSTOMER PROFILES
   // ==========================================================
 
   const loadConversations =
@@ -515,6 +562,88 @@ const AdminSupportPage = () => {
             (data ?? []) as Conversation[];
 
           setConversations(next);
+
+          // ====================================================
+          // LOAD ALL CUSTOMER PROFILES
+          // ====================================================
+
+          const userIds = Array.from(
+            new Set(
+              next
+                .map(
+                  (conversation) =>
+                    conversation.user_id
+                )
+                .filter(Boolean)
+            )
+          );
+
+          if (userIds.length > 0) {
+            const {
+              data: profiles,
+              error: profilesError,
+            } = await supabase
+              .from("profiles")
+              .select(`
+                id,
+                full_name,
+                email,
+                phone_number,
+                nickname,
+                gender,
+                date_of_birth,
+                address,
+                bvn_masked,
+                nin,
+                kyc_level,
+                kyc_status,
+                phone_verified,
+                phone_verified_at,
+                bvn_verified,
+                bvn_verified_at,
+                created_at,
+                updated_at
+              `)
+              .in("id", userIds);
+
+            if (profilesError) {
+              console.error(
+                "Failed to load customer profiles:",
+                profilesError
+              );
+
+              toast({
+                title:
+                  "Customer details unavailable",
+                description:
+                  profilesError.message ||
+                  "Unable to load customer profile information.",
+                variant: "destructive",
+              });
+            } else {
+              const profileMap: Record<
+                string,
+                CustomerProfile
+              > = {};
+
+              (profiles ?? []).forEach(
+                (profile) => {
+                  profileMap[profile.id] =
+                    profile as CustomerProfile;
+                }
+              );
+
+              setCustomerProfiles(
+                profileMap
+              );
+            }
+          } else {
+            setCustomerProfiles({});
+          }
+
+          // ====================================================
+          // PRESERVE SELECTED CONVERSATION
+          // ====================================================
 
           setSelectedConversationId(
             (current) => {
@@ -746,7 +875,7 @@ const AdminSupportPage = () => {
         schema: "public",
         table: "support_conversations",
       },
-      (payload) => {
+      async (payload) => {
         if (
           payload.eventType ===
           "INSERT"
@@ -780,6 +909,45 @@ const AdminSupportPage = () => {
               );
             }
           );
+
+          // Load the newly created customer's profile.
+          const {
+            data: profile,
+            error: profileError,
+          } = await supabase
+            .from("profiles")
+            .select(`
+              id,
+              full_name,
+              email,
+              phone_number,
+              nickname,
+              gender,
+              date_of_birth,
+              address,
+              bvn_masked,
+              nin,
+              kyc_level,
+              kyc_status,
+              phone_verified,
+              phone_verified_at,
+              bvn_verified,
+              bvn_verified_at,
+              created_at,
+              updated_at
+            `)
+            .eq("id", incoming.user_id)
+            .maybeSingle();
+
+          if (!profileError && profile) {
+            setCustomerProfiles(
+              (current) => ({
+                ...current,
+                [profile.id]:
+                  profile as CustomerProfile,
+              })
+            );
+          }
 
           return;
         }
@@ -994,6 +1162,11 @@ const AdminSupportPage = () => {
 
       return conversations.filter(
         (conversation) => {
+          const customer =
+            customerProfiles[
+              conversation.user_id
+            ];
+
           if (
             statusFilter !== "all" &&
             conversation.status !==
@@ -1034,6 +1207,12 @@ const AdminSupportPage = () => {
             conversation.subject,
             conversation.user_id,
             conversation.id,
+
+            customer?.full_name,
+            customer?.email,
+            customer?.phone_number,
+            customer?.nickname,
+
             conversation.status,
             conversation.priority,
           ]
@@ -1048,6 +1227,7 @@ const AdminSupportPage = () => {
       );
     }, [
       conversations,
+      customerProfiles,
       search,
       statusFilter,
       priorityFilter,
@@ -1630,7 +1810,7 @@ const AdminSupportPage = () => {
                     event.target.value
                   )
                 }
-                placeholder="Search conversations..."
+                placeholder="Search customers, email, phone..."
                 className="pl-9 pr-9"
               />
 
@@ -1793,6 +1973,11 @@ const AdminSupportPage = () => {
                     conversation.id ===
                     selectedConversationId;
 
+                  const customer =
+                    customerProfiles[
+                      conversation.user_id
+                    ];
+
                   return (
                     <button
                       type="button"
@@ -1840,14 +2025,16 @@ const AdminSupportPage = () => {
                             <div className="min-w-0">
 
                               <p className="font-semibold text-sm text-gray-900 truncate">
-                                User{" "}
-                                {shortId(
+                                {getCustomerName(
+                                  customer,
                                   conversation.user_id
                                 )}
                               </p>
 
                               <p className="text-xs text-gray-500 truncate mt-0.5">
-                                {conversation.subject ||
+                                {customer?.email ||
+                                  customer?.phone_number ||
+                                  conversation.subject ||
                                   "Customer Support"}
                               </p>
 
@@ -1861,6 +2048,14 @@ const AdminSupportPage = () => {
                             </span>
 
                           </div>
+
+                          {/* PHONE */}
+
+                          {customer?.phone_number && (
+                            <p className="text-[11px] text-gray-400 mt-1 truncate">
+                              {customer.phone_number}
+                            </p>
+                          )}
 
                           <div className="flex items-center gap-2 mt-2 flex-wrap">
 
@@ -1971,19 +2166,38 @@ const AdminSupportPage = () => {
 
                     <div className="min-w-0">
 
-                      <h2 className="font-bold text-gray-900 truncate">
-                        User{" "}
-                        {shortId(
-                          selectedConversation.user_id
-                        )}
-                      </h2>
+                      {(() => {
+                        const customer =
+                          customerProfiles[
+                            selectedConversation.user_id
+                          ];
 
-                      <p className="text-xs text-gray-500 truncate">
-                        {
-                          selectedConversation.subject ||
-                          "Customer Support"
-                        }
-                      </p>
+                        return (
+                          <>
+                            <h2 className="font-bold text-gray-900 truncate">
+                              {getCustomerName(
+                                customer,
+                                selectedConversation.user_id
+                              )}
+                            </h2>
+
+                            <p className="text-xs text-gray-500 truncate">
+                              {[
+                                customer?.email,
+                                customer?.phone_number,
+                              ]
+                                .filter(
+                                  Boolean
+                                )
+                                .join(
+                                  " • "
+                                ) ||
+                                selectedConversation.subject ||
+                                "Customer Support"}
+                            </p>
+                          </>
+                        );
+                      })()}
 
                     </div>
                   </div>
@@ -2235,6 +2449,239 @@ const AdminSupportPage = () => {
                   )}
 
                 </div>
+
+                {/* ==================================================
+                    CUSTOMER DETAILS
+                   ================================================== */}
+
+                {(() => {
+                  const customer =
+                    customerProfiles[
+                      selectedConversation.user_id
+                    ];
+
+                  if (!customer) {
+                    return (
+                      <div className="mt-4 rounded-xl border bg-gray-50 p-4">
+                        <div className="flex items-center gap-2">
+                          <Loader2 className="h-4 w-4 animate-spin text-purple-600" />
+
+                          <p className="text-sm text-gray-500">
+                            Loading customer details...
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <div className="mt-4 rounded-xl border bg-gray-50 p-4">
+
+                      <div className="flex items-center justify-between mb-3">
+
+                        <div>
+                          <p className="text-sm font-bold text-gray-900">
+                            Customer Details
+                          </p>
+
+                          <p className="text-xs text-gray-500">
+                            Account information
+                          </p>
+                        </div>
+
+                        {customer.kyc_status && (
+                          <span
+                            className={`text-[10px] px-2 py-1 rounded-full ${
+                              customer.kyc_status ===
+                              "verified"
+                                ? "bg-green-100 text-green-700"
+                                : "bg-orange-100 text-orange-700"
+                            }`}
+                          >
+                            {customer.kyc_status}
+                          </span>
+                        )}
+
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+
+                        {/* FULL NAME */}
+
+                        <div>
+                          <p className="text-[10px] uppercase tracking-wide text-gray-400">
+                            Full Name
+                          </p>
+
+                          <p className="text-sm font-medium text-gray-800">
+                            {customer.full_name ||
+                              "Not provided"}
+                          </p>
+                        </div>
+
+                        {/* EMAIL */}
+
+                        <div>
+                          <p className="text-[10px] uppercase tracking-wide text-gray-400">
+                            Email
+                          </p>
+
+                          <p className="text-sm font-medium text-gray-800 break-all">
+                            {customer.email ||
+                              "Not provided"}
+                          </p>
+                        </div>
+
+                        {/* PHONE */}
+
+                        <div>
+                          <p className="text-[10px] uppercase tracking-wide text-gray-400">
+                            Phone
+                          </p>
+
+                          <p className="text-sm font-medium text-gray-800">
+                            {customer.phone_number ||
+                              "Not provided"}
+                          </p>
+                        </div>
+
+                        {/* NICKNAME */}
+
+                        <div>
+                          <p className="text-[10px] uppercase tracking-wide text-gray-400">
+                            Nickname
+                          </p>
+
+                          <p className="text-sm font-medium text-gray-800">
+                            {customer.nickname ||
+                              "Not provided"}
+                          </p>
+                        </div>
+
+                        {/* GENDER */}
+
+                        <div>
+                          <p className="text-[10px] uppercase tracking-wide text-gray-400">
+                            Gender
+                          </p>
+
+                          <p className="text-sm font-medium text-gray-800">
+                            {customer.gender ||
+                              "Not provided"}
+                          </p>
+                        </div>
+
+                        {/* DATE OF BIRTH */}
+
+                        <div>
+                          <p className="text-[10px] uppercase tracking-wide text-gray-400">
+                            Date of Birth
+                          </p>
+
+                          <p className="text-sm font-medium text-gray-800">
+                            {customer.date_of_birth ||
+                              "Not provided"}
+                          </p>
+                        </div>
+
+                        {/* KYC LEVEL */}
+
+                        <div>
+                          <p className="text-[10px] uppercase tracking-wide text-gray-400">
+                            KYC Level
+                          </p>
+
+                          <p className="text-sm font-medium text-gray-800">
+                            Level{" "}
+                            {customer.kyc_level ??
+                              1}
+                          </p>
+                        </div>
+
+                        {/* PHONE VERIFIED */}
+
+                        <div>
+                          <p className="text-[10px] uppercase tracking-wide text-gray-400">
+                            Phone Verification
+                          </p>
+
+                          <p
+                            className={`text-sm font-medium ${
+                              customer.phone_verified
+                                ? "text-green-600"
+                                : "text-gray-500"
+                            }`}
+                          >
+                            {customer.phone_verified
+                              ? "Verified"
+                              : "Not Verified"}
+                          </p>
+                        </div>
+
+                        {/* BVN */}
+
+                        <div>
+                          <p className="text-[10px] uppercase tracking-wide text-gray-400">
+                            BVN
+                          </p>
+
+                          <p className="text-sm font-medium text-gray-800">
+                            {customer.bvn_masked ||
+                              "Not verified"}
+                          </p>
+                        </div>
+
+                        {/* NIN */}
+
+                        <div>
+                          <p className="text-[10px] uppercase tracking-wide text-gray-400">
+                            NIN
+                          </p>
+
+                          <p className="text-sm font-medium text-gray-800">
+                            {customer.nin ||
+                              "Not provided"}
+                          </p>
+                        </div>
+
+                        {/* BVN VERIFIED */}
+
+                        <div>
+                          <p className="text-[10px] uppercase tracking-wide text-gray-400">
+                            BVN Verification
+                          </p>
+
+                          <p
+                            className={`text-sm font-medium ${
+                              customer.bvn_verified
+                                ? "text-green-600"
+                                : "text-gray-500"
+                            }`}
+                          >
+                            {customer.bvn_verified
+                              ? "Verified"
+                              : "Not Verified"}
+                          </p>
+                        </div>
+
+                        {/* ADDRESS */}
+
+                        <div className="sm:col-span-2 lg:col-span-3">
+                          <p className="text-[10px] uppercase tracking-wide text-gray-400">
+                            Address
+                          </p>
+
+                          <p className="text-sm font-medium text-gray-800">
+                            {customer.address ||
+                              "Not provided"}
+                          </p>
+                        </div>
+
+                      </div>
+                    </div>
+                  );
+                })()}
+
               </div>
 
               {/* MESSAGES */}

@@ -3,17 +3,7 @@ import React from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 
-import {
-  ArrowLeft,
-  User,
-  History,
-  MessageCircle,
-  HelpCircle,
-  CreditCard,
-  LockKeyhole,
-  LogOut,
-} from "lucide-react";
-
+import {  ArrowLeft, User,  History, MessageCircle, HelpCircle, CreditCard, LockKeyhole, LogOut, FileWarning, } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 
 interface MePageProps {
@@ -24,6 +14,7 @@ interface MePageProps {
   onSupportClick: () => void;
   onTransactionLimitClick: () => void;
   onPaymentPinClick: () => void;
+  onDisputesClick: () => void;
 }
 
 const MePage = ({
@@ -34,6 +25,7 @@ const MePage = ({
   onSupportClick,
   onTransactionLimitClick,
   onPaymentPinClick,
+  onDisputesClick,
 }: MePageProps) => {
   const { user, signOut } = useAuth();
 
@@ -51,6 +43,13 @@ const MePage = ({
       description:
         "View all your transactions",
       onClick: onHistoryClick,
+    },
+    {
+      icon: FileWarning,
+      title: "Disputes",
+      description:
+        "Report and track transaction disputes",
+      onClick: onDisputesClick,
     },
     {
       icon: MessageCircle,

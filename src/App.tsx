@@ -38,6 +38,7 @@ import AdminDashboardPage from "@/pages/admin/AdminDashboardPage";
 import AdminCustomersPage from "@/pages/admin/AdminCustomersPage";
 import AdminTransactionsPage from "@/pages/admin/AdminTransactionsPage";
 import AdminDisputesPage from "@/pages/admin/AdminDisputesPage";
+import UserDisputesPage from "@/components/disputes/UserDisputesPage";
 import VerifyPaymentPinResetOtp from "@/pages/VerifyPaymentPinResetOtp";
 import ResetPaymentPin from "@/pages/ResetPaymentPin";
 import ResetPassword from "./pages/ResetPassword";
@@ -215,7 +216,12 @@ const App = () => {
               path="/admin/transactions"
               element={<AdminTransactionsPage />}
             />
-            
+
+            <Route
+              path="/disputes"
+              element={<UserDisputesPage />}
+            />
+              
             <Route
               path="/reset-password"
               element={<ResetPassword />}

@@ -34,6 +34,7 @@ import PaymentPinPage from "@/components/onboarding/PaymentPinPage";
 import ServicePayment from "./pages/ServicePayment";
 import VerifyRecoveryOtp from "./pages/VerifyRecoveryOtp";
 import AdminSupportPage from "@/pages/admin/AdminSupportPage";
+import AdminDashboardPage from "@/pages/admin/AdminDashboardPage";
 import VerifyPaymentPinResetOtp from "@/pages/VerifyPaymentPinResetOtp";
 import ResetPaymentPin from "@/pages/ResetPaymentPin";
 import ResetPassword from "./pages/ResetPassword";
@@ -185,6 +186,11 @@ const App = () => {
             <Route
               path="/service-payment"
               element={<ServicePayment />}
+            />
+
+            <Route
+              path="/admin"
+              element={<AdminDashboardPage />}
             />
 
             <Route

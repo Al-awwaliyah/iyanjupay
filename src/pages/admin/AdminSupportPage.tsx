@@ -22,10 +22,10 @@ import {
   Shield,
   User,
   X,
-  Phone,
   Mail,
+  Phone,
   MapPin,
-  Calendar,
+  CalendarDays,
   ShieldCheck,
 } from "lucide-react";
 
@@ -92,10 +92,7 @@ interface SupportAdmin {
   created_by: string | null;
 }
 
-/**
- * Customer profile from public.profiles
- */
-interface CustomerProfile {
+interface UserProfile {
   id: string;
   full_name: string | null;
   phone_number: string | null;
@@ -111,12 +108,17 @@ interface CustomerProfile {
   updated_at: string | null;
   bvn_verified: boolean;
   bvn_verified_at: string | null;
-  kyc_status: string;
+  kyc_status: string | null;
   bvn_first_name: string | null;
   bvn_last_name: string | null;
   phone_verified: boolean;
   phone_verified_at: string | null;
   bvn_masked: string | null;
+}
+
+interface ConversationWithProfile
+  extends Conversation {
+  profile?: UserProfile | null;
 }
 
 // ============================================================
@@ -210,12 +212,13 @@ const formatTime = (
   value: string
 ): string => {
   try {
-    return new Date(
-      value
-    ).toLocaleTimeString("en-NG", {
-      hour: "2-digit",
-      minute: "2-digit",
-    });
+    return new Date(value).toLocaleTimeString(
+      "en-NG",
+      {
+        hour: "2-digit",
+        minute: "2-digit",
+      }
+    );
   } catch {
     return "";
   }
@@ -225,12 +228,13 @@ const formatDateTime = (
   value: string
 ): string => {
   try {
-    return new Date(
-      value
-    ).toLocaleString("en-NG", {
-      dateStyle: "medium",
-      timeStyle: "short",
-    });
+    return new Date(value).toLocaleString(
+      "en-NG",
+      {
+        dateStyle: "medium",
+        timeStyle: "short",
+      }
+    );
   } catch {
     return "";
   }
@@ -240,17 +244,17 @@ const formatDate = (
   value: string | null
 ): string => {
   if (!value) {
-    return "Not provided";
+    return "Not available";
   }
 
   try {
     return new Date(
-      value
+      `${value}T00:00:00`
     ).toLocaleDateString("en-NG", {
       dateStyle: "medium",
     });
   } catch {
-    return "Not provided";
+    return value;
   }
 };
 
@@ -312,7 +316,7 @@ const shortId = (
   value: string | null
 ): string => {
   if (!value) {
-    return "Unavailable";
+    return "Unassigned";
   }
 
   if (value.length <= 14) {
@@ -370,49 +374,92 @@ const getStatusClasses = (
   }
 };
 
-/**
- * Gets the best display name for a customer.
- */
-const getCustomerName = (
-  profile: CustomerProfile | undefined,
-  userId: string
+// ============================================================
+// PROFILE HELPERS
+// ============================================================
+
+const getProfileDisplayName = (
+  profile: UserProfile | null | undefined,
+  fallbackUserId: string
 ): string => {
-  if (profile?.full_name?.trim()) {
+  if (!profile) {
+    return `User ${shortId(
+      fallbackUserId
+    )}`;
+  }
+
+  if (
+    profile.full_name &&
+    profile.full_name.trim()
+  ) {
     return profile.full_name.trim();
   }
 
-  if (profile?.nickname?.trim()) {
+  const bvnName = [
+    profile.bvn_first_name,
+    profile.bvn_last_name,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .trim();
+
+  if (bvnName) {
+    return bvnName;
+  }
+
+  if (
+    profile.nickname &&
+    profile.nickname.trim()
+  ) {
     return profile.nickname.trim();
   }
 
   if (
-    profile?.bvn_first_name ||
-    profile?.bvn_last_name
+    profile.email &&
+    profile.email.trim()
   ) {
-    return [
-      profile.bvn_first_name,
-      profile.bvn_last_name,
-    ]
-      .filter(Boolean)
-      .join(" ")
-      .trim();
-  }
-
-  if (profile?.email?.trim()) {
     return profile.email.trim();
   }
 
-  return `User ${shortId(userId)}`;
+  if (
+    profile.phone_number &&
+    profile.phone_number.trim()
+  ) {
+    return profile.phone_number.trim();
+  }
+
+  return `User ${shortId(
+    fallbackUserId
+  )}`;
 };
 
-const getCustomerInitials = (
-  profile: CustomerProfile | undefined,
-  userId: string
+const getProfileEmail = (
+  profile: UserProfile | null | undefined
 ): string => {
-  const name = getCustomerName(
-    profile,
-    userId
+  return (
+    profile?.email?.trim() ||
+    "Email not available"
   );
+};
+
+const getProfilePhone = (
+  profile: UserProfile | null | undefined
+): string => {
+  return (
+    profile?.phone_number?.trim() ||
+    "Phone not available"
+  );
+};
+
+const getProfileInitials = (
+  profile: UserProfile | null | undefined,
+  fallbackUserId: string
+): string => {
+  const name =
+    getProfileDisplayName(
+      profile,
+      fallbackUserId
+    );
 
   const parts = name
     .split(/\s+/)
@@ -435,944 +482,741 @@ const getCustomerInitials = (
 // COMPONENT
 // ============================================================
 
-const AdminSupportPage =
-  () => {
-    const {
-      user,
-      loading: authLoading,
-    } = useAuth();
+const AdminSupportPage = () => {
+  const {
+    user,
+    loading: authLoading,
+  } = useAuth();
 
-    const { toast } =
-      useToast();
+  const { toast } = useToast();
 
-    // ==========================================================
-    // ADMIN
-    // ==========================================================
+  // ==========================================================
+  // ADMIN
+  // ==========================================================
 
-    const [adminRecord, setAdminRecord] =
-      useState<SupportAdmin | null>(
-        null
-      );
+  const [adminRecord, setAdminRecord] =
+    useState<SupportAdmin | null>(null);
 
-    const [admins, setAdmins] =
-      useState<SupportAdmin[]>(
-        []
-      );
+  const [admins, setAdmins] =
+    useState<SupportAdmin[]>([]);
 
-    const [adminLoading, setAdminLoading] =
-      useState(true);
+  const [adminLoading, setAdminLoading] =
+    useState(true);
 
-    const [accessDenied, setAccessDenied] =
-      useState(false);
+  const [accessDenied, setAccessDenied] =
+    useState(false);
 
-    // ==========================================================
-    // CONVERSATIONS
-    // ==========================================================
+  // ==========================================================
+  // CONVERSATIONS
+  // ==========================================================
 
-    const [
-      conversations,
-      setConversations,
-    ] = useState<Conversation[]>(
-      []
+  const [
+    conversations,
+    setConversations,
+  ] = useState<
+    ConversationWithProfile[]
+  >([]);
+
+  const [
+    conversationsLoading,
+    setConversationsLoading,
+  ] = useState(true);
+
+  const [
+    selectedConversationId,
+    setSelectedConversationId,
+  ] = useState<string | null>(null);
+
+  const selectedConversation =
+    useMemo(
+      () =>
+        conversations.find(
+          (conversation) =>
+            conversation.id ===
+            selectedConversationId
+        ) ?? null,
+      [
+        conversations,
+        selectedConversationId,
+      ]
     );
 
-    const [
-      conversationsLoading,
-      setConversationsLoading,
-    ] = useState(true);
+  // ==========================================================
+  // MESSAGES
+  // ==========================================================
 
-    const [
-      selectedConversationId,
-      setSelectedConversationId,
-    ] = useState<string | null>(
+  const [messages, setMessages] =
+    useState<SupportMessage[]>([]);
+
+  const [
+    messagesLoading,
+    setMessagesLoading,
+  ] = useState(false);
+
+  const [message, setMessage] =
+    useState("");
+
+  const [sending, setSending] =
+    useState(false);
+
+  const messagesEndRef =
+    useRef<HTMLDivElement | null>(
       null
     );
 
-    const selectedConversation =
-      useMemo(
-        () =>
-          conversations.find(
-            (conversation) =>
-              conversation.id ===
-              selectedConversationId
-          ) ?? null,
-        [
-          conversations,
-          selectedConversationId,
-        ]
-      );
+  // ==========================================================
+  // FILTERS
+  // ==========================================================
 
-    // ==========================================================
-    // CUSTOMER PROFILES
-    // ==========================================================
+  const [search, setSearch] =
+    useState("");
 
-    const [
-      customerProfiles,
-      setCustomerProfiles,
-    ] = useState<
-      Record<string, CustomerProfile>
-    >({});
+  const [
+    statusFilter,
+    setStatusFilter,
+  ] = useState<
+    ConversationStatus | "all"
+  >("all");
 
-    const [
-      customerProfilesLoading,
-      setCustomerProfilesLoading,
-    ] = useState(false);
+  const [
+    priorityFilter,
+    setPriorityFilter,
+  ] = useState<
+    ConversationPriority | "all"
+  >("all");
 
-    const selectedCustomerProfile =
-      selectedConversation
-        ? customerProfiles[
-            selectedConversation.user_id
-          ]
-        : undefined;
+  const [
+    assignedFilter,
+    setAssignedFilter,
+  ] = useState<
+    "all" | "mine" | "unassigned"
+  >("all");
 
-    // ==========================================================
-    // MESSAGES
-    // ==========================================================
+  const [showFilters, setShowFilters] =
+    useState(false);
 
-    const [messages, setMessages] =
-      useState<SupportMessage[]>(
-        []
-      );
+  // ==========================================================
+  // UI
+  // ==========================================================
 
-    const [
-      messagesLoading,
-      setMessagesLoading,
-    ] = useState(false);
+  const [
+    mobileConversationOpen,
+    setMobileConversationOpen,
+  ] = useState(false);
 
-    const [message, setMessage] =
-      useState("");
+  const [
+    updatingConversation,
+    setUpdatingConversation,
+  ] = useState(false);
 
-    const [sending, setSending] =
-      useState(false);
+  const [refreshing, setRefreshing] =
+    useState(false);
 
-    const messagesEndRef =
-      useRef<HTMLDivElement | null>(
-        null
-      );
+  // ==========================================================
+  // SCROLL
+  // ==========================================================
 
-    // ==========================================================
-    // FILTERS
-    // ==========================================================
-
-    const [search, setSearch] =
-      useState("");
-
-    const [
-      statusFilter,
-      setStatusFilter,
-    ] = useState<
-      ConversationStatus | "all"
-    >("all");
-
-    const [
-      priorityFilter,
-      setPriorityFilter,
-    ] = useState<
-      ConversationPriority | "all"
-    >("all");
-
-    const [
-      assignedFilter,
-      setAssignedFilter,
-    ] = useState<
-      "all" | "mine" | "unassigned"
-    >("all");
-
-    const [
-      showFilters,
-      setShowFilters,
-    ] = useState(false);
-
-    // ==========================================================
-    // UI
-    // ==========================================================
-
-    const [
-      mobileConversationOpen,
-      setMobileConversationOpen,
-    ] = useState(false);
-
-    const [
-      updatingConversation,
-      setUpdatingConversation,
-    ] = useState(false);
-
-    const [refreshing, setRefreshing] =
-      useState(false);
-
-    // ==========================================================
-    // SCROLL
-    // ==========================================================
-
-    const scrollToBottom =
-      useCallback(() => {
-        setTimeout(() => {
-          messagesEndRef.current?.scrollIntoView(
-            {
-              behavior:
-                "smooth",
-            }
-          );
-        }, 50);
-      }, []);
-
-    // ==========================================================
-    // LOAD CUSTOMER PROFILES
-    // ==========================================================
-
-    const loadCustomerProfiles =
-      useCallback(
-        async (
-          conversationRows: Conversation[]
-        ) => {
-          if (
-            conversationRows.length ===
-            0
-          ) {
-            setCustomerProfiles({});
-            return;
+  const scrollToBottom =
+    useCallback(() => {
+      setTimeout(() => {
+        messagesEndRef.current?.scrollIntoView(
+          {
+            behavior: "smooth",
           }
+        );
+      }, 50);
+    }, []);
 
-          setCustomerProfilesLoading(
-            true
-          );
+  // ==========================================================
+  // CHECK ADMIN ACCESS
+  // ==========================================================
 
-          try {
-            const userIds = Array.from(
-              new Set(
-                conversationRows
-                  .map(
-                    (conversation) =>
-                      conversation.user_id
-                  )
-                  .filter(Boolean)
+  const checkAdminAccess =
+    useCallback(async () => {
+      if (!user?.id) {
+        setAdminLoading(false);
+        return;
+      }
+
+      setAdminLoading(true);
+      setAccessDenied(false);
+
+      try {
+        const {
+          data,
+          error,
+        } = await supabase
+          .from("support_admins")
+          .select("*")
+          .eq("user_id", user.id)
+          .eq("is_active", true)
+          .maybeSingle();
+
+        if (error) {
+          throw error;
+        }
+
+        if (!data) {
+          setAdminRecord(null);
+          setAccessDenied(true);
+          return;
+        }
+
+        setAdminRecord(
+          data as SupportAdmin
+        );
+      } catch (error: any) {
+        console.error(
+          "Admin access check failed:",
+          error
+        );
+
+        setAdminRecord(null);
+        setAccessDenied(true);
+
+        toast({
+          title: "Access denied",
+          description:
+            error?.message ||
+            "Unable to verify your administrator access.",
+          variant: "destructive",
+        });
+      } finally {
+        setAdminLoading(false);
+      }
+    }, [user?.id, toast]);
+
+  // ==========================================================
+  // LOAD ADMINS
+  // ==========================================================
+
+  const loadAdmins =
+    useCallback(async () => {
+      if (!adminRecord) {
+        return;
+      }
+
+      try {
+        const {
+          data,
+          error,
+        } = await supabase
+          .from("support_admins")
+          .select("*")
+          .eq("is_active", true)
+          .order("created_at", {
+            ascending: true,
+          });
+
+        if (error) {
+          throw error;
+        }
+
+        setAdmins(
+          (data ?? []) as SupportAdmin[]
+        );
+      } catch (error) {
+        console.error(
+          "Failed to load support admins:",
+          error
+        );
+      }
+    }, [adminRecord]);
+
+  // ==========================================================
+  // LOAD USER PROFILES
+  // ==========================================================
+
+  const loadProfilesForConversations =
+    useCallback(
+      async (
+        rows: Conversation[]
+      ): Promise<
+        Map<string, UserProfile>
+      > => {
+        const profileMap =
+          new Map<
+            string,
+            UserProfile
+          >();
+
+        const userIds = Array.from(
+          new Set(
+            rows
+              .map(
+                (conversation) =>
+                  conversation.user_id
               )
-            );
+              .filter(Boolean)
+          )
+        );
 
-            if (
-              userIds.length === 0
-            ) {
-              setCustomerProfiles(
-                {}
-              );
-              return;
-            }
+        if (userIds.length === 0) {
+          return profileMap;
+        }
 
-            const {
-              data,
-              error,
-            } = await supabase
-              .from("profiles")
-              .select(
-                `
-                  id,
-                  full_name,
-                  phone_number,
-                  nickname,
-                  gender,
-                  date_of_birth,
-                  email,
-                  address,
-                  bvn,
-                  nin,
-                  kyc_level,
-                  created_at,
-                  updated_at,
-                  bvn_verified,
-                  bvn_verified_at,
-                  kyc_status,
-                  bvn_first_name,
-                  bvn_last_name,
-                  phone_verified,
-                  phone_verified_at,
-                  bvn_masked
-                `
-              )
-              .in(
-                "id",
-                userIds
-              );
+        try {
+          const {
+            data,
+            error,
+          } = await supabase
+            .from("profiles")
+            .select(
+              `
+                id,
+                full_name,
+                phone_number,
+                nickname,
+                gender,
+                date_of_birth,
+                email,
+                address,
+                bvn,
+                nin,
+                kyc_level,
+                created_at,
+                updated_at,
+                bvn_verified,
+                bvn_verified_at,
+                kyc_status,
+                bvn_first_name,
+                bvn_last_name,
+                phone_verified,
+                phone_verified_at,
+                bvn_masked
+              `
+            )
+            .in("id", userIds);
 
-            if (error) {
-              throw error;
-            }
-
-            const profileMap: Record<
-              string,
-              CustomerProfile
-            > = {};
-
-            (
-              data ?? []
-            ).forEach(
-              (profile) => {
-                profileMap[
-                  profile.id
-                ] =
-                  profile as CustomerProfile;
-              }
-            );
-
-            setCustomerProfiles(
-              profileMap
-            );
-          } catch (error) {
+          if (error) {
             console.error(
               "Failed to load customer profiles:",
               error
             );
 
-            toast({
-              title:
-                "Customer details unavailable",
-              description:
-                "The support conversations loaded, but some customer profile details could not be retrieved.",
-              variant:
-                "destructive",
-            });
-          } finally {
-            setCustomerProfilesLoading(
-              false
-            );
-          }
-        },
-        [toast]
-      );
-
-    // ==========================================================
-    // CHECK ADMIN ACCESS
-    // ==========================================================
-
-    const checkAdminAccess =
-      useCallback(
-        async () => {
-          if (!user?.id) {
-            setAdminLoading(false);
-            return;
+            return profileMap;
           }
 
-          setAdminLoading(true);
-          setAccessDenied(false);
-
-          try {
-            const {
-              data,
-              error,
-            } = await supabase
-              .from(
-                "support_admins"
-              )
-              .select("*")
-              .eq(
-                "user_id",
-                user.id
-              )
-              .eq(
-                "is_active",
-                true
-              )
-              .maybeSingle();
-
-            if (error) {
-              throw error;
-            }
-
-            if (!data) {
-              setAdminRecord(
-                null
-              );
-              setAccessDenied(
-                true
-              );
-              return;
-            }
-
-            setAdminRecord(
-              data as SupportAdmin
+          (
+            (data ?? []) as UserProfile[]
+          ).forEach((profile) => {
+            profileMap.set(
+              profile.id,
+              profile
             );
-          } catch (error: any) {
-            console.error(
-              "Admin access check failed:",
-              error
-            );
+          });
+        } catch (error) {
+          console.error(
+            "Customer profile loading failed:",
+            error
+          );
+        }
 
-            setAdminRecord(
-              null
-            );
-            setAccessDenied(
-              true
-            );
+        return profileMap;
+      },
+      []
+    );
 
-            toast({
-              title:
-                "Access denied",
-              description:
-                error?.message ||
-                "Unable to verify your administrator access.",
-              variant:
-                "destructive",
-            });
-          } finally {
-            setAdminLoading(
-              false
-            );
-          }
-        },
-        [user?.id, toast]
-      );
+  // ==========================================================
+  // ATTACH PROFILES TO CONVERSATIONS
+  // ==========================================================
 
-    // ==========================================================
-    // LOAD ADMINS
-    // ==========================================================
-
-    const loadAdmins =
-      useCallback(
-        async () => {
-          if (!adminRecord) {
-            return;
-          }
-
-          try {
-            const {
-              data,
-              error,
-            } = await supabase
-              .from(
-                "support_admins"
-              )
-              .select("*")
-              .eq(
-                "is_active",
-                true
-              )
-              .order(
-                "created_at",
-                {
-                  ascending:
-                    true,
-                }
-              );
-
-            if (error) {
-              throw error;
-            }
-
-            setAdmins(
-              (data ??
-                []) as SupportAdmin[]
-            );
-          } catch (error) {
-            console.error(
-              "Failed to load support admins:",
-              error
-            );
-          }
-        },
-        [adminRecord]
-      );
-
-    // ==========================================================
-    // LOAD CONVERSATIONS
-    // ==========================================================
-
-    const loadConversations =
-      useCallback(
-        async (
-          silent = false
-        ) => {
-          if (!adminRecord) {
-            return;
-          }
-
-          if (!silent) {
-            setConversationsLoading(
-              true
-            );
-          }
-
-          try {
-            const {
-              data,
-              error,
-            } = await supabase
-              .from(
-                "support_conversations"
-              )
-              .select("*")
-              .order(
-                "updated_at",
-                {
-                  ascending:
-                    false,
-                }
-              );
-
-            if (error) {
-              throw error;
-            }
-
-            const next =
-              (data ??
-                []) as Conversation[];
-
-            setConversations(
-              next
-            );
-
-            setSelectedConversationId(
-              (current) => {
-                if (
-                  current &&
-                  next.some(
-                    (item) =>
-                      item.id ===
-                      current
-                  )
-                ) {
-                  return current;
-                }
-
-                return (
-                  next[0]?.id ??
-                  null
-                );
-              }
-            );
-
-            await loadCustomerProfiles(
-              next
-            );
-          } catch (error: any) {
-            console.error(
-              "Failed to load conversations:",
-              error
-            );
-
-            toast({
-              title:
-                "Unable to load support inbox",
-              description:
-                error?.message ||
-                "Please try again.",
-              variant:
-                "destructive",
-            });
-          } finally {
-            if (!silent) {
-              setConversationsLoading(
-                false
-              );
-            }
-          }
-        },
-        [
-          adminRecord,
-          loadCustomerProfiles,
-          toast,
-        ]
-      );
-
-    // ==========================================================
-    // LOAD MESSAGES
-    // ==========================================================
-
-    const loadMessages =
-      useCallback(
-        async (
-          conversationId: string
-        ) => {
-          setMessagesLoading(
-            true
+  const attachProfiles =
+    useCallback(
+      async (
+        rows: Conversation[]
+      ): Promise<
+        ConversationWithProfile[]
+      > => {
+        const profileMap =
+          await loadProfilesForConversations(
+            rows
           );
 
-          try {
+        return rows.map(
+          (conversation) => ({
+            ...conversation,
+            profile:
+              profileMap.get(
+                conversation.user_id
+              ) ?? null,
+          })
+        );
+      },
+      [loadProfilesForConversations]
+    );
+
+  // ==========================================================
+  // LOAD CONVERSATIONS
+  // ==========================================================
+
+  const loadConversations =
+    useCallback(
+      async (silent = false) => {
+        if (!adminRecord) {
+          return;
+        }
+
+        if (!silent) {
+          setConversationsLoading(true);
+        }
+
+        try {
+          const {
+            data,
+            error,
+          } = await supabase
+            .from(
+              "support_conversations"
+            )
+            .select("*")
+            .order("updated_at", {
+              ascending: false,
+            });
+
+          if (error) {
+            throw error;
+          }
+
+          const rows =
+            (data ?? []) as Conversation[];
+
+          const withProfiles =
+            await attachProfiles(rows);
+
+          setConversations(
+            withProfiles
+          );
+
+          setSelectedConversationId(
+            (current) => {
+              if (
+                current &&
+                rows.some(
+                  (item) =>
+                    item.id === current
+                )
+              ) {
+                return current;
+              }
+
+              return (
+                rows[0]?.id ?? null
+              );
+            }
+          );
+        } catch (error: any) {
+          console.error(
+            "Failed to load conversations:",
+            error
+          );
+
+          toast({
+            title:
+              "Unable to load support inbox",
+            description:
+              error?.message ||
+              "Please try again.",
+            variant: "destructive",
+          });
+        } finally {
+          if (!silent) {
+            setConversationsLoading(
+              false
+            );
+          }
+        }
+      },
+      [
+        adminRecord,
+        attachProfiles,
+        toast,
+      ]
+    );
+
+  // ==========================================================
+  // LOAD SINGLE CUSTOMER PROFILE
+  // ==========================================================
+
+  const loadSingleProfile =
+    useCallback(
+      async (
+        userId: string
+      ): Promise<
+        UserProfile | null
+      > => {
+        if (!userId) {
+          return null;
+        }
+
+        try {
+          const {
+            data,
+            error,
+          } = await supabase
+            .from("profiles")
+            .select(
+              `
+                id,
+                full_name,
+                phone_number,
+                nickname,
+                gender,
+                date_of_birth,
+                email,
+                address,
+                bvn,
+                nin,
+                kyc_level,
+                created_at,
+                updated_at,
+                bvn_verified,
+                bvn_verified_at,
+                kyc_status,
+                bvn_first_name,
+                bvn_last_name,
+                phone_verified,
+                phone_verified_at,
+                bvn_masked
+              `
+            )
+            .eq("id", userId)
+            .maybeSingle();
+
+          if (error) {
+            console.error(
+              "Failed to load customer profile:",
+              error
+            );
+
+            return null;
+          }
+
+          return (
+            data as UserProfile | null
+          );
+        } catch (error) {
+          console.error(
+            "Single customer profile error:",
+            error
+          );
+
+          return null;
+        }
+      },
+      []
+    );
+
+  // ==========================================================
+  // LOAD MESSAGES
+  // ==========================================================
+
+  const loadMessages =
+    useCallback(
+      async (
+        conversationId: string
+      ) => {
+        setMessagesLoading(true);
+
+        try {
+          const {
+            data,
+            error,
+          } = await supabase
+            .from("support_messages")
+            .select("*")
+            .eq(
+              "conversation_id",
+              conversationId
+            )
+            .order("created_at", {
+              ascending: true,
+            });
+
+          if (error) {
+            throw error;
+          }
+
+          const loaded =
+            (data ??
+              []) as SupportMessage[];
+
+          setMessages(loaded);
+
+          scrollToBottom();
+
+          const unreadUserMessageIds =
+            loaded
+              .filter(
+                (item) =>
+                  item.sender_type ===
+                    "user" &&
+                  !item.read_at
+              )
+              .map(
+                (item) => item.id
+              );
+
+          if (
+            unreadUserMessageIds.length >
+            0
+          ) {
+            const readAt =
+              new Date().toISOString();
+
             const {
-              data,
-              error,
+              error:
+                markReadError,
             } = await supabase
               .from(
                 "support_messages"
               )
-              .select("*")
-              .eq(
-                "conversation_id",
-                conversationId
-              )
-              .order(
-                "created_at",
-                {
-                  ascending:
-                    true,
-                }
+              .update({
+                read_at: readAt,
+              })
+              .in(
+                "id",
+                unreadUserMessageIds
               );
 
-            if (error) {
-              throw error;
-            }
-
-            const loaded =
-              (data ??
-                []) as SupportMessage[];
-
-            setMessages(
-              loaded
-            );
-
-            scrollToBottom();
-
-            const unreadUserMessageIds =
-              loaded
-                .filter(
-                  (item) =>
-                    item.sender_type ===
-                      "user" &&
-                    !item.read_at
-                )
-                .map(
-                  (item) =>
-                    item.id
-                );
-
-            if (
-              unreadUserMessageIds.length >
-              0
-            ) {
-              const readAt =
-                new Date().toISOString();
-
-              const {
-                error:
-                  markReadError,
-              } =
-                await supabase
-                  .from(
-                    "support_messages"
-                  )
-                  .update({
-                    read_at:
-                      readAt,
-                  })
-                  .in(
-                    "id",
-                    unreadUserMessageIds
-                  );
-
-              if (
+            if (markReadError) {
+              console.error(
+                "Failed to mark messages read:",
                 markReadError
-              ) {
-                console.error(
-                  "Failed to mark messages read:",
-                  markReadError
-                );
-              } else {
-                setMessages(
-                  (current) =>
-                    current.map(
-                      (
-                        item
-                      ) =>
-                        unreadUserMessageIds.includes(
-                          item.id
-                        )
-                          ? {
-                              ...item,
-                              read_at:
-                                readAt,
-                            }
-                          : item
-                    )
-                );
-              }
-            }
-          } catch (error: any) {
-            console.error(
-              "Failed to load messages:",
-              error
-            );
-
-            toast({
-              title:
-                "Unable to load messages",
-              description:
-                error?.message ||
-                "Please try again.",
-              variant:
-                "destructive",
-            });
-          } finally {
-            setMessagesLoading(
-              false
-            );
-          }
-        },
-        [
-          scrollToBottom,
-          toast,
-        ]
-      );
-
-    // ==========================================================
-    // AUTH / ADMIN ACCESS
-    // ==========================================================
-
-    useEffect(() => {
-      if (authLoading) {
-        return;
-      }
-
-      if (!user) {
-        window.location.replace(
-          "/"
-        );
-        return;
-      }
-
-      checkAdminAccess();
-    }, [
-      authLoading,
-      user,
-      checkAdminAccess,
-    ]);
-
-    // ==========================================================
-    // LOAD DATA AFTER ADMIN VERIFIED
-    // ==========================================================
-
-    useEffect(() => {
-      if (!adminRecord) {
-        return;
-      }
-
-      loadAdmins();
-      loadConversations();
-    }, [
-      adminRecord,
-      loadAdmins,
-      loadConversations,
-    ]);
-
-    // ==========================================================
-    // LOAD SELECTED CONVERSATION
-    // ==========================================================
-
-    useEffect(() => {
-      if (
-        !selectedConversationId
-      ) {
-        setMessages([]);
-        return;
-      }
-
-      loadMessages(
-        selectedConversationId
-      );
-    }, [
-      selectedConversationId,
-      loadMessages,
-    ]);
-
-    // ==========================================================
-    // REALTIME — CONVERSATIONS
-    // ==========================================================
-
-    useEffect(() => {
-      if (!adminRecord) {
-        return;
-      }
-
-      const channel =
-        supabase.channel(
-          "admin-support-conversations"
-        );
-
-      channel.on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table:
-            "support_conversations",
-        },
-        async (payload) => {
-          if (
-            payload.eventType ===
-            "INSERT"
-          ) {
-            const incoming =
-              payload.new as Conversation;
-
-            setConversations(
-              (current) => {
-                if (
-                  current.some(
+              );
+            } else {
+              setMessages(
+                (current) =>
+                  current.map(
                     (item) =>
-                      item.id ===
-                      incoming.id
-                  )
-                ) {
-                  return current;
-                }
-
-                return [
-                  incoming,
-                  ...current,
-                ].sort(
-                  (a, b) =>
-                    new Date(
-                      b.updated_at
-                    ).getTime() -
-                    new Date(
-                      a.updated_at
-                    ).getTime()
-                );
-              }
-            );
-
-            await loadCustomerProfiles(
-              [
-                incoming,
-              ]
-            );
-
-            return;
-          }
-
-          if (
-            payload.eventType ===
-            "UPDATE"
-          ) {
-            const incoming =
-              payload.new as Conversation;
-
-            setConversations(
-              (current) =>
-                current
-                  .map(
-                    (item) =>
-                      item.id ===
-                      incoming.id
-                        ? incoming
+                      unreadUserMessageIds.includes(
+                        item.id
+                      )
+                        ? {
+                            ...item,
+                            read_at:
+                              readAt,
+                          }
                         : item
                   )
-                  .sort(
-                    (a, b) =>
-                      new Date(
-                        b.updated_at
-                      ).getTime() -
-                      new Date(
-                        a.updated_at
-                      ).getTime()
-                  )
-            );
-
-            return;
-          }
-
-          if (
-            payload.eventType ===
-            "DELETE"
-          ) {
-            const deleted =
-              payload.old as Conversation;
-
-            setConversations(
-              (current) =>
-                current.filter(
-                  (item) =>
-                    item.id !==
-                    deleted.id
-                )
-            );
-
-            if (
-              selectedConversationId ===
-              deleted.id
-            ) {
-              setSelectedConversationId(
-                null
               );
-              setMessages([]);
             }
           }
-        }
-      );
-
-      channel.subscribe();
-
-      return () => {
-        supabase.removeChannel(
-          channel
-        );
-      };
-    }, [
-      adminRecord,
-      selectedConversationId,
-      loadCustomerProfiles,
-    ]);
-
-    // ==========================================================
-    // REALTIME — MESSAGES
-    // ==========================================================
-
-    useEffect(() => {
-      if (!adminRecord) {
-        return;
-      }
-
-      const channel =
-        supabase.channel(
-          "admin-support-messages"
-        );
-
-      channel.on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table:
-            "support_messages",
-        },
-        async (payload) => {
-          const incoming =
-            payload.new as SupportMessage;
-
-          setConversations(
-            (current) =>
-              current
-                .map(
-                  (
-                    conversation
-                  ) =>
-                    conversation.id ===
-                    incoming.conversation_id
-                      ? {
-                          ...conversation,
-                          updated_at:
-                            incoming.created_at,
-                          last_message_at:
-                            incoming.created_at,
-                        }
-                      : conversation
-                )
-                .sort(
-                  (a, b) =>
-                    new Date(
-                      b.updated_at
-                    ).getTime() -
-                    new Date(
-                      a.updated_at
-                    ).getTime()
-                )
+        } catch (error: any) {
+          console.error(
+            "Failed to load messages:",
+            error
           );
 
-          if (
-            incoming.conversation_id !==
-            selectedConversationId
-          ) {
-            return;
-          }
+          toast({
+            title:
+              "Unable to load messages",
+            description:
+              error?.message ||
+              "Please try again.",
+            variant: "destructive",
+          });
+        } finally {
+          setMessagesLoading(false);
+        }
+      },
+      [scrollToBottom, toast]
+    );
 
-          setMessages(
+  // ==========================================================
+  // AUTH / ADMIN ACCESS
+  // ==========================================================
+
+  useEffect(() => {
+    if (authLoading) {
+      return;
+    }
+
+    if (!user) {
+      window.location.replace("/");
+      return;
+    }
+
+    checkAdminAccess();
+  }, [
+    authLoading,
+    user,
+    checkAdminAccess,
+  ]);
+
+  // ==========================================================
+  // LOAD DATA AFTER ADMIN VERIFIED
+  // ==========================================================
+
+  useEffect(() => {
+    if (!adminRecord) {
+      return;
+    }
+
+    loadAdmins();
+    loadConversations();
+  }, [
+    adminRecord,
+    loadAdmins,
+    loadConversations,
+  ]);
+
+  // ==========================================================
+  // LOAD SELECTED CONVERSATION MESSAGES
+  // ==========================================================
+
+  useEffect(() => {
+    if (!selectedConversationId) {
+      setMessages([]);
+      return;
+    }
+
+    loadMessages(
+      selectedConversationId
+    );
+  }, [
+    selectedConversationId,
+    loadMessages,
+  ]);
+
+  // ==========================================================
+  // REALTIME — CONVERSATIONS
+  // ==========================================================
+
+  useEffect(() => {
+    if (!adminRecord) {
+      return;
+    }
+
+    const channel =
+      supabase.channel(
+        "admin-support-conversations"
+      );
+
+    channel.on(
+      "postgres_changes",
+      {
+        event: "*",
+        schema: "public",
+        table: "support_conversations",
+      },
+      async (payload) => {
+        if (
+          payload.eventType ===
+          "INSERT"
+        ) {
+          const incoming =
+            payload.new as Conversation;
+
+          const withProfiles =
+            await attachProfiles([
+              incoming,
+            ]);
+
+          const conversation =
+            withProfiles[0];
+
+          setConversations(
             (current) => {
               if (
                 current.some(
@@ -1385,310 +1229,51 @@ const AdminSupportPage =
               }
 
               return [
+                conversation,
                 ...current,
-                incoming,
-              ];
+              ].sort(
+                (a, b) =>
+                  new Date(
+                    b.updated_at
+                  ).getTime() -
+                  new Date(
+                    a.updated_at
+                  ).getTime()
+              );
             }
           );
 
-          scrollToBottom();
-
-          if (
-            incoming.sender_type ===
-              "user" &&
-            !incoming.read_at
-          ) {
-            const readAt =
-              new Date().toISOString();
-
-            await supabase
-              .from(
-                "support_messages"
-              )
-              .update({
-                read_at:
-                  readAt,
-              })
-              .eq(
-                "id",
-                incoming.id
-              );
-
-            setMessages(
-              (current) =>
-                current.map(
-                  (item) =>
-                    item.id ===
-                    incoming.id
-                      ? {
-                          ...item,
-                          read_at:
-                            readAt,
-                        }
-                      : item
-                )
-            );
-          }
-        }
-      );
-
-      channel.subscribe();
-
-      return () => {
-        supabase.removeChannel(
-          channel
-        );
-      };
-    }, [
-      adminRecord,
-      selectedConversationId,
-      scrollToBottom,
-    ]);
-
-    // ==========================================================
-    // FILTERED CONVERSATIONS
-    // ==========================================================
-
-    const filteredConversations =
-      useMemo(() => {
-        const normalizedSearch =
-          search
-            .trim()
-            .toLowerCase();
-
-        return conversations.filter(
-          (conversation) => {
-            const profile =
-              customerProfiles[
-                conversation.user_id
-              ];
-
-            if (
-              statusFilter !==
-                "all" &&
-              conversation.status !==
-                statusFilter
-            ) {
-              return false;
-            }
-
-            if (
-              priorityFilter !==
-                "all" &&
-              conversation.priority !==
-                priorityFilter
-            ) {
-              return false;
-            }
-
-            if (
-              assignedFilter ===
-                "mine" &&
-              conversation.assigned_admin_id !==
-                user?.id
-            ) {
-              return false;
-            }
-
-            if (
-              assignedFilter ===
-                "unassigned" &&
-              conversation.assigned_admin_id
-            ) {
-              return false;
-            }
-
-            if (
-              !normalizedSearch
-            ) {
-              return true;
-            }
-
-            const searchable = [
-              conversation.subject,
-              conversation.user_id,
-              conversation.id,
-
-              profile?.full_name,
-              profile?.email,
-              profile?.phone_number,
-              profile?.nickname,
-              profile?.gender,
-              profile?.address,
-              profile?.bvn_masked,
-              profile?.kyc_status,
-
-              conversation.status,
-              conversation.priority,
-            ]
-              .filter(Boolean)
-              .join(" ")
-              .toLowerCase();
-
-            return searchable.includes(
-              normalizedSearch
-            );
-          }
-        );
-      }, [
-        conversations,
-        customerProfiles,
-        search,
-        statusFilter,
-        priorityFilter,
-        assignedFilter,
-        user?.id,
-      ]);
-
-    // ==========================================================
-    // COUNTS
-    // ==========================================================
-
-    const counts = useMemo(
-      () => {
-        const open =
-          conversations.filter(
-            (item) =>
-              item.status ===
-              "open"
-          ).length;
-
-        const waitingAdmin =
-          conversations.filter(
-            (item) =>
-              item.status ===
-              "waiting_admin"
-          ).length;
-
-        const urgent =
-          conversations.filter(
-            (item) =>
-              item.priority ===
-                "urgent" &&
-              item.status !==
-                "closed"
-          ).length;
-
-        const assignedToMe =
-          conversations.filter(
-            (item) =>
-              item.assigned_admin_id ===
-                user?.id &&
-              item.status !==
-                "closed"
-          ).length;
-
-        return {
-          total:
-            conversations.length,
-          open,
-          waitingAdmin,
-          urgent,
-          assignedToMe,
-        };
-      },
-      [
-        conversations,
-        user?.id,
-      ]
-    );
-
-    // ==========================================================
-    // SELECT CONVERSATION
-    // ==========================================================
-
-    const selectConversation =
-      (
-        conversationId: string
-      ) => {
-        setSelectedConversationId(
-          conversationId
-        );
-
-        setMobileConversationOpen(
-          true
-        );
-      };
-
-    // ==========================================================
-    // UPDATE CONVERSATION
-    // ==========================================================
-
-    const updateConversation =
-      async (
-        updates: Partial<
-          Pick<
-            Conversation,
-            | "status"
-            | "priority"
-            | "assigned_admin_id"
-          >
-        >
-      ) => {
-        if (
-          !selectedConversation ||
-          updatingConversation
-        ) {
           return;
         }
 
-        setUpdatingConversation(
-          true
-        );
+        if (
+          payload.eventType ===
+          "UPDATE"
+        ) {
+          const incoming =
+            payload.new as Conversation;
 
-        try {
-          const nextUpdates: Record<
-            string,
-            unknown
-          > = {
-            ...updates,
-          };
+          const withProfiles =
+            await attachProfiles([
+              incoming,
+            ]);
 
-          if (
-            updates.status ===
-            "closed"
-          ) {
-            nextUpdates.closed_at =
-              new Date().toISOString();
-          } else if (
-            updates.status &&
-            updates.status !==
-              "closed"
-          ) {
-            nextUpdates.closed_at =
-              null;
-          }
-
-          const {
-            data,
-            error,
-          } = await supabase
-            .from(
-              "support_conversations"
-            )
-            .update(
-              nextUpdates
-            )
-            .eq(
-              "id",
-              selectedConversation.id
-            )
-            .select("*")
-            .single();
-
-          if (error) {
-            throw error;
-          }
+          const conversation =
+            withProfiles[0];
 
           setConversations(
             (current) =>
               current
-                .map(
-                  (item) =>
-                    item.id ===
-                    selectedConversation.id
-                      ? (data as Conversation)
-                      : item
+                .map((item) =>
+                  item.id ===
+                  incoming.id
+                    ? {
+                        ...conversation,
+                        profile:
+                          item.profile ??
+                          conversation.profile,
+                      }
+                    : item
                 )
                 .sort(
                   (a, b) =>
@@ -1701,850 +1286,1252 @@ const AdminSupportPage =
                 )
           );
 
-          toast({
-            title:
-              "Conversation updated",
-            description:
-              "The support conversation has been updated.",
-          });
-        } catch (error: any) {
-          console.error(
-            "Conversation update failed:",
-            error
-          );
-
-          toast({
-            title:
-              "Update failed",
-            description:
-              error?.message ||
-              "Unable to update conversation.",
-            variant:
-              "destructive",
-          });
-        } finally {
-          setUpdatingConversation(
-            false
-          );
-        }
-      };
-
-    // ==========================================================
-    // ASSIGN TO ME
-    // ==========================================================
-
-    const assignToMe =
-      async () => {
-        if (!user?.id) {
           return;
         }
 
-        await updateConversation(
-          {
-            assigned_admin_id:
-              user.id,
+        if (
+          payload.eventType ===
+          "DELETE"
+        ) {
+          const deleted =
+            payload.old as Conversation;
+
+          setConversations(
+            (current) =>
+              current.filter(
+                (item) =>
+                  item.id !==
+                  deleted.id
+              )
+          );
+
+          if (
+            selectedConversationId ===
+            deleted.id
+          ) {
+            setSelectedConversationId(
+              null
+            );
+            setMessages([]);
+          }
+        }
+      }
+    );
+
+    channel.subscribe();
+
+    return () => {
+      supabase.removeChannel(
+        channel
+      );
+    };
+  }, [
+    adminRecord,
+    selectedConversationId,
+    attachProfiles,
+  ]);
+
+  // ==========================================================
+  // REALTIME — MESSAGES
+  // ==========================================================
+
+  useEffect(() => {
+    if (!adminRecord) {
+      return;
+    }
+
+    const channel =
+      supabase.channel(
+        "admin-support-messages"
+      );
+
+    channel.on(
+      "postgres_changes",
+      {
+        event: "INSERT",
+        schema: "public",
+        table: "support_messages",
+      },
+      async (payload) => {
+        const incoming =
+          payload.new as SupportMessage;
+
+        setConversations(
+          (current) =>
+            current
+              .map((conversation) =>
+                conversation.id ===
+                incoming.conversation_id
+                  ? {
+                      ...conversation,
+                      updated_at:
+                        incoming.created_at,
+                      last_message_at:
+                        incoming.created_at,
+                    }
+                  : conversation
+              )
+              .sort(
+                (a, b) =>
+                  new Date(
+                    b.updated_at
+                  ).getTime() -
+                  new Date(
+                    a.updated_at
+                  ).getTime()
+              )
+        );
+
+        if (
+          incoming.conversation_id !==
+          selectedConversationId
+        ) {
+          return;
+        }
+
+        setMessages(
+          (current) => {
+            if (
+              current.some(
+                (item) =>
+                  item.id ===
+                  incoming.id
+              )
+            ) {
+              return current;
+            }
+
+            return [
+              ...current,
+              incoming,
+            ];
           }
         );
-      };
 
-    // ==========================================================
-    // SEND MESSAGE
-    // ==========================================================
-
-    const sendMessage =
-      async () => {
-        const cleanMessage =
-          message.trim();
+        scrollToBottom();
 
         if (
-          !cleanMessage ||
-          sending ||
-          !selectedConversation ||
-          !user?.id
+          incoming.sender_type ===
+            "user" &&
+          !incoming.read_at
         ) {
-          return;
-        }
+          const readAt =
+            new Date().toISOString();
 
-        if (
-          selectedConversation.status ===
-          "closed"
-        ) {
-          toast({
-            title:
-              "Conversation closed",
-            description:
-              "This conversation is closed and cannot receive new messages.",
-            variant:
-              "destructive",
-          });
-
-          return;
-        }
-
-        setSending(true);
-
-        try {
-          const {
-            error,
-          } = await supabase
-            .from(
-              "support_messages"
-            )
-            .insert({
-              conversation_id:
-                selectedConversation.id,
-              sender_id:
-                user.id,
-              sender_type:
-                "admin",
-              message:
-                cleanMessage,
-            });
-
-          if (error) {
-            throw error;
-          }
-
-          setMessage("");
-
-          const {
-            error:
-              statusError,
-          } = await supabase
-            .from(
-              "support_conversations"
-            )
+          await supabase
+            .from("support_messages")
             .update({
-              status:
-                "waiting_user",
+              read_at: readAt,
             })
             .eq(
               "id",
-              selectedConversation.id
-            )
-            .neq(
-              "status",
-              "closed"
+              incoming.id
             );
 
-          if (statusError) {
-            console.error(
-              "Failed to update conversation status:",
-              statusError
-            );
-          }
-
-          scrollToBottom();
-        } catch (error: any) {
-          console.error(
-            "Failed to send admin message:",
-            error
+          setMessages(
+            (current) =>
+              current.map(
+                (item) =>
+                  item.id ===
+                  incoming.id
+                    ? {
+                        ...item,
+                        read_at:
+                          readAt,
+                      }
+                    : item
+              )
           );
-
-          toast({
-            title:
-              "Message failed",
-            description:
-              error?.message ||
-              "Unable to send your reply.",
-            variant:
-              "destructive",
-          });
-        } finally {
-          setSending(false);
         }
-      };
+      }
+    );
 
-    // ==========================================================
-    // KEYBOARD
-    // ==========================================================
+    channel.subscribe();
 
-    const handleKeyDown =
-      (
-        event: React.KeyboardEvent<HTMLInputElement>
-      ) => {
-        if (
-          event.key ===
-            "Enter" &&
-          !event.shiftKey
-        ) {
-          event.preventDefault();
-          sendMessage();
-        }
-      };
+    return () => {
+      supabase.removeChannel(
+        channel
+      );
+    };
+  }, [
+    adminRecord,
+    selectedConversationId,
+    scrollToBottom,
+  ]);
 
-    // ==========================================================
-    // REFRESH
-    // ==========================================================
+  // ==========================================================
+  // FILTERED CONVERSATIONS
+  // ==========================================================
 
-    const refreshAll =
-      async () => {
-        if (!adminRecord) {
-          return;
-        }
+  const filteredConversations =
+    useMemo(() => {
+      const normalizedSearch =
+        search.trim().toLowerCase();
 
-        setRefreshing(true);
-
-        try {
-          await Promise.all([
-            loadAdmins(),
-            loadConversations(
-              true
-            ),
-          ]);
+      return conversations.filter(
+        (conversation) => {
+          if (
+            statusFilter !== "all" &&
+            conversation.status !==
+              statusFilter
+          ) {
+            return false;
+          }
 
           if (
-            selectedConversationId
+            priorityFilter !== "all" &&
+            conversation.priority !==
+              priorityFilter
           ) {
-            await loadMessages(
-              selectedConversationId
-            );
+            return false;
           }
-        } finally {
-          setRefreshing(false);
+
+          if (
+            assignedFilter === "mine" &&
+            conversation.assigned_admin_id !==
+              user?.id
+          ) {
+            return false;
+          }
+
+          if (
+            assignedFilter ===
+              "unassigned" &&
+            conversation.assigned_admin_id
+          ) {
+            return false;
+          }
+
+          if (!normalizedSearch) {
+            return true;
+          }
+
+          const profile =
+            conversation.profile;
+
+          const searchable = [
+            conversation.subject,
+            conversation.user_id,
+            conversation.id,
+            conversation.status,
+            conversation.priority,
+
+            profile?.full_name,
+            profile?.nickname,
+            profile?.email,
+            profile?.phone_number,
+            profile?.address,
+            profile?.gender,
+            profile?.bvn_masked,
+            profile?.kyc_status,
+          ]
+            .filter(Boolean)
+            .join(" ")
+            .toLowerCase();
+
+          return searchable.includes(
+            normalizedSearch
+          );
         }
-      };
-
-    // ==========================================================
-    // AUTH LOADING
-    // ==========================================================
-
-    if (authLoading) {
-      return (
-        <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-          <div className="text-center">
-            <Loader2 className="h-10 w-10 animate-spin text-purple-600 mx-auto" />
-
-            <p className="mt-3 text-sm text-gray-500">
-              Checking administrator
-              access...
-            </p>
-          </div>
-        </div>
       );
-    }
+    }, [
+      conversations,
+      search,
+      statusFilter,
+      priorityFilter,
+      assignedFilter,
+      user?.id,
+    ]);
 
-    // ==========================================================
-    // ADMIN LOADING
-    // ==========================================================
+  // ==========================================================
+  // COUNTS
+  // ==========================================================
 
-    if (adminLoading) {
-      return (
-        <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-          <div className="text-center">
-            <Loader2 className="h-10 w-10 animate-spin text-purple-600 mx-auto" />
+  const counts = useMemo(() => {
+    const open =
+      conversations.filter(
+        (item) =>
+          item.status === "open"
+      ).length;
 
-            <p className="mt-3 text-sm text-gray-500">
-              Verifying administrator
-              account...
-            </p>
-          </div>
-        </div>
-      );
-    }
+    const waitingAdmin =
+      conversations.filter(
+        (item) =>
+          item.status ===
+          "waiting_admin"
+      ).length;
 
-    // ==========================================================
-    // ACCESS DENIED
-    // ==========================================================
+    const urgent =
+      conversations.filter(
+        (item) =>
+          item.priority ===
+            "urgent" &&
+          item.status !==
+            "closed"
+      ).length;
 
-    if (
-      accessDenied ||
-      !adminRecord
-    ) {
-      return (
-        <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-purple-50 flex items-center justify-center p-6">
-          <div className="max-w-md w-full bg-white border rounded-2xl shadow-lg p-8 text-center">
-            <div className="w-16 h-16 rounded-full bg-red-100 flex items-center justify-center mx-auto mb-5">
-              <AlertCircle className="h-8 w-8 text-red-600" />
-            </div>
+    const assignedToMe =
+      conversations.filter(
+        (item) =>
+          item.assigned_admin_id ===
+            user?.id &&
+          item.status !== "closed"
+      ).length;
 
-            <h1 className="text-xl font-bold text-gray-900">
-              Access Denied
-            </h1>
+    return {
+      total: conversations.length,
+      open,
+      waitingAdmin,
+      urgent,
+      assignedToMe,
+    };
+  }, [
+    conversations,
+    user?.id,
+  ]);
 
-            <p className="text-sm text-gray-500 mt-2">
-              Your account does not have
-              active administrator access
-              to the IyanjuPay support
-              dashboard.
-            </p>
+  // ==========================================================
+  // SELECT CONVERSATION
+  // ==========================================================
 
-            <Button
-              className="mt-6 bg-purple-600 hover:bg-purple-700"
-              onClick={() =>
-                window.location.replace(
-                  "/"
-                )
-              }
-            >
-              Return to IyanjuPay
-            </Button>
-          </div>
-        </div>
-      );
-    }
+  const selectConversation = (
+    conversationId: string
+  ) => {
+    setSelectedConversationId(
+      conversationId
+    );
 
-    // ==========================================================
-    // SELECTED CUSTOMER
-    // ==========================================================
+    setMobileConversationOpen(
+      true
+    );
+  };
 
-    const selectedCustomerName =
-      selectedConversation
-        ? getCustomerName(
-            selectedCustomerProfile,
-            selectedConversation.user_id
+  // ==========================================================
+  // UPDATE CONVERSATION
+  // ==========================================================
+
+  const updateConversation =
+    async (
+      updates: Partial<
+        Pick<
+          Conversation,
+          | "status"
+          | "priority"
+          | "assigned_admin_id"
+        >
+      >
+    ) => {
+      if (
+        !selectedConversation ||
+        updatingConversation
+      ) {
+        return;
+      }
+
+      setUpdatingConversation(true);
+
+      try {
+        const nextUpdates: Record<
+          string,
+          unknown
+        > = {
+          ...updates,
+        };
+
+        if (
+          updates.status ===
+          "closed"
+        ) {
+          nextUpdates.closed_at =
+            new Date().toISOString();
+        } else if (
+          updates.status &&
+          updates.status !==
+            "closed"
+        ) {
+          nextUpdates.closed_at =
+            null;
+        }
+
+        const {
+          data,
+          error,
+        } = await supabase
+          .from(
+            "support_conversations"
           )
-        : "Customer";
+          .update(nextUpdates)
+          .eq(
+            "id",
+            selectedConversation.id
+          )
+          .select("*")
+          .single();
 
-    // ==========================================================
-    // DASHBOARD
-    // ==========================================================
+        if (error) {
+          throw error;
+        }
 
-    return (
-      <div className="min-h-screen bg-gray-50 flex flex-col">
+        const updatedConversation =
+          data as Conversation;
 
-        {/* ======================================================
-            HEADER
-        ====================================================== */}
+        const profile =
+          selectedConversation.profile ??
+          (await loadSingleProfile(
+            updatedConversation.user_id
+          ));
 
-        <header className="bg-gradient-to-r from-purple-600 to-blue-600 text-white shadow-md shrink-0">
-          <div className="px-4 sm:px-6 py-4">
-            <div className="flex items-center justify-between gap-4">
-
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center">
-                  <Headphones className="h-5 w-5" />
-                </div>
-
-                <div>
-                  <h1 className="font-bold text-lg">
-                    IyanjuPay Admin
-                  </h1>
-
-                  <p className="text-xs text-white/75">
-                    Support Center
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2">
-
-                <div className="hidden sm:flex items-center gap-2 px-3 py-2 rounded-lg bg-white/10">
-                  <Shield className="h-4 w-4" />
-
-                  <span className="text-sm">
-                    {
-                      ROLE_LABELS[
-                        adminRecord.role
-                      ]
+        setConversations(
+          (current) =>
+            current
+              .map((item) =>
+                item.id ===
+                selectedConversation.id
+                  ? {
+                      ...updatedConversation,
+                      profile,
                     }
-                  </span>
-                </div>
+                  : item
+              )
+              .sort(
+                (a, b) =>
+                  new Date(
+                    b.updated_at
+                  ).getTime() -
+                  new Date(
+                    a.updated_at
+                  ).getTime()
+              )
+        );
 
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={
-                    refreshAll
-                  }
-                  disabled={
-                    refreshing
-                  }
-                  className="text-white hover:bg-white/20"
-                >
-                  <RefreshCw
-                    className={`h-4 w-4 ${
-                      refreshing
-                        ? "animate-spin"
-                        : ""
-                    }`}
-                  />
-                </Button>
+        toast({
+          title:
+            "Conversation updated",
+          description:
+            "The support conversation has been updated.",
+        });
+      } catch (error: any) {
+        console.error(
+          "Conversation update failed:",
+          error
+        );
 
-              </div>
-            </div>
+        toast({
+          title: "Update failed",
+          description:
+            error?.message ||
+            "Unable to update conversation.",
+          variant: "destructive",
+        });
+      } finally {
+        setUpdatingConversation(
+          false
+        );
+      }
+    };
+
+  // ==========================================================
+  // ASSIGN TO CURRENT ADMIN
+  // ==========================================================
+
+  const assignToMe =
+    async () => {
+      if (!user?.id) {
+        return;
+      }
+
+      await updateConversation({
+        assigned_admin_id:
+          user.id,
+      });
+    };
+
+  // ==========================================================
+  // SEND MESSAGE
+  // ==========================================================
+
+  const sendMessage =
+    async () => {
+      const cleanMessage =
+        message.trim();
+
+      if (
+        !cleanMessage ||
+        sending ||
+        !selectedConversation ||
+        !user?.id
+      ) {
+        return;
+      }
+
+      if (
+        selectedConversation.status ===
+        "closed"
+      ) {
+        toast({
+          title:
+            "Conversation closed",
+          description:
+            "This conversation is closed and cannot receive new messages.",
+          variant: "destructive",
+        });
+
+        return;
+      }
+
+      setSending(true);
+
+      try {
+        const {
+          error,
+        } = await supabase
+          .from("support_messages")
+          .insert({
+            conversation_id:
+              selectedConversation.id,
+            sender_id:
+              user.id,
+            sender_type:
+              "admin",
+            message:
+              cleanMessage,
+          });
+
+        if (error) {
+          throw error;
+        }
+
+        setMessage("");
+
+        const {
+          error:
+            statusError,
+        } = await supabase
+          .from(
+            "support_conversations"
+          )
+          .update({
+            status:
+              "waiting_user",
+          })
+          .eq(
+            "id",
+            selectedConversation.id
+          )
+          .neq(
+            "status",
+            "closed"
+          );
+
+        if (statusError) {
+          console.error(
+            "Failed to update conversation status:",
+            statusError
+          );
+        }
+
+        scrollToBottom();
+      } catch (error: any) {
+        console.error(
+          "Failed to send admin message:",
+          error
+        );
+
+        toast({
+          title:
+            "Message failed",
+          description:
+            error?.message ||
+            "Unable to send your reply.",
+          variant: "destructive",
+        });
+      } finally {
+        setSending(false);
+      }
+    };
+
+  // ==========================================================
+  // KEYBOARD
+  // ==========================================================
+
+  const handleKeyDown =
+    (
+      event: React.KeyboardEvent<HTMLInputElement>
+    ) => {
+      if (
+        event.key === "Enter" &&
+        !event.shiftKey
+      ) {
+        event.preventDefault();
+        sendMessage();
+      }
+    };
+
+  // ==========================================================
+  // REFRESH
+  // ==========================================================
+
+  const refreshAll =
+    async () => {
+      if (!adminRecord) {
+        return;
+      }
+
+      setRefreshing(true);
+
+      try {
+        await Promise.all([
+          loadAdmins(),
+          loadConversations(true),
+        ]);
+
+        if (
+          selectedConversationId
+        ) {
+          await loadMessages(
+            selectedConversationId
+          );
+        }
+      } finally {
+        setRefreshing(false);
+      }
+    };
+
+  // ==========================================================
+  // AUTH LOADING
+  // ==========================================================
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="h-10 w-10 animate-spin text-purple-600 mx-auto" />
+
+          <p className="mt-3 text-sm text-gray-500">
+            Checking administrator access...
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // ==========================================================
+  // ADMIN LOADING
+  // ==========================================================
+
+  if (adminLoading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="h-10 w-10 animate-spin text-purple-600 mx-auto" />
+
+          <p className="mt-3 text-sm text-gray-500">
+            Verifying administrator account...
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // ==========================================================
+  // ACCESS DENIED
+  // ==========================================================
+
+  if (
+    accessDenied ||
+    !adminRecord
+  ) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-purple-50 flex items-center justify-center p-6">
+        <div className="max-w-md w-full bg-white border rounded-2xl shadow-lg p-8 text-center">
+          <div className="w-16 h-16 rounded-full bg-red-100 flex items-center justify-center mx-auto mb-5">
+            <AlertCircle className="h-8 w-8 text-red-600" />
           </div>
-        </header>
 
-        {/* ======================================================
-            STATISTICS
-        ====================================================== */}
+          <h1 className="text-xl font-bold text-gray-900">
+            Access Denied
+          </h1>
 
-        <div className="bg-white border-b px-4 sm:px-6 py-3">
-          <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+          <p className="text-sm text-gray-500 mt-2">
+            Your account does not have
+            active administrator access
+            to the IyanjuPay support
+            dashboard.
+          </p>
 
-            <div className="rounded-xl border bg-gray-50 px-4 py-3">
-              <p className="text-xs text-gray-500">
-                Total
-              </p>
+          <Button
+            className="mt-6 bg-purple-600 hover:bg-purple-700"
+            onClick={() =>
+              window.location.replace(
+                "/"
+              )
+            }
+          >
+            Return to IyanjuPay
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
-              <p className="text-xl font-bold text-gray-900">
-                {counts.total}
-              </p>
+  // ==========================================================
+  // SELECTED CUSTOMER
+  // ==========================================================
+
+  const selectedProfile =
+    selectedConversation?.profile ??
+    null;
+
+  const selectedCustomerName =
+    selectedConversation
+      ? getProfileDisplayName(
+          selectedProfile,
+          selectedConversation.user_id
+        )
+      : "Customer";
+
+  const selectedCustomerEmail =
+    getProfileEmail(
+      selectedProfile
+    );
+
+  const selectedCustomerPhone =
+    getProfilePhone(
+      selectedProfile
+    );
+
+  // ==========================================================
+  // DASHBOARD
+  // ==========================================================
+
+  return (
+    <div className="min-h-screen bg-gray-50 flex flex-col">
+
+      {/* ======================================================
+          HEADER
+      ====================================================== */}
+
+      <header className="bg-gradient-to-r from-purple-600 to-blue-600 text-white shadow-md shrink-0">
+        <div className="px-4 sm:px-6 py-4">
+          <div className="flex items-center justify-between gap-4">
+
+            <div className="flex items-center gap-3">
+
+              <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center">
+                <Headphones className="h-5 w-5" />
+              </div>
+
+              <div>
+                <h1 className="font-bold text-lg">
+                  IyanjuPay Admin
+                </h1>
+
+                <p className="text-xs text-white/75">
+                  Support Center
+                </p>
+              </div>
+
             </div>
 
-            <div className="rounded-xl border bg-green-50 px-4 py-3">
-              <p className="text-xs text-green-600">
-                Open
-              </p>
+            <div className="flex items-center gap-2">
 
-              <p className="text-xl font-bold text-green-700">
-                {counts.open}
-              </p>
+              <div className="hidden sm:flex items-center gap-2 px-3 py-2 rounded-lg bg-white/10">
+                <Shield className="h-4 w-4" />
+
+                <span className="text-sm">
+                  {
+                    ROLE_LABELS[
+                      adminRecord.role
+                    ]
+                  }
+                </span>
+              </div>
+
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={refreshAll}
+                disabled={refreshing}
+                className="text-white hover:bg-white/20"
+              >
+                <RefreshCw
+                  className={`h-4 w-4 ${
+                    refreshing
+                      ? "animate-spin"
+                      : ""
+                  }`}
+                />
+              </Button>
+
             </div>
-
-            <div className="rounded-xl border bg-orange-50 px-4 py-3">
-              <p className="text-xs text-orange-600">
-                Waiting Admin
-              </p>
-
-              <p className="text-xl font-bold text-orange-700">
-                {counts.waitingAdmin}
-              </p>
-            </div>
-
-            <div className="rounded-xl border bg-red-50 px-4 py-3">
-              <p className="text-xs text-red-600">
-                Urgent
-              </p>
-
-              <p className="text-xl font-bold text-red-700">
-                {counts.urgent}
-              </p>
-            </div>
-
-            <div className="rounded-xl border bg-purple-50 px-4 py-3">
-              <p className="text-xs text-purple-600">
-                Assigned To Me
-              </p>
-
-              <p className="text-xl font-bold text-purple-700">
-                {counts.assignedToMe}
-              </p>
-            </div>
-
           </div>
         </div>
+      </header>
 
-        {/* ======================================================
-            MAIN
-        ====================================================== */}
+      {/* ======================================================
+          STATISTICS
+      ====================================================== */}
 
-        <main className="flex-1 min-h-0 flex overflow-hidden">
+      <div className="bg-white border-b px-4 sm:px-6 py-3">
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
 
-          {/* ====================================================
-              CONVERSATION LIST
-          ==================================================== */}
+          <div className="rounded-xl border bg-gray-50 px-4 py-3">
+            <p className="text-xs text-gray-500">
+              Total
+            </p>
 
-          <section
-            className={`
-              w-full lg:w-[390px]
-              bg-white border-r
-              flex flex-col
-              ${
-                mobileConversationOpen
-                  ? "hidden lg:flex"
-                  : "flex"
-              }
-            `}
-          >
+            <p className="text-xl font-bold text-gray-900">
+              {counts.total}
+            </p>
+          </div>
 
-            {/* SEARCH */}
+          <div className="rounded-xl border bg-green-50 px-4 py-3">
+            <p className="text-xs text-green-600">
+              Open
+            </p>
 
-            <div className="p-4 border-b">
+            <p className="text-xl font-bold text-green-700">
+              {counts.open}
+            </p>
+          </div>
 
-              <div className="relative">
+          <div className="rounded-xl border bg-orange-50 px-4 py-3">
+            <p className="text-xs text-orange-600">
+              Waiting Admin
+            </p>
 
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <p className="text-xl font-bold text-orange-700">
+              {counts.waitingAdmin}
+            </p>
+          </div>
 
-                <Input
-                  value={search}
-                  onChange={(
-                    event
-                  ) =>
-                    setSearch(
+          <div className="rounded-xl border bg-red-50 px-4 py-3">
+            <p className="text-xs text-red-600">
+              Urgent
+            </p>
+
+            <p className="text-xl font-bold text-red-700">
+              {counts.urgent}
+            </p>
+          </div>
+
+          <div className="rounded-xl border bg-purple-50 px-4 py-3">
+            <p className="text-xs text-purple-600">
+              Assigned To Me
+            </p>
+
+            <p className="text-xl font-bold text-purple-700">
+              {counts.assignedToMe}
+            </p>
+          </div>
+
+        </div>
+      </div>
+
+      {/* ======================================================
+          MAIN
+      ====================================================== */}
+
+      <main className="flex-1 min-h-0 flex overflow-hidden">
+
+        {/* ====================================================
+            CONVERSATION LIST
+        ==================================================== */}
+
+        <section
+          className={`
+            w-full lg:w-[390px]
+            bg-white border-r
+            flex flex-col
+            ${
+              mobileConversationOpen
+                ? "hidden lg:flex"
+                : "flex"
+            }
+          `}
+        >
+
+          {/* SEARCH */}
+
+          <div className="p-4 border-b">
+
+            <div className="relative">
+
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+
+              <Input
+                value={search}
+                onChange={(event) =>
+                  setSearch(
+                    event.target.value
+                  )
+                }
+                placeholder="Search by name, email, phone, ID..."
+                className="pl-9 pr-9"
+              />
+
+              {search && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    setSearch("")
+                  }
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              )}
+
+            </div>
+
+            <div className="flex items-center justify-between mt-3">
+
+              <p className="text-sm font-semibold text-gray-800">
+                Support Inbox
+              </p>
+
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() =>
+                  setShowFilters(
+                    (value) => !value
+                  )
+                }
+                className="text-gray-600"
+              >
+                <Filter className="h-4 w-4 mr-1" />
+                Filters
+              </Button>
+
+            </div>
+
+            {showFilters && (
+              <div className="mt-3 space-y-2">
+
+                <select
+                  value={statusFilter}
+                  onChange={(event) =>
+                    setStatusFilter(
                       event.target
-                        .value
+                        .value as
+                        | ConversationStatus
+                        | "all"
                     )
                   }
-                  placeholder="Search name, email, phone..."
-                  className="pl-9 pr-9"
-                />
+                  className="w-full h-10 rounded-md border bg-white px-3 text-sm"
+                >
+                  {STATUS_OPTIONS.map(
+                    (option) => (
+                      <option
+                        key={
+                          option.value
+                        }
+                        value={
+                          option.value
+                        }
+                      >
+                        {option.label}
+                      </option>
+                    )
+                  )}
+                </select>
 
-                {search && (
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setSearch("")
-                    }
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
-                )}
+                <select
+                  value={priorityFilter}
+                  onChange={(event) =>
+                    setPriorityFilter(
+                      event.target
+                        .value as
+                        | ConversationPriority
+                        | "all"
+                    )
+                  }
+                  className="w-full h-10 rounded-md border bg-white px-3 text-sm"
+                >
+                  {PRIORITY_OPTIONS.map(
+                    (option) => (
+                      <option
+                        key={
+                          option.value
+                        }
+                        value={
+                          option.value
+                        }
+                      >
+                        {option.label}
+                      </option>
+                    )
+                  )}
+                </select>
+
+                <select
+                  value={assignedFilter}
+                  onChange={(event) =>
+                    setAssignedFilter(
+                      event.target
+                        .value as
+                        | "all"
+                        | "mine"
+                        | "unassigned"
+                    )
+                  }
+                  className="w-full h-10 rounded-md border bg-white px-3 text-sm"
+                >
+                  <option value="all">
+                    All Assignments
+                  </option>
+
+                  <option value="mine">
+                    Assigned To Me
+                  </option>
+
+                  <option value="unassigned">
+                    Unassigned
+                  </option>
+                </select>
 
               </div>
+            )}
+          </div>
 
-              <div className="flex items-center justify-between mt-3">
+          {/* LIST */}
 
-                <p className="text-sm font-semibold text-gray-800">
-                  Support Inbox
+          <div className="flex-1 overflow-y-auto">
+
+            {conversationsLoading ? (
+              <div className="h-full flex items-center justify-center">
+                <Loader2 className="h-6 w-6 animate-spin text-purple-600" />
+              </div>
+            ) : filteredConversations.length ===
+              0 ? (
+              <div className="h-full flex flex-col items-center justify-center px-6 text-center">
+
+                <div className="w-14 h-14 rounded-full bg-purple-100 flex items-center justify-center mb-4">
+                  <MessageCircle className="h-6 w-6 text-purple-600" />
+                </div>
+
+                <h3 className="font-semibold text-gray-900">
+                  No conversations
+                </h3>
+
+                <p className="text-sm text-gray-500 mt-1">
+                  There are no support
+                  conversations matching
+                  your filters.
                 </p>
 
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() =>
-                    setShowFilters(
-                      (value) =>
-                        !value
-                    )
-                  }
-                  className="text-gray-600"
-                >
-                  <Filter className="h-4 w-4 mr-1" />
-                  Filters
-                </Button>
-
               </div>
+            ) : (
+              filteredConversations.map(
+                (conversation) => {
+                  const selected =
+                    conversation.id ===
+                    selectedConversationId;
 
-              {showFilters && (
-                <div className="mt-3 space-y-2">
+                  const profile =
+                    conversation.profile;
 
-                  <select
-                    value={
-                      statusFilter
-                    }
-                    onChange={(
-                      event
-                    ) =>
-                      setStatusFilter(
-                        event
-                          .target
-                          .value as
-                          | ConversationStatus
-                          | "all"
-                      )
-                    }
-                    className="w-full h-10 rounded-md border bg-white px-3 text-sm"
-                  >
-                    {STATUS_OPTIONS.map(
-                      (
-                        option
-                      ) => (
-                        <option
-                          key={
-                            option.value
-                          }
-                          value={
-                            option.value
-                          }
-                        >
-                          {
-                            option.label
-                          }
-                        </option>
-                      )
-                    )}
-                  </select>
+                  const customerName =
+                    getProfileDisplayName(
+                      profile,
+                      conversation.user_id
+                    );
 
-                  <select
-                    value={
-                      priorityFilter
-                    }
-                    onChange={(
-                      event
-                    ) =>
-                      setPriorityFilter(
-                        event
-                          .target
-                          .value as
-                          | ConversationPriority
-                          | "all"
-                      )
-                    }
-                    className="w-full h-10 rounded-md border bg-white px-3 text-sm"
-                  >
-                    {PRIORITY_OPTIONS.map(
-                      (
-                        option
-                      ) => (
-                        <option
-                          key={
-                            option.value
-                          }
-                          value={
-                            option.value
-                          }
-                        >
-                          {
-                            option.label
-                          }
-                        </option>
-                      )
-                    )}
-                  </select>
+                  const customerEmail =
+                    getProfileEmail(
+                      profile
+                    );
 
-                  <select
-                    value={
-                      assignedFilter
-                    }
-                    onChange={(
-                      event
-                    ) =>
-                      setAssignedFilter(
-                        event
-                          .target
-                          .value as
-                          | "all"
-                          | "mine"
-                          | "unassigned"
-                      )
-                    }
-                    className="w-full h-10 rounded-md border bg-white px-3 text-sm"
-                  >
-                    <option value="all">
-                      All Assignments
-                    </option>
+                  const customerPhone =
+                    getProfilePhone(
+                      profile
+                    );
 
-                    <option value="mine">
-                      Assigned To Me
-                    </option>
+                  const initials =
+                    getProfileInitials(
+                      profile,
+                      conversation.user_id
+                    );
 
-                    <option value="unassigned">
-                      Unassigned
-                    </option>
-                  </select>
-
-                </div>
-              )}
-            </div>
-
-            {/* LIST */}
-
-            <div className="flex-1 overflow-y-auto">
-
-              {conversationsLoading ? (
-                <div className="h-full flex items-center justify-center">
-                  <Loader2 className="h-6 w-6 animate-spin text-purple-600" />
-                </div>
-              ) : filteredConversations.length ===
-                0 ? (
-                <div className="h-full flex flex-col items-center justify-center px-6 text-center">
-
-                  <div className="w-14 h-14 rounded-full bg-purple-100 flex items-center justify-center mb-4">
-                    <MessageCircle className="h-6 w-6 text-purple-600" />
-                  </div>
-
-                  <h3 className="font-semibold text-gray-900">
-                    No conversations
-                  </h3>
-
-                  <p className="text-sm text-gray-500 mt-1">
-                    There are no support
-                    conversations matching
-                    your filters.
-                  </p>
-
-                </div>
-              ) : (
-                filteredConversations.map(
-                  (
-                    conversation
-                  ) => {
-                    const selected =
-                      conversation.id ===
-                      selectedConversationId;
-
-                    const profile =
-                      customerProfiles[
-                        conversation.user_id
-                      ];
-
-                    const customerName =
-                      getCustomerName(
-                        profile,
-                        conversation.user_id
-                      );
-
-                    const initials =
-                      getCustomerInitials(
-                        profile,
-                        conversation.user_id
-                      );
-
-                    return (
-                      <button
-                        type="button"
-                        key={
+                  return (
+                    <button
+                      type="button"
+                      key={
+                        conversation.id
+                      }
+                      onClick={() =>
+                        selectConversation(
                           conversation.id
+                        )
+                      }
+                      className={`
+                        w-full text-left
+                        px-4 py-4
+                        border-b
+                        transition
+                        ${
+                          selected
+                            ? "bg-purple-50 border-l-4 border-l-purple-600"
+                            : "hover:bg-gray-50 border-l-4 border-l-transparent"
                         }
-                        onClick={() =>
-                          selectConversation(
-                            conversation.id
-                          )
-                        }
-                        className={`
-                          w-full text-left
-                          px-4 py-4
-                          border-b
-                          transition
-                          ${
-                            selected
-                              ? "bg-purple-50 border-l-4 border-l-purple-600"
-                              : "hover:bg-gray-50 border-l-4 border-l-transparent"
-                          }
-                        `}
-                      >
-                        <div className="flex items-start gap-3">
+                      `}
+                    >
 
-                          {/* AVATAR */}
+                      <div className="flex items-start gap-3">
 
-                          <div
-                            className={`
-                              w-10 h-10 rounded-full
-                              flex items-center justify-center
-                              shrink-0
-                              font-bold text-xs
-                              ${
-                                selected
-                                  ? "bg-purple-600 text-white"
-                                  : "bg-purple-100 text-purple-700"
-                              }
-                            `}
-                          >
-                            {initials}
+                        {/* AVATAR */}
+
+                        <div
+                          className={`
+                            w-10 h-10 rounded-full
+                            flex items-center justify-center
+                            shrink-0
+                            text-xs font-bold
+                            ${
+                              selected
+                                ? "bg-purple-600 text-white"
+                                : "bg-purple-100 text-purple-700"
+                            }
+                          `}
+                        >
+                          {initials}
+                        </div>
+
+                        <div className="flex-1 min-w-0">
+
+                          <div className="flex items-start justify-between gap-2">
+
+                            <div className="min-w-0">
+
+                              <p className="font-semibold text-sm text-gray-900 truncate">
+                                {
+                                  customerName
+                                }
+                              </p>
+
+                              <p className="text-xs text-gray-500 truncate mt-0.5">
+                                {
+                                  customerEmail
+                                }
+                              </p>
+
+                              <p className="text-xs text-gray-500 truncate">
+                                {
+                                  customerPhone
+                                }
+                              </p>
+
+                            </div>
+
+                            <span className="text-[10px] text-gray-400 whitespace-nowrap">
+                              {formatRelativeTime(
+                                conversation.last_message_at ||
+                                  conversation.updated_at
+                              )}
+                            </span>
+
                           </div>
 
-                          <div className="flex-1 min-w-0">
+                          <p className="text-xs text-gray-500 truncate mt-2">
+                            {conversation.subject ||
+                              "Customer Support"}
+                          </p>
 
-                            <div className="flex items-start justify-between gap-2">
+                          <div className="flex items-center gap-2 mt-2 flex-wrap">
 
-                              <div className="min-w-0">
-
-                                <p className="font-semibold text-sm text-gray-900 truncate">
-                                  {
-                                    customerName
-                                  }
-                                </p>
-
-                                <p className="text-xs text-gray-500 truncate mt-0.5">
-                                  {profile?.email ||
-                                    "Email not available"}
-                                </p>
-
-                                <p className="text-xs text-gray-500 truncate">
-                                  {profile?.phone_number ||
-                                    "Phone not available"}
-                                </p>
-
-                              </div>
-
-                              <span className="text-[10px] text-gray-400 whitespace-nowrap">
-                                {formatRelativeTime(
-                                  conversation.last_message_at ||
-                                    conversation.updated_at
-                                )}
-                              </span>
-
-                            </div>
-
-                            <p className="text-xs text-gray-500 truncate mt-2">
-                              {conversation.subject ||
-                                "Customer Support"}
-                            </p>
-
-                            <div className="flex items-center gap-2 mt-2 flex-wrap">
-
-                              <span
-                                className={`text-[10px] px-2 py-1 rounded-full ${getStatusClasses(
+                            <span
+                              className={`text-[10px] px-2 py-1 rounded-full ${getStatusClasses(
+                                conversation.status
+                              )}`}
+                            >
+                              {
+                                STATUS_LABELS[
                                   conversation.status
-                                )}`}
-                              >
-                                {
-                                  STATUS_LABELS[
-                                    conversation.status
-                                  ]
-                                }
+                                ]
+                              }
+                            </span>
+
+                            <span
+                              className={`text-[10px] px-2 py-1 rounded-full border ${getPriorityClasses(
+                                conversation.priority
+                              )}`}
+                            >
+                              {
+                                conversation.priority
+                              }
+                            </span>
+
+                            {!conversation.assigned_admin_id && (
+                              <span className="text-[10px] px-2 py-1 rounded-full bg-gray-100 text-gray-500">
+                                Unassigned
                               </span>
+                            )}
 
-                              <span
-                                className={`text-[10px] px-2 py-1 rounded-full border ${getPriorityClasses(
-                                  conversation.priority
-                                )}`}
-                              >
-                                {
-                                  conversation.priority
-                                }
-                              </span>
-
-                              {!conversation.assigned_admin_id && (
-                                <span className="text-[10px] px-2 py-1 rounded-full bg-gray-100 text-gray-500">
-                                  Unassigned
-                                </span>
-                              )}
-
-                            </div>
                           </div>
                         </div>
-                      </button>
-                    );
-                  }
-                )
-              )}
-            </div>
-          </section>
+                      </div>
+                    </button>
+                  );
+                }
+              )
+            )}
+          </div>
+        </section>
 
-          {/* ====================================================
-              CONVERSATION PANEL
-          ==================================================== */}
+        {/* ====================================================
+            CONVERSATION PANEL
+        ==================================================== */}
 
-          <section
-            className={`
-              flex-1
-              min-w-0
-              flex flex-col
-              bg-gray-50
-              ${
-                mobileConversationOpen
-                  ? "flex"
-                  : "hidden lg:flex"
-              }
-            `}
-          >
+        <section
+          className={`
+            flex-1
+            min-w-0
+            flex flex-col
+            bg-gray-50
+            ${
+              mobileConversationOpen
+                ? "flex"
+                : "hidden lg:flex"
+            }
+          `}
+        >
 
-            {!selectedConversation ? (
+          {!selectedConversation ? (
 
-              <div className="flex-1 flex flex-col items-center justify-center text-center p-8">
+            <div className="flex-1 flex flex-col items-center justify-center text-center p-8">
 
-                <div className="w-20 h-20 rounded-full bg-purple-100 flex items-center justify-center mb-5">
-                  <MessageCircle className="h-9 w-9 text-purple-600" />
-                </div>
-
-                <h2 className="text-xl font-bold text-gray-900">
-                  Support Inbox
-                </h2>
-
-                <p className="text-sm text-gray-500 mt-2 max-w-md">
-                  Select a conversation
-                  from the inbox to view
-                  the customer messages
-                  and respond in realtime.
-                </p>
-
+              <div className="w-20 h-20 rounded-full bg-purple-100 flex items-center justify-center mb-5">
+                <MessageCircle className="h-9 w-9 text-purple-600" />
               </div>
 
-            ) : (
+              <h2 className="text-xl font-bold text-gray-900">
+                Support Inbox
+              </h2>
 
-              <>
+              <p className="text-sm text-gray-500 mt-2 max-w-md">
+                Select a conversation
+                from the inbox to view
+                the customer details,
+                messages and respond
+                in realtime.
+              </p>
 
-                {/* ==================================================
-                    CUSTOMER HEADER
-                ================================================== */}
+            </div>
 
-                <div className="bg-white border-b px-4 sm:px-6 py-4">
+          ) : (
 
-                  <div className="flex items-start justify-between gap-3">
+            <>
+
+              {/* ==================================================
+                  CUSTOMER HEADER
+              ================================================== */}
+
+              <div className="bg-white border-b">
+
+                <div className="px-4 sm:px-6 py-4">
+
+                  <div className="flex items-center justify-between gap-3">
 
                     <div className="flex items-center gap-3 min-w-0">
 
@@ -2561,9 +2548,9 @@ const AdminSupportPage =
                         <ArrowLeft className="h-5 w-5" />
                       </Button>
 
-                      <div className="w-11 h-11 rounded-full bg-purple-100 flex items-center justify-center shrink-0 font-bold text-purple-700">
-                        {getCustomerInitials(
-                          selectedCustomerProfile,
+                      <div className="w-11 h-11 rounded-full bg-purple-100 flex items-center justify-center shrink-0 text-purple-700 font-bold">
+                        {getProfileInitials(
+                          selectedProfile,
                           selectedConversation.user_id
                         )}
                       </div>
@@ -2576,27 +2563,17 @@ const AdminSupportPage =
                           }
                         </h2>
 
-                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1">
+                        <p className="text-xs text-gray-500 truncate">
+                          {
+                            selectedCustomerEmail
+                          }
+                        </p>
 
-                          {selectedCustomerProfile?.email && (
-                            <span className="flex items-center gap-1 text-xs text-gray-500">
-                              <Mail className="h-3 w-3" />
-                              {
-                                selectedCustomerProfile.email
-                              }
-                            </span>
-                          )}
-
-                          {selectedCustomerProfile?.phone_number && (
-                            <span className="flex items-center gap-1 text-xs text-gray-500">
-                              <Phone className="h-3 w-3" />
-                              {
-                                selectedCustomerProfile.phone_number
-                              }
-                            </span>
-                          )}
-
-                        </div>
+                        <p className="text-xs text-gray-500 truncate">
+                          {
+                            selectedCustomerPhone
+                          }
+                        </p>
 
                       </div>
                     </div>
@@ -2627,121 +2604,134 @@ const AdminSupportPage =
                   </div>
 
                   {/* =================================================
-                      CUSTOMER DETAILS
+                      CUSTOMER INFORMATION
                   ================================================= */}
 
                   <div className="mt-4 rounded-xl border bg-gray-50 p-4">
 
-                    <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2 mb-3">
 
-                      <div className="flex items-center gap-2">
+                      <User className="h-4 w-4 text-purple-600" />
 
-                        <User className="h-4 w-4 text-purple-600" />
-
-                        <p className="text-sm font-semibold text-gray-800">
-                          Customer Details
-                        </p>
-
-                      </div>
-
-                      {customerProfilesLoading && (
-                        <Loader2 className="h-4 w-4 animate-spin text-purple-600" />
-                      )}
+                      <p className="text-sm font-bold text-gray-900">
+                        Customer Information
+                      </p>
 
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
 
-                      {/* FULL NAME */}
+                      {/* NAME */}
 
-                      <div className="bg-white rounded-lg border p-3">
+                      <div className="rounded-lg bg-white border p-3">
 
                         <p className="text-[10px] uppercase tracking-wide text-gray-400">
                           Full Name
                         </p>
 
-                        <p className="text-sm font-semibold text-gray-900 mt-1">
-                          {selectedCustomerProfile?.full_name ||
-                            selectedCustomerProfile?.nickname ||
-                            "Not provided"}
+                        <p className="text-sm font-semibold text-gray-900 mt-1 break-words">
+                          {
+                            selectedCustomerName
+                          }
                         </p>
 
                       </div>
 
                       {/* EMAIL */}
 
-                      <div className="bg-white rounded-lg border p-3">
+                      <div className="rounded-lg bg-white border p-3">
 
-                        <p className="text-[10px] uppercase tracking-wide text-gray-400 flex items-center gap-1">
-                          <Mail className="h-3 w-3" />
-                          Email
-                        </p>
+                        <div className="flex items-center gap-1.5">
+
+                          <Mail className="h-3.5 w-3.5 text-gray-400" />
+
+                          <p className="text-[10px] uppercase tracking-wide text-gray-400">
+                            Email
+                          </p>
+
+                        </div>
 
                         <p className="text-sm font-medium text-gray-900 mt-1 break-all">
-                          {selectedCustomerProfile?.email ||
-                            "Not provided"}
+                          {
+                            selectedCustomerEmail
+                          }
                         </p>
 
                       </div>
 
                       {/* PHONE */}
 
-                      <div className="bg-white rounded-lg border p-3">
+                      <div className="rounded-lg bg-white border p-3">
 
-                        <p className="text-[10px] uppercase tracking-wide text-gray-400 flex items-center gap-1">
-                          <Phone className="h-3 w-3" />
-                          Phone
-                        </p>
+                        <div className="flex items-center gap-1.5">
+
+                          <Phone className="h-3.5 w-3.5 text-gray-400" />
+
+                          <p className="text-[10px] uppercase tracking-wide text-gray-400">
+                            Phone
+                          </p>
+
+                        </div>
 
                         <p className="text-sm font-medium text-gray-900 mt-1">
-                          {selectedCustomerProfile?.phone_number ||
-                            "Not provided"}
+                          {
+                            selectedCustomerPhone
+                          }
                         </p>
 
                       </div>
 
                       {/* NICKNAME */}
 
-                      <div className="bg-white rounded-lg border p-3">
+                      <div className="rounded-lg bg-white border p-3">
 
                         <p className="text-[10px] uppercase tracking-wide text-gray-400">
                           Nickname
                         </p>
 
                         <p className="text-sm font-medium text-gray-900 mt-1">
-                          {selectedCustomerProfile?.nickname ||
-                            "Not provided"}
+                          {
+                            selectedProfile?.nickname ||
+                            "Not available"
+                          }
                         </p>
 
                       </div>
 
                       {/* GENDER */}
 
-                      <div className="bg-white rounded-lg border p-3">
+                      <div className="rounded-lg bg-white border p-3">
 
                         <p className="text-[10px] uppercase tracking-wide text-gray-400">
                           Gender
                         </p>
 
                         <p className="text-sm font-medium text-gray-900 mt-1 capitalize">
-                          {selectedCustomerProfile?.gender ||
-                            "Not provided"}
+                          {
+                            selectedProfile?.gender ||
+                            "Not available"
+                          }
                         </p>
 
                       </div>
 
                       {/* DATE OF BIRTH */}
 
-                      <div className="bg-white rounded-lg border p-3">
+                      <div className="rounded-lg bg-white border p-3">
 
-                        <p className="text-[10px] uppercase tracking-wide text-gray-400 flex items-center gap-1">
-                          <Calendar className="h-3 w-3" />
-                          Date of Birth
-                        </p>
+                        <div className="flex items-center gap-1.5">
+
+                          <CalendarDays className="h-3.5 w-3.5 text-gray-400" />
+
+                          <p className="text-[10px] uppercase tracking-wide text-gray-400">
+                            Date of Birth
+                          </p>
+
+                        </div>
 
                         <p className="text-sm font-medium text-gray-900 mt-1">
                           {formatDate(
-                            selectedCustomerProfile?.date_of_birth ||
+                            selectedProfile?.date_of_birth ??
                               null
                           )}
                         </p>
@@ -2750,99 +2740,124 @@ const AdminSupportPage =
 
                       {/* ADDRESS */}
 
-                      <div className="bg-white rounded-lg border p-3 sm:col-span-2">
+                      <div className="rounded-lg bg-white border p-3 sm:col-span-2">
 
-                        <p className="text-[10px] uppercase tracking-wide text-gray-400 flex items-center gap-1">
-                          <MapPin className="h-3 w-3" />
-                          Address
-                        </p>
+                        <div className="flex items-center gap-1.5">
 
-                        <p className="text-sm font-medium text-gray-900 mt-1">
-                          {selectedCustomerProfile?.address ||
-                            "Not provided"}
+                          <MapPin className="h-3.5 w-3.5 text-gray-400" />
+
+                          <p className="text-[10px] uppercase tracking-wide text-gray-400">
+                            Address
+                          </p>
+
+                        </div>
+
+                        <p className="text-sm font-medium text-gray-900 mt-1 break-words">
+                          {
+                            selectedProfile?.address ||
+                            "Address not available"
+                          }
                         </p>
 
                       </div>
 
                       {/* KYC */}
 
-                      <div className="bg-white rounded-lg border p-3">
+                      <div className="rounded-lg bg-white border p-3">
 
-                        <p className="text-[10px] uppercase tracking-wide text-gray-400 flex items-center gap-1">
-                          <ShieldCheck className="h-3 w-3" />
-                          KYC
-                        </p>
+                        <div className="flex items-center gap-1.5">
 
-                        <div className="flex items-center gap-2 mt-1">
+                          <ShieldCheck className="h-3.5 w-3.5 text-gray-400" />
+
+                          <p className="text-[10px] uppercase tracking-wide text-gray-400">
+                            KYC
+                          </p>
+
+                        </div>
+
+                        <div className="mt-1 flex items-center gap-2">
 
                           <span className="text-sm font-semibold text-gray-900">
                             Level{" "}
-                            {selectedCustomerProfile?.kyc_level ??
+                            {selectedProfile?.kyc_level ??
                               1}
                           </span>
 
                           <span
                             className={`text-[10px] px-2 py-1 rounded-full ${
-                              selectedCustomerProfile?.kyc_status ===
+                              selectedProfile?.kyc_status ===
                               "verified"
                                 ? "bg-green-100 text-green-700"
                                 : "bg-gray-100 text-gray-600"
                             }`}
                           >
-                            {selectedCustomerProfile?.kyc_status ||
-                              "unverified"}
+                            {
+                              selectedProfile?.kyc_status ||
+                              "unverified"
+                            }
                           </span>
 
                         </div>
-
                       </div>
 
                       {/* BVN */}
 
-                      <div className="bg-white rounded-lg border p-3">
+                      <div className="rounded-lg bg-white border p-3">
 
                         <p className="text-[10px] uppercase tracking-wide text-gray-400">
                           BVN
                         </p>
 
-                        <div className="flex items-center gap-2 mt-1">
+                        <p className="text-sm font-medium text-gray-900 mt-1">
+                          {
+                            selectedProfile?.bvn_masked ||
+                            "Not available"
+                          }
+                        </p>
 
-                          <p className="text-sm font-medium text-gray-900">
-                            {selectedCustomerProfile?.bvn_masked ||
-                              (selectedCustomerProfile?.bvn
-                                ? "••••••••"
-                                : "Not provided")}
-                          </p>
-
-                          {selectedCustomerProfile?.bvn_verified && (
-                            <span className="text-[10px] px-2 py-1 rounded-full bg-green-100 text-green-700">
-                              Verified
-                            </span>
-                          )}
-
-                        </div>
+                        {selectedProfile?.bvn_verified && (
+                          <span className="inline-flex mt-1 text-[10px] px-2 py-1 rounded-full bg-green-100 text-green-700">
+                            Verified
+                          </span>
+                        )}
 
                       </div>
 
-                      {/* PHONE VERIFIED */}
+                      {/* NIN */}
 
-                      <div className="bg-white rounded-lg border p-3">
+                      <div className="rounded-lg bg-white border p-3">
+
+                        <p className="text-[10px] uppercase tracking-wide text-gray-400">
+                          NIN
+                        </p>
+
+                        <p className="text-sm font-medium text-gray-900 mt-1">
+                          {selectedProfile?.nin
+                            ? "Available"
+                            : "Not available"}
+                        </p>
+
+                      </div>
+
+                      {/* PHONE VERIFICATION */}
+
+                      <div className="rounded-lg bg-white border p-3">
 
                         <p className="text-[10px] uppercase tracking-wide text-gray-400">
                           Phone Verification
                         </p>
 
-                        <p
-                          className={`text-sm font-semibold mt-1 ${
-                            selectedCustomerProfile?.phone_verified
-                              ? "text-green-600"
-                              : "text-gray-500"
+                        <span
+                          className={`inline-flex mt-1 text-[10px] px-2 py-1 rounded-full ${
+                            selectedProfile?.phone_verified
+                              ? "bg-green-100 text-green-700"
+                              : "bg-gray-100 text-gray-600"
                           }`}
                         >
-                          {selectedCustomerProfile?.phone_verified
+                          {selectedProfile?.phone_verified
                             ? "Verified"
                             : "Not verified"}
-                        </p>
+                        </span>
 
                       </div>
 
@@ -2856,7 +2871,7 @@ const AdminSupportPage =
                         User ID
                       </p>
 
-                      <p className="text-xs font-mono text-gray-500 break-all mt-1">
+                      <p className="text-xs font-mono text-gray-500 mt-1 break-all">
                         {
                           selectedConversation.user_id
                         }
@@ -2886,30 +2901,21 @@ const AdminSupportPage =
                         disabled={
                           updatingConversation
                         }
-                        onChange={(
-                          event
-                        ) =>
-                          updateConversation(
-                            {
-                              status:
-                                event
-                                  .target
-                                  .value as ConversationStatus,
-                            }
-                          )
+                        onChange={(event) =>
+                          updateConversation({
+                            status:
+                              event.target
+                                .value as ConversationStatus,
+                          })
                         }
                         className="w-full h-9 rounded-md border bg-white px-2.5 text-sm"
                       >
                         {STATUS_OPTIONS.filter(
-                          (
-                            option
-                          ) =>
+                          (option) =>
                             option.value !==
                             "all"
                         ).map(
-                          (
-                            option
-                          ) => (
+                          (option) => (
                             <option
                               key={
                                 option.value
@@ -2941,30 +2947,21 @@ const AdminSupportPage =
                         disabled={
                           updatingConversation
                         }
-                        onChange={(
-                          event
-                        ) =>
-                          updateConversation(
-                            {
-                              priority:
-                                event
-                                  .target
-                                  .value as ConversationPriority,
-                            }
-                          )
+                        onChange={(event) =>
+                          updateConversation({
+                            priority:
+                              event.target
+                                .value as ConversationPriority,
+                          })
                         }
                         className="w-full h-9 rounded-md border bg-white px-2.5 text-sm"
                       >
                         {PRIORITY_OPTIONS.filter(
-                          (
-                            option
-                          ) =>
+                          (option) =>
                             option.value !==
                             "all"
                         ).map(
-                          (
-                            option
-                          ) => (
+                          (option) => (
                             <option
                               key={
                                 option.value
@@ -2997,18 +2994,13 @@ const AdminSupportPage =
                         disabled={
                           updatingConversation
                         }
-                        onChange={(
-                          event
-                        ) =>
-                          updateConversation(
-                            {
-                              assigned_admin_id:
-                                event
-                                  .target
-                                  .value ||
-                                null,
-                            }
-                          )
+                        onChange={(event) =>
+                          updateConversation({
+                            assigned_admin_id:
+                              event.target
+                                .value ||
+                              null,
+                          })
                         }
                         className="w-full h-9 rounded-md border bg-white px-2.5 text-sm"
                       >
@@ -3017,9 +3009,7 @@ const AdminSupportPage =
                         </option>
 
                         {admins.map(
-                          (
-                            admin
-                          ) => (
+                          (admin) => (
                             <option
                               key={
                                 admin.user_id
@@ -3042,6 +3032,7 @@ const AdminSupportPage =
                         )}
                       </select>
                     </div>
+
                   </div>
 
                   {/* QUICK ACTIONS */}
@@ -3115,253 +3106,254 @@ const AdminSupportPage =
                     )}
 
                   </div>
+
                 </div>
+              </div>
 
-                {/* ==================================================
-                    MESSAGES
-                ================================================== */}
+              {/* ==================================================
+                  MESSAGES
+              ================================================== */}
 
-                <div className="flex-1 overflow-y-auto p-4 sm:p-6">
+              <div className="flex-1 overflow-y-auto p-4 sm:p-6">
 
-                  {messagesLoading ? (
+                {messagesLoading ? (
 
-                    <div className="h-full flex items-center justify-center">
-                      <Loader2 className="h-6 w-6 animate-spin text-purple-600" />
-                    </div>
+                  <div className="h-full flex items-center justify-center">
+                    <Loader2 className="h-6 w-6 animate-spin text-purple-600" />
+                  </div>
 
-                  ) : messages.length ===
-                    0 ? (
+                ) : messages.length ===
+                  0 ? (
 
-                    <div className="h-full flex flex-col items-center justify-center text-center">
+                  <div className="h-full flex flex-col items-center justify-center text-center">
 
-                      <MessageCircle className="h-10 w-10 text-gray-300 mb-3" />
+                    <MessageCircle className="h-10 w-10 text-gray-300 mb-3" />
 
-                      <p className="text-sm text-gray-500">
-                        No messages yet.
-                      </p>
+                    <p className="text-sm text-gray-500">
+                      No messages yet.
+                    </p>
+
+                  </div>
+
+                ) : (
+
+                  <div className="max-w-4xl mx-auto space-y-4">
+
+                    {messages.map(
+                      (item) => {
+                        const isAdmin =
+                          item.sender_type ===
+                          "admin";
+
+                        const isSystem =
+                          item.sender_type ===
+                          "system";
+
+                        return (
+                          <div
+                            key={
+                              item.id
+                            }
+                            className={`flex ${
+                              isAdmin
+                                ? "justify-end"
+                                : "justify-start"
+                            }`}
+                          >
+
+                            <div
+                              className={`
+                                max-w-[85%] sm:max-w-[70%]
+                                rounded-2xl
+                                px-4 py-3
+                                ${
+                                  isSystem
+                                    ? "bg-gray-200 text-gray-700"
+                                    : isAdmin
+                                    ? "bg-purple-600 text-white rounded-br-md"
+                                    : "bg-white border text-gray-900 shadow-sm rounded-bl-md"
+                                }
+                              `}
+                            >
+
+                              {!isAdmin &&
+                                !isSystem && (
+                                  <p className="text-xs font-semibold text-purple-600 mb-1">
+                                    {
+                                      selectedCustomerName
+                                    }
+                                  </p>
+                                )}
+
+                              {isAdmin && (
+                                <p className="text-xs font-semibold text-white/75 mb-1">
+                                  {
+                                    user.id ===
+                                    item.sender_id
+                                      ? "You"
+                                      : "Support Admin"
+                                  }
+                                </p>
+                              )}
+
+                              {isSystem && (
+                                <p className="text-xs font-semibold text-gray-500 mb-1">
+                                  System
+                                </p>
+                              )}
+
+                              <p className="text-sm whitespace-pre-wrap break-words">
+                                {
+                                  item.message
+                                }
+                              </p>
+
+                              <div
+                                className={`
+                                  flex items-center gap-2
+                                  text-[10px]
+                                  mt-2
+                                  ${
+                                    isAdmin
+                                      ? "text-white/65"
+                                      : "text-gray-400"
+                                  }
+                                `}
+                              >
+
+                                <span>
+                                  {formatTime(
+                                    item.created_at
+                                  )}
+                                </span>
+
+                                {isAdmin &&
+                                  item.read_at && (
+                                    <span>
+                                      Read
+                                    </span>
+                                  )}
+
+                              </div>
+
+                            </div>
+                          </div>
+                        );
+                      }
+                    )}
+
+                    <div
+                      ref={
+                        messagesEndRef
+                      }
+                    />
+
+                  </div>
+                )}
+              </div>
+
+              {/* ==================================================
+                  COMPOSER
+              ================================================== */}
+
+              <div className="bg-white border-t p-3 sm:p-4">
+
+                <div className="max-w-4xl mx-auto">
+
+                  {selectedConversation.status ===
+                    "closed" ? (
+
+                    <div className="rounded-xl bg-gray-100 border p-4 text-center">
+
+                      <div className="flex items-center justify-center gap-2 text-gray-600">
+
+                        <Clock3 className="h-4 w-4" />
+
+                        <p className="text-sm font-medium">
+                          This conversation
+                          is closed.
+                        </p>
+
+                      </div>
 
                     </div>
 
                   ) : (
 
-                    <div className="max-w-4xl mx-auto space-y-4">
+                    <div className="flex items-center gap-2">
 
-                      {messages.map(
-                        (
-                          item
-                        ) => {
-                          const isAdmin =
-                            item.sender_type ===
-                            "admin";
-
-                          const isSystem =
-                            item.sender_type ===
-                            "system";
-
-                          return (
-                            <div
-                              key={
-                                item.id
-                              }
-                              className={`flex ${
-                                isAdmin
-                                  ? "justify-end"
-                                  : "justify-start"
-                              }`}
-                            >
-
-                              <div
-                                className={`
-                                  max-w-[85%] sm:max-w-[70%]
-                                  rounded-2xl
-                                  px-4 py-3
-                                  ${
-                                    isSystem
-                                      ? "bg-gray-200 text-gray-700"
-                                      : isAdmin
-                                      ? "bg-purple-600 text-white rounded-br-md"
-                                      : "bg-white border text-gray-900 shadow-sm rounded-bl-md"
-                                  }
-                                `}
-                              >
-
-                                {!isAdmin &&
-                                  !isSystem && (
-                                    <p className="text-xs font-semibold text-purple-600 mb-1">
-                                      {
-                                        selectedCustomerName
-                                      }
-                                    </p>
-                                  )}
-
-                                {isAdmin && (
-                                  <p className="text-xs font-semibold text-white/75 mb-1">
-                                    {
-                                      user.id ===
-                                      item.sender_id
-                                        ? "You"
-                                        : "Support Admin"
-                                    }
-                                  </p>
-                                )}
-
-                                {isSystem && (
-                                  <p className="text-xs font-semibold text-gray-500 mb-1">
-                                    System
-                                  </p>
-                                )}
-
-                                <p className="text-sm whitespace-pre-wrap break-words">
-                                  {
-                                    item.message
-                                  }
-                                </p>
-
-                                <div
-                                  className={`
-                                    flex items-center gap-2
-                                    text-[10px]
-                                    mt-2
-                                    ${
-                                      isAdmin
-                                        ? "text-white/65"
-                                        : "text-gray-400"
-                                    }
-                                  `}
-                                >
-
-                                  <span>
-                                    {formatTime(
-                                      item.created_at
-                                    )}
-                                  </span>
-
-                                  {isAdmin &&
-                                    item.read_at && (
-                                      <span>
-                                        Read
-                                      </span>
-                                    )}
-
-                                </div>
-                              </div>
-                            </div>
-                          );
+                      <Input
+                        value={
+                          message
                         }
-                      )}
-
-                      <div
-                        ref={
-                          messagesEndRef
+                        onChange={(
+                          event
+                        ) =>
+                          setMessage(
+                            event
+                              .target
+                              .value
+                          )
                         }
+                        onKeyDown={
+                          handleKeyDown
+                        }
+                        disabled={
+                          sending
+                        }
+                        placeholder="Type your reply to the customer..."
+                        className="flex-1"
                       />
+
+                      <Button
+                        type="button"
+                        size="icon"
+                        onClick={
+                          sendMessage
+                        }
+                        disabled={
+                          sending ||
+                          !message.trim()
+                        }
+                        className="bg-purple-600 hover:bg-purple-700 shrink-0"
+                      >
+                        {sending ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Send className="h-4 w-4" />
+                        )}
+                      </Button>
 
                     </div>
                   )}
-                </div>
 
-                {/* ==================================================
-                    COMPOSER
-                ================================================== */}
+                  <div className="flex items-center justify-between mt-2 px-1">
 
-                <div className="bg-white border-t p-3 sm:p-4">
+                    <p className="text-[10px] text-gray-400">
+                      Conversation ID:{" "}
+                      {shortId(
+                        selectedConversation.id
+                      )}
+                    </p>
 
-                  <div className="max-w-4xl mx-auto">
-
-                    {selectedConversation.status ===
-                      "closed" ? (
-
-                      <div className="rounded-xl bg-gray-100 border p-4 text-center">
-
-                        <div className="flex items-center justify-center gap-2 text-gray-600">
-
-                          <Clock3 className="h-4 w-4" />
-
-                          <p className="text-sm font-medium">
-                            This conversation
-                            is closed.
-                          </p>
-
-                        </div>
-
-                      </div>
-
-                    ) : (
-
-                      <div className="flex items-center gap-2">
-
-                        <Input
-                          value={
-                            message
-                          }
-                          onChange={(
-                            event
-                          ) =>
-                            setMessage(
-                              event
-                                .target
-                                .value
-                            )
-                          }
-                          onKeyDown={
-                            handleKeyDown
-                          }
-                          disabled={
-                            sending
-                          }
-                          placeholder="Type your reply to the customer..."
-                          className="flex-1"
-                        />
-
-                        <Button
-                          type="button"
-                          size="icon"
-                          onClick={
-                            sendMessage
-                          }
-                          disabled={
-                            sending ||
-                            !message.trim()
-                          }
-                          className="bg-purple-600 hover:bg-purple-700 shrink-0"
-                        >
-                          {sending ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <Send className="h-4 w-4" />
-                          )}
-                        </Button>
-
-                      </div>
-                    )}
-
-                    <div className="flex items-center justify-between mt-2 px-1">
-
-                      <p className="text-[10px] text-gray-400">
-                        Conversation ID:{" "}
-                        {shortId(
-                          selectedConversation.id
-                        )}
-                      </p>
-
-                      <p className="text-[10px] text-gray-400">
-                        Created{" "}
-                        {formatDateTime(
-                          selectedConversation.created_at
-                        )}
-                      </p>
-
-                    </div>
+                    <p className="text-[10px] text-gray-400">
+                      Created{" "}
+                      {formatDateTime(
+                        selectedConversation.created_at
+                      )}
+                    </p>
 
                   </div>
-                </div>
 
-              </>
-            )}
-          </section>
-        </main>
-      </div>
-    );
-  };
+                </div>
+              </div>
+
+            </>
+          )}
+        </section>
+      </main>
+    </div>
+  );
+};
 
 export default AdminSupportPage;

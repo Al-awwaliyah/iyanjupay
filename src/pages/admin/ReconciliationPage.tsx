@@ -803,6 +803,19 @@ const ReconciliationPage = () => {
 
           <div>
 
+            {/* BACK BUTTON */}
+
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={onBack}
+              className="text-purple-600 shrink-0"
+            >
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              Back
+            </Button>
+            
             <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">
               Reconciliation
             </h1>

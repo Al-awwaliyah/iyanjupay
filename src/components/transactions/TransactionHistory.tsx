@@ -831,31 +831,77 @@ const normalizeTransaction = (
 
   /*
    * ------------------------------------------------------------
+   * ELECTRONIC TRANSFER FEE
+   * ------------------------------------------------------------
+   *
+   * Electronic transfer fees are stored as separate transaction
+   * records. Their metadata also contains the original transfer
+   * amount, so we MUST NOT use metadata.transfer_amount as the
+   * displayed amount for these fee records.
+   *
+   * Example fee transaction metadata:
+   *
+   *   transfer_amount: 15461.25
+   *   electronic_fee: 50
+   *
+   * The transaction itself is the ₦50 wallet debit.
+   * ------------------------------------------------------------
+   */
+
+  const isElectronicFee =
+    kind === "fee" &&
+    (
+      normalizeText(
+        transaction.category
+      ) === "electronic_transfer_fee" ||
+      normalizeText(
+        metadata.category
+      ) === "electronic_transfer_fee" ||
+      normalizeText(
+        metadata.fee_type
+      ) === "electronic_transfer_fee" ||
+      normalizeText(
+        transaction.description
+      ).includes("electronic_transfer_fee") ||
+      normalizeText(
+        transaction.description
+      ).includes("electronic_transfer_fee_for")
+    );
+
+  /*
+   * ------------------------------------------------------------
    * PRICING
    * ------------------------------------------------------------
    */
 
-  const amount =
-    numberValue(
-      metadata.transfer_amount,
-      transaction.amount
-    );
+  const amount = isElectronicFee
+    ? numberValue(
+        metadata.electronic_fee_amount_charged,
+        metadata.electronic_fee,
+        transaction.amount
+      )
+    : numberValue(
+        metadata.transfer_amount,
+        transaction.amount
+      );
 
-  const fee =
-    numberValue(
-      metadata.iyanjupay_fee,
-      metadata.transfer_fee,
-      metadata.fee,
-      metadata.fee_amount,
-      metadata.electronic_fee
-    );
+  const fee = isElectronicFee
+    ? 0
+    : numberValue(
+        metadata.iyanjupay_fee,
+        metadata.transfer_fee,
+        metadata.fee,
+        metadata.fee_amount,
+        metadata.electronic_fee
+      );
 
-  const totalCharged =
-    numberValue(
-      metadata.total_charged,
-      metadata.totalCharged,
-      amount + fee
-    );
+  const totalCharged = isElectronicFee
+    ? amount
+    : numberValue(
+        metadata.total_charged,
+        metadata.totalCharged,
+        amount + fee
+      );
 
   /*
    * ------------------------------------------------------------
@@ -1019,7 +1065,9 @@ const normalizeTransaction = (
   }
 
   if (kind === "fee") {
-    title = "Transfer Fee";
+    title = isElectronicFee
+      ? "Electronic Transfer Fee"
+      : "Transfer Fee";
 
     subtitle =
       transaction.description ||

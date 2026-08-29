@@ -27,9 +27,7 @@ import {
 } from "lucide-react";
 
 import { supabase } from "@/integrations/supabase/client";
-
-import { AdminLayout } from "@/pages/admin/AdminLayout";
-
+import AdminLayout from "@/pages/admin/AdminLayout";
 import { Button } from "@/components/ui/button";
 
 import {

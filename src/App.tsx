@@ -39,6 +39,7 @@ import AdminCustomersPage from "@/pages/admin/AdminCustomersPage";
 import AdminTransactionsPage from "@/pages/admin/AdminTransactionsPage";
 import AdminDisputesPage from "@/pages/admin/AdminDisputesPage";
 import ReconciliationPage from "@/pages/admin/ReconciliationPage";
+import AnalyticsPage from "@/pages/admin/AnalyticsPage";
 import UserDisputesPage from "@/components/disputes/UserDisputesPage";
 import VerifyPaymentPinResetOtp from "@/pages/VerifyPaymentPinResetOtp";
 import ResetPaymentPin from "@/pages/ResetPaymentPin";
@@ -112,6 +113,11 @@ const App = () => {
             <Route
               path="/payment-pin"
               element={<PaymentPinPage />}
+            />
+            
+            <Route
+              path="/analytics"
+              element={<AnalyticsPage />}
             />
             
             <Route

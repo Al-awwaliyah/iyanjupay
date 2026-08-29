@@ -31,97 +31,72 @@ import {
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 
-
 /* ================================================================
    TYPES
    ================================================================ */
 
 interface ReconciliationRow {
   id: string;
-
   transaction_id: string;
 
-  provider_record_id: string | null;
+  provider_record_id?: string | null;
 
-  internal_reference: string | null;
-
-  provider_reference: string | null;
+  internal_reference?: string | null;
+  provider_reference?: string | null;
 
   amount: number | string;
+  provider_amount?: number | string | null;
+  amount_difference?: number | string | null;
 
-  provider_amount: number | string | null;
+  currency?: string | null;
 
-  amount_difference: number | string;
+  internal_status?: string | null;
+  provider_status?: string | null;
 
-  currency: string;
-
-  internal_status: string | null;
-
-  provider_status: string | null;
-
-  transaction_type: string | null;
-
-  category: string | null;
-
-  provider: string | null;
+  transaction_type?: string | null;
+  category?: string | null;
+  provider?: string | null;
 
   user_id: string;
 
   state: string;
+  issue_type?: string | null;
 
-  issue_type: string | null;
+  provider_reference_match?: boolean | null;
+  internal_reference_match?: boolean | null;
+  amount_match?: boolean | null;
+  status_match?: boolean | null;
 
-  provider_reference_match: boolean;
+  refund_status?: string | null;
 
-  internal_reference_match: boolean;
+  reconciliation_required?: boolean | null;
 
-  amount_match: boolean;
+  created_at?: string | null;
+  updated_at?: string | null;
 
-  status_match: boolean;
+  total_count?: number | string | null;
 
-  refund_status: string | null;
-
-  reconciliation_required: boolean;
-
-  created_at: string;
-
-  updated_at: string;
-
-  total_count: number;
+  [key: string]: any;
 }
-
 
 interface ReconciliationSummary {
   total_records: number;
-
   matched_count: number;
-
   unmatched_count: number;
-
   discrepancy_count: number;
-
   investigating_count: number;
-
   resolved_count: number;
-
   pending_transfer_count: number;
-
   refund_pending_count: number;
-
   discrepancy_amount: number;
 }
 
-
 interface ReconciliationDetail {
   transaction: Record<string, any> | null;
-
   provider: Record<string, any> | null;
-
   case: Record<string, any> | null;
-
   events: Array<Record<string, any>>;
 }
-
 
 /* ================================================================
    CONSTANTS
@@ -129,6 +104,48 @@ interface ReconciliationDetail {
 
 const PAGE_SIZE = 25;
 
+/* ================================================================
+   HELPERS
+   ================================================================ */
+
+const asNumber = (
+  value: unknown,
+  fallback = 0,
+): number => {
+  const number = Number(value);
+
+  return Number.isFinite(number)
+    ? number
+    : fallback;
+};
+
+const asBoolean = (
+  value: unknown,
+): boolean => {
+  if (
+    value === true ||
+    value === 1 ||
+    value === "true" ||
+    value === "t" ||
+    value === "1"
+  ) {
+    return true;
+  }
+
+  return false;
+};
+
+const unwrapRpc = <T,>(
+  data: T | T[] | null,
+): T | null => {
+  if (Array.isArray(data)) {
+    return data.length > 0
+      ? data[0]
+      : null;
+  }
+
+  return data ?? null;
+};
 
 /* ================================================================
    MONEY
@@ -138,18 +155,20 @@ const formatMoney = (
   amount: number | string | null | undefined,
   currency = "NGN",
 ) => {
+  const safeCurrency =
+    currency || "NGN";
+
   return new Intl.NumberFormat(
     "en-NG",
     {
       style: "currency",
-      currency,
+      currency: safeCurrency,
       maximumFractionDigits: 2,
     },
   ).format(
-    Number(amount || 0),
+    asNumber(amount),
   );
 };
-
 
 /* ================================================================
    DATE
@@ -177,7 +196,6 @@ const formatDate = (
   ).format(date);
 };
 
-
 /* ================================================================
    LABEL
    ================================================================ */
@@ -196,13 +214,12 @@ const labelize = (
     );
 };
 
-
 /* ================================================================
    STATE CLASSES
    ================================================================ */
 
 const stateClasses = (
-  state: string,
+  state: string | null | undefined,
 ) => {
   switch (
     String(state || "")
@@ -229,18 +246,20 @@ const stateClasses = (
     case "refund_pending":
       return "bg-orange-100 text-orange-700";
 
+    case "pending":
+      return "bg-orange-100 text-orange-700";
+
     default:
       return "bg-gray-100 text-gray-600";
   }
 };
-
 
 /* ================================================================
    STATE ICON
    ================================================================ */
 
 const stateIcon = (
-  state: string,
+  state: string | null | undefined,
 ) => {
   switch (
     String(state || "")
@@ -276,6 +295,11 @@ const stateIcon = (
         <AlertCircle className="h-3.5 w-3.5" />
       );
 
+    case "pending":
+      return (
+        <Clock3 className="h-3.5 w-3.5" />
+      );
+
     default:
       return (
         <ShieldAlert className="h-3.5 w-3.5" />
@@ -283,9 +307,8 @@ const stateIcon = (
   }
 };
 
-
 /* ================================================================
-   BOOLEAN MATCH BADGE
+   MATCH BADGE
    ================================================================ */
 
 const MatchBadge = ({
@@ -310,14 +333,12 @@ const MatchBadge = ({
   );
 };
 
-
 /* ================================================================
    PAGE
    ================================================================ */
 
 const ReconciliationPage = () => {
   const { toast } = useToast();
-
 
   /* ================================================================
      STATE
@@ -349,9 +370,6 @@ const ReconciliationPage = () => {
   const [statusFilter, setStatusFilter] =
     useState("all");
 
-  const [providerFilter, setProviderFilter] =
-    useState("all");
-
   const [page, setPage] =
     useState(1);
 
@@ -371,19 +389,19 @@ const ReconciliationPage = () => {
   const [actionLoading, setActionLoading] =
     useState(false);
 
-  const [investigationNotes, setInvestigationNotes] =
-    useState("");
-
+  const [
+    investigationNotes,
+    setInvestigationNotes,
+  ] = useState("");
 
   /* ================================================================
      TOTAL PAGES
      ================================================================ */
 
   const totalPages = useMemo(() => {
-    const total =
-      Number(
-        rows[0]?.total_count || 0,
-      );
+    const total = asNumber(
+      rows[0]?.total_count,
+    );
 
     return Math.max(
       1,
@@ -392,7 +410,6 @@ const ReconciliationPage = () => {
       ),
     );
   }, [rows]);
-
 
   /* ================================================================
      FETCH SUMMARY
@@ -413,64 +430,73 @@ const ReconciliationPage = () => {
         }
 
         const item =
-          Array.isArray(data)
-            ? data[0]
-            : data;
+          unwrapRpc<any>(data);
 
-        setSummary(
-          item
-            ? {
-                total_records:
-                  Number(
-                    item.total_records || 0,
-                  ),
+        if (!item) {
+          setSummary({
+            total_records: 0,
+            matched_count: 0,
+            unmatched_count: 0,
+            discrepancy_count: 0,
+            investigating_count: 0,
+            resolved_count: 0,
+            pending_transfer_count: 0,
+            refund_pending_count: 0,
+            discrepancy_amount: 0,
+          });
 
-                matched_count:
-                  Number(
-                    item.matched_count || 0,
-                  ),
+          return;
+        }
 
-                unmatched_count:
-                  Number(
-                    item.unmatched_count || 0,
-                  ),
+        setSummary({
+          total_records:
+            asNumber(
+              item.total_records,
+            ),
 
-                discrepancy_count:
-                  Number(
-                    item.discrepancy_count || 0,
-                  ),
+          matched_count:
+            asNumber(
+              item.matched_count,
+            ),
 
-                investigating_count:
-                  Number(
-                    item.investigating_count || 0,
-                  ),
+          unmatched_count:
+            asNumber(
+              item.unmatched_count,
+            ),
 
-                resolved_count:
-                  Number(
-                    item.resolved_count || 0,
-                  ),
+          discrepancy_count:
+            asNumber(
+              item.discrepancy_count,
+            ),
 
-                pending_transfer_count:
-                  Number(
-                    item.pending_transfer_count || 0,
-                  ),
+          investigating_count:
+            asNumber(
+              item.investigating_count,
+            ),
 
-                refund_pending_count:
-                  Number(
-                    item.refund_pending_count || 0,
-                  ),
+          resolved_count:
+            asNumber(
+              item.resolved_count,
+            ),
 
-                discrepancy_amount:
-                  Number(
-                    item.discrepancy_amount || 0,
-                  ),
-              }
-            : null,
-        );
+          pending_transfer_count:
+            asNumber(
+              item.pending_transfer_count,
+            ),
+
+          refund_pending_count:
+            asNumber(
+              item.refund_pending_count,
+            ),
+
+          discrepancy_amount:
+            asNumber(
+              item.discrepancy_amount,
+            ),
+        });
       },
       [],
     );
-
 
   /* ================================================================
      FETCH RECONCILIATION
@@ -488,13 +514,24 @@ const ReconciliationPage = () => {
         }
 
         try {
+          /*
+           * IMPORTANT:
+           *
+           * The admin page only reads reconciliation data.
+           *
+           * Provider records are NOT created from this page.
+           *
+           * They should be populated by the backend/webhook/
+           * reconciliation process.
+           */
           const {
             data,
             error,
           } = await supabase.rpc(
             "admin_reconciliation_list",
             {
-              p_page: page,
+              p_page:
+                page,
 
               p_page_size:
                 PAGE_SIZE,
@@ -508,11 +545,6 @@ const ReconciliationPage = () => {
                   ? null
                   : stateFilter,
 
-              p_provider:
-                providerFilter === "all"
-                  ? null
-                  : providerFilter,
-
               p_status:
                 statusFilter === "all"
                   ? null
@@ -524,10 +556,54 @@ const ReconciliationPage = () => {
             throw error;
           }
 
-          setRows(
-            (data || []) as ReconciliationRow[],
-          );
+          const normalized =
+            Array.isArray(data)
+              ? data
+              : data
+                ? [data]
+                : [];
 
+          setRows(
+            normalized.map(
+              (item: any) => ({
+                ...item,
+
+                amount:
+                  item.amount ?? 0,
+
+                provider_amount:
+                  item.provider_amount ??
+                  null,
+
+                amount_difference:
+                  item.amount_difference ??
+                  0,
+
+                provider_reference_match:
+                  asBoolean(
+                    item.provider_reference_match,
+                  ),
+
+                internal_reference_match:
+                  asBoolean(
+                    item.internal_reference_match,
+                  ),
+
+                amount_match:
+                  asBoolean(
+                    item.amount_match,
+                  ),
+
+                status_match:
+                  asBoolean(
+                    item.status_match,
+                  ),
+
+                total_count:
+                  item.total_count ?? 0,
+              }),
+            ),
+          );
         } catch (error: any) {
           console.error(
             "Reconciliation fetch failed:",
@@ -545,7 +621,6 @@ const ReconciliationPage = () => {
           });
 
           setRows([]);
-
         } finally {
           setLoading(false);
           setRefreshing(false);
@@ -556,11 +631,9 @@ const ReconciliationPage = () => {
         search,
         stateFilter,
         statusFilter,
-        providerFilter,
         toast,
       ],
     );
-
 
   /* ================================================================
      INITIAL LOAD
@@ -570,17 +643,16 @@ const ReconciliationPage = () => {
     fetchRows();
   }, [fetchRows]);
 
-
   useEffect(() => {
-    fetchSummary()
-      .catch((error: any) => {
+    fetchSummary().catch(
+      (error: any) => {
         console.error(
           "Reconciliation summary failed:",
           error,
         );
-      });
+      },
+    );
   }, [fetchSummary]);
-
 
   /* ================================================================
      SEARCH
@@ -593,7 +665,6 @@ const ReconciliationPage = () => {
     );
   };
 
-
   /* ================================================================
      CLEAR FILTERS
      ================================================================ */
@@ -603,16 +674,16 @@ const ReconciliationPage = () => {
     setSearch("");
     setStateFilter("all");
     setStatusFilter("all");
-    setProviderFilter("all");
     setPage(1);
   };
-
 
   /* ================================================================
      REFRESH
      ================================================================ */
 
   const handleRefresh = async () => {
+    setRefreshing(true);
+
     try {
       await Promise.all([
         fetchRows(true),
@@ -623,9 +694,10 @@ const ReconciliationPage = () => {
         "Reconciliation refresh failed:",
         error,
       );
+    } finally {
+      setRefreshing(false);
     }
   };
-
 
   /* ================================================================
      OPEN INVESTIGATION
@@ -655,20 +727,50 @@ const ReconciliationPage = () => {
         throw error;
       }
 
-      setSelected(
-        data as ReconciliationDetail,
-      );
+      const detail =
+        unwrapRpc<ReconciliationDetail>(
+          data,
+        );
 
-      const existingNotes =
-        (data as any)?.case
-          ?.investigation_notes;
-
-      if (existingNotes) {
-        setInvestigationNotes(
-          String(existingNotes),
+      if (!detail) {
+        throw new Error(
+          "No reconciliation detail was returned.",
         );
       }
 
+      setSelected({
+        transaction:
+          detail.transaction ??
+          null,
+
+        provider:
+          detail.provider ??
+          null,
+
+        case:
+          detail.case ??
+          null,
+
+        events:
+          Array.isArray(
+            detail.events,
+          )
+            ? detail.events
+            : [],
+      });
+
+      const existingNotes =
+        detail.case
+          ?.investigation_notes ??
+        detail.case
+          ?.notes ??
+        null;
+
+      setInvestigationNotes(
+        existingNotes
+          ? String(existingNotes)
+          : "",
+      );
     } catch (error: any) {
       console.error(
         "Reconciliation detail failed:",
@@ -684,12 +786,10 @@ const ReconciliationPage = () => {
         variant:
           "destructive",
       });
-
     } finally {
       setDetailLoading(false);
     }
   };
-
 
   /* ================================================================
      CLOSE INVESTIGATION
@@ -701,7 +801,6 @@ const ReconciliationPage = () => {
     setInvestigationNotes("");
   };
 
-
   /* ================================================================
      CASE ACTION
      ================================================================ */
@@ -712,7 +811,16 @@ const ReconciliationPage = () => {
       | "investigating"
       | "resolved",
   ) => {
-    if (!selectedRow) {
+    if (!selectedRow?.transaction_id) {
+      toast({
+        title:
+          "Transaction unavailable",
+        description:
+          "The reconciliation transaction ID is missing.",
+        variant:
+          "destructive",
+      });
+
       return;
     }
 
@@ -736,6 +844,7 @@ const ReconciliationPage = () => {
 
     try {
       const {
+        data,
         error,
       } = await supabase.rpc(
         "admin_reconciliation_update_case",
@@ -749,17 +858,30 @@ const ReconciliationPage = () => {
           p_notes:
             investigationNotes.trim() ||
             null,
-
-          p_refund_status:
-            null,
-
-          p_assigned_to:
-            null,
         },
       );
 
       if (error) {
         throw error;
+      }
+
+      /*
+       * Some PostgreSQL functions return JSON,
+       * others return a record. If the backend
+       * explicitly returns success=false, surface it.
+       */
+      const result =
+        unwrapRpc<any>(data);
+
+      if (
+        result &&
+        result.success === false
+      ) {
+        throw new Error(
+          result.error ||
+          result.message ||
+          "The reconciliation case could not be updated.",
+        );
       }
 
       toast({
@@ -774,15 +896,20 @@ const ReconciliationPage = () => {
           "The reconciliation case has been updated.",
       });
 
+      /*
+       * Refresh list + summary.
+       */
       await Promise.all([
         fetchRows(true),
         fetchSummary(),
       ]);
 
+      /*
+       * Refresh currently opened detail.
+       */
       await openInvestigation(
         selectedRow,
       );
-
     } catch (error: any) {
       console.error(
         "Reconciliation case update failed:",
@@ -798,12 +925,10 @@ const ReconciliationPage = () => {
         variant:
           "destructive",
       });
-
     } finally {
       setActionLoading(false);
     }
   };
-
 
   /* ================================================================
      RENDER
@@ -814,14 +939,12 @@ const ReconciliationPage = () => {
 
       {/* ============================================================
           HEADER
-          ============================================================ */}
+      ============================================================ */}
 
       <section>
-
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
 
           <div>
-
             <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">
               Reconciliation
             </h1>
@@ -829,7 +952,6 @@ const ReconciliationPage = () => {
             <p className="text-sm text-gray-500 mt-1">
               Compare provider transactions with IyanjuPay records and investigate discrepancies.
             </p>
-
           </div>
 
           <Button
@@ -851,88 +973,146 @@ const ReconciliationPage = () => {
           </Button>
 
         </div>
-
       </section>
-
 
       {/* ============================================================
           SUMMARY
-          ============================================================ */}
+      ============================================================ */}
 
       <section className="grid grid-cols-2 lg:grid-cols-4 gap-3">
 
         <Card>
           <CardContent className="p-4">
-
             <p className="text-xs text-gray-500">
               Total records
             </p>
 
             <p className="text-2xl font-bold text-gray-900 mt-1">
-              {summary?.total_records ?? "—"}
+              {summary
+                ? summary.total_records
+                : "—"}
             </p>
-
           </CardContent>
         </Card>
 
-
         <Card>
           <CardContent className="p-4">
-
             <p className="text-xs text-gray-500">
               Matched
             </p>
 
             <p className="text-2xl font-bold text-green-600 mt-1">
-              {summary?.matched_count ?? "—"}
+              {summary
+                ? summary.matched_count
+                : "—"}
             </p>
-
           </CardContent>
         </Card>
 
-
         <Card>
           <CardContent className="p-4">
-
             <p className="text-xs text-gray-500">
               Discrepancies
             </p>
 
             <p className="text-2xl font-bold text-red-600 mt-1">
-              {summary?.discrepancy_count ?? "—"}
+              {summary
+                ? summary.discrepancy_count
+                : "—"}
             </p>
-
           </CardContent>
         </Card>
 
-
         <Card>
           <CardContent className="p-4">
-
             <p className="text-xs text-gray-500">
               Pending transfers
             </p>
 
             <p className="text-2xl font-bold text-orange-600 mt-1">
-              {summary?.pending_transfer_count ?? "—"}
+              {summary
+                ? summary.pending_transfer_count
+                : "—"}
             </p>
-
           </CardContent>
         </Card>
 
       </section>
 
+      {/* ============================================================
+          SECONDARY SUMMARY
+      ============================================================ */}
+
+      {summary && (
+        <section className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+
+          <Card>
+            <CardContent className="p-4">
+              <p className="text-xs text-gray-500">
+                Unmatched
+              </p>
+
+              <p className="text-xl font-bold text-yellow-600 mt-1">
+                {summary.unmatched_count}
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="p-4">
+              <p className="text-xs text-gray-500">
+                Investigating
+              </p>
+
+              <p className="text-xl font-bold text-blue-600 mt-1">
+                {summary.investigating_count}
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="p-4">
+              <p className="text-xs text-gray-500">
+                Resolved
+              </p>
+
+              <p className="text-xl font-bold text-purple-600 mt-1">
+                {summary.resolved_count}
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="p-4">
+              <p className="text-xs text-gray-500">
+                Refund pending
+              </p>
+
+              <p className="text-xl font-bold text-orange-600 mt-1">
+                {summary.refund_pending_count}
+              </p>
+            </CardContent>
+          </Card>
+
+        </section>
+      )}
 
       {/* ============================================================
           ALERT
-          ============================================================ */}
+      ============================================================ */}
 
       {(
         Number(
-          summary?.discrepancy_count || 0,
+          summary?.discrepancy_count ||
+          0,
         ) > 0 ||
         Number(
-          summary?.pending_transfer_count || 0,
+          summary?.pending_transfer_count ||
+          0,
+        ) > 0 ||
+        Number(
+          summary?.refund_pending_count ||
+          0,
         ) > 0
       ) && (
 
@@ -949,7 +1129,7 @@ const ReconciliationPage = () => {
               </p>
 
               <p className="text-sm text-orange-700 mt-1">
-                There are pending or unmatched provider transactions that may require investigation.
+                There are pending, unmatched, discrepant, or refund-pending transactions that may require investigation.
               </p>
 
             </div>
@@ -957,13 +1137,11 @@ const ReconciliationPage = () => {
           </div>
 
         </section>
-
       )}
-
 
       {/* ============================================================
           FILTERS
-          ============================================================ */}
+      ============================================================ */}
 
       <section className="bg-white border rounded-2xl p-4">
 
@@ -977,12 +1155,11 @@ const ReconciliationPage = () => {
 
         </div>
 
-
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
 
           {/* SEARCH */}
 
-          <div className="relative xl:col-span-2">
+          <div className="relative xl:col-span-1">
 
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
 
@@ -1000,12 +1177,11 @@ const ReconciliationPage = () => {
                   handleSearch();
                 }
               }}
-              placeholder="Search internal or provider reference..."
+              placeholder="Search reference..."
               className="pl-9"
             />
 
           </div>
-
 
           {/* STATE */}
 
@@ -1045,8 +1221,11 @@ const ReconciliationPage = () => {
               Resolved
             </option>
 
-          </select>
+            <option value="refund_pending">
+              Refund pending
+            </option>
 
+          </select>
 
           {/* STATUS */}
 
@@ -1074,14 +1253,21 @@ const ReconciliationPage = () => {
               Successful
             </option>
 
+            <option value="completed">
+              Completed
+            </option>
+
             <option value="failed">
               Failed
+            </option>
+
+            <option value="refunded">
+              Refunded
             </option>
 
           </select>
 
         </div>
-
 
         <div className="flex flex-wrap gap-2 mt-3">
 
@@ -1094,12 +1280,10 @@ const ReconciliationPage = () => {
             Search
           </Button>
 
-
           {(
             search ||
             stateFilter !== "all" ||
-            statusFilter !== "all" ||
-            providerFilter !== "all"
+            statusFilter !== "all"
           ) && (
 
             <Button
@@ -1119,10 +1303,9 @@ const ReconciliationPage = () => {
 
       </section>
 
-
       {/* ============================================================
           TABLE
-          ============================================================ */}
+      ============================================================ */}
 
       <section className="bg-white border rounded-2xl overflow-hidden">
 
@@ -1137,7 +1320,6 @@ const ReconciliationPage = () => {
           </p>
 
         </div>
-
 
         {loading ? (
 
@@ -1215,197 +1397,204 @@ const ReconciliationPage = () => {
 
               </thead>
 
-
               <tbody className="divide-y">
 
                 {rows.map(
-                  (row) => (
+                  (row) => {
 
-                    <tr
-                      key={row.transaction_id}
-                      className="hover:bg-gray-50"
-                    >
+                    const amountDifference =
+                      asNumber(
+                        row.amount_difference,
+                      );
 
-                      {/* INTERNAL */}
+                    return (
+                      <tr
+                        key={
+                          row.transaction_id ||
+                          row.id
+                        }
+                        className="hover:bg-gray-50"
+                      >
 
-                      <td className="px-5 py-4">
+                        {/* INTERNAL */}
 
-                        <p className="font-mono text-xs font-semibold text-gray-900 break-all">
-                          {
-                            row.internal_reference ||
-                            "—"
-                          }
-                        </p>
+                        <td className="px-5 py-4">
 
-                        <p className="text-[11px] text-gray-400 mt-1">
-                          {labelize(
-                            row.transaction_type,
-                          )}
-                        </p>
-
-                      </td>
-
-
-                      {/* PROVIDER */}
-
-                      <td className="px-5 py-4">
-
-                        <p className="font-mono text-xs font-semibold text-gray-900 break-all">
-                          {
-                            row.provider_reference ||
-                            "Not available"
-                          }
-                        </p>
-
-                        <p className="text-[11px] text-gray-400 mt-1">
-                          {
-                            row.provider ||
-                            "—"
-                          }
-                        </p>
-
-                      </td>
-
-
-                      {/* INTERNAL AMOUNT */}
-
-                      <td className="px-5 py-4 text-right">
-
-                        <p className="font-bold text-gray-900">
-                          {
-                            formatMoney(
-                              row.amount,
-                              row.currency,
-                            )
-                          }
-                        </p>
-
-                      </td>
-
-
-                      {/* PROVIDER AMOUNT */}
-
-                      <td className="px-5 py-4 text-right">
-
-                        {row.provider_amount !== null ? (
-
-                          <>
-                            <p className="font-bold text-gray-900">
-                              {
-                                formatMoney(
-                                  row.provider_amount,
-                                  row.currency,
-                                )
-                              }
-                            </p>
-
-                            {Number(
-                              row.amount_difference,
-                            ) !== 0 && (
-
-                              <p className="text-[11px] text-red-600 mt-1">
-                                Difference{" "}
-                                {formatMoney(
-                                  row.amount_difference,
-                                  row.currency,
-                                )}
-                              </p>
-
-                            )}
-                          </>
-
-                        ) : (
-
-                          <span className="text-xs text-gray-400">
-                            Not available
-                          </span>
-
-                        )}
-
-                      </td>
-
-
-                      {/* STATUS */}
-
-                      <td className="px-5 py-4">
-
-                        <div className="space-y-1">
-
-                          <span className="text-xs font-semibold text-gray-700">
-                            Internal:{" "}
-                            {labelize(
-                              row.internal_status,
-                            )}
-                          </span>
-
-                          <span className="block text-xs text-gray-500">
-                            Provider:{" "}
-                            {labelize(
-                              row.provider_status,
-                            )}
-                          </span>
-
-                        </div>
-
-                      </td>
-
-
-                      {/* STATE */}
-
-                      <td className="px-5 py-4">
-
-                        <span
-                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold ${stateClasses(
-                            row.state,
-                          )}`}
-                        >
-
-                          {stateIcon(
-                            row.state,
-                          )}
-
-                          {labelize(
-                            row.state,
-                          )}
-
-                        </span>
-
-                        {row.issue_type && (
-
-                          <p className="text-[11px] text-red-500 mt-1">
+                          <p className="font-mono text-xs font-semibold text-gray-900 break-all">
                             {
-                              row.issue_type
+                              row.internal_reference ||
+                              "—"
                             }
                           </p>
 
-                        )}
+                          <p className="text-[11px] text-gray-400 mt-1">
+                            {labelize(
+                              row.transaction_type,
+                            )}
+                          </p>
 
-                      </td>
+                        </td>
 
+                        {/* PROVIDER */}
 
-                      {/* ACTION */}
+                        <td className="px-5 py-4">
 
-                      <td className="px-5 py-4 text-right">
+                          <p className="font-mono text-xs font-semibold text-gray-900 break-all">
+                            {
+                              row.provider_reference ||
+                              "Not available"
+                            }
+                          </p>
 
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          onClick={() =>
-                            openInvestigation(
-                              row,
-                            )
-                          }
-                        >
-                          <Eye className="h-4 w-4 mr-1" />
-                          Investigate
-                        </Button>
+                          <p className="text-[11px] text-gray-400 mt-1">
+                            {
+                              row.provider ||
+                              "—"
+                            }
+                          </p>
 
-                      </td>
+                        </td>
 
-                    </tr>
+                        {/* INTERNAL AMOUNT */}
 
-                  ),
+                        <td className="px-5 py-4 text-right">
+
+                          <p className="font-bold text-gray-900">
+                            {
+                              formatMoney(
+                                row.amount,
+                                row.currency ||
+                                  "NGN",
+                              )
+                            }
+                          </p>
+
+                        </td>
+
+                        {/* PROVIDER AMOUNT */}
+
+                        <td className="px-5 py-4 text-right">
+
+                          {row.provider_amount !==
+                          null &&
+                          row.provider_amount !==
+                          undefined ? (
+
+                            <>
+                              <p className="font-bold text-gray-900">
+                                {
+                                  formatMoney(
+                                    row.provider_amount,
+                                    row.currency ||
+                                      "NGN",
+                                  )
+                                }
+                              </p>
+
+                              {amountDifference !==
+                                0 && (
+
+                                <p className="text-[11px] text-red-600 mt-1">
+                                  Difference{" "}
+                                  {formatMoney(
+                                    amountDifference,
+                                    row.currency ||
+                                      "NGN",
+                                  )}
+                                </p>
+
+                              )}
+                            </>
+
+                          ) : (
+
+                            <span className="text-xs text-gray-400">
+                              Not available
+                            </span>
+
+                          )}
+
+                        </td>
+
+                        {/* STATUS */}
+
+                        <td className="px-5 py-4">
+
+                          <div className="space-y-1">
+
+                            <span className="text-xs font-semibold text-gray-700">
+                              Internal:{" "}
+                              {labelize(
+                                row.internal_status,
+                              )}
+                            </span>
+
+                            <span className="block text-xs text-gray-500">
+                              Provider:{" "}
+                              {labelize(
+                                row.provider_status,
+                              )}
+                            </span>
+
+                          </div>
+
+                        </td>
+
+                        {/* STATE */}
+
+                        <td className="px-5 py-4">
+
+                          <span
+                            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold ${stateClasses(
+                              row.state,
+                            )}`}
+                          >
+
+                            {stateIcon(
+                              row.state,
+                            )}
+
+                            {labelize(
+                              row.state,
+                            )}
+
+                          </span>
+
+                          {row.issue_type && (
+
+                            <p className="text-[11px] text-red-500 mt-1">
+                              {
+                                row.issue_type
+                              }
+                            </p>
+
+                          )}
+
+                        </td>
+
+                        {/* ACTION */}
+
+                        <td className="px-5 py-4 text-right">
+
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() =>
+                              openInvestigation(
+                                row,
+                              )
+                            }
+                          >
+                            <Eye className="h-4 w-4 mr-1" />
+                            Investigate
+                          </Button>
+
+                        </td>
+
+                      </tr>
+                    );
+                  },
                 )}
 
               </tbody>
@@ -1416,10 +1605,9 @@ const ReconciliationPage = () => {
 
         )}
 
-
         {/* ==========================================================
             PAGINATION
-            ========================================================== */}
+        ========================================================== */}
 
         {!loading &&
           rows.length > 0 && (
@@ -1438,7 +1626,6 @@ const ReconciliationPage = () => {
                 </span>
 
               </p>
-
 
               <div className="flex gap-2">
 
@@ -1461,7 +1648,6 @@ const ReconciliationPage = () => {
                 >
                   Previous
                 </Button>
-
 
                 <Button
                   type="button"
@@ -1492,12 +1678,12 @@ const ReconciliationPage = () => {
 
       </section>
 
-
       {/* ============================================================
           INVESTIGATION MODAL
-          ============================================================ */}
+      ============================================================ */}
 
-      {(selectedRow || detailLoading) && (
+      {(selectedRow ||
+        detailLoading) && (
 
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
 
@@ -1509,7 +1695,6 @@ const ReconciliationPage = () => {
             }
             className="absolute inset-0 bg-black/50"
           />
-
 
           <div className="relative w-full max-w-4xl max-h-[92vh] overflow-y-auto bg-white rounded-2xl shadow-2xl">
 
@@ -1533,7 +1718,6 @@ const ReconciliationPage = () => {
 
               </div>
 
-
               <Button
                 type="button"
                 variant="ghost"
@@ -1546,7 +1730,6 @@ const ReconciliationPage = () => {
               </Button>
 
             </div>
-
 
             {detailLoading ? (
 
@@ -1568,7 +1751,7 @@ const ReconciliationPage = () => {
 
                 {/* ==================================================
                     STATE
-                    ================================================== */}
+                ================================================== */}
 
                 <div className="rounded-2xl bg-gray-50 border p-5">
 
@@ -1585,21 +1768,21 @@ const ReconciliationPage = () => {
                         <span
                           className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold ${stateClasses(
                             selectedRow?.state ||
-                              selected.case?.state ||
-                              "unmatched",
+                            selected.case?.state ||
+                            "unmatched",
                           )}`}
                         >
 
                           {stateIcon(
                             selectedRow?.state ||
-                              selected.case?.state ||
-                              "unmatched",
+                            selected.case?.state ||
+                            "unmatched",
                           )}
 
                           {labelize(
                             selectedRow?.state ||
-                              selected.case?.state ||
-                              "unmatched",
+                            selected.case?.state ||
+                            "unmatched",
                           )}
 
                         </span>
@@ -1607,7 +1790,6 @@ const ReconciliationPage = () => {
                       </div>
 
                     </div>
-
 
                     <div className="text-left sm:text-right">
 
@@ -1619,8 +1801,13 @@ const ReconciliationPage = () => {
 
                         {
                           formatMoney(
-                            selectedRow?.amount,
-                            selectedRow?.currency,
+                            selected.transaction
+                              ?.amount ??
+                              selectedRow?.amount,
+                            selected.transaction
+                              ?.currency ??
+                              selectedRow?.currency ??
+                              "NGN",
                           )
                         }
 
@@ -1632,10 +1819,9 @@ const ReconciliationPage = () => {
 
                 </div>
 
-
                 {/* ==================================================
                     COMPARISON
-                    ================================================== */}
+                ================================================== */}
 
                 <div className="rounded-2xl border overflow-hidden">
 
@@ -1647,7 +1833,6 @@ const ReconciliationPage = () => {
 
                   </div>
 
-
                   <div className="grid grid-cols-1 md:grid-cols-2">
 
                     {/* INTERNAL */}
@@ -1657,7 +1842,6 @@ const ReconciliationPage = () => {
                       <p className="text-xs font-semibold text-purple-600 uppercase tracking-wide">
                         IyanjuPay
                       </p>
-
 
                       <div className="space-y-4 mt-4">
 
@@ -1671,12 +1855,12 @@ const ReconciliationPage = () => {
                             {
                               selected.transaction
                                 ?.reference_number ||
+                              selectedRow?.internal_reference ||
                               "—"
                             }
                           </p>
 
                         </div>
-
 
                         <div>
 
@@ -1687,14 +1871,18 @@ const ReconciliationPage = () => {
                           <p className="font-bold text-gray-900 mt-1">
                             {
                               formatMoney(
-                                selectedRow?.amount,
-                                selectedRow?.currency,
+                                selected.transaction
+                                  ?.amount ??
+                                  selectedRow?.amount,
+                                selected.transaction
+                                  ?.currency ??
+                                  selectedRow?.currency ??
+                                  "NGN",
                               )
                             }
                           </p>
 
                         </div>
-
 
                         <div>
 
@@ -1706,13 +1894,13 @@ const ReconciliationPage = () => {
                             {
                               labelize(
                                 selected.transaction
-                                  ?.status,
+                                  ?.status ??
+                                selectedRow?.internal_status,
                               )
                             }
                           </p>
 
                         </div>
-
 
                         <div>
 
@@ -1723,13 +1911,13 @@ const ReconciliationPage = () => {
                           <p className="font-semibold text-gray-900 mt-1">
                             {
                               selected.transaction
-                                ?.provider ||
+                                ?.provider ??
+                              selectedRow?.provider ??
                               "—"
                             }
                           </p>
 
                         </div>
-
 
                         <div>
 
@@ -1740,7 +1928,8 @@ const ReconciliationPage = () => {
                           <p className="font-mono text-xs break-all mt-1">
                             {
                               selected.transaction
-                                ?.provider_reference ||
+                                ?.provider_reference ??
+                              selectedRow?.provider_reference ??
                               "—"
                             }
                           </p>
@@ -1751,7 +1940,6 @@ const ReconciliationPage = () => {
 
                     </div>
 
-
                     {/* PROVIDER */}
 
                     <div className="p-5">
@@ -1759,7 +1947,6 @@ const ReconciliationPage = () => {
                       <p className="text-xs font-semibold text-blue-600 uppercase tracking-wide">
                         Provider
                       </p>
-
 
                       {selected.provider ? (
 
@@ -1777,12 +1964,12 @@ const ReconciliationPage = () => {
                                   ?.provider_reference ||
                                 selected.provider
                                   ?.provider_transaction_id ||
+                                selectedRow?.provider_reference ||
                                 "—"
                               }
                             </p>
 
                           </div>
-
 
                           <div>
 
@@ -1794,16 +1981,17 @@ const ReconciliationPage = () => {
                               {
                                 formatMoney(
                                   selected.provider
-                                    ?.amount,
+                                    ?.amount ??
+                                  selectedRow?.provider_amount,
                                   selected.provider
                                     ?.currency ||
-                                    selectedRow?.currency,
+                                  selectedRow?.currency ||
+                                  "NGN",
                                 )
                               }
                             </p>
 
                           </div>
-
 
                           <div>
 
@@ -1815,13 +2003,13 @@ const ReconciliationPage = () => {
                               {
                                 labelize(
                                   selected.provider
-                                    ?.status,
+                                    ?.status ??
+                                  selectedRow?.provider_status,
                                 )
                               }
                             </p>
 
                           </div>
-
 
                           <div>
 
@@ -1839,7 +2027,6 @@ const ReconciliationPage = () => {
 
                           </div>
 
-
                           <div>
 
                             <p className="text-xs text-gray-400">
@@ -1850,6 +2037,9 @@ const ReconciliationPage = () => {
                               {
                                 selected.provider
                                   ?.provider_transaction_id ||
+                                selected.provider
+                                  ?.provider_record_id ||
+                                selectedRow?.provider_record_id ||
                                 "—"
                               }
                             </p>
@@ -1890,17 +2080,15 @@ const ReconciliationPage = () => {
 
                 </div>
 
-
                 {/* ==================================================
                     MATCH CHECKS
-                    ================================================== */}
+                ================================================== */}
 
                 <div className="rounded-2xl border p-5">
 
                   <h4 className="font-bold text-gray-900 mb-4">
                     Reconciliation checks
                   </h4>
-
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
 
@@ -1913,18 +2101,15 @@ const ReconciliationPage = () => {
                       <div className="mt-2">
 
                         <MatchBadge
-                          matched={
-                            Boolean(
-                              selectedRow
-                                ?.provider_reference_match,
-                            )
-                          }
+                          matched={asBoolean(
+                            selectedRow
+                              ?.provider_reference_match,
+                          )}
                         />
 
                       </div>
 
                     </div>
-
 
                     <div className="rounded-xl bg-gray-50 p-4">
 
@@ -1935,18 +2120,15 @@ const ReconciliationPage = () => {
                       <div className="mt-2">
 
                         <MatchBadge
-                          matched={
-                            Boolean(
-                              selectedRow
-                                ?.internal_reference_match,
-                            )
-                          }
+                          matched={asBoolean(
+                            selectedRow
+                              ?.internal_reference_match,
+                          )}
                         />
 
                       </div>
 
                     </div>
-
 
                     <div className="rounded-xl bg-gray-50 p-4">
 
@@ -1957,18 +2139,15 @@ const ReconciliationPage = () => {
                       <div className="mt-2">
 
                         <MatchBadge
-                          matched={
-                            Boolean(
-                              selectedRow
-                                ?.amount_match,
-                            )
-                          }
+                          matched={asBoolean(
+                            selectedRow
+                              ?.amount_match,
+                          )}
                         />
 
                       </div>
 
                     </div>
-
 
                     <div className="rounded-xl bg-gray-50 p-4">
 
@@ -1979,12 +2158,10 @@ const ReconciliationPage = () => {
                       <div className="mt-2">
 
                         <MatchBadge
-                          matched={
-                            Boolean(
-                              selectedRow
-                                ?.status_match,
-                            )
-                          }
+                          matched={asBoolean(
+                            selectedRow
+                              ?.status_match,
+                          )}
                         />
 
                       </div>
@@ -1995,17 +2172,15 @@ const ReconciliationPage = () => {
 
                 </div>
 
-
                 {/* ==================================================
-                    TRANSACTION METADATA
-                    ================================================== */}
+                    TRANSACTION INFORMATION
+                ================================================== */}
 
                 <div className="rounded-2xl border p-5">
 
                   <h4 className="font-bold text-gray-900 mb-4">
                     Transaction information
                   </h4>
-
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
 
@@ -2027,7 +2202,6 @@ const ReconciliationPage = () => {
 
                     </div>
 
-
                     <div>
 
                       <p className="text-xs text-gray-400">
@@ -2045,7 +2219,6 @@ const ReconciliationPage = () => {
 
                     </div>
 
-
                     <div>
 
                       <p className="text-xs text-gray-400">
@@ -2056,13 +2229,14 @@ const ReconciliationPage = () => {
                         {
                           labelize(
                             selected.transaction
+                              ?.transaction_type ??
+                            selectedRow
                               ?.transaction_type,
                           )
                         }
                       </p>
 
                     </div>
-
 
                     <div>
 
@@ -2074,13 +2248,13 @@ const ReconciliationPage = () => {
                         {
                           labelize(
                             selected.transaction
-                              ?.category,
+                              ?.category ??
+                            selectedRow?.category,
                           )
                         }
                       </p>
 
                     </div>
-
 
                     <div>
 
@@ -2092,13 +2266,13 @@ const ReconciliationPage = () => {
                         {
                           formatDate(
                             selected.transaction
-                              ?.created_at,
+                              ?.created_at ??
+                            selectedRow?.created_at,
                           )
                         }
                       </p>
 
                     </div>
-
 
                     <div>
 
@@ -2110,7 +2284,8 @@ const ReconciliationPage = () => {
                         {
                           formatDate(
                             selected.transaction
-                              ?.updated_at,
+                              ?.updated_at ??
+                            selectedRow?.updated_at,
                           )
                         }
                       </p>
@@ -2121,10 +2296,49 @@ const ReconciliationPage = () => {
 
                 </div>
 
+                {/* ==================================================
+                    REFUND
+                ================================================== */}
+
+                {(selectedRow?.refund_status ||
+                  selected.transaction
+                    ?.refund_status) && (
+
+                  <div className="rounded-2xl border p-5">
+
+                    <h4 className="font-bold text-gray-900 mb-4">
+                      Refund status
+                    </h4>
+
+                    <span
+                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold ${stateClasses(
+                        selectedRow
+                          ?.refund_status ||
+                        selected.transaction
+                          ?.refund_status,
+                      )}`}
+                    >
+                      {stateIcon(
+                        selectedRow
+                          ?.refund_status ||
+                        selected.transaction
+                          ?.refund_status,
+                      )}
+
+                      {labelize(
+                        selectedRow
+                          ?.refund_status ||
+                        selected.transaction
+                          ?.refund_status,
+                      )}
+                    </span>
+
+                  </div>
+                )}
 
                 {/* ==================================================
                     METADATA
-                    ================================================== */}
+                ================================================== */}
 
                 {selected.transaction
                   ?.metadata && (
@@ -2132,7 +2346,7 @@ const ReconciliationPage = () => {
                   <div className="rounded-2xl border p-5">
 
                     <h4 className="font-bold text-gray-900 mb-4">
-                      Provider / transaction metadata
+                      Transaction metadata
                     </h4>
 
                     <pre className="rounded-xl bg-gray-950 text-gray-100 p-4 overflow-x-auto text-xs leading-relaxed">
@@ -2145,13 +2359,11 @@ const ReconciliationPage = () => {
                     </pre>
 
                   </div>
-
                 )}
 
-
                 {/* ==================================================
-                    INVESTIGATION NOTES
-                    ================================================== */}
+                    INVESTIGATION
+                ================================================== */}
 
                 <div className="rounded-2xl border p-5">
 
@@ -2162,7 +2374,6 @@ const ReconciliationPage = () => {
                   <p className="text-xs text-gray-500 mt-1">
                     Record what was checked and why the case was resolved.
                   </p>
-
 
                   <textarea
                     value={
@@ -2177,7 +2388,6 @@ const ReconciliationPage = () => {
                     placeholder="Enter investigation findings..."
                     className="mt-4 w-full rounded-xl border border-input bg-background px-3 py-2 text-sm resize-none"
                   />
-
 
                   <div className="flex flex-wrap gap-2 mt-4">
 
@@ -2204,7 +2414,6 @@ const ReconciliationPage = () => {
 
                     </Button>
 
-
                     <Button
                       type="button"
                       variant="outline"
@@ -2218,12 +2427,15 @@ const ReconciliationPage = () => {
                       }
                     >
 
-                      <CheckCircle2 className="h-4 w-4 mr-2" />
+                      {actionLoading ? (
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      ) : (
+                        <CheckCircle2 className="h-4 w-4 mr-2" />
+                      )}
 
                       Mark matched
 
                     </Button>
-
 
                     <Button
                       type="button"
@@ -2237,7 +2449,11 @@ const ReconciliationPage = () => {
                       }
                     >
 
-                      <CheckCircle2 className="h-4 w-4 mr-2" />
+                      {actionLoading ? (
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      ) : (
+                        <CheckCircle2 className="h-4 w-4 mr-2" />
+                      )}
 
                       Resolve case
 
@@ -2247,17 +2463,15 @@ const ReconciliationPage = () => {
 
                 </div>
 
-
                 {/* ==================================================
-                    CASE EVENTS
-                    ================================================== */}
+                    EVENTS
+                ================================================== */}
 
                 <div className="rounded-2xl border p-5">
 
                   <h4 className="font-bold text-gray-900 mb-4">
                     Investigation history
                   </h4>
-
 
                   {(
                     selected.events ||
@@ -2308,7 +2522,6 @@ const ReconciliationPage = () => {
 
                             </div>
 
-
                             {(
                               event.old_state ||
                               event.new_state
@@ -2334,7 +2547,6 @@ const ReconciliationPage = () => {
 
                             )}
 
-
                             {event.notes && (
 
                               <p className="text-sm text-gray-600 mt-2 whitespace-pre-wrap">
@@ -2351,7 +2563,6 @@ const ReconciliationPage = () => {
                       )}
 
                     </div>
-
                   )}
 
                 </div>
@@ -2363,12 +2574,10 @@ const ReconciliationPage = () => {
           </div>
 
         </div>
-
       )}
 
     </div>
   );
 };
-
 
 export default ReconciliationPage;

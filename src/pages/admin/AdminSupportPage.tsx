@@ -36,6 +36,11 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 
+// IMPORTANT:
+// Adjust this import ONLY if your existing AdminLayout
+// is located at a different path.
+import AdminLayout from "@/components/admin/AdminLayout";
+
 // ============================================================
 // TYPES
 // ============================================================
@@ -98,8 +103,6 @@ interface SupportAdmin {
  * The RPC get_support_customer_details()
  * returns `user_id`, NOT `id`.
  *
- * Do not change this back to `id`.
- *
  * Raw BVN/NIN values are intentionally NOT
  * returned to the frontend.
  */
@@ -119,8 +122,7 @@ interface UserProfile {
   created_at: string | null;
 }
 
-interface ConversationWithProfile
-  extends Conversation {
+interface ConversationWithProfile extends Conversation {
   profile?: UserProfile | null;
 }
 
@@ -211,9 +213,7 @@ const ROLE_LABELS: Record<
 // HELPERS
 // ============================================================
 
-const formatTime = (
-  value: string
-): string => {
+const formatTime = (value: string): string => {
   try {
     return new Date(value).toLocaleTimeString(
       "en-NG",
@@ -227,9 +227,7 @@ const formatTime = (
   }
 };
 
-const formatDateTime = (
-  value: string
-): string => {
+const formatDateTime = (value: string): string => {
   try {
     return new Date(value).toLocaleString(
       "en-NG",
@@ -268,23 +266,19 @@ const formatRelativeTime = (
     return "";
   }
 
-  const timestamp =
-    new Date(value).getTime();
+  const timestamp = new Date(value).getTime();
 
   if (!Number.isFinite(timestamp)) {
     return "";
   }
 
-  const diff =
-    Date.now() - timestamp;
+  const diff = Date.now() - timestamp;
 
   if (diff < 0) {
     return "Just now";
   }
 
-  const minutes = Math.floor(
-    diff / 60000
-  );
+  const minutes = Math.floor(diff / 60000);
 
   if (minutes < 1) {
     return "Just now";
@@ -294,25 +288,19 @@ const formatRelativeTime = (
     return `${minutes}m ago`;
   }
 
-  const hours = Math.floor(
-    minutes / 60
-  );
+  const hours = Math.floor(minutes / 60);
 
   if (hours < 24) {
     return `${hours}h ago`;
   }
 
-  const days = Math.floor(
-    hours / 24
-  );
+  const days = Math.floor(hours / 24);
 
   if (days < 7) {
     return `${days}d ago`;
   }
 
-  return new Date(
-    value
-  ).toLocaleDateString("en-NG");
+  return new Date(value).toLocaleDateString("en-NG");
 };
 
 const shortId = (
@@ -326,10 +314,7 @@ const shortId = (
     return value;
   }
 
-  return `${value.slice(
-    0,
-    8
-  )}...${value.slice(-4)}`;
+  return `${value.slice(0, 8)}...${value.slice(-4)}`;
 };
 
 const getPriorityClasses = (
@@ -386,9 +371,7 @@ const getProfileDisplayName = (
   fallbackUserId: string
 ): string => {
   if (!profile) {
-    return `User ${shortId(
-      fallbackUserId
-    )}`;
+    return `User ${shortId(fallbackUserId)}`;
   }
 
   if (
@@ -419,9 +402,7 @@ const getProfileDisplayName = (
     return profile.phone_number.trim();
   }
 
-  return `User ${shortId(
-    fallbackUserId
-  )}`;
+  return `User ${shortId(fallbackUserId)}`;
 };
 
 const getProfileEmail = (
@@ -446,11 +427,10 @@ const getProfileInitials = (
   profile: UserProfile | null | undefined,
   fallbackUserId: string
 ): string => {
-  const name =
-    getProfileDisplayName(
-      profile,
-      fallbackUserId
-    );
+  const name = getProfileDisplayName(
+    profile,
+    fallbackUserId
+  );
 
   const parts = name
     .split(/\s+/)
@@ -504,9 +484,7 @@ const AdminSupportPage = () => {
   const [
     conversations,
     setConversations,
-  ] = useState<
-    ConversationWithProfile[]
-  >([]);
+  ] = useState<ConversationWithProfile[]>([]);
 
   const [
     conversationsLoading,
@@ -551,9 +529,7 @@ const AdminSupportPage = () => {
     useState(false);
 
   const messagesEndRef =
-    useRef<HTMLDivElement | null>(
-      null
-    );
+    useRef<HTMLDivElement | null>(null);
 
   // ==========================================================
   // FILTERS
@@ -610,11 +586,9 @@ const AdminSupportPage = () => {
   const scrollToBottom =
     useCallback(() => {
       setTimeout(() => {
-        messagesEndRef.current?.scrollIntoView(
-          {
-            behavior: "smooth",
-          }
-        );
+        messagesEndRef.current?.scrollIntoView({
+          behavior: "smooth",
+        });
       }, 50);
     }, []);
 
@@ -764,20 +738,6 @@ const AdminSupportPage = () => {
           const profiles =
             (data ?? []) as UserProfile[];
 
-          /*
-           * IMPORTANT:
-           *
-           * The SQL RPC returns:
-           *
-           *   user_id
-           *
-           * NOT:
-           *
-           *   id
-           *
-           * Therefore the map MUST use
-           * profile.user_id.
-           */
           profiles.forEach(
             (profile) => {
               if (profile.user_id) {
@@ -788,7 +748,6 @@ const AdminSupportPage = () => {
               }
             }
           );
-
         } catch (error) {
           console.error(
             "Support customer details loading failed:",
@@ -820,7 +779,6 @@ const AdminSupportPage = () => {
         return rows.map(
           (conversation) => ({
             ...conversation,
-
             profile:
               profileMap.get(
                 conversation.user_id
@@ -920,7 +878,7 @@ const AdminSupportPage = () => {
     );
 
   // ==========================================================
-  // LOAD SINGLE CUSTOMER PROFILE THROUGH SECURE RPC
+  // LOAD SINGLE CUSTOMER PROFILE
   // ==========================================================
 
   const loadSingleProfile =
@@ -952,12 +910,11 @@ const AdminSupportPage = () => {
             return null;
           }
 
-          const profile =
+          return (
             (data?.[0] as
               | UserProfile
-              | undefined) ?? null;
-
-          return profile;
+              | undefined) ?? null
+          );
         } catch (error) {
           console.error(
             "Single support customer profile error:",
@@ -1001,8 +958,7 @@ const AdminSupportPage = () => {
           }
 
           const loaded =
-            (data ??
-              []) as SupportMessage[];
+            (data ?? []) as SupportMessage[];
 
           setMessages(loaded);
 
@@ -1487,7 +1443,6 @@ const AdminSupportPage = () => {
             conversation.id,
             conversation.status,
             conversation.priority,
-
             profile?.full_name,
             profile?.nickname,
             profile?.email,
@@ -1711,121 +1666,119 @@ const AdminSupportPage = () => {
   // ASSIGN TO CURRENT ADMIN
   // ==========================================================
 
-  const assignToMe =
-    async () => {
-      if (!user?.id) {
-        return;
-      }
+  const assignToMe = async () => {
+    if (!user?.id) {
+      return;
+    }
 
-      await updateConversation({
-        assigned_admin_id:
-          user.id,
-      });
-    };
+    await updateConversation({
+      assigned_admin_id:
+        user.id,
+    });
+  };
 
   // ==========================================================
   // SEND MESSAGE
   // ==========================================================
 
-  const sendMessage =
-    async () => {
-      const cleanMessage =
-        message.trim();
+  const sendMessage = async () => {
+    const cleanMessage =
+      message.trim();
 
-      if (
-        !cleanMessage ||
-        sending ||
-        !selectedConversation ||
-        !user?.id
-      ) {
-        return;
-      }
+    if (
+      !cleanMessage ||
+      sending ||
+      !selectedConversation ||
+      !user?.id
+    ) {
+      return;
+    }
 
-      if (
-        selectedConversation.status ===
-        "closed"
-      ) {
-        toast({
-          title:
-            "Conversation closed",
-          description:
-            "This conversation is closed and cannot receive new messages.",
-          variant: "destructive",
+    if (
+      selectedConversation.status ===
+      "closed"
+    ) {
+      toast({
+        title:
+          "Conversation closed",
+        description:
+          "This conversation is closed and cannot receive new messages.",
+        variant: "destructive",
+      });
+
+      return;
+    }
+
+    setSending(true);
+
+    try {
+      const {
+        error,
+      } = await supabase
+        .from("support_messages")
+        .insert({
+          conversation_id:
+            selectedConversation.id,
+          sender_id:
+            user.id,
+          sender_type:
+            "admin",
+          message:
+            cleanMessage,
         });
 
-        return;
+      if (error) {
+        throw error;
       }
 
-      setSending(true);
+      setMessage("");
 
-      try {
-        const {
-          error,
-        } = await supabase
-          .from("support_messages")
-          .insert({
-            conversation_id:
-              selectedConversation.id,
-            sender_id:
-              user.id,
-            sender_type:
-              "admin",
-            message:
-              cleanMessage,
-          });
-
-        if (error) {
-          throw error;
-        }
-
-        setMessage("");
-
-        const {
-          error:
-            statusError,
-        } = await supabase
-          .from(
-            "support_conversations"
-          )
-          .update({
-            status:
-              "waiting_user",
-          })
-          .eq(
-            "id",
-            selectedConversation.id
-          )
-          .neq(
-            "status",
-            "closed"
-          );
-
-        if (statusError) {
-          console.error(
-            "Failed to update conversation status:",
-            statusError
-          );
-        }
-
-        scrollToBottom();
-      } catch (error: any) {
-        console.error(
-          "Failed to send admin message:",
-          error
+      const {
+        error:
+          statusError,
+      } = await supabase
+        .from(
+          "support_conversations"
+        )
+        .update({
+          status:
+            "waiting_user",
+        })
+        .eq(
+          "id",
+          selectedConversation.id
+        )
+        .neq(
+          "status",
+          "closed"
         );
 
-        toast({
-          title:
-            "Message failed",
-          description:
-            error?.message ||
-            "Unable to send your reply.",
-          variant: "destructive",
-        });
-      } finally {
-        setSending(false);
+      if (statusError) {
+        console.error(
+          "Failed to update conversation status:",
+          statusError
+        );
       }
-    };
+
+      scrollToBottom();
+    } catch (error: any) {
+      console.error(
+        "Failed to send admin message:",
+        error
+      );
+
+      toast({
+        title:
+          "Message failed",
+        description:
+          error?.message ||
+          "Unable to send your reply.",
+        variant: "destructive",
+      });
+    } finally {
+      setSending(false);
+    }
+  };
 
   // ==========================================================
   // KEYBOARD
@@ -1880,15 +1833,17 @@ const AdminSupportPage = () => {
 
   if (authLoading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <Loader2 className="h-10 w-10 animate-spin text-purple-600 mx-auto" />
+      <AdminLayout>
+        <div className="min-h-[70vh] bg-gray-50 flex items-center justify-center">
+          <div className="text-center">
+            <Loader2 className="h-10 w-10 animate-spin text-purple-600 mx-auto" />
 
-          <p className="mt-3 text-sm text-gray-500">
-            Checking administrator access...
-          </p>
+            <p className="mt-3 text-sm text-gray-500">
+              Checking administrator access...
+            </p>
+          </div>
         </div>
-      </div>
+      </AdminLayout>
     );
   }
 
@@ -1898,15 +1853,17 @@ const AdminSupportPage = () => {
 
   if (adminLoading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <Loader2 className="h-10 w-10 animate-spin text-purple-600 mx-auto" />
+      <AdminLayout>
+        <div className="min-h-[70vh] bg-gray-50 flex items-center justify-center">
+          <div className="text-center">
+            <Loader2 className="h-10 w-10 animate-spin text-purple-600 mx-auto" />
 
-          <p className="mt-3 text-sm text-gray-500">
-            Verifying administrator account...
-          </p>
+            <p className="mt-3 text-sm text-gray-500">
+              Verifying administrator account...
+            </p>
+          </div>
         </div>
-      </div>
+      </AdminLayout>
     );
   }
 
@@ -1919,35 +1876,35 @@ const AdminSupportPage = () => {
     !adminRecord
   ) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-purple-50 flex items-center justify-center p-6">
-        <div className="max-w-md w-full bg-white border rounded-2xl shadow-lg p-8 text-center">
-          <div className="w-16 h-16 rounded-full bg-red-100 flex items-center justify-center mx-auto mb-5">
-            <AlertCircle className="h-8 w-8 text-red-600" />
+      <AdminLayout>
+        <div className="min-h-[70vh] bg-gradient-to-br from-gray-50 via-white to-purple-50 flex items-center justify-center p-6">
+          <div className="max-w-md w-full bg-white border rounded-2xl shadow-lg p-8 text-center">
+            <div className="w-16 h-16 rounded-full bg-red-100 flex items-center justify-center mx-auto mb-5">
+              <AlertCircle className="h-8 w-8 text-red-600" />
+            </div>
+
+            <h1 className="text-xl font-bold text-gray-900">
+              Access Denied
+            </h1>
+
+            <p className="text-sm text-gray-500 mt-2">
+              Your account does not have
+              active administrator access
+              to the IyanjuPay support
+              dashboard.
+            </p>
+
+            <Button
+              className="mt-6 bg-purple-600 hover:bg-purple-700"
+              onClick={() =>
+                window.location.replace("/")
+              }
+            >
+              Return to IyanjuPay
+            </Button>
           </div>
-
-          <h1 className="text-xl font-bold text-gray-900">
-            Access Denied
-          </h1>
-
-          <p className="text-sm text-gray-500 mt-2">
-            Your account does not have
-            active administrator access
-            to the IyanjuPay support
-            dashboard.
-          </p>
-
-          <Button
-            className="mt-6 bg-purple-600 hover:bg-purple-700"
-            onClick={() =>
-              window.location.replace(
-                "/"
-              )
-            }
-          >
-            Return to IyanjuPay
-          </Button>
         </div>
-      </div>
+      </AdminLayout>
     );
   }
 
@@ -1982,1056 +1939,1009 @@ const AdminSupportPage = () => {
   // ==========================================================
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
+    <AdminLayout>
+      <div className="min-h-screen bg-gray-50 flex flex-col">
 
-      {/* ======================================================
-          HEADER
-      ====================================================== */}
+        {/* ======================================================
+            HEADER
+        ====================================================== */}
 
-      <header className="bg-gradient-to-r from-purple-600 to-blue-600 text-white shadow-md shrink-0">
-        <div className="px-4 sm:px-6 py-4">
-          <div className="flex items-center justify-between gap-4">
+        <header className="bg-gradient-to-r from-purple-600 to-blue-600 text-white shadow-md shrink-0">
+          <div className="px-4 sm:px-6 py-4">
+            <div className="flex items-center justify-between gap-4">
 
-            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3">
 
-              <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center">
-                <Headphones className="h-5 w-5" />
-              </div>
-
-              <div>
-                <h1 className="font-bold text-lg">
-                  IyanjuPay Admin
-                </h1>
-
-                <p className="text-xs text-white/75">
-                  Support Center
-                </p>
-              </div>
-
-            </div>
-
-            <div className="flex items-center gap-2">
-
-              <div className="hidden sm:flex items-center gap-2 px-3 py-2 rounded-lg bg-white/10">
-                <Shield className="h-4 w-4" />
-
-                <span className="text-sm">
-                  {
-                    ROLE_LABELS[
-                      adminRecord.role
-                    ]
-                  }
-                </span>
-              </div>
-
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={refreshAll}
-                disabled={refreshing}
-                className="text-white hover:bg-white/20"
-              >
-                <RefreshCw
-                  className={`h-4 w-4 ${
-                    refreshing
-                      ? "animate-spin"
-                      : ""
-                  }`}
-                />
-              </Button>
-
-            </div>
-          </div>
-        </div>
-      </header>
-
-      {/* ======================================================
-          STATISTICS
-      ====================================================== */}
-
-      <div className="bg-white border-b px-4 sm:px-6 py-3">
-        <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-
-          <div className="rounded-xl border bg-gray-50 px-4 py-3">
-            <p className="text-xs text-gray-500">
-              Total
-            </p>
-
-            <p className="text-xl font-bold text-gray-900">
-              {counts.total}
-            </p>
-          </div>
-
-          <div className="rounded-xl border bg-green-50 px-4 py-3">
-            <p className="text-xs text-green-600">
-              Open
-            </p>
-
-            <p className="text-xl font-bold text-green-700">
-              {counts.open}
-            </p>
-          </div>
-
-          <div className="rounded-xl border bg-orange-50 px-4 py-3">
-            <p className="text-xs text-orange-600">
-              Waiting Admin
-            </p>
-
-            <p className="text-xl font-bold text-orange-700">
-              {counts.waitingAdmin}
-            </p>
-          </div>
-
-          <div className="rounded-xl border bg-red-50 px-4 py-3">
-            <p className="text-xs text-red-600">
-              Urgent
-            </p>
-
-            <p className="text-xl font-bold text-red-700">
-              {counts.urgent}
-            </p>
-          </div>
-
-          <div className="rounded-xl border bg-purple-50 px-4 py-3">
-            <p className="text-xs text-purple-600">
-              Assigned To Me
-            </p>
-
-            <p className="text-xl font-bold text-purple-700">
-              {counts.assignedToMe}
-            </p>
-          </div>
-
-        </div>
-      </div>
-
-      {/* ======================================================
-          MAIN
-      ====================================================== */}
-
-      <main className="flex-1 min-h-0 flex overflow-hidden">
-
-        {/* ====================================================
-            CONVERSATION LIST
-        ==================================================== */}
-
-        <section
-          className={`
-            w-full lg:w-[390px]
-            bg-white border-r
-            flex flex-col
-            ${
-              mobileConversationOpen
-                ? "hidden lg:flex"
-                : "flex"
-            }
-          `}
-        >
-
-          {/* SEARCH */}
-
-          <div className="p-4 border-b">
-
-            <div className="relative">
-
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-
-              <Input
-                value={search}
-                onChange={(event) =>
-                  setSearch(
-                    event.target.value
-                  )
-                }
-                placeholder="Search by name, email, phone, ID..."
-                className="pl-9 pr-9"
-              />
-
-              {search && (
-                <button
-                  type="button"
-                  onClick={() =>
-                    setSearch("")
-                  }
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              )}
-
-            </div>
-
-            <div className="flex items-center justify-between mt-3">
-
-              <p className="text-sm font-semibold text-gray-800">
-                Support Inbox
-              </p>
-
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() =>
-                  setShowFilters(
-                    (value) => !value
-                  )
-                }
-                className="text-gray-600"
-              >
-                <Filter className="h-4 w-4 mr-1" />
-                Filters
-              </Button>
-
-            </div>
-
-            {showFilters && (
-              <div className="mt-3 space-y-2">
-
-                <select
-                  value={statusFilter}
-                  onChange={(event) =>
-                    setStatusFilter(
-                      event.target
-                        .value as
-                        | ConversationStatus
-                        | "all"
-                    )
-                  }
-                  className="w-full h-10 rounded-md border bg-white px-3 text-sm"
-                >
-                  {STATUS_OPTIONS.map(
-                    (option) => (
-                      <option
-                        key={
-                          option.value
-                        }
-                        value={
-                          option.value
-                        }
-                      >
-                        {option.label}
-                      </option>
-                    )
-                  )}
-                </select>
-
-                <select
-                  value={priorityFilter}
-                  onChange={(event) =>
-                    setPriorityFilter(
-                      event.target
-                        .value as
-                        | ConversationPriority
-                        | "all"
-                    )
-                  }
-                  className="w-full h-10 rounded-md border bg-white px-3 text-sm"
-                >
-                  {PRIORITY_OPTIONS.map(
-                    (option) => (
-                      <option
-                        key={
-                          option.value
-                        }
-                        value={
-                          option.value
-                        }
-                      >
-                        {option.label}
-                      </option>
-                    )
-                  )}
-                </select>
-
-                <select
-                  value={assignedFilter}
-                  onChange={(event) =>
-                    setAssignedFilter(
-                      event.target
-                        .value as
-                        | "all"
-                        | "mine"
-                        | "unassigned"
-                    )
-                  }
-                  className="w-full h-10 rounded-md border bg-white px-3 text-sm"
-                >
-                  <option value="all">
-                    All Assignments
-                  </option>
-
-                  <option value="mine">
-                    Assigned To Me
-                  </option>
-
-                  <option value="unassigned">
-                    Unassigned
-                  </option>
-                </select>
-
-              </div>
-            )}
-          </div>
-
-          {/* LIST */}
-
-          <div className="flex-1 overflow-y-auto">
-
-            {conversationsLoading ? (
-              <div className="h-full flex items-center justify-center">
-                <Loader2 className="h-6 w-6 animate-spin text-purple-600" />
-              </div>
-            ) : filteredConversations.length ===
-              0 ? (
-              <div className="h-full flex flex-col items-center justify-center px-6 text-center">
-
-                <div className="w-14 h-14 rounded-full bg-purple-100 flex items-center justify-center mb-4">
-                  <MessageCircle className="h-6 w-6 text-purple-600" />
+                <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center">
+                  <Headphones className="h-5 w-5" />
                 </div>
 
-                <h3 className="font-semibold text-gray-900">
-                  No conversations
-                </h3>
+                <div>
+                  <h1 className="font-bold text-lg">
+                    IyanjuPay Admin
+                  </h1>
 
-                <p className="text-sm text-gray-500 mt-1">
-                  There are no support
-                  conversations matching
-                  your filters.
-                </p>
+                  <p className="text-xs text-white/75">
+                    Support Center
+                  </p>
+                </div>
 
               </div>
-            ) : (
-              filteredConversations.map(
-                (conversation) => {
-                  const selected =
-                    conversation.id ===
-                    selectedConversationId;
 
-                  const profile =
-                    conversation.profile;
+              <div className="flex items-center gap-2">
 
-                  const customerName =
-                    getProfileDisplayName(
-                      profile,
-                      conversation.user_id
-                    );
+                <div className="hidden sm:flex items-center gap-2 px-3 py-2 rounded-lg bg-white/10">
+                  <Shield className="h-4 w-4" />
 
-                  const customerEmail =
-                    getProfileEmail(
-                      profile
-                    );
+                  <span className="text-sm">
+                    {
+                      ROLE_LABELS[
+                        adminRecord.role
+                      ]
+                    }
+                  </span>
+                </div>
 
-                  const customerPhone =
-                    getProfilePhone(
-                      profile
-                    );
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={refreshAll}
+                  disabled={refreshing}
+                  className="text-white hover:bg-white/20"
+                >
+                  <RefreshCw
+                    className={`h-4 w-4 ${
+                      refreshing
+                        ? "animate-spin"
+                        : ""
+                    }`}
+                  />
+                </Button>
 
-                  const initials =
-                    getProfileInitials(
-                      profile,
-                      conversation.user_id
-                    );
+              </div>
+            </div>
+          </div>
+        </header>
 
-                  return (
-                    <button
-                      type="button"
-                      key={
-                        conversation.id
-                      }
-                      onClick={() =>
-                        selectConversation(
-                          conversation.id
-                        )
-                      }
-                      className={`
-                        w-full text-left
-                        px-4 py-4
-                        border-b
-                        transition
-                        ${
-                          selected
-                            ? "bg-purple-50 border-l-4 border-l-purple-600"
-                            : "hover:bg-gray-50 border-l-4 border-l-transparent"
-                        }
-                      `}
-                    >
+        {/* ======================================================
+            STATISTICS
+        ====================================================== */}
 
-                      <div className="flex items-start gap-3">
+        <div className="bg-white border-b px-4 sm:px-6 py-3">
+          <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
 
-                        <div
-                          className={`
-                            w-10 h-10 rounded-full
-                            flex items-center justify-center
-                            shrink-0
-                            text-xs font-bold
-                            ${
-                              selected
-                                ? "bg-purple-600 text-white"
-                                : "bg-purple-100 text-purple-700"
-                            }
-                          `}
+            <div className="rounded-xl border bg-gray-50 px-4 py-3">
+              <p className="text-xs text-gray-500">
+                Total
+              </p>
+
+              <p className="text-xl font-bold text-gray-900">
+                {counts.total}
+              </p>
+            </div>
+
+            <div className="rounded-xl border bg-green-50 px-4 py-3">
+              <p className="text-xs text-green-600">
+                Open
+              </p>
+
+              <p className="text-xl font-bold text-green-700">
+                {counts.open}
+              </p>
+            </div>
+
+            <div className="rounded-xl border bg-orange-50 px-4 py-3">
+              <p className="text-xs text-orange-600">
+                Waiting Admin
+              </p>
+
+              <p className="text-xl font-bold text-orange-700">
+                {counts.waitingAdmin}
+              </p>
+            </div>
+
+            <div className="rounded-xl border bg-red-50 px-4 py-3">
+              <p className="text-xs text-red-600">
+                Urgent
+              </p>
+
+              <p className="text-xl font-bold text-red-700">
+                {counts.urgent}
+              </p>
+            </div>
+
+            <div className="rounded-xl border bg-purple-50 px-4 py-3">
+              <p className="text-xs text-purple-600">
+                Assigned To Me
+              </p>
+
+              <p className="text-xl font-bold text-purple-700">
+                {counts.assignedToMe}
+              </p>
+            </div>
+
+          </div>
+        </div>
+
+        {/* ======================================================
+            MAIN
+        ====================================================== */}
+
+        <main className="flex-1 min-h-0 flex overflow-hidden">
+
+          {/* ====================================================
+              CONVERSATION LIST
+          ==================================================== */}
+
+          <section
+            className={`
+              w-full lg:w-[390px]
+              bg-white border-r
+              flex flex-col
+              ${
+                mobileConversationOpen
+                  ? "hidden lg:flex"
+                  : "flex"
+              }
+            `}
+          >
+
+            {/* SEARCH */}
+
+            <div className="p-4 border-b">
+
+              <div className="relative">
+
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+
+                <Input
+                  value={search}
+                  onChange={(event) =>
+                    setSearch(
+                      event.target.value
+                    )
+                  }
+                  placeholder="Search by name, email, phone, ID..."
+                  className="pl-9 pr-9"
+                />
+
+                {search && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setSearch("")
+                    }
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                )}
+
+              </div>
+
+              <div className="flex items-center justify-between mt-3">
+
+                <p className="text-sm font-semibold text-gray-800">
+                  Support Inbox
+                </p>
+
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() =>
+                    setShowFilters(
+                      (value) => !value
+                    )
+                  }
+                  className="text-gray-600"
+                >
+                  <Filter className="h-4 w-4 mr-1" />
+                  Filters
+                </Button>
+
+              </div>
+
+              {showFilters && (
+                <div className="mt-3 space-y-2">
+
+                  <select
+                    value={statusFilter}
+                    onChange={(event) =>
+                      setStatusFilter(
+                        event.target
+                          .value as
+                          | ConversationStatus
+                          | "all"
+                      )
+                    }
+                    className="w-full h-10 rounded-md border bg-white px-3 text-sm"
+                  >
+                    {STATUS_OPTIONS.map(
+                      (option) => (
+                        <option
+                          key={
+                            option.value
+                          }
+                          value={
+                            option.value
+                          }
                         >
-                          {initials}
-                        </div>
+                          {option.label}
+                        </option>
+                      )
+                    )}
+                  </select>
 
-                        <div className="flex-1 min-w-0">
+                  <select
+                    value={priorityFilter}
+                    onChange={(event) =>
+                      setPriorityFilter(
+                        event.target
+                          .value as
+                          | ConversationPriority
+                          | "all"
+                      )
+                    }
+                    className="w-full h-10 rounded-md border bg-white px-3 text-sm"
+                  >
+                    {PRIORITY_OPTIONS.map(
+                      (option) => (
+                        <option
+                          key={
+                            option.value
+                          }
+                          value={
+                            option.value
+                          }
+                        >
+                          {option.label}
+                        </option>
+                      )
+                    )}
+                  </select>
 
-                          <div className="flex items-start justify-between gap-2">
+                  <select
+                    value={assignedFilter}
+                    onChange={(event) =>
+                      setAssignedFilter(
+                        event.target
+                          .value as
+                          | "all"
+                          | "mine"
+                          | "unassigned"
+                      )
+                    }
+                    className="w-full h-10 rounded-md border bg-white px-3 text-sm"
+                  >
+                    <option value="all">
+                      All Assignments
+                    </option>
 
-                            <div className="min-w-0">
+                    <option value="mine">
+                      Assigned To Me
+                    </option>
 
-                              <p className="font-semibold text-sm text-gray-900 truncate">
-                                {
-                                  customerName
-                                }
-                              </p>
+                    <option value="unassigned">
+                      Unassigned
+                    </option>
+                  </select>
 
-                              <p className="text-xs text-gray-500 truncate mt-0.5">
-                                {
-                                  customerEmail
-                                }
-                              </p>
+                </div>
+              )}
+            </div>
 
-                              <p className="text-xs text-gray-500 truncate">
-                                {
-                                  customerPhone
-                                }
-                              </p>
+            {/* LIST */}
+
+            <div className="flex-1 overflow-y-auto">
+
+              {conversationsLoading ? (
+                <div className="h-full flex items-center justify-center">
+                  <Loader2 className="h-6 w-6 animate-spin text-purple-600" />
+                </div>
+              ) : filteredConversations.length ===
+                0 ? (
+                <div className="h-full flex flex-col items-center justify-center px-6 text-center">
+
+                  <div className="w-14 h-14 rounded-full bg-purple-100 flex items-center justify-center mb-4">
+                    <MessageCircle className="h-6 w-6 text-purple-600" />
+                  </div>
+
+                  <h3 className="font-semibold text-gray-900">
+                    No conversations
+                  </h3>
+
+                  <p className="text-sm text-gray-500 mt-1">
+                    There are no support
+                    conversations matching
+                    your filters.
+                  </p>
+
+                </div>
+              ) : (
+                filteredConversations.map(
+                  (conversation) => {
+                    const selected =
+                      conversation.id ===
+                      selectedConversationId;
+
+                    const profile =
+                      conversation.profile;
+
+                    const customerName =
+                      getProfileDisplayName(
+                        profile,
+                        conversation.user_id
+                      );
+
+                    const customerEmail =
+                      getProfileEmail(
+                        profile
+                      );
+
+                    const customerPhone =
+                      getProfilePhone(
+                        profile
+                      );
+
+                    const initials =
+                      getProfileInitials(
+                        profile,
+                        conversation.user_id
+                      );
+
+                    return (
+                      <button
+                        type="button"
+                        key={
+                          conversation.id
+                        }
+                        onClick={() =>
+                          selectConversation(
+                            conversation.id
+                          )
+                        }
+                        className={`
+                          w-full text-left
+                          px-4 py-4
+                          border-b
+                          transition
+                          ${
+                            selected
+                              ? "bg-purple-50 border-l-4 border-l-purple-600"
+                              : "hover:bg-gray-50 border-l-4 border-l-transparent"
+                          }
+                        `}
+                      >
+
+                        <div className="flex items-start gap-3">
+
+                          <div
+                            className={`
+                              w-10 h-10 rounded-full
+                              flex items-center justify-center
+                              shrink-0
+                              text-xs font-bold
+                              ${
+                                selected
+                                  ? "bg-purple-600 text-white"
+                                  : "bg-purple-100 text-purple-700"
+                              }
+                            `}
+                          >
+                            {initials}
+                          </div>
+
+                          <div className="flex-1 min-w-0">
+
+                            <div className="flex items-start justify-between gap-2">
+
+                              <div className="min-w-0">
+
+                                <p className="font-semibold text-sm text-gray-900 truncate">
+                                  {
+                                    customerName
+                                  }
+                                </p>
+
+                                <p className="text-xs text-gray-500 truncate mt-0.5">
+                                  {
+                                    customerEmail
+                                  }
+                                </p>
+
+                                <p className="text-xs text-gray-500 truncate">
+                                  {
+                                    customerPhone
+                                  }
+                                </p>
+
+                              </div>
+
+                              <span className="text-[10px] text-gray-400 whitespace-nowrap">
+                                {formatRelativeTime(
+                                  conversation.last_message_at ||
+                                    conversation.updated_at
+                                )}
+                              </span>
 
                             </div>
 
-                            <span className="text-[10px] text-gray-400 whitespace-nowrap">
-                              {formatRelativeTime(
-                                conversation.last_message_at ||
-                                  conversation.updated_at
-                              )}
-                            </span>
+                            <p className="text-xs text-gray-500 truncate mt-2">
+                              {conversation.subject ||
+                                "Customer Support"}
+                            </p>
 
-                          </div>
+                            <div className="flex items-center gap-2 mt-2 flex-wrap">
 
-                          <p className="text-xs text-gray-500 truncate mt-2">
-                            {conversation.subject ||
-                              "Customer Support"}
-                          </p>
-
-                          <div className="flex items-center gap-2 mt-2 flex-wrap">
-
-                            <span
-                              className={`text-[10px] px-2 py-1 rounded-full ${getStatusClasses(
-                                conversation.status
-                              )}`}
-                            >
-                              {
-                                STATUS_LABELS[
+                              <span
+                                className={`text-[10px] px-2 py-1 rounded-full ${getStatusClasses(
                                   conversation.status
-                                ]
-                              }
-                            </span>
-
-                            <span
-                              className={`text-[10px] px-2 py-1 rounded-full border ${getPriorityClasses(
-                                conversation.priority
-                              )}`}
-                            >
-                              {
-                                conversation.priority
-                              }
-                            </span>
-
-                            {!conversation.assigned_admin_id && (
-                              <span className="text-[10px] px-2 py-1 rounded-full bg-gray-100 text-gray-500">
-                                Unassigned
+                                )}`}
+                              >
+                                {
+                                  STATUS_LABELS[
+                                    conversation.status
+                                  ]
+                                }
                               </span>
-                            )}
 
+                              <span
+                                className={`text-[10px] px-2 py-1 rounded-full border ${getPriorityClasses(
+                                  conversation.priority
+                                )}`}
+                              >
+                                {
+                                  conversation.priority
+                                }
+                              </span>
+
+                              {!conversation.assigned_admin_id && (
+                                <span className="text-[10px] px-2 py-1 rounded-full bg-gray-100 text-gray-500">
+                                  Unassigned
+                                </span>
+                              )}
+
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    </button>
-                  );
-                }
-              )
-            )}
-          </div>
-        </section>
+                      </button>
+                    );
+                  }
+                )
+              )}
+            </div>
+          </section>
 
-        {/* ====================================================
-            CONVERSATION PANEL
-        ==================================================== */}
+          {/* ====================================================
+              CONVERSATION PANEL
+          ==================================================== */}
 
-        <section
-          className={`
-            flex-1
-            min-w-0
-            flex flex-col
-            bg-gray-50
-            ${
-              mobileConversationOpen
-                ? "flex"
-                : "hidden lg:flex"
-            }
-          `}
-        >
+          <section
+            className={`
+              flex-1
+              min-w-0
+              flex flex-col
+              bg-gray-50
+              ${
+                mobileConversationOpen
+                  ? "flex"
+                  : "hidden lg:flex"
+              }
+            `}
+          >
 
-          {!selectedConversation ? (
+            {!selectedConversation ? (
 
-            <div className="flex-1 flex flex-col items-center justify-center text-center p-8">
+              <div className="flex-1 flex flex-col items-center justify-center text-center p-8">
 
-              <div className="w-20 h-20 rounded-full bg-purple-100 flex items-center justify-center mb-5">
-                <MessageCircle className="h-9 w-9 text-purple-600" />
+                <div className="w-20 h-20 rounded-full bg-purple-100 flex items-center justify-center mb-5">
+                  <MessageCircle className="h-9 w-9 text-purple-600" />
+                </div>
+
+                <h2 className="text-xl font-bold text-gray-900">
+                  Support Inbox
+                </h2>
+
+                <p className="text-sm text-gray-500 mt-2 max-w-md">
+                  Select a conversation
+                  from the inbox to view
+                  the customer details,
+                  messages and respond
+                  in realtime.
+                </p>
+
               </div>
 
-              <h2 className="text-xl font-bold text-gray-900">
-                Support Inbox
-              </h2>
+            ) : (
 
-              <p className="text-sm text-gray-500 mt-2 max-w-md">
-                Select a conversation
-                from the inbox to view
-                the customer details,
-                messages and respond
-                in realtime.
-              </p>
+              <>
 
-            </div>
+                {/* CUSTOMER HEADER */}
 
-          ) : (
+                <div className="bg-white border-b">
 
-            <>
+                  <div className="px-4 sm:px-6 py-4">
 
-              {/* ==================================================
-                  CUSTOMER HEADER
-              ================================================== */}
+                    <div className="flex items-center justify-between gap-3">
 
-              <div className="bg-white border-b">
+                      <div className="flex items-center gap-3 min-w-0">
 
-                <div className="px-4 sm:px-6 py-4">
-
-                  <div className="flex items-center justify-between gap-3">
-
-                    <div className="flex items-center gap-3 min-w-0">
-
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() =>
-                          setMobileConversationOpen(
-                            false
-                          )
-                        }
-                        className="lg:hidden shrink-0"
-                      >
-                        <ArrowLeft className="h-5 w-5" />
-                      </Button>
-
-                      <div className="w-11 h-11 rounded-full bg-purple-100 flex items-center justify-center shrink-0 text-purple-700 font-bold">
-                        {getProfileInitials(
-                          selectedProfile,
-                          selectedConversation.user_id
-                        )}
-                      </div>
-
-                      <div className="min-w-0">
-
-                        <h2 className="font-bold text-gray-900 truncate">
-                          {
-                            selectedCustomerName
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() =>
+                            setMobileConversationOpen(
+                              false
+                            )
                           }
-                        </h2>
+                          className="lg:hidden shrink-0"
+                        >
+                          <ArrowLeft className="h-5 w-5" />
+                        </Button>
 
-                        <p className="text-xs text-gray-500 truncate">
-                          {
-                            selectedCustomerEmail
-                          }
-                        </p>
-
-                        <p className="text-xs text-gray-500 truncate">
-                          {
-                            selectedCustomerPhone
-                          }
-                        </p>
-
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-
-                      <span
-                        className={`hidden sm:inline-flex text-xs px-2.5 py-1 rounded-full ${getStatusClasses(
-                          selectedConversation.status
-                        )}`}
-                      >
-                        {
-                          STATUS_LABELS[
-                            selectedConversation.status
-                          ]
-                        }
-                      </span>
-
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="text-gray-500"
-                      >
-                        <MoreVertical className="h-5 w-5" />
-                      </Button>
-
-                    </div>
-                  </div>
-
-                  {/* =================================================
-                      CUSTOMER INFORMATION
-                  ================================================= */}
-
-                  <div className="mt-4 rounded-xl border bg-gray-50 p-4">
-
-                    <div className="flex items-center gap-2 mb-3">
-
-                      <User className="h-4 w-4 text-purple-600" />
-
-                      <p className="text-sm font-bold text-gray-900">
-                        Customer Information
-                      </p>
-
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-
-                      {/* NAME */}
-
-                      <div className="rounded-lg bg-white border p-3">
-
-                        <p className="text-[10px] uppercase tracking-wide text-gray-400">
-                          Full Name
-                        </p>
-
-                        <p className="text-sm font-semibold text-gray-900 mt-1 break-words">
-                          {
-                            selectedCustomerName
-                          }
-                        </p>
-
-                      </div>
-
-                      {/* EMAIL */}
-
-                      <div className="rounded-lg bg-white border p-3">
-
-                        <div className="flex items-center gap-1.5">
-
-                          <Mail className="h-3.5 w-3.5 text-gray-400" />
-
-                          <p className="text-[10px] uppercase tracking-wide text-gray-400">
-                            Email
-                          </p>
-
-                        </div>
-
-                        <p className="text-sm font-medium text-gray-900 mt-1 break-all">
-                          {
-                            selectedCustomerEmail
-                          }
-                        </p>
-
-                      </div>
-
-                      {/* PHONE */}
-
-                      <div className="rounded-lg bg-white border p-3">
-
-                        <div className="flex items-center gap-1.5">
-
-                          <Phone className="h-3.5 w-3.5 text-gray-400" />
-
-                          <p className="text-[10px] uppercase tracking-wide text-gray-400">
-                            Phone
-                          </p>
-
-                        </div>
-
-                        <p className="text-sm font-medium text-gray-900 mt-1">
-                          {
-                            selectedCustomerPhone
-                          }
-                        </p>
-
-                      </div>
-
-                      {/* NICKNAME */}
-
-                      <div className="rounded-lg bg-white border p-3">
-
-                        <p className="text-[10px] uppercase tracking-wide text-gray-400">
-                          Nickname
-                        </p>
-
-                        <p className="text-sm font-medium text-gray-900 mt-1">
-                          {
-                            selectedProfile?.nickname ||
-                            "Not available"
-                          }
-                        </p>
-
-                      </div>
-
-                      {/* GENDER */}
-
-                      <div className="rounded-lg bg-white border p-3">
-
-                        <p className="text-[10px] uppercase tracking-wide text-gray-400">
-                          Gender
-                        </p>
-
-                        <p className="text-sm font-medium text-gray-900 mt-1 capitalize">
-                          {
-                            selectedProfile?.gender ||
-                            "Not available"
-                          }
-                        </p>
-
-                      </div>
-
-                      {/* DATE OF BIRTH */}
-
-                      <div className="rounded-lg bg-white border p-3">
-
-                        <div className="flex items-center gap-1.5">
-
-                          <CalendarDays className="h-3.5 w-3.5 text-gray-400" />
-
-                          <p className="text-[10px] uppercase tracking-wide text-gray-400">
-                            Date of Birth
-                          </p>
-
-                        </div>
-
-                        <p className="text-sm font-medium text-gray-900 mt-1">
-                          {formatDate(
-                            selectedProfile?.date_of_birth ??
-                              null
+                        <div className="w-11 h-11 rounded-full bg-purple-100 flex items-center justify-center shrink-0 text-purple-700 font-bold">
+                          {getProfileInitials(
+                            selectedProfile,
+                            selectedConversation.user_id
                           )}
-                        </p>
+                        </div>
 
-                      </div>
+                        <div className="min-w-0">
 
-                      {/* ADDRESS */}
+                          <h2 className="font-bold text-gray-900 truncate">
+                            {
+                              selectedCustomerName
+                            }
+                          </h2>
 
-                      <div className="rounded-lg bg-white border p-3 sm:col-span-2">
+                          <p className="text-xs text-gray-500 truncate">
+                            {
+                              selectedCustomerEmail
+                            }
+                          </p>
 
-                        <div className="flex items-center gap-1.5">
-
-                          <MapPin className="h-3.5 w-3.5 text-gray-400" />
-
-                          <p className="text-[10px] uppercase tracking-wide text-gray-400">
-                            Address
+                          <p className="text-xs text-gray-500 truncate">
+                            {
+                              selectedCustomerPhone
+                            }
                           </p>
 
                         </div>
+                      </div>
 
-                        <p className="text-sm font-medium text-gray-900 mt-1 break-words">
+                      <div className="flex items-center gap-2">
+
+                        <span
+                          className={`hidden sm:inline-flex text-xs px-2.5 py-1 rounded-full ${getStatusClasses(
+                            selectedConversation.status
+                          )}`}
+                        >
                           {
-                            selectedProfile?.address ||
-                            "Address not available"
+                            STATUS_LABELS[
+                              selectedConversation.status
+                            ]
                           }
+                        </span>
+
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="text-gray-500"
+                        >
+                          <MoreVertical className="h-5 w-5" />
+                        </Button>
+
+                      </div>
+                    </div>
+
+                    {/* CUSTOMER INFORMATION */}
+
+                    <div className="mt-4 rounded-xl border bg-gray-50 p-4">
+
+                      <div className="flex items-center gap-2 mb-3">
+
+                        <User className="h-4 w-4 text-purple-600" />
+
+                        <p className="text-sm font-bold text-gray-900">
+                          Customer Information
                         </p>
 
                       </div>
 
-                      {/* KYC */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
 
-                      <div className="rounded-lg bg-white border p-3">
-
-                        <div className="flex items-center gap-1.5">
-
-                          <ShieldCheck className="h-3.5 w-3.5 text-gray-400" />
-
+                        <div className="rounded-lg bg-white border p-3">
                           <p className="text-[10px] uppercase tracking-wide text-gray-400">
-                            KYC
+                            Full Name
                           </p>
 
+                          <p className="text-sm font-semibold text-gray-900 mt-1 break-words">
+                            {
+                              selectedCustomerName
+                            }
+                          </p>
                         </div>
 
-                        <div className="mt-1 flex items-center gap-2">
+                        <div className="rounded-lg bg-white border p-3">
+                          <div className="flex items-center gap-1.5">
+                            <Mail className="h-3.5 w-3.5 text-gray-400" />
 
-                          <span className="text-sm font-semibold text-gray-900">
-                            Level{" "}
-                            {selectedProfile?.kyc_level ??
-                              1}
-                          </span>
+                            <p className="text-[10px] uppercase tracking-wide text-gray-400">
+                              Email
+                            </p>
+                          </div>
+
+                          <p className="text-sm font-medium text-gray-900 mt-1 break-all">
+                            {
+                              selectedCustomerEmail
+                            }
+                          </p>
+                        </div>
+
+                        <div className="rounded-lg bg-white border p-3">
+                          <div className="flex items-center gap-1.5">
+                            <Phone className="h-3.5 w-3.5 text-gray-400" />
+
+                            <p className="text-[10px] uppercase tracking-wide text-gray-400">
+                              Phone
+                            </p>
+                          </div>
+
+                          <p className="text-sm font-medium text-gray-900 mt-1">
+                            {
+                              selectedCustomerPhone
+                            }
+                          </p>
+                        </div>
+
+                        <div className="rounded-lg bg-white border p-3">
+                          <p className="text-[10px] uppercase tracking-wide text-gray-400">
+                            Nickname
+                          </p>
+
+                          <p className="text-sm font-medium text-gray-900 mt-1">
+                            {
+                              selectedProfile?.nickname ||
+                              "Not available"
+                            }
+                          </p>
+                        </div>
+
+                        <div className="rounded-lg bg-white border p-3">
+                          <p className="text-[10px] uppercase tracking-wide text-gray-400">
+                            Gender
+                          </p>
+
+                          <p className="text-sm font-medium text-gray-900 mt-1 capitalize">
+                            {
+                              selectedProfile?.gender ||
+                              "Not available"
+                            }
+                          </p>
+                        </div>
+
+                        <div className="rounded-lg bg-white border p-3">
+                          <div className="flex items-center gap-1.5">
+                            <CalendarDays className="h-3.5 w-3.5 text-gray-400" />
+
+                            <p className="text-[10px] uppercase tracking-wide text-gray-400">
+                              Date of Birth
+                            </p>
+                          </div>
+
+                          <p className="text-sm font-medium text-gray-900 mt-1">
+                            {formatDate(
+                              selectedProfile?.date_of_birth ??
+                                null
+                            )}
+                          </p>
+                        </div>
+
+                        <div className="rounded-lg bg-white border p-3 sm:col-span-2">
+                          <div className="flex items-center gap-1.5">
+                            <MapPin className="h-3.5 w-3.5 text-gray-400" />
+
+                            <p className="text-[10px] uppercase tracking-wide text-gray-400">
+                              Address
+                            </p>
+                          </div>
+
+                          <p className="text-sm font-medium text-gray-900 mt-1 break-words">
+                            {
+                              selectedProfile?.address ||
+                              "Address not available"
+                            }
+                          </p>
+                        </div>
+
+                        <div className="rounded-lg bg-white border p-3">
+                          <div className="flex items-center gap-1.5">
+                            <ShieldCheck className="h-3.5 w-3.5 text-gray-400" />
+
+                            <p className="text-[10px] uppercase tracking-wide text-gray-400">
+                              KYC
+                            </p>
+                          </div>
+
+                          <div className="mt-1 flex items-center gap-2">
+                            <span className="text-sm font-semibold text-gray-900">
+                              Level{" "}
+                              {selectedProfile?.kyc_level ??
+                                1}
+                            </span>
+
+                            <span
+                              className={`text-[10px] px-2 py-1 rounded-full ${
+                                selectedProfile?.kyc_status ===
+                                "verified"
+                                  ? "bg-green-100 text-green-700"
+                                  : "bg-gray-100 text-gray-600"
+                              }`}
+                            >
+                              {
+                                selectedProfile?.kyc_status ||
+                                "unverified"
+                              }
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="rounded-lg bg-white border p-3">
+                          <p className="text-[10px] uppercase tracking-wide text-gray-400">
+                            BVN Verification
+                          </p>
 
                           <span
-                            className={`text-[10px] px-2 py-1 rounded-full ${
-                              selectedProfile?.kyc_status ===
-                              "verified"
+                            className={`inline-flex mt-1 text-[10px] px-2 py-1 rounded-full ${
+                              selectedProfile?.bvn_verified
                                 ? "bg-green-100 text-green-700"
                                 : "bg-gray-100 text-gray-600"
                             }`}
                           >
-                            {
-                              selectedProfile?.kyc_status ||
-                              "unverified"
-                            }
+                            {selectedProfile?.bvn_verified
+                              ? "Verified"
+                              : "Not verified"}
                           </span>
-
                         </div>
+
+                        <div className="rounded-lg bg-white border p-3">
+                          <p className="text-[10px] uppercase tracking-wide text-gray-400">
+                            NIN
+                          </p>
+
+                          <p className="text-sm font-medium text-gray-500 mt-1">
+                            Protected
+                          </p>
+                        </div>
+
+                        <div className="rounded-lg bg-white border p-3">
+                          <p className="text-[10px] uppercase tracking-wide text-gray-400">
+                            Phone Verification
+                          </p>
+
+                          <span
+                            className={`inline-flex mt-1 text-[10px] px-2 py-1 rounded-full ${
+                              selectedProfile?.phone_verified
+                                ? "bg-green-100 text-green-700"
+                                : "bg-gray-100 text-gray-600"
+                            }`}
+                          >
+                            {selectedProfile?.phone_verified
+                              ? "Verified"
+                              : "Not verified"}
+                          </span>
+                        </div>
+
                       </div>
 
-                      {/* BVN */}
-
-                      <div className="rounded-lg bg-white border p-3">
-
+                      <div className="mt-3 pt-3 border-t">
                         <p className="text-[10px] uppercase tracking-wide text-gray-400">
-                          BVN Verification
+                          User ID
                         </p>
 
-                        <span
-                          className={`inline-flex mt-1 text-[10px] px-2 py-1 rounded-full ${
-                            selectedProfile?.bvn_verified
-                              ? "bg-green-100 text-green-700"
-                              : "bg-gray-100 text-gray-600"
-                          }`}
+                        <p className="text-xs font-mono text-gray-500 mt-1 break-all">
+                          {
+                            selectedConversation.user_id
+                          }
+                        </p>
+                      </div>
+
+                    </div>
+
+                    {/* ADMIN CONTROLS */}
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-4">
+
+                      <div>
+                        <label className="text-[11px] font-medium text-gray-500 block mb-1">
+                          Status
+                        </label>
+
+                        <select
+                          value={
+                            selectedConversation.status
+                          }
+                          disabled={
+                            updatingConversation
+                          }
+                          onChange={(event) =>
+                            updateConversation({
+                              status:
+                                event.target
+                                  .value as ConversationStatus,
+                            })
+                          }
+                          className="w-full h-9 rounded-md border bg-white px-2.5 text-sm"
                         >
-                          {selectedProfile?.bvn_verified
-                            ? "Verified"
-                            : "Not verified"}
-                        </span>
-
+                          {STATUS_OPTIONS.filter(
+                            (option) =>
+                              option.value !==
+                              "all"
+                          ).map(
+                            (option) => (
+                              <option
+                                key={
+                                  option.value
+                                }
+                                value={
+                                  option.value
+                                }
+                              >
+                                {
+                                  option.label
+                                }
+                              </option>
+                            )
+                          )}
+                        </select>
                       </div>
 
-                      {/* NIN */}
+                      <div>
+                        <label className="text-[11px] font-medium text-gray-500 block mb-1">
+                          Priority
+                        </label>
 
-                      <div className="rounded-lg bg-white border p-3">
-
-                        <p className="text-[10px] uppercase tracking-wide text-gray-400">
-                          NIN
-                        </p>
-
-                        <p className="text-sm font-medium text-gray-500 mt-1">
-                          Protected
-                        </p>
-
-                      </div>
-
-                      {/* PHONE VERIFICATION */}
-
-                      <div className="rounded-lg bg-white border p-3">
-
-                        <p className="text-[10px] uppercase tracking-wide text-gray-400">
-                          Phone Verification
-                        </p>
-
-                        <span
-                          className={`inline-flex mt-1 text-[10px] px-2 py-1 rounded-full ${
-                            selectedProfile?.phone_verified
-                              ? "bg-green-100 text-green-700"
-                              : "bg-gray-100 text-gray-600"
-                          }`}
+                        <select
+                          value={
+                            selectedConversation.priority
+                          }
+                          disabled={
+                            updatingConversation
+                          }
+                          onChange={(event) =>
+                            updateConversation({
+                              priority:
+                                event.target
+                                  .value as ConversationPriority,
+                            })
+                          }
+                          className="w-full h-9 rounded-md border bg-white px-2.5 text-sm"
                         >
-                          {selectedProfile?.phone_verified
-                            ? "Verified"
-                            : "Not verified"}
-                        </span>
+                          {PRIORITY_OPTIONS.filter(
+                            (option) =>
+                              option.value !==
+                              "all"
+                          ).map(
+                            (option) => (
+                              <option
+                                key={
+                                  option.value
+                                }
+                                value={
+                                  option.value
+                                }
+                              >
+                                {
+                                  option.label
+                                }
+                              </option>
+                            )
+                          )}
+                        </select>
+                      </div>
 
+                      <div>
+                        <label className="text-[11px] font-medium text-gray-500 block mb-1">
+                          Assigned Admin
+                        </label>
+
+                        <select
+                          value={
+                            selectedConversation.assigned_admin_id ||
+                            ""
+                          }
+                          disabled={
+                            updatingConversation
+                          }
+                          onChange={(event) =>
+                            updateConversation({
+                              assigned_admin_id:
+                                event.target
+                                  .value ||
+                                null,
+                            })
+                          }
+                          className="w-full h-9 rounded-md border bg-white px-2.5 text-sm"
+                        >
+                          <option value="">
+                            Unassigned
+                          </option>
+
+                          {admins.map(
+                            (admin) => (
+                              <option
+                                key={
+                                  admin.user_id
+                                }
+                                value={
+                                  admin.user_id
+                                }
+                              >
+                                {shortId(
+                                  admin.user_id
+                                )}{" "}
+                                —{" "}
+                                {
+                                  ROLE_LABELS[
+                                    admin.role
+                                  ]
+                                }
+                              </option>
+                            )
+                          )}
+                        </select>
                       </div>
 
                     </div>
 
-                    {/* USER ID */}
+                    {/* QUICK ACTIONS */}
 
-                    <div className="mt-3 pt-3 border-t">
+                    <div className="flex flex-wrap gap-2 mt-3">
 
-                      <p className="text-[10px] uppercase tracking-wide text-gray-400">
-                        User ID
-                      </p>
+                      {selectedConversation.assigned_admin_id !==
+                        user.id && (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={
+                            assignToMe
+                          }
+                          disabled={
+                            updatingConversation
+                          }
+                        >
+                          <User className="h-3.5 w-3.5 mr-1.5" />
+                          Assign to Me
+                        </Button>
+                      )}
 
-                      <p className="text-xs font-mono text-gray-500 mt-1 break-all">
-                        {
-                          selectedConversation.user_id
-                        }
-                      </p>
-
-                    </div>
-
-                  </div>
-
-                  {/* =================================================
-                      ADMIN CONTROLS
-                  ================================================= */}
-
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-4">
-
-                    {/* STATUS */}
-
-                    <div>
-                      <label className="text-[11px] font-medium text-gray-500 block mb-1">
-                        Status
-                      </label>
-
-                      <select
-                        value={
-                          selectedConversation.status
-                        }
-                        disabled={
-                          updatingConversation
-                        }
-                        onChange={(event) =>
-                          updateConversation({
-                            status:
-                              event.target
-                                .value as ConversationStatus,
-                          })
-                        }
-                        className="w-full h-9 rounded-md border bg-white px-2.5 text-sm"
-                      >
-                        {STATUS_OPTIONS.filter(
-                          (option) =>
-                            option.value !==
-                            "all"
-                        ).map(
-                          (option) => (
-                            <option
-                              key={
-                                option.value
-                              }
-                              value={
-                                option.value
-                              }
-                            >
-                              {
-                                option.label
-                              }
-                            </option>
-                          )
+                      {selectedConversation.status !==
+                        "resolved" &&
+                        selectedConversation.status !==
+                          "closed" && (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            onClick={() =>
+                              updateConversation(
+                                {
+                                  status:
+                                    "resolved",
+                                }
+                              )
+                            }
+                            disabled={
+                              updatingConversation
+                            }
+                          >
+                            <CheckCircle2 className="h-3.5 w-3.5 mr-1.5" />
+                            Resolve
+                          </Button>
                         )}
-                      </select>
-                    </div>
 
-                    {/* PRIORITY */}
-
-                    <div>
-                      <label className="text-[11px] font-medium text-gray-500 block mb-1">
-                        Priority
-                      </label>
-
-                      <select
-                        value={
-                          selectedConversation.priority
-                        }
-                        disabled={
-                          updatingConversation
-                        }
-                        onChange={(event) =>
-                          updateConversation({
-                            priority:
-                              event.target
-                                .value as ConversationPriority,
-                          })
-                        }
-                        className="w-full h-9 rounded-md border bg-white px-2.5 text-sm"
-                      >
-                        {PRIORITY_OPTIONS.filter(
-                          (option) =>
-                            option.value !==
-                            "all"
-                        ).map(
-                          (option) => (
-                            <option
-                              key={
-                                option.value
-                              }
-                              value={
-                                option.value
-                              }
-                            >
-                              {
-                                option.label
-                              }
-                            </option>
-                          )
-                        )}
-                      </select>
-                    </div>
-
-                    {/* ASSIGNMENT */}
-
-                    <div>
-                      <label className="text-[11px] font-medium text-gray-500 block mb-1">
-                        Assigned Admin
-                      </label>
-
-                      <select
-                        value={
-                          selectedConversation.assigned_admin_id ||
-                          ""
-                        }
-                        disabled={
-                          updatingConversation
-                        }
-                        onChange={(event) =>
-                          updateConversation({
-                            assigned_admin_id:
-                              event.target
-                                .value ||
-                              null,
-                          })
-                        }
-                        className="w-full h-9 rounded-md border bg-white px-2.5 text-sm"
-                      >
-                        <option value="">
-                          Unassigned
-                        </option>
-
-                        {admins.map(
-                          (admin) => (
-                            <option
-                              key={
-                                admin.user_id
-                              }
-                              value={
-                                admin.user_id
-                              }
-                            >
-                              {shortId(
-                                admin.user_id
-                              )}{" "}
-                              —{" "}
-                              {
-                                ROLE_LABELS[
-                                  admin.role
-                                ]
-                              }
-                            </option>
-                          )
-                        )}
-                      </select>
-                    </div>
-
-                  </div>
-
-                  {/* QUICK ACTIONS */}
-
-                  <div className="flex flex-wrap gap-2 mt-3">
-
-                    {selectedConversation.assigned_admin_id !==
-                      user.id && (
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        onClick={
-                          assignToMe
-                        }
-                        disabled={
-                          updatingConversation
-                        }
-                      >
-                        <User className="h-3.5 w-3.5 mr-1.5" />
-                        Assign to Me
-                      </Button>
-                    )}
-
-                    {selectedConversation.status !==
-                      "resolved" &&
-                      selectedConversation.status !==
+                      {selectedConversation.status !==
                         "closed" && (
                         <Button
                           type="button"
@@ -3041,7 +2951,7 @@ const AdminSupportPage = () => {
                             updateConversation(
                               {
                                 status:
-                                  "resolved",
+                                  "closed",
                               }
                             )
                           }
@@ -3049,282 +2959,254 @@ const AdminSupportPage = () => {
                             updatingConversation
                           }
                         >
-                          <CheckCircle2 className="h-3.5 w-3.5 mr-1.5" />
-                          Resolve
+                          <X className="h-3.5 w-3.5 mr-1.5" />
+                          Close
                         </Button>
                       )}
 
-                    {selectedConversation.status !==
-                      "closed" && (
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        onClick={() =>
-                          updateConversation(
-                            {
-                              status:
-                                "closed",
-                            }
-                          )
-                        }
-                        disabled={
-                          updatingConversation
-                        }
-                      >
-                        <X className="h-3.5 w-3.5 mr-1.5" />
-                        Close
-                      </Button>
-                    )}
+                    </div>
 
                   </div>
-
                 </div>
-              </div>
 
-              {/* ==================================================
-                  MESSAGES
-              ================================================== */}
+                {/* MESSAGES */}
 
-              <div className="flex-1 overflow-y-auto p-4 sm:p-6">
+                <div className="flex-1 overflow-y-auto p-4 sm:p-6">
 
-                {messagesLoading ? (
+                  {messagesLoading ? (
 
-                  <div className="h-full flex items-center justify-center">
-                    <Loader2 className="h-6 w-6 animate-spin text-purple-600" />
-                  </div>
+                    <div className="h-full flex items-center justify-center">
+                      <Loader2 className="h-6 w-6 animate-spin text-purple-600" />
+                    </div>
 
-                ) : messages.length ===
-                  0 ? (
+                  ) : messages.length ===
+                    0 ? (
 
-                  <div className="h-full flex flex-col items-center justify-center text-center">
+                    <div className="h-full flex flex-col items-center justify-center text-center">
 
-                    <MessageCircle className="h-10 w-10 text-gray-300 mb-3" />
+                      <MessageCircle className="h-10 w-10 text-gray-300 mb-3" />
 
-                    <p className="text-sm text-gray-500">
-                      No messages yet.
-                    </p>
-
-                  </div>
-
-                ) : (
-
-                  <div className="max-w-4xl mx-auto space-y-4">
-
-                    {messages.map(
-                      (item) => {
-                        const isAdmin =
-                          item.sender_type ===
-                          "admin";
-
-                        const isSystem =
-                          item.sender_type ===
-                          "system";
-
-                        return (
-                          <div
-                            key={
-                              item.id
-                            }
-                            className={`flex ${
-                              isAdmin
-                                ? "justify-end"
-                                : "justify-start"
-                            }`}
-                          >
-
-                            <div
-                              className={`
-                                max-w-[85%] sm:max-w-[70%]
-                                rounded-2xl
-                                px-4 py-3
-                                ${
-                                  isSystem
-                                    ? "bg-gray-200 text-gray-700"
-                                    : isAdmin
-                                    ? "bg-purple-600 text-white rounded-br-md"
-                                    : "bg-white border text-gray-900 shadow-sm rounded-bl-md"
-                                }
-                              `}
-                            >
-
-                              {!isAdmin &&
-                                !isSystem && (
-                                  <p className="text-xs font-semibold text-purple-600 mb-1">
-                                    {
-                                      selectedCustomerName
-                                    }
-                                  </p>
-                                )}
-
-                              {isAdmin && (
-                                <p className="text-xs font-semibold text-white/75 mb-1">
-                                  {
-                                    user.id ===
-                                    item.sender_id
-                                      ? "You"
-                                      : "Support Admin"
-                                  }
-                                </p>
-                              )}
-
-                              {isSystem && (
-                                <p className="text-xs font-semibold text-gray-500 mb-1">
-                                  System
-                                </p>
-                              )}
-
-                              <p className="text-sm whitespace-pre-wrap break-words">
-                                {
-                                  item.message
-                                }
-                              </p>
-
-                              <div
-                                className={`
-                                  flex items-center gap-2
-                                  text-[10px]
-                                  mt-2
-                                  ${
-                                    isAdmin
-                                      ? "text-white/65"
-                                      : "text-gray-400"
-                                  }
-                                `}
-                              >
-
-                                <span>
-                                  {formatTime(
-                                    item.created_at
-                                  )}
-                                </span>
-
-                                {isAdmin &&
-                                  item.read_at && (
-                                    <span>
-                                      Read
-                                    </span>
-                                  )}
-
-                              </div>
-
-                            </div>
-                          </div>
-                        );
-                      }
-                    )}
-
-                    <div
-                      ref={
-                        messagesEndRef
-                      }
-                    />
-
-                  </div>
-                )}
-              </div>
-
-              {/* ==================================================
-                  COMPOSER
-              ================================================== */}
-
-              <div className="bg-white border-t p-3 sm:p-4">
-
-                <div className="max-w-4xl mx-auto">
-
-                  {selectedConversation.status ===
-                    "closed" ? (
-
-                    <div className="rounded-xl bg-gray-100 border p-4 text-center">
-
-                      <div className="flex items-center justify-center gap-2 text-gray-600">
-
-                        <Clock3 className="h-4 w-4" />
-
-                        <p className="text-sm font-medium">
-                          This conversation
-                          is closed.
-                        </p>
-
-                      </div>
+                      <p className="text-sm text-gray-500">
+                        No messages yet.
+                      </p>
 
                     </div>
 
                   ) : (
 
-                    <div className="flex items-center gap-2">
+                    <div className="max-w-4xl mx-auto space-y-4">
 
-                      <Input
-                        value={
-                          message
+                      {messages.map(
+                        (item) => {
+                          const isAdmin =
+                            item.sender_type ===
+                            "admin";
+
+                          const isSystem =
+                            item.sender_type ===
+                            "system";
+
+                          return (
+                            <div
+                              key={
+                                item.id
+                              }
+                              className={`flex ${
+                                isAdmin
+                                  ? "justify-end"
+                                  : "justify-start"
+                              }`}
+                            >
+
+                              <div
+                                className={`
+                                  max-w-[85%] sm:max-w-[70%]
+                                  rounded-2xl
+                                  px-4 py-3
+                                  ${
+                                    isSystem
+                                      ? "bg-gray-200 text-gray-700"
+                                      : isAdmin
+                                      ? "bg-purple-600 text-white rounded-br-md"
+                                      : "bg-white border text-gray-900 shadow-sm rounded-bl-md"
+                                  }
+                                `}
+                              >
+
+                                {!isAdmin &&
+                                  !isSystem && (
+                                    <p className="text-xs font-semibold text-purple-600 mb-1">
+                                      {
+                                        selectedCustomerName
+                                      }
+                                    </p>
+                                  )}
+
+                                {isAdmin && (
+                                  <p className="text-xs font-semibold text-white/75 mb-1">
+                                    {
+                                      user.id ===
+                                      item.sender_id
+                                        ? "You"
+                                        : "Support Admin"
+                                    }
+                                  </p>
+                                )}
+
+                                {isSystem && (
+                                  <p className="text-xs font-semibold text-gray-500 mb-1">
+                                    System
+                                  </p>
+                                )}
+
+                                <p className="text-sm whitespace-pre-wrap break-words">
+                                  {
+                                    item.message
+                                  }
+                                </p>
+
+                                <div
+                                  className={`
+                                    flex items-center gap-2
+                                    text-[10px]
+                                    mt-2
+                                    ${
+                                      isAdmin
+                                        ? "text-white/65"
+                                        : "text-gray-400"
+                                    }
+                                  `}
+                                >
+                                  <span>
+                                    {formatTime(
+                                      item.created_at
+                                    )}
+                                  </span>
+
+                                  {isAdmin &&
+                                    item.read_at && (
+                                      <span>
+                                        Read
+                                      </span>
+                                    )}
+                                </div>
+
+                              </div>
+                            </div>
+                          );
                         }
-                        onChange={(
-                          event
-                        ) =>
-                          setMessage(
-                            event
-                              .target
-                              .value
-                          )
+                      )}
+
+                      <div
+                        ref={
+                          messagesEndRef
                         }
-                        onKeyDown={
-                          handleKeyDown
-                        }
-                        disabled={
-                          sending
-                        }
-                        placeholder="Type your reply to the customer..."
-                        className="flex-1"
                       />
-
-                      <Button
-                        type="button"
-                        size="icon"
-                        onClick={
-                          sendMessage
-                        }
-                        disabled={
-                          sending ||
-                          !message.trim()
-                        }
-                        className="bg-purple-600 hover:bg-purple-700 shrink-0"
-                      >
-                        {sending ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <Send className="h-4 w-4" />
-                        )}
-                      </Button>
 
                     </div>
                   )}
+                </div>
 
-                  <div className="flex items-center justify-between mt-2 px-1">
+                {/* COMPOSER */}
 
-                    <p className="text-[10px] text-gray-400">
-                      Conversation ID:{" "}
-                      {shortId(
-                        selectedConversation.id
-                      )}
-                    </p>
+                <div className="bg-white border-t p-3 sm:p-4">
 
-                    <p className="text-[10px] text-gray-400">
-                      Created{" "}
-                      {formatDateTime(
-                        selectedConversation.created_at
-                      )}
-                    </p>
+                  <div className="max-w-4xl mx-auto">
+
+                    {selectedConversation.status ===
+                      "closed" ? (
+
+                      <div className="rounded-xl bg-gray-100 border p-4 text-center">
+
+                        <div className="flex items-center justify-center gap-2 text-gray-600">
+
+                          <Clock3 className="h-4 w-4" />
+
+                          <p className="text-sm font-medium">
+                            This conversation
+                            is closed.
+                          </p>
+
+                        </div>
+
+                      </div>
+
+                    ) : (
+
+                      <div className="flex items-center gap-2">
+
+                        <Input
+                          value={
+                            message
+                          }
+                          onChange={(
+                            event
+                          ) =>
+                            setMessage(
+                              event
+                                .target
+                                .value
+                            )
+                          }
+                          onKeyDown={
+                            handleKeyDown
+                          }
+                          disabled={
+                            sending
+                          }
+                          placeholder="Type your reply to the customer..."
+                          className="flex-1"
+                        />
+
+                        <Button
+                          type="button"
+                          size="icon"
+                          onClick={
+                            sendMessage
+                          }
+                          disabled={
+                            sending ||
+                            !message.trim()
+                          }
+                          className="bg-purple-600 hover:bg-purple-700 shrink-0"
+                        >
+                          {sending ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Send className="h-4 w-4" />
+                          )}
+                        </Button>
+
+                      </div>
+                    )}
+
+                    <div className="flex items-center justify-between mt-2 px-1">
+
+                      <p className="text-[10px] text-gray-400">
+                        Conversation ID:{" "}
+                        {shortId(
+                          selectedConversation.id
+                        )}
+                      </p>
+
+                      <p className="text-[10px] text-gray-400">
+                        Created{" "}
+                        {formatDateTime(
+                          selectedConversation.created_at
+                        )}
+                      </p>
+
+                    </div>
 
                   </div>
-
                 </div>
-              </div>
 
-            </>
-          )}
-        </section>
-      </main>
-    </div>
+              </>
+            )}
+          </section>
+        </main>
+      </div>
+    </AdminLayout>
   );
 };
 

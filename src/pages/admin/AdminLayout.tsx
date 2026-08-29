@@ -149,7 +149,6 @@ const Navigation = ({
         "finance_admin",
         "read_only_admin",
       ],
-      badge: "Soon",
     },
     {
       label: "Notifications",

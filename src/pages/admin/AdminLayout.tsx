@@ -165,7 +165,6 @@ const Navigation = ({
         "compliance_admin",
         "read_only_admin",
       ],
-      badge: "Soon",
     },
     {
       label: "Admin Management",

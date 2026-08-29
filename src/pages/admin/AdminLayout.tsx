@@ -155,7 +155,6 @@ const Navigation = ({
       path: "/admin/notifications",
       icon: Bell,
       roles: ALL_ROLES,
-      badge: "Soon",
     },
     {
       label: "Audit Logs",

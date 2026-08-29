@@ -39,7 +39,7 @@ import { useToast } from "@/hooks/use-toast";
 // IMPORTANT:
 // Adjust this import ONLY if your existing AdminLayout
 // is located at a different path.
-import AdminLayout from "@/components/admin/AdminLayout";
+import AdminLayout from "@/pages/admin/AdminLayout";
 
 // ============================================================
 // TYPES

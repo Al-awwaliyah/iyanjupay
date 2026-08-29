@@ -800,8 +800,7 @@ const ReconciliationPage = () => {
       <section>
 
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-
-          <div>
+          <div className="flex items-center gap-4">
 
             {/* BACK BUTTON */}
 
@@ -815,7 +814,11 @@ const ReconciliationPage = () => {
               <ArrowLeft className="h-4 w-4 mr-2" />
               Back
             </Button>
-            
+
+            <div>
+
+          <div>
+
             <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">
               Reconciliation
             </h1>

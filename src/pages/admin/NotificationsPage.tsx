@@ -32,6 +32,7 @@ import AdminLayout from "@/pages/admin/AdminLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+
 import {
   Select,
   SelectContent,
@@ -81,13 +82,30 @@ type DeliveryStatus =
   | "failed"
   | "retrying";
 
+type TransactionStatus =
+  | "pending"
+  | "processing"
+  | "successful"
+  | "completed"
+  | "failed"
+  | "cancelled"
+  | "reversed"
+  | "refunded"
+  | "unknown";
+
+type NotificationMetadata = Record<string, any>;
+
 type NotificationRow = {
   id: string;
+
   user_id: string | null;
+
   transaction_id: string | null;
 
   type: string;
+
   title: string;
+
   message: string;
 
   amount: number | null;
@@ -115,10 +133,19 @@ type NotificationRow = {
   broadcast_id: string | null;
 
   metadata:
-    | Record<string, any>
+    | NotificationMetadata
     | null;
 
   created_at: string;
+
+  /*
+   * The SQL RPC may return this directly when available.
+   * The frontend also attempts to derive it from metadata.
+   */
+  transaction_status?:
+    | TransactionStatus
+    | string
+    | null;
 };
 
 type NotificationSummary = {
@@ -158,8 +185,11 @@ type NotificationListResponse = {
 
 type BroadcastForm = {
   type: string;
+
   title: string;
+
   message: string;
+
   amount: string;
 };
 
@@ -252,10 +282,278 @@ function titleCase(
 }
 
 
+function normalizeStatus(
+  value: unknown,
+): string {
+  if (
+    typeof value !== "string"
+  ) {
+    return "";
+  }
+
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_");
+}
+
+
+// ============================================================
+// TRANSACTION STATUS RESOLUTION
+// ============================================================
+
+/*
+ * IMPORTANT:
+ *
+ * Notification delivery status and transaction status are
+ * completely different things.
+ *
+ * delivery_status:
+ *   pending / processing / delivered / failed / retrying
+ *
+ * transaction_status:
+ *   pending / processing / successful / failed / etc.
+ *
+ * A notification can therefore be:
+ *
+ *   Transaction: successful
+ *   Notification: delivered
+ *
+ * or:
+ *
+ *   Transaction: successful
+ *   Notification: pending
+ *
+ * The old frontend was using `notification.type` as if it
+ * represented the current transaction status.
+ *
+ * This resolver looks for the actual transaction status in
+ * the RPC response or metadata.
+ */
+
+function getTransactionStatus(
+  notification: NotificationRow,
+): TransactionStatus {
+  const directStatus =
+    normalizeStatus(
+      notification.transaction_status,
+    );
+
+  if (directStatus) {
+    return normalizeTransactionStatus(
+      directStatus,
+    );
+  }
+
+  const metadata =
+    notification.metadata;
+
+  if (metadata) {
+    const possibleStatuses = [
+      metadata.transaction_status,
+      metadata.transactionStatus,
+      metadata.transfer_status,
+      metadata.transferStatus,
+      metadata.status,
+      metadata.transaction?.status,
+      metadata.transfer?.status,
+      metadata.data?.status,
+      metadata.result?.status,
+    ];
+
+    for (
+      const candidate of possibleStatuses
+    ) {
+      const normalized =
+        normalizeStatus(
+          candidate,
+        );
+
+      if (normalized) {
+        return normalizeTransactionStatus(
+          normalized,
+        );
+      }
+    }
+  }
+
+  /*
+   * Some notification implementations put the transaction
+   * state directly into the notification type.
+   *
+   * This is only a fallback. It is NOT used when a real
+   * transaction_status is supplied.
+   */
+  const type =
+    normalizeStatus(
+      notification.type,
+    );
+
+  if (
+    type.includes("successful") ||
+    type.includes("success") ||
+    type.includes("completed") ||
+    type.includes("complete")
+  ) {
+    return "successful";
+  }
+
+  if (
+    type.includes("failed") ||
+    type.includes("failure")
+  ) {
+    return "failed";
+  }
+
+  if (
+    type.includes("cancelled") ||
+    type.includes("canceled")
+  ) {
+    return "cancelled";
+  }
+
+  if (
+    type.includes("reversed") ||
+    type.includes("reversal")
+  ) {
+    return "reversed";
+  }
+
+  if (
+    type.includes("refunded") ||
+    type.includes("refund")
+  ) {
+    return "refunded";
+  }
+
+  if (
+    type.includes("processing")
+  ) {
+    return "processing";
+  }
+
+  if (
+    type.includes("pending")
+  ) {
+    return "pending";
+  }
+
+  return "unknown";
+}
+
+
+function normalizeTransactionStatus(
+  status: string,
+): TransactionStatus {
+  switch (status) {
+    case "success":
+    case "successful":
+      return "successful";
+
+    case "complete":
+    case "completed":
+      return "completed";
+
+    case "pending":
+      return "pending";
+
+    case "processing":
+      return "processing";
+
+    case "failed":
+    case "failure":
+      return "failed";
+
+    case "cancelled":
+    case "canceled":
+      return "cancelled";
+
+    case "reversed":
+    case "reversal":
+      return "reversed";
+
+    case "refunded":
+    case "refund":
+      return "refunded";
+
+    default:
+      return "unknown";
+  }
+}
+
+
+function transactionStatusLabel(
+  status: TransactionStatus,
+) {
+  switch (status) {
+    case "successful":
+    case "completed":
+      return "Transaction Successful";
+
+    case "processing":
+      return "Transaction Processing";
+
+    case "pending":
+      return "Transaction Pending";
+
+    case "failed":
+      return "Transaction Failed";
+
+    case "cancelled":
+      return "Transaction Cancelled";
+
+    case "reversed":
+      return "Transaction Reversed";
+
+    case "refunded":
+      return "Transaction Refunded";
+
+    default:
+      return "Transaction Status Unknown";
+  }
+}
+
+
+function transactionStatusBadgeClass(
+  status: TransactionStatus,
+) {
+  switch (status) {
+    case "successful":
+    case "completed":
+      return "border-emerald-200 bg-emerald-100 text-emerald-700";
+
+    case "processing":
+      return "border-blue-200 bg-blue-100 text-blue-700";
+
+    case "pending":
+      return "border-amber-200 bg-amber-100 text-amber-700";
+
+    case "failed":
+      return "border-red-200 bg-red-100 text-red-700";
+
+    case "cancelled":
+    case "reversed":
+      return "border-orange-200 bg-orange-100 text-orange-700";
+
+    case "refunded":
+      return "border-purple-200 bg-purple-100 text-purple-700";
+
+    default:
+      return "border-slate-200 bg-slate-100 text-slate-700";
+  }
+}
+
+
+// ============================================================
+// DELIVERY HELPERS
+// ============================================================
+
 function getChannelIcon(
   channel: string,
 ) {
-  switch (channel) {
+  switch (
+    normalizeStatus(channel)
+  ) {
     case "email":
       return Mail;
 
@@ -278,7 +576,9 @@ function getChannelIcon(
 function deliveryBadgeClass(
   status: string,
 ) {
-  switch (status) {
+  switch (
+    normalizeStatus(status)
+  ) {
     case "delivered":
       return "border-emerald-200 bg-emerald-100 text-emerald-700";
 
@@ -325,6 +625,7 @@ function NotificationsPage() {
   const { toast } =
     useToast();
 
+
   // ==========================================================
   // DATA
   // ==========================================================
@@ -344,7 +645,7 @@ function NotificationsPage() {
 
 
   // ==========================================================
-  // LOADING STATES
+  // LOADING
   // ==========================================================
 
   const [loading, setLoading] =
@@ -395,7 +696,7 @@ function NotificationsPage() {
 
 
   // ==========================================================
-  // DETAIL STATE
+  // DETAIL
   // ==========================================================
 
   const [
@@ -410,7 +711,7 @@ function NotificationsPage() {
 
 
   // ==========================================================
-  // BROADCAST STATE
+  // BROADCAST
   // ==========================================================
 
   const [broadcastOpen, setBroadcastOpen] =
@@ -550,7 +851,7 @@ function NotificationsPage() {
 
 
   // ==========================================================
-  // FETCH NOTIFICATION LIST
+  // FETCH ROWS
   // ==========================================================
 
   const fetchRows =
@@ -636,7 +937,30 @@ function NotificationsPage() {
               ? result.items
               : [];
 
-          setRows(items);
+          /*
+           * Normalize every returned row.
+           *
+           * This deliberately DOES NOT change delivery_status.
+           * Delivery belongs to the notification itself.
+           *
+           * Transaction status is kept separate.
+           */
+          const normalizedItems =
+            items.map(
+              (item) => ({
+                ...item,
+
+                transaction_status:
+                  item.transaction_status ||
+                  getTransactionStatus(
+                    item,
+                  ),
+              }),
+            );
+
+          setRows(
+            normalizedItems,
+          );
 
           setTotal(
             Number(
@@ -698,6 +1022,7 @@ function NotificationsPage() {
             fetchRows(
               showRefresh,
             ),
+
             fetchSummary(),
           ]);
         } catch (error) {
@@ -715,17 +1040,13 @@ function NotificationsPage() {
 
 
   // ==========================================================
-  // LOAD LIST
+  // LOAD
   // ==========================================================
 
   useEffect(() => {
     fetchRows(false);
   }, [fetchRows]);
 
-
-  // ==========================================================
-  // LOAD SUMMARY
-  // ==========================================================
 
   useEffect(() => {
     fetchSummary().catch(
@@ -740,7 +1061,7 @@ function NotificationsPage() {
 
 
   // ==========================================================
-  // OPEN NOTIFICATION DETAIL
+  // DETAIL
   // ==========================================================
 
   const openDetail =
@@ -778,9 +1099,18 @@ function NotificationsPage() {
             );
           }
 
-          setSelectedNotification(
-            data as NotificationRow,
-          );
+          const notification =
+            data as NotificationRow;
+
+          setSelectedNotification({
+            ...notification,
+
+            transaction_status:
+              notification.transaction_status ||
+              getTransactionStatus(
+                notification,
+              ),
+          });
         } catch (error: any) {
           console.error(
             "Notification detail failed:",
@@ -809,7 +1139,7 @@ function NotificationsPage() {
 
 
   // ==========================================================
-  // RETRY NOTIFICATION
+  // RETRY
   // ==========================================================
 
   const retryNotification =
@@ -821,7 +1151,6 @@ function NotificationsPage() {
 
         try {
           const {
-            data,
             error,
           } = await supabase.rpc(
             "admin_notification_retry",
@@ -898,7 +1227,7 @@ function NotificationsPage() {
 
 
   // ==========================================================
-  // BROADCAST FORM
+  // BROADCAST
   // ==========================================================
 
   const updateBroadcast =
@@ -929,10 +1258,6 @@ function NotificationsPage() {
       });
     }, []);
 
-
-  // ==========================================================
-  // SUBMIT BROADCAST
-  // ==========================================================
 
   const submitBroadcast =
     useCallback(
@@ -1172,7 +1497,7 @@ function NotificationsPage() {
 
 
   // ==========================================================
-  // ACTIVE FILTER STATE
+  // ACTIVE FILTERS
   // ==========================================================
 
   const filtersActive =
@@ -1211,9 +1536,7 @@ function NotificationsPage() {
     <AdminLayout>
       <div className="space-y-6 p-4 md:p-6">
 
-        {/* ====================================================
-            HEADER
-        ==================================================== */}
+        {/* HEADER */}
 
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
 
@@ -1277,9 +1600,7 @@ function NotificationsPage() {
         </div>
 
 
-        {/* ====================================================
-            SUMMARY
-        ==================================================== */}
+        {/* SUMMARY */}
 
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
 
@@ -1369,9 +1690,7 @@ function NotificationsPage() {
         </div>
 
 
-        {/* ====================================================
-            DELIVERY OVERVIEW
-        ==================================================== */}
+        {/* DELIVERY OVERVIEW */}
 
         <Card>
 
@@ -1446,9 +1765,7 @@ function NotificationsPage() {
         </Card>
 
 
-        {/* ====================================================
-            FILTERS
-        ==================================================== */}
+        {/* FILTERS */}
 
         <Card>
 
@@ -1486,8 +1803,6 @@ function NotificationsPage() {
 
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
 
-              {/* SEARCH */}
-
               <div className="space-y-2 lg:col-span-2">
 
                 <Label>
@@ -1518,8 +1833,6 @@ function NotificationsPage() {
 
               </div>
 
-
-              {/* TYPE */}
 
               <div className="space-y-2">
 
@@ -1583,8 +1896,6 @@ function NotificationsPage() {
               </div>
 
 
-              {/* CHANNEL */}
-
               <div className="space-y-2">
 
                 <Label>
@@ -1642,8 +1953,6 @@ function NotificationsPage() {
 
               </div>
 
-
-              {/* DELIVERY STATUS */}
 
               <div className="space-y-2">
 
@@ -1703,8 +2012,6 @@ function NotificationsPage() {
               </div>
 
 
-              {/* READ STATUS */}
-
               <div className="space-y-2">
 
                 <Label>
@@ -1751,8 +2058,6 @@ function NotificationsPage() {
               </div>
 
 
-              {/* START DATE */}
-
               <div className="space-y-2">
 
                 <Label>
@@ -1778,8 +2083,6 @@ function NotificationsPage() {
 
               </div>
 
-
-              {/* END DATE */}
 
               <div className="space-y-2">
 
@@ -1813,9 +2116,7 @@ function NotificationsPage() {
         </Card>
 
 
-        {/* ====================================================
-            NOTIFICATION TABLE
-        ==================================================== */}
+        {/* NOTIFICATION TABLE */}
 
         <Card className="overflow-hidden">
 
@@ -1901,7 +2202,7 @@ function NotificationsPage() {
             ) : (
               <div className="overflow-x-auto">
 
-                <table className="w-full min-w-[1100px] text-sm">
+                <table className="w-full min-w-[1250px] text-sm">
 
                   <thead className="border-y bg-muted/50">
 
@@ -1916,7 +2217,7 @@ function NotificationsPage() {
                       </th>
 
                       <th className="px-4 py-3 text-left font-medium">
-                        Type
+                        Transaction Status
                       </th>
 
                       <th className="px-4 py-3 text-left font-medium">
@@ -1953,6 +2254,11 @@ function NotificationsPage() {
                         const ChannelIcon =
                           getChannelIcon(
                             notification.channel,
+                          );
+
+                        const transactionStatus =
+                          getTransactionStatus(
+                            notification,
                           );
 
                         return (
@@ -2026,13 +2332,18 @@ function NotificationsPage() {
                             </td>
 
 
-                            {/* TYPE */}
+                            {/* TRANSACTION STATUS */}
 
                             <td className="px-4 py-4">
 
-                              <Badge variant="outline">
-                                {titleCase(
-                                  notification.type,
+                              <Badge
+                                variant="outline"
+                                className={transactionStatusBadgeClass(
+                                  transactionStatus,
+                                )}
+                              >
+                                {transactionStatusLabel(
+                                  transactionStatus,
                                 )}
                               </Badge>
 
@@ -2213,9 +2524,7 @@ function NotificationsPage() {
         </Card>
 
 
-        {/* ====================================================
-            NOTIFICATION DETAIL
-        ==================================================== */}
+        {/* NOTIFICATION DETAIL */}
 
         <Dialog
           open={detailOpen}
@@ -2233,8 +2542,8 @@ function NotificationsPage() {
               </DialogTitle>
 
               <DialogDescription>
-                Complete notification and delivery
-                information.
+                Complete notification, transaction and
+                delivery information.
               </DialogDescription>
 
             </DialogHeader>
@@ -2294,14 +2603,42 @@ function NotificationsPage() {
                 </div>
 
 
-                {/* BASIC INFORMATION */}
+                {/* STATUS */}
 
                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
 
                   <div className="rounded-lg border p-4">
 
                     <div className="text-xs text-muted-foreground">
-                      Type
+                      Transaction
+                    </div>
+
+                    <div className="mt-2">
+
+                      <Badge
+                        variant="outline"
+                        className={transactionStatusBadgeClass(
+                          getTransactionStatus(
+                            selectedNotification,
+                          ),
+                        )}
+                      >
+                        {transactionStatusLabel(
+                          getTransactionStatus(
+                            selectedNotification,
+                          ),
+                        )}
+                      </Badge>
+
+                    </div>
+
+                  </div>
+
+
+                  <div className="rounded-lg border p-4">
+
+                    <div className="text-xs text-muted-foreground">
+                      Notification Type
                     </div>
 
                     <div className="mt-1 font-medium">
@@ -2351,6 +2688,12 @@ function NotificationsPage() {
 
                   </div>
 
+                </div>
+
+
+                {/* AMOUNT */}
+
+                <div className="grid gap-4 sm:grid-cols-2">
 
                   <div className="rounded-lg border p-4">
 
@@ -2358,9 +2701,24 @@ function NotificationsPage() {
                       Amount
                     </div>
 
-                    <div className="mt-1 font-medium">
+                    <div className="mt-1 text-lg font-semibold">
                       {formatAmount(
                         selectedNotification.amount,
+                      )}
+                    </div>
+
+                  </div>
+
+
+                  <div className="rounded-lg border p-4">
+
+                    <div className="text-xs text-muted-foreground">
+                      Created
+                    </div>
+
+                    <div className="mt-1 text-sm font-medium">
+                      {formatDate(
+                        selectedNotification.created_at,
                       )}
                     </div>
 
@@ -2659,9 +3017,7 @@ function NotificationsPage() {
         </Dialog>
 
 
-        {/* ====================================================
-            BROADCAST DIALOG
-        ==================================================== */}
+        {/* BROADCAST */}
 
         <Dialog
           open={broadcastOpen}
@@ -2717,8 +3073,6 @@ function NotificationsPage() {
               </div>
 
 
-              {/* TYPE */}
-
               <div className="space-y-2">
 
                 <Label htmlFor="broadcast-type">
@@ -2747,8 +3101,6 @@ function NotificationsPage() {
 
               </div>
 
-
-              {/* TITLE */}
 
               <div className="space-y-2">
 
@@ -2779,8 +3131,6 @@ function NotificationsPage() {
               </div>
 
 
-              {/* MESSAGE */}
-
               <div className="space-y-2">
 
                 <Label htmlFor="broadcast-message">
@@ -2810,8 +3160,6 @@ function NotificationsPage() {
 
               </div>
 
-
-              {/* AMOUNT */}
 
               <div className="space-y-2">
 

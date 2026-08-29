@@ -115,10 +115,7 @@ const App = () => {
               element={<PaymentPinPage />}
             />
             
-            <Route
-              path="/analytics"
-              element={<AnalyticsPage />}
-            />
+            
             
             <Route
               path="/dashboard"
@@ -227,6 +224,11 @@ const App = () => {
             <Route
               path="/admin/reconciliation"
               element={<ReconciliationPage />}
+            />
+
+            <Route
+              path="/analytics"
+              element={<AnalyticsPage />}
             />
             
             <Route

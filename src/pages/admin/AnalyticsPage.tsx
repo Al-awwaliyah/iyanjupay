@@ -28,6 +28,8 @@ import {
 
 import { supabase } from "@/integrations/supabase/client";
 
+import { AdminLayout } from "@/pages/admin/AdminLayout";
+
 import { Button } from "@/components/ui/button";
 
 import {
@@ -37,9 +39,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 
-import {
-  Input,
-} from "@/components/ui/input";
+import { Input } from "@/components/ui/input";
 
 import {
   Select,
@@ -48,7 +48,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-
 
 // ============================================================
 // TYPES
@@ -201,73 +200,48 @@ type AnalyticsData = {
   generated_at?: string;
 };
 
-
 // ============================================================
 // FORMATTERS
 // ============================================================
 
-const NGN = new Intl.NumberFormat(
-  "en-NG",
-  {
-    style: "currency",
-    currency: "NGN",
-    maximumFractionDigits: 2,
-  },
-);
+const NGN = new Intl.NumberFormat("en-NG", {
+  style: "currency",
+  currency: "NGN",
+  maximumFractionDigits: 2,
+});
 
-const NUMBER = new Intl.NumberFormat(
-  "en-NG",
-  {
-    maximumFractionDigits: 0,
-  },
-);
+const NUMBER = new Intl.NumberFormat("en-NG", {
+  maximumFractionDigits: 0,
+});
 
-function money(
-  value: number | null | undefined,
-): string {
-  return NGN.format(
-    Number(value || 0),
-  );
+function money(value: number | null | undefined): string {
+  return NGN.format(Number(value || 0));
 }
 
-function number(
-  value: number | null | undefined,
-): string {
-  return NUMBER.format(
-    Number(value || 0),
-  );
+function number(value: number | null | undefined): string {
+  return NUMBER.format(Number(value || 0));
 }
 
-function safeNumber(
-  value: unknown,
-): number {
+function safeNumber(value: unknown): number {
   const parsed = Number(value);
 
-  return Number.isFinite(parsed)
-    ? parsed
-    : 0;
+  return Number.isFinite(parsed) ? parsed : 0;
 }
 
 function percentage(
   value: number | undefined,
   total: number | undefined,
 ): number {
-  const safeTotal =
-    safeNumber(total);
+  const safeTotal = safeNumber(total);
 
   if (safeTotal <= 0) {
     return 0;
   }
 
-  return (
-    safeNumber(value) /
-    safeTotal
-  ) * 100;
+  return (safeNumber(value) / safeTotal) * 100;
 }
 
-function titleCase(
-  value: string,
-): string {
+function titleCase(value: string): string {
   return value
     .replace(/[_-]+/g, " ")
     .replace(/\b\w/g, (character) =>
@@ -276,94 +250,59 @@ function titleCase(
 }
 
 function formatDate(
-  value:
-    | string
-    | Date
-    | null
-    | undefined,
+  value: string | Date | null | undefined,
 ): string {
   if (!value) {
     return "—";
   }
 
-  const date =
-    new Date(value);
+  const date = new Date(value);
 
-  if (
-    Number.isNaN(
-      date.getTime(),
-    )
-  ) {
+  if (Number.isNaN(date.getTime())) {
     return "—";
   }
 
-  return date.toLocaleDateString(
-    "en-NG",
-    {
-      day: "2-digit",
-      month: "short",
-      year: "numeric",
-    },
-  );
+  return date.toLocaleDateString("en-NG", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
 }
 
 function formatDateTime(
-  value:
-    | string
-    | Date
-    | null
-    | undefined,
+  value: string | Date | null | undefined,
 ): string {
   if (!value) {
     return "—";
   }
 
-  const date =
-    new Date(value);
+  const date = new Date(value);
 
-  if (
-    Number.isNaN(
-      date.getTime(),
-    )
-  ) {
+  if (Number.isNaN(date.getTime())) {
     return "—";
   }
 
-  return date.toLocaleString(
-    "en-NG",
-    {
-      day: "2-digit",
-      month: "short",
-      year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    },
-  );
+  return date.toLocaleString("en-NG", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
-function formatPeriod(
-  value: string,
-): string {
-  const date =
-    new Date(value);
+function formatPeriod(value: string): string {
+  const date = new Date(value);
 
-  if (
-    Number.isNaN(
-      date.getTime(),
-    )
-  ) {
+  if (Number.isNaN(date.getTime())) {
     return value;
   }
 
-  return date.toLocaleDateString(
-    "en-NG",
-    {
-      day: "2-digit",
-      month: "short",
-    },
-  );
+  return date.toLocaleDateString("en-NG", {
+    day: "2-digit",
+    month: "short",
+  });
 }
-
 
 // ============================================================
 // STAT CARD
@@ -440,7 +379,6 @@ function StatCard({
   );
 }
 
-
 // ============================================================
 // SECTION HEADER
 // ============================================================
@@ -477,7 +415,6 @@ function SectionHeader({
   );
 }
 
-
 // ============================================================
 // EMPTY STATE
 // ============================================================
@@ -493,9 +430,7 @@ function EmptyState({
     <div className="flex min-h-[180px] flex-col items-center justify-center rounded-xl border border-dashed p-6 text-center">
       <BarChart3 className="mb-3 h-8 w-8 text-muted-foreground/50" />
 
-      <p className="font-medium">
-        {title}
-      </p>
+      <p className="font-medium">{title}</p>
 
       <p className="mt-1 max-w-md text-sm text-muted-foreground">
         {description}
@@ -503,7 +438,6 @@ function EmptyState({
     </div>
   );
 }
-
 
 // ============================================================
 // PROGRESS BAR
@@ -522,14 +456,10 @@ function ProgressBar({
   total: number;
   volume?: number;
 }) {
-  const percent =
-    Math.min(
-      100,
-      Math.max(
-        0,
-        safeNumber(value),
-      ),
-    );
+  const percent = Math.min(
+    100,
+    Math.max(0, safeNumber(value)),
+  );
 
   return (
     <div className="space-y-2">
@@ -539,8 +469,7 @@ function ProgressBar({
         </span>
 
         <span className="shrink-0 text-xs text-muted-foreground">
-          {number(count)}{" "}
-          ({percent.toFixed(1)}%)
+          {number(count)} ({percent.toFixed(1)}%)
         </span>
       </div>
 
@@ -554,20 +483,15 @@ function ProgressBar({
       </div>
 
       <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
-        <span>
-          {number(total)} total
-        </span>
+        <span>{number(total)} total</span>
 
         {volume !== undefined && (
-          <span>
-            {money(volume)}
-          </span>
+          <span>{money(volume)}</span>
         )}
       </div>
     </div>
   );
 }
-
 
 // ============================================================
 // TREND CHART
@@ -591,9 +515,7 @@ function TrendChart({
 
   title: string;
 
-  formatter?: (
-    value: number,
-  ) => string;
+  formatter?: (value: number) => string;
 }) {
   if (!data.length) {
     return (
@@ -604,25 +526,16 @@ function TrendChart({
     );
   }
 
-  const values =
-    data.map((item) =>
-      safeNumber(
-        item[valueKey],
-      ),
-    );
+  const values = data.map((item) =>
+    safeNumber(item[valueKey]),
+  );
 
-  const max =
-    Math.max(
-      ...values,
-      1,
-    );
+  const max = Math.max(...values, 1);
 
   return (
     <div>
       <div className="mb-5 flex items-center justify-between gap-3">
-        <p className="text-sm font-medium">
-          {title}
-        </p>
+        <p className="text-sm font-medium">{title}</p>
 
         <p className="text-xs text-muted-foreground">
           {data.length} periods
@@ -630,69 +543,57 @@ function TrendChart({
       </div>
 
       <div className="flex h-64 items-end gap-1.5 overflow-hidden">
-        {data.map(
-          (
-            item,
-            index,
-          ) => {
-            const value =
-              safeNumber(
-                item[valueKey],
-              );
+        {data.map((item, index) => {
+          const value = safeNumber(
+            item[valueKey],
+          );
 
-            const height =
-              value <= 0
-                ? 2
-                : Math.max(
-                    4,
-                    (value / max) *
-                      100,
-                  );
+          const height =
+            value <= 0
+              ? 2
+              : Math.max(
+                  4,
+                  (value / max) * 100,
+                );
 
-            const showLabel =
-              data.length <= 14 ||
-              index === 0 ||
-              index ===
-                data.length - 1 ||
-              index %
+          const showLabel =
+            data.length <= 14 ||
+            index === 0 ||
+            index === data.length - 1 ||
+            index %
                 Math.max(
                   1,
-                  Math.ceil(
-                    data.length / 7,
-                  ),
-                ) === 0;
+                  Math.ceil(data.length / 7),
+                ) ===
+              0;
 
-            return (
+          return (
+            <div
+              key={`${item.period}-${index}`}
+              className="group flex min-w-0 flex-1 flex-col items-center justify-end"
+              title={`${formatDate(
+                item.period,
+              )}: ${formatter(value)}`}
+            >
               <div
-                key={`${item.period}-${index}`}
-                className="group flex min-w-0 flex-1 flex-col items-center justify-end"
-                title={`${formatDate(
-                  item.period,
-                )}: ${formatter(value)}`}
-              >
-                <div
-                  className="mb-1 w-full max-w-[26px] rounded-t-sm bg-foreground/80 transition-all group-hover:bg-foreground"
-                  style={{
-                    height: `${height}%`,
-                  }}
-                />
+                className="mb-1 w-full max-w-[26px] rounded-t-sm bg-foreground/80 transition-all group-hover:bg-foreground"
+                style={{
+                  height: `${height}%`,
+                }}
+              />
 
-                {showLabel && (
-                  <span className="mt-2 truncate text-[9px] text-muted-foreground">
-                    {formatPeriod(
-                      item.period,
-                    )}
-                  </span>
-                )}
-              </div>
-            );
-          },
-        )}
+              {showLabel && (
+                <span className="mt-2 truncate text-[9px] text-muted-foreground">
+                  {formatPeriod(item.period)}
+                </span>
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
 }
-
 
 // ============================================================
 // CUSTOMER GROWTH CHART
@@ -712,25 +613,16 @@ function CustomerGrowthChart({
     );
   }
 
-  const values =
-    data.map((item) =>
-      safeNumber(
-        item.new_customers,
-      ),
-    );
+  const values = data.map((item) =>
+    safeNumber(item.new_customers),
+  );
 
-  const max =
-    Math.max(
-      ...values,
-      1,
-    );
+  const max = Math.max(...values, 1);
 
-  const totalNew =
-    values.reduce(
-      (sum, value) =>
-        sum + value,
-      0,
-    );
+  const totalNew = values.reduce(
+    (sum, value) => sum + value,
+    0,
+  );
 
   return (
     <div>
@@ -745,269 +637,202 @@ function CustomerGrowthChart({
       </div>
 
       <div className="flex h-64 items-end gap-1.5 overflow-hidden">
-        {data.map(
-          (
-            item,
-            index,
-          ) => {
-            const value =
-              safeNumber(
-                item.new_customers,
-              );
+        {data.map((item, index) => {
+          const value = safeNumber(
+            item.new_customers,
+          );
 
-            const height =
-              value <= 0
-                ? 2
-                : Math.max(
-                    4,
-                    (value / max) *
-                      100,
-                  );
+          const height =
+            value <= 0
+              ? 2
+              : Math.max(
+                  4,
+                  (value / max) * 100,
+                );
 
-            const showLabel =
-              data.length <= 14 ||
-              index === 0 ||
-              index ===
-                data.length - 1 ||
-              index %
+          const showLabel =
+            data.length <= 14 ||
+            index === 0 ||
+            index === data.length - 1 ||
+            index %
                 Math.max(
                   1,
-                  Math.ceil(
-                    data.length / 7,
-                  ),
-                ) === 0;
+                  Math.ceil(data.length / 7),
+                ) ===
+              0;
 
-            return (
+          return (
+            <div
+              key={`${item.period}-${index}`}
+              className="group flex min-w-0 flex-1 flex-col items-center justify-end"
+              title={`${formatDate(
+                item.period,
+              )}: ${number(value)} customers`}
+            >
               <div
-                key={`${item.period}-${index}`}
-                className="group flex min-w-0 flex-1 flex-col items-center justify-end"
-                title={`${formatDate(
-                  item.period,
-                )}: ${number(
-                  value,
-                )} customers`}
-              >
-                <div
-                  className="mb-1 w-full max-w-[26px] rounded-t-sm bg-foreground/80 transition-all group-hover:bg-foreground"
-                  style={{
-                    height: `${height}%`,
-                  }}
-                />
+                className="mb-1 w-full max-w-[26px] rounded-t-sm bg-foreground/80 transition-all group-hover:bg-foreground"
+                style={{
+                  height: `${height}%`,
+                }}
+              />
 
-                {showLabel && (
-                  <span className="mt-2 truncate text-[9px] text-muted-foreground">
-                    {formatPeriod(
-                      item.period,
-                    )}
-                  </span>
-                )}
-              </div>
-            );
-          },
-        )}
+              {showLabel && (
+                <span className="mt-2 truncate text-[9px] text-muted-foreground">
+                  {formatPeriod(item.period)}
+                </span>
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
 }
-
 
 // ============================================================
 // MAIN ANALYTICS PAGE
 // ============================================================
 
 function AnalyticsPage() {
-  const [
-    analytics,
-    setAnalytics,
-  ] = useState<AnalyticsData | null>(
-    null,
-  );
+  const [analytics, setAnalytics] =
+    useState<AnalyticsData | null>(null);
 
-  const [
-    loading,
-    setLoading,
-  ] = useState(true);
+  const [loading, setLoading] =
+    useState(true);
 
-  const [
-    refreshing,
-    setRefreshing,
-  ] = useState(false);
+  const [refreshing, setRefreshing] =
+    useState(false);
 
-  const [
-    error,
-    setError,
-  ] = useState<string | null>(
-    null,
-  );
+  const [error, setError] =
+    useState<string | null>(null);
 
-  const [
-    period,
-    setPeriod,
-  ] = useState<AnalyticsPeriod>(
-    "30",
-  );
+  const [period, setPeriod] =
+    useState<AnalyticsPeriod>("30");
 
-  const [
-    customStart,
-    setCustomStart,
-  ] = useState("");
+  const [customStart, setCustomStart] =
+    useState("");
 
-  const [
-    customEnd,
-    setCustomEnd,
-  ] = useState("");
+  const [customEnd, setCustomEnd] =
+    useState("");
 
-  const [
-    trendMode,
-    setTrendMode,
-  ] = useState<TrendMode>(
-    "daily",
-  );
-
+  const [trendMode, setTrendMode] =
+    useState<TrendMode>("daily");
 
   // ==========================================================
   // DATE RANGE
   // ==========================================================
 
-  const dateRange =
-    useMemo(() => {
-      const end =
-        new Date();
+  const dateRange = useMemo(() => {
+    const end = new Date();
 
-      if (
-        period ===
-        "custom"
-      ) {
-        if (
-          !customStart ||
-          !customEnd
-        ) {
-          return null;
-        }
-
-        const start =
-          new Date(
-            `${customStart}T00:00:00`,
-          );
-
-        const customEndDate =
-          new Date(
-            `${customEnd}T23:59:59`,
-          );
-
-        if (
-          Number.isNaN(
-            start.getTime(),
-          ) ||
-          Number.isNaN(
-            customEndDate.getTime(),
-          )
-        ) {
-          return null;
-        }
-
-        if (
-          start >
-          customEndDate
-        ) {
-          return null;
-        }
-
-        return {
-          start,
-          end: customEndDate,
-        };
+    if (period === "custom") {
+      if (!customStart || !customEnd) {
+        return null;
       }
 
-      const days =
-        Number(period);
-
-      const start =
-        new Date(end);
-
-      start.setDate(
-        start.getDate() -
-          days,
+      const start = new Date(
+        `${customStart}T00:00:00`,
       );
+
+      const customEndDate = new Date(
+        `${customEnd}T23:59:59`,
+      );
+
+      if (
+        Number.isNaN(start.getTime()) ||
+        Number.isNaN(
+          customEndDate.getTime(),
+        )
+      ) {
+        return null;
+      }
+
+      if (start > customEndDate) {
+        return null;
+      }
 
       return {
         start,
-        end,
+        end: customEndDate,
       };
-    }, [
-      period,
-      customStart,
-      customEnd,
-    ]);
+    }
 
+    const days = Number(period);
+
+    const start = new Date(end);
+
+    start.setDate(
+      start.getDate() - days,
+    );
+
+    return {
+      start,
+      end,
+    };
+  }, [
+    period,
+    customStart,
+    customEnd,
+  ]);
 
   // ==========================================================
   // LOAD ANALYTICS
   // ==========================================================
 
-  const loadAnalytics =
-    useCallback(
-      async (
-        showRefresh = false,
-      ) => {
-        if (!dateRange) {
-          return;
+  const loadAnalytics = useCallback(
+    async (showRefresh = false) => {
+      if (!dateRange) {
+        return;
+      }
+
+      if (showRefresh) {
+        setRefreshing(true);
+      } else {
+        setLoading(true);
+      }
+
+      setError(null);
+
+      try {
+        const {
+          data,
+          error: rpcError,
+        } = await supabase.rpc(
+          "admin_analytics_dashboard",
+          {
+            p_start_at:
+              dateRange.start.toISOString(),
+
+            p_end_at:
+              dateRange.end.toISOString(),
+          },
+        );
+
+        if (rpcError) {
+          throw rpcError;
         }
 
-        if (showRefresh) {
-          setRefreshing(true);
-        } else {
-          setLoading(true);
-        }
+        setAnalytics(
+          (data || null) as AnalyticsData | null,
+        );
+      } catch (err) {
+        console.error(
+          "Analytics loading error:",
+          err,
+        );
 
-        setError(null);
-
-        try {
-          const {
-            data,
-            error:
-              rpcError,
-          } =
-            await supabase.rpc(
-              "admin_analytics_dashboard",
-              {
-                p_start_at:
-                  dateRange.start.toISOString(),
-
-                p_end_at:
-                  dateRange.end.toISOString(),
-              },
-            );
-
-          if (rpcError) {
-            throw rpcError;
-          }
-
-          setAnalytics(
-            (data ||
-              null) as AnalyticsData | null,
-          );
-        } catch (
-          err
-        ) {
-          console.error(
-            "Analytics loading error:",
-            err,
-          );
-
-          setError(
-            err instanceof Error
-              ? err.message
-              : "Unable to load analytics.",
-          );
-        } finally {
-          setLoading(false);
-          setRefreshing(false);
-        }
-      },
-      [dateRange],
-    );
-
+        setError(
+          err instanceof Error
+            ? err.message
+            : "Unable to load analytics.",
+        );
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
+      }
+    },
+    [dateRange],
+  );
 
   // ==========================================================
   // LOAD WHEN FILTER CHANGES
@@ -1018,14 +843,11 @@ function AnalyticsPage() {
       return;
     }
 
-    void loadAnalytics(
-      false,
-    );
+    void loadAnalytics(false);
   }, [
     dateRange,
     loadAnalytics,
   ]);
-
 
   // ==========================================================
   // DATA REFERENCES
@@ -1059,61 +881,46 @@ function AnalyticsPage() {
     analytics?.kyc;
 
   const customerGrowth =
-    analytics?.customer_growth?.data ||
-    [];
-
+    analytics?.customer_growth?.data || [];
 
   // ==========================================================
   // TREND DATA
   // ==========================================================
 
-  const trendData =
-    useMemo(() => {
-      return (
-        analytics?.trends?.[
-          trendMode
-        ]?.data || []
-      );
-    }, [
-      analytics,
-      trendMode,
-    ]);
-
+  const trendData = useMemo(() => {
+    return (
+      analytics?.trends?.[trendMode]
+        ?.data || []
+    );
+  }, [
+    analytics,
+    trendMode,
+  ]);
 
   // ==========================================================
   // SUCCESS / FAILURE / PENDING
   // ==========================================================
 
-  const successRate =
-    useMemo(() => {
-      return percentage(
-        transactions?.successful_count,
-        transactions?.total_count,
-      );
-    }, [
-      transactions,
-    ]);
+  const successRate = useMemo(() => {
+    return percentage(
+      transactions?.successful_count,
+      transactions?.total_count,
+    );
+  }, [transactions]);
 
-  const failureRate =
-    useMemo(() => {
-      return percentage(
-        transactions?.failed_count,
-        transactions?.total_count,
-      );
-    }, [
-      transactions,
-    ]);
+  const failureRate = useMemo(() => {
+    return percentage(
+      transactions?.failed_count,
+      transactions?.total_count,
+    );
+  }, [transactions]);
 
-  const pendingRate =
-    useMemo(() => {
-      return percentage(
-        transactions?.pending_count,
-        transactions?.total_count,
-      );
-    }, [
-      transactions,
-    ]);
-
+  const pendingRate = useMemo(() => {
+    return percentage(
+      transactions?.pending_count,
+      transactions?.total_count,
+    );
+  }, [transactions]);
 
   // ==========================================================
   // KYC RATES
@@ -1135,7 +942,6 @@ function AnalyticsPage() {
       );
     }, [kyc]);
 
-
   // ==========================================================
   // BREAKDOWN TOTALS
   // ==========================================================
@@ -1144,14 +950,9 @@ function AnalyticsPage() {
     useMemo(() => {
       return (
         breakdown?.by_category?.reduce(
-          (
-            total,
-            item,
-          ) =>
+          (total, item) =>
             total +
-            safeNumber(
-              item.count,
-            ),
+            safeNumber(item.count),
           0,
         ) || 0
       );
@@ -1161,14 +962,9 @@ function AnalyticsPage() {
     useMemo(() => {
       return (
         breakdown?.by_provider?.reduce(
-          (
-            total,
-            item,
-          ) =>
+          (total, item) =>
             total +
-            safeNumber(
-              item.count,
-            ),
+            safeNumber(item.count),
           0,
         ) || 0
       );
@@ -1178,19 +974,13 @@ function AnalyticsPage() {
     useMemo(() => {
       return (
         breakdown?.by_transaction_type?.reduce(
-          (
-            total,
-            item,
-          ) =>
+          (total, item) =>
             total +
-            safeNumber(
-              item.count,
-            ),
+            safeNumber(item.count),
           0,
         ) || 0
       );
     }, [breakdown]);
-
 
   // ==========================================================
   // CSV EXPORT
@@ -1202,54 +992,40 @@ function AnalyticsPage() {
         return;
       }
 
-      const rows: string[][] =
-        [];
+      const rows: string[][] = [];
 
-      const addSection =
-        (
-          title: string,
-        ) => {
-          if (
-            rows.length >
-            0
-          ) {
-            rows.push([]);
-          }
+      const addSection = (
+        title: string,
+      ) => {
+        if (rows.length > 0) {
+          rows.push([]);
+        }
 
-          rows.push([
-            title,
-          ]);
-        };
+        rows.push([title]);
+      };
 
-      const addRow =
-        (
-          label: string,
-          value:
-            | string
-            | number
-            | null
-            | undefined,
-        ) => {
-          rows.push([
-            label,
-            value ===
-              null ||
-            value ===
-              undefined
-              ? ""
-              : String(value),
-          ]);
-        };
+      const addRow = (
+        label: string,
+        value:
+          | string
+          | number
+          | null
+          | undefined,
+      ) => {
+        rows.push([
+          label,
+          value === null ||
+          value === undefined
+            ? ""
+            : String(value),
+        ]);
+      };
 
-      const addHeaders =
-        (
-          ...headers: string[]
-        ) => {
-          rows.push(
-            headers,
-          );
-        };
-
+      const addHeaders = (
+        ...headers: string[]
+      ) => {
+        rows.push(headers);
+      };
 
       // --------------------------------------------------------
       // REPORT INFORMATION
@@ -1272,8 +1048,7 @@ function AnalyticsPage() {
 
       addRow(
         "Period Start",
-        summary?.period
-          ?.start_at
+        summary?.period?.start_at
           ? formatDateTime(
               summary.period.start_at,
             )
@@ -1282,14 +1057,12 @@ function AnalyticsPage() {
 
       addRow(
         "Period End",
-        summary?.period
-          ?.end_at
+        summary?.period?.end_at
           ? formatDateTime(
               summary.period.end_at,
             )
           : "",
       );
-
 
       // --------------------------------------------------------
       // TRANSACTIONS
@@ -1301,8 +1074,7 @@ function AnalyticsPage() {
 
       addRow(
         "Total Transactions",
-        transactions?.total_count ||
-          0,
+        transactions?.total_count || 0,
       );
 
       addRow(
@@ -1313,20 +1085,17 @@ function AnalyticsPage() {
 
       addRow(
         "Failed Transactions",
-        transactions?.failed_count ||
-          0,
+        transactions?.failed_count || 0,
       );
 
       addRow(
         "Pending Transactions",
-        transactions?.pending_count ||
-          0,
+        transactions?.pending_count || 0,
       );
 
       addRow(
         "Total Transaction Value",
-        transactions?.total_value ||
-          0,
+        transactions?.total_value || 0,
       );
 
       addRow(
@@ -1337,45 +1106,34 @@ function AnalyticsPage() {
 
       addRow(
         "Failed Transaction Value",
-        transactions?.failed_value ||
-          0,
+        transactions?.failed_value || 0,
       );
 
       addRow(
         "Pending Transaction Value",
-        transactions?.pending_value ||
-          0,
+        transactions?.pending_value || 0,
       );
 
       addRow(
         "Success Rate",
-        `${successRate.toFixed(
-          2,
-        )}%`,
+        `${successRate.toFixed(2)}%`,
       );
 
       addRow(
         "Failure Rate",
-        `${failureRate.toFixed(
-          2,
-        )}%`,
+        `${failureRate.toFixed(2)}%`,
       );
 
       addRow(
         "Pending Rate",
-        `${pendingRate.toFixed(
-          2,
-        )}%`,
+        `${pendingRate.toFixed(2)}%`,
       );
-
 
       // --------------------------------------------------------
       // FUNDING
       // --------------------------------------------------------
 
-      addSection(
-        "FUNDING",
-      );
+      addSection("FUNDING");
 
       addRow(
         "Funding Transactions",
@@ -1387,14 +1145,11 @@ function AnalyticsPage() {
         funding?.volume || 0,
       );
 
-
       // --------------------------------------------------------
       // BANK TRANSFERS
       // --------------------------------------------------------
 
-      addSection(
-        "BANK TRANSFERS",
-      );
+      addSection("BANK TRANSFERS");
 
       addRow(
         "Transfer Transactions",
@@ -1406,27 +1161,21 @@ function AnalyticsPage() {
         transfers?.volume || 0,
       );
 
-
       // --------------------------------------------------------
       // BILL PAYMENTS
       // --------------------------------------------------------
 
-      addSection(
-        "BILL PAYMENTS",
-      );
+      addSection("BILL PAYMENTS");
 
       addRow(
         "Bill Payment Transactions",
-        billPayments?.count ||
-          0,
+        billPayments?.count || 0,
       );
 
       addRow(
         "Bill Payment Volume",
-        billPayments?.volume ||
-          0,
+        billPayments?.volume || 0,
       );
-
 
       // --------------------------------------------------------
       // INTERNAL TRANSFERS
@@ -1438,24 +1187,19 @@ function AnalyticsPage() {
 
       addRow(
         "Internal Transfer Transactions",
-        internalTransfers?.count ||
-          0,
+        internalTransfers?.count || 0,
       );
 
       addRow(
         "Internal Transfer Volume",
-        internalTransfers?.volume ||
-          0,
+        internalTransfers?.volume || 0,
       );
-
 
       // --------------------------------------------------------
       // REVENUE
       // --------------------------------------------------------
 
-      addSection(
-        "REVENUE",
-      );
+      addSection("REVENUE");
 
       addRow(
         "Total Revenue",
@@ -1464,8 +1208,7 @@ function AnalyticsPage() {
 
       addRow(
         "Transfer Fees",
-        revenue?.transfer_fees ||
-          0,
+        revenue?.transfer_fees || 0,
       );
 
       addRow(
@@ -1478,306 +1221,101 @@ function AnalyticsPage() {
         revenue?.other_fees || 0,
       );
 
+      const trendHeaders = [
+        "Period",
+        "Transaction Count",
+        "Transaction Value",
+        "Successful Count",
+        "Successful Value",
+        "Failed Count",
+        "Failed Value",
+        "Pending Count",
+        "Pending Value",
+        "Funding Count",
+        "Funding Volume",
+        "Transfer Count",
+        "Transfer Volume",
+        "Bill Payment Count",
+        "Bill Payment Volume",
+        "Revenue",
+      ];
 
-      // --------------------------------------------------------
-      // DAILY TRENDS
-      // --------------------------------------------------------
+      const addTrendSection = (
+        title: string,
+        data: TrendPoint[],
+      ) => {
+        addSection(title);
+        addHeaders(...trendHeaders);
 
-      addSection(
+        data.forEach((item) => {
+          rows.push([
+            item.period,
+            String(
+              item.transaction_count || 0,
+            ),
+            String(
+              item.transaction_value || 0,
+            ),
+            String(
+              item.successful_count || 0,
+            ),
+            String(
+              item.successful_value || 0,
+            ),
+            String(
+              item.failed_count || 0,
+            ),
+            String(
+              item.failed_value || 0,
+            ),
+            String(
+              item.pending_count || 0,
+            ),
+            String(
+              item.pending_value || 0,
+            ),
+            String(
+              item.funding_count || 0,
+            ),
+            String(
+              item.funding_volume || 0,
+            ),
+            String(
+              item.transfer_count || 0,
+            ),
+            String(
+              item.transfer_volume || 0,
+            ),
+            String(
+              item.bill_payment_count || 0,
+            ),
+            String(
+              item.bill_payment_volume || 0,
+            ),
+            String(
+              item.revenue || 0,
+            ),
+          ]);
+        });
+      };
+
+      addTrendSection(
         "DAILY TRENDS",
+        analytics.trends?.daily?.data || [],
       );
 
-      addHeaders(
-        "Period",
-        "Transaction Count",
-        "Transaction Value",
-        "Successful Count",
-        "Successful Value",
-        "Failed Count",
-        "Failed Value",
-        "Pending Count",
-        "Pending Value",
-        "Funding Count",
-        "Funding Volume",
-        "Transfer Count",
-        "Transfer Volume",
-        "Bill Payment Count",
-        "Bill Payment Volume",
-        "Revenue",
-      );
-
-      (
-        analytics.trends
-          ?.daily?.data || []
-      ).forEach(
-        (item) => {
-          rows.push([
-            item.period,
-            String(
-              item.transaction_count ||
-                0,
-            ),
-            String(
-              item.transaction_value ||
-                0,
-            ),
-            String(
-              item.successful_count ||
-                0,
-            ),
-            String(
-              item.successful_value ||
-                0,
-            ),
-            String(
-              item.failed_count ||
-                0,
-            ),
-            String(
-              item.failed_value ||
-                0,
-            ),
-            String(
-              item.pending_count ||
-                0,
-            ),
-            String(
-              item.pending_value ||
-                0,
-            ),
-            String(
-              item.funding_count ||
-                0,
-            ),
-            String(
-              item.funding_volume ||
-                0,
-            ),
-            String(
-              item.transfer_count ||
-                0,
-            ),
-            String(
-              item.transfer_volume ||
-                0,
-            ),
-            String(
-              item.bill_payment_count ||
-                0,
-            ),
-            String(
-              item.bill_payment_volume ||
-                0,
-            ),
-            String(
-              item.revenue ||
-                0,
-            ),
-          ]);
-        },
-      );
-
-
-      // --------------------------------------------------------
-      // WEEKLY TRENDS
-      // --------------------------------------------------------
-
-      addSection(
+      addTrendSection(
         "WEEKLY TRENDS",
+        analytics.trends?.weekly?.data || [],
       );
 
-      addHeaders(
-        "Period",
-        "Transaction Count",
-        "Transaction Value",
-        "Successful Count",
-        "Successful Value",
-        "Failed Count",
-        "Failed Value",
-        "Pending Count",
-        "Pending Value",
-        "Funding Count",
-        "Funding Volume",
-        "Transfer Count",
-        "Transfer Volume",
-        "Bill Payment Count",
-        "Bill Payment Volume",
-        "Revenue",
-      );
-
-      (
-        analytics.trends
-          ?.weekly?.data || []
-      ).forEach(
-        (item) => {
-          rows.push([
-            item.period,
-            String(
-              item.transaction_count ||
-                0,
-            ),
-            String(
-              item.transaction_value ||
-                0,
-            ),
-            String(
-              item.successful_count ||
-                0,
-            ),
-            String(
-              item.successful_value ||
-                0,
-            ),
-            String(
-              item.failed_count ||
-                0,
-            ),
-            String(
-              item.failed_value ||
-                0,
-            ),
-            String(
-              item.pending_count ||
-                0,
-            ),
-            String(
-              item.pending_value ||
-                0,
-            ),
-            String(
-              item.funding_count ||
-                0,
-            ),
-            String(
-              item.funding_volume ||
-                0,
-            ),
-            String(
-              item.transfer_count ||
-                0,
-            ),
-            String(
-              item.transfer_volume ||
-                0,
-            ),
-            String(
-              item.bill_payment_count ||
-                0,
-            ),
-            String(
-              item.bill_payment_volume ||
-                0,
-            ),
-            String(
-              item.revenue ||
-                0,
-            ),
-          ]);
-        },
-      );
-
-
-      // --------------------------------------------------------
-      // MONTHLY TRENDS
-      // --------------------------------------------------------
-
-      addSection(
+      addTrendSection(
         "MONTHLY TRENDS",
+        analytics.trends?.monthly?.data || [],
       );
-
-      addHeaders(
-        "Period",
-        "Transaction Count",
-        "Transaction Value",
-        "Successful Count",
-        "Successful Value",
-        "Failed Count",
-        "Failed Value",
-        "Pending Count",
-        "Pending Value",
-        "Funding Count",
-        "Funding Volume",
-        "Transfer Count",
-        "Transfer Volume",
-        "Bill Payment Count",
-        "Bill Payment Volume",
-        "Revenue",
-      );
-
-      (
-        analytics.trends
-          ?.monthly?.data || []
-      ).forEach(
-        (item) => {
-          rows.push([
-            item.period,
-            String(
-              item.transaction_count ||
-                0,
-            ),
-            String(
-              item.transaction_value ||
-                0,
-            ),
-            String(
-              item.successful_count ||
-                0,
-            ),
-            String(
-              item.successful_value ||
-                0,
-            ),
-            String(
-              item.failed_count ||
-                0,
-            ),
-            String(
-              item.failed_value ||
-                0,
-            ),
-            String(
-              item.pending_count ||
-                0,
-            ),
-            String(
-              item.pending_value ||
-                0,
-            ),
-            String(
-              item.funding_count ||
-                0,
-            ),
-            String(
-              item.funding_volume ||
-                0,
-            ),
-            String(
-              item.transfer_count ||
-                0,
-            ),
-            String(
-              item.transfer_volume ||
-                0,
-            ),
-            String(
-              item.bill_payment_count ||
-                0,
-            ),
-            String(
-              item.bill_payment_volume ||
-                0,
-            ),
-            String(
-              item.revenue ||
-                0,
-            ),
-          ]);
-        },
-      );
-
 
       // --------------------------------------------------------
-      // CATEGORY BREAKDOWN
+      // BREAKDOWN
       // --------------------------------------------------------
 
       addSection(
@@ -1792,34 +1330,18 @@ function AnalyticsPage() {
       );
 
       (
-        breakdown?.by_category ||
-        []
-      ).forEach(
-        (item) => {
-          rows.push([
-            item.category ||
-              "uncategorized",
-
-            String(
-              item.count || 0,
-            ),
-
-            String(
-              item.volume || 0,
-            ),
-
-            `${percentage(
-              item.count,
-              categoryTotal,
-            ).toFixed(2)}%`,
-          ]);
-        },
-      );
-
-
-      // --------------------------------------------------------
-      // PROVIDER BREAKDOWN
-      // --------------------------------------------------------
+        breakdown?.by_category || []
+      ).forEach((item) => {
+        rows.push([
+          item.category || "uncategorized",
+          String(item.count || 0),
+          String(item.volume || 0),
+          `${percentage(
+            item.count,
+            categoryTotal,
+          ).toFixed(2)}%`,
+        ]);
+      });
 
       addSection(
         "BREAKDOWN - PROVIDER",
@@ -1833,34 +1355,18 @@ function AnalyticsPage() {
       );
 
       (
-        breakdown?.by_provider ||
-        []
-      ).forEach(
-        (item) => {
-          rows.push([
-            item.provider ||
-              "unknown",
-
-            String(
-              item.count || 0,
-            ),
-
-            String(
-              item.volume || 0,
-            ),
-
-            `${percentage(
-              item.count,
-              providerTotal,
-            ).toFixed(2)}%`,
-          ]);
-        },
-      );
-
-
-      // --------------------------------------------------------
-      // STATUS BREAKDOWN
-      // --------------------------------------------------------
+        breakdown?.by_provider || []
+      ).forEach((item) => {
+        rows.push([
+          item.provider || "unknown",
+          String(item.count || 0),
+          String(item.volume || 0),
+          `${percentage(
+            item.count,
+            providerTotal,
+          ).toFixed(2)}%`,
+        ]);
+      });
 
       addSection(
         "BREAKDOWN - STATUS",
@@ -1874,35 +1380,18 @@ function AnalyticsPage() {
       );
 
       (
-        breakdown?.by_status ||
-        []
-      ).forEach(
-        (item) => {
-          rows.push([
-            item.status ||
-              "unknown",
-
-            String(
-              item.count || 0,
-            ),
-
-            String(
-              item.volume || 0,
-            ),
-
-            `${percentage(
-              item.count,
-              transactions?.total_count ||
-                0,
-            ).toFixed(2)}%`,
-          ]);
-        },
-      );
-
-
-      // --------------------------------------------------------
-      // TRANSACTION TYPE BREAKDOWN
-      // --------------------------------------------------------
+        breakdown?.by_status || []
+      ).forEach((item) => {
+        rows.push([
+          item.status || "unknown",
+          String(item.count || 0),
+          String(item.volume || 0),
+          `${percentage(
+            item.count,
+            transactions?.total_count || 0,
+          ).toFixed(2)}%`,
+        ]);
+      });
 
       addSection(
         "BREAKDOWN - TRANSACTION TYPE",
@@ -1916,38 +1405,24 @@ function AnalyticsPage() {
       );
 
       (
-        breakdown?.by_transaction_type ||
-        []
-      ).forEach(
-        (item) => {
-          rows.push([
-            item.transaction_type ||
-              "unknown",
-
-            String(
-              item.count || 0,
-            ),
-
-            String(
-              item.volume || 0,
-            ),
-
-            `${percentage(
-              item.count,
-              transactionTypeTotal,
-            ).toFixed(2)}%`,
-          ]);
-        },
-      );
-
+        breakdown?.by_transaction_type || []
+      ).forEach((item) => {
+        rows.push([
+          item.transaction_type || "unknown",
+          String(item.count || 0),
+          String(item.volume || 0),
+          `${percentage(
+            item.count,
+            transactionTypeTotal,
+          ).toFixed(2)}%`,
+        ]);
+      });
 
       // --------------------------------------------------------
       // CUSTOMER GROWTH
       // --------------------------------------------------------
 
-      addSection(
-        "CUSTOMER GROWTH",
-      );
+      addSection("CUSTOMER GROWTH");
 
       addHeaders(
         "Period",
@@ -1955,73 +1430,57 @@ function AnalyticsPage() {
       );
 
       (
-        analytics.customer_growth
-          ?.data || []
-      ).forEach(
-        (item) => {
-          rows.push([
-            item.period,
-            String(
-              item.new_customers ||
-                0,
-            ),
-          ]);
-        },
-      );
-
+        analytics.customer_growth?.data ||
+        []
+      ).forEach((item) => {
+        rows.push([
+          item.period,
+          String(
+            item.new_customers || 0,
+          ),
+        ]);
+      });
 
       // --------------------------------------------------------
       // KYC
       // --------------------------------------------------------
 
-      addSection(
-        "KYC OVERVIEW",
-      );
+      addSection("KYC OVERVIEW");
 
       addRow(
         "Total Users",
-        kyc?.total_users ||
-          0,
+        kyc?.total_users || 0,
       );
 
       addRow(
         "Verified Users",
-        kyc?.verified ||
-          0,
+        kyc?.verified || 0,
       );
 
       addRow(
         "Pending KYC",
-        kyc?.pending ||
-          0,
+        kyc?.pending || 0,
       );
 
       addRow(
         "Unverified Users",
-        kyc?.unverified ||
-          0,
+        kyc?.unverified || 0,
       );
 
       addRow(
         "BVN Verified",
-        kyc?.bvn_verified ||
-          0,
+        kyc?.bvn_verified || 0,
       );
 
       addRow(
         "KYC Verified Rate",
-        `${kycVerifiedRate.toFixed(
-          2,
-        )}%`,
+        `${kycVerifiedRate.toFixed(2)}%`,
       );
 
       addRow(
         "BVN Verified Rate",
-        `${bvnVerifiedRate.toFixed(
-          2,
-        )}%`,
+        `${bvnVerifiedRate.toFixed(2)}%`,
       );
-
 
       // --------------------------------------------------------
       // KYC LEVELS
@@ -2040,8 +1499,7 @@ function AnalyticsPage() {
       rows.push([
         "Level 1",
         String(
-          kyc?.levels
-            ?.level_1 || 0,
+          kyc?.levels?.level_1 || 0,
         ),
         `${percentage(
           kyc?.levels?.level_1,
@@ -2052,8 +1510,7 @@ function AnalyticsPage() {
       rows.push([
         "Level 2",
         String(
-          kyc?.levels
-            ?.level_2 || 0,
+          kyc?.levels?.level_2 || 0,
         ),
         `${percentage(
           kyc?.levels?.level_2,
@@ -2064,8 +1521,7 @@ function AnalyticsPage() {
       rows.push([
         "Level 3",
         String(
-          kyc?.levels
-            ?.level_3 || 0,
+          kyc?.levels?.level_3 || 0,
         ),
         `${percentage(
           kyc?.levels?.level_3,
@@ -2073,103 +1529,77 @@ function AnalyticsPage() {
         ).toFixed(2)}%`,
       ]);
 
-
       // --------------------------------------------------------
-      // ESCAPE CSV VALUES
+      // CSV ESCAPE
       // --------------------------------------------------------
 
-      const csvEscape =
-        (
-          value: string,
-        ) => {
-          if (
-            value.includes(",") ||
-            value.includes('"') ||
-            value.includes("\n") ||
-            value.includes("\r")
-          ) {
-            return `"${value.replace(
-              /"/g,
-              '""',
-            )}"`;
-          }
+      const csvEscape = (
+        value: string,
+      ) => {
+        if (
+          value.includes(",") ||
+          value.includes('"') ||
+          value.includes("\n") ||
+          value.includes("\r")
+        ) {
+          return `"${value.replace(
+            /"/g,
+            '""',
+          )}"`;
+        }
 
-          return value;
-        };
-
+        return value;
+      };
 
       const csvContent =
         "\uFEFF" +
         rows
-          .map(
-            (row) =>
-              row
-                .map(
-                  (value) =>
-                    csvEscape(
-                      String(
-                        value ??
-                          "",
-                      ),
-                    ),
-                )
-                .join(","),
+          .map((row) =>
+            row
+              .map((value) =>
+                csvEscape(
+                  String(value ?? ""),
+                ),
+              )
+              .join(","),
           )
           .join("\r\n");
-
 
       // --------------------------------------------------------
       // DOWNLOAD
       // --------------------------------------------------------
 
-      const blob =
-        new Blob(
-          [csvContent],
-          {
-            type: "text/csv;charset=utf-8;",
-          },
-        );
+      const blob = new Blob(
+        [csvContent],
+        {
+          type: "text/csv;charset=utf-8;",
+        },
+      );
 
       const url =
-        URL.createObjectURL(
-          blob,
-        );
+        URL.createObjectURL(blob);
 
       const anchor =
-        document.createElement(
-          "a",
-        );
+        document.createElement("a");
 
       const timestamp =
         new Date()
           .toISOString()
-          .replace(
-            /[:.]/g,
-            "-",
-          )
-          .slice(
-            0,
-            19,
-          );
+          .replace(/[:.]/g, "-")
+          .slice(0, 19);
 
       anchor.href = url;
 
       anchor.download =
         `iyanjupay-analytics-${timestamp}.csv`;
 
-      document.body.appendChild(
-        anchor,
-      );
+      document.body.appendChild(anchor);
 
       anchor.click();
 
-      document.body.removeChild(
-        anchor,
-      );
+      document.body.removeChild(anchor);
 
-      URL.revokeObjectURL(
-        url,
-      );
+      URL.revokeObjectURL(url);
     }, [
       analytics,
       summary,
@@ -2191,7 +1621,6 @@ function AnalyticsPage() {
       transactionTypeTotal,
     ]);
 
-
   // ==========================================================
   // ERROR SCREEN
   // ==========================================================
@@ -2202,799 +1631,746 @@ function AnalyticsPage() {
     !loading
   ) {
     return (
-      <div className="min-h-full p-4 md:p-6 lg:p-8">
-        <div className="mx-auto max-w-7xl">
-          <div className="mb-6">
-            <h1 className="text-2xl font-bold tracking-tight">
-              Analytics
-            </h1>
+      <AdminLayout>
+        <div className="min-h-full bg-background p-4 md:p-6 lg:p-8">
+          <div className="mx-auto max-w-7xl">
+            <div className="mb-6">
+              <h1 className="text-2xl font-bold tracking-tight">
+                Analytics
+              </h1>
 
-            <p className="mt-1 text-sm text-muted-foreground">
-              Monitor IyanjuPay transaction performance,
-              revenue, customers, and KYC activity.
-            </p>
-          </div>
-
-          <Card className="border-destructive/30">
-            <CardContent className="flex flex-col items-center justify-center p-10 text-center">
-              <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-destructive/10">
-                <AlertCircle className="h-6 w-6 text-destructive" />
-              </div>
-
-              <h2 className="text-lg font-semibold">
-                Unable to load analytics
-              </h2>
-
-              <p className="mt-2 max-w-xl text-sm text-muted-foreground">
-                {error}
+              <p className="mt-1 text-sm text-muted-foreground">
+                Monitor IyanjuPay transaction
+                performance, revenue, customers,
+                and KYC activity.
               </p>
+            </div>
 
-              <Button
-                className="mt-5"
-                onClick={() =>
-                  void loadAnalytics(
-                    true,
-                  )
-                }
-              >
-                <RefreshCw className="mr-2 h-4 w-4" />
-                Try again
-              </Button>
-            </CardContent>
-          </Card>
+            <Card className="border-destructive/30">
+              <CardContent className="flex flex-col items-center justify-center p-10 text-center">
+                <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-destructive/10">
+                  <AlertCircle className="h-6 w-6 text-destructive" />
+                </div>
+
+                <h2 className="text-lg font-semibold">
+                  Unable to load analytics
+                </h2>
+
+                <p className="mt-2 max-w-xl text-sm text-muted-foreground">
+                  {error}
+                </p>
+
+                <Button
+                  className="mt-5"
+                  onClick={() =>
+                    void loadAnalytics(true)
+                  }
+                >
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                  Try again
+                </Button>
+              </CardContent>
+            </Card>
+          </div>
         </div>
-      </div>
+      </AdminLayout>
     );
   }
-
 
   // ==========================================================
   // MAIN RENDER
   // ==========================================================
 
   return (
-    <div className="min-h-full bg-background p-4 md:p-6 lg:p-8">
-      <div className="mx-auto max-w-7xl space-y-8">
+    <AdminLayout>
+      <div className="min-h-full bg-background p-4 md:p-6 lg:p-8">
+        <div className="mx-auto max-w-7xl space-y-8">
 
-        {/* ====================================================
-            HEADER
-        ==================================================== */}
+          {/* ====================================================
+              HEADER
+          ==================================================== */}
 
-        <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <div className="flex items-center gap-3">
-              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-muted">
-                <BarChart3 className="h-5 w-5" />
-              </div>
+          <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <div className="flex items-center gap-3">
+                <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-muted">
+                  <BarChart3 className="h-5 w-5" />
+                </div>
 
-              <div>
-                <h1 className="text-2xl font-bold tracking-tight md:text-3xl">
-                  Analytics
-                </h1>
+                <div>
+                  <h1 className="text-2xl font-bold tracking-tight md:text-3xl">
+                    Analytics
+                  </h1>
 
-                <p className="mt-1 text-sm text-muted-foreground">
-                  IyanjuPay platform performance,
-                  transaction activity and financial insights
-                </p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    IyanjuPay platform performance,
+                    transaction activity and
+                    financial insights
+                  </p>
+                </div>
               </div>
             </div>
-          </div>
 
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-
-            <Select
-              value={period}
-              onValueChange={(value) =>
-                setPeriod(
-                  value as AnalyticsPeriod,
-                )
-              }
-            >
-              <SelectTrigger className="w-full sm:w-[165px]">
-                <SelectValue placeholder="Period" />
-              </SelectTrigger>
-
-              <SelectContent>
-                <SelectItem value="7">
-                  Last 7 days
-                </SelectItem>
-
-                <SelectItem value="30">
-                  Last 30 days
-                </SelectItem>
-
-                <SelectItem value="90">
-                  Last 90 days
-                </SelectItem>
-
-                <SelectItem value="365">
-                  Last 12 months
-                </SelectItem>
-
-                <SelectItem value="custom">
-                  Custom range
-                </SelectItem>
-              </SelectContent>
-            </Select>
-
-            <Button
-              variant="outline"
-              onClick={() =>
-                void loadAnalytics(
-                  true,
-                )
-              }
-              disabled={
-                loading ||
-                refreshing ||
-                !dateRange
-              }
-            >
-              {refreshing ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <RefreshCw className="mr-2 h-4 w-4" />
-              )}
-
-              Refresh
-            </Button>
-
-            <Button
-              variant="outline"
-              onClick={
-                exportAnalyticsCsv
-              }
-              disabled={
-                !analytics ||
-                loading ||
-                refreshing
-              }
-            >
-              <Download className="mr-2 h-4 w-4" />
-              Export CSV
-            </Button>
-
-          </div>
-        </div>
-
-
-        {/* ====================================================
-            CUSTOM DATE RANGE
-        ==================================================== */}
-
-        {period ===
-          "custom" && (
-          <Card>
-            <CardContent className="p-4">
-              <div className="grid gap-4 md:grid-cols-3 md:items-end">
-
-                <div>
-                  <label className="mb-2 block text-sm font-medium">
-                    Start date
-                  </label>
-
-                  <Input
-                    type="date"
-                    value={
-                      customStart
-                    }
-                    onChange={(
-                      event,
-                    ) =>
-                      setCustomStart(
-                        event.target
-                          .value,
-                      )
-                    }
-                  />
-                </div>
-
-                <div>
-                  <label className="mb-2 block text-sm font-medium">
-                    End date
-                  </label>
-
-                  <Input
-                    type="date"
-                    value={
-                      customEnd
-                    }
-                    onChange={(
-                      event,
-                    ) =>
-                      setCustomEnd(
-                        event.target
-                          .value,
-                      )
-                    }
-                  />
-                </div>
-
-                <div className="text-sm text-muted-foreground">
-                  {!customStart ||
-                  !customEnd ? (
-                    "Select both dates to load analytics."
-                  ) : dateRange ? (
-                    <>
-                      Showing{" "}
-                      <strong>
-                        {formatDate(
-                          dateRange.start,
-                        )}
-                      </strong>{" "}
-                      to{" "}
-                      <strong>
-                        {formatDate(
-                          dateRange.end,
-                        )}
-                      </strong>
-                    </>
-                  ) : (
-                    <span className="text-destructive">
-                      Invalid date range.
-                    </span>
-                  )}
-                </div>
-
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-
-        {/* ====================================================
-            PERIOD
-        ==================================================== */}
-
-        {summary?.period && (
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
-            <span>
-              Reporting period:
-            </span>
-
-            <span className="font-medium text-foreground">
-              {formatDate(
-                summary.period
-                  .start_at,
-              )}
-            </span>
-
-            <span>
-              —
-            </span>
-
-            <span className="font-medium text-foreground">
-              {formatDate(
-                summary.period
-                  .end_at,
-              )}
-            </span>
-
-            {analytics?.generated_at && (
-              <>
-                <span className="mx-1 hidden sm:inline">
-                  •
-                </span>
-
-                <span>
-                  Updated{" "}
-                  {formatDateTime(
-                    analytics.generated_at,
-                  )}
-                </span>
-              </>
-            )}
-          </div>
-        )}
-
-
-        {/* ====================================================
-            PRIMARY KPI
-        ==================================================== */}
-
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-
-          <StatCard
-            title="Transaction volume"
-            value={
-              loading
-                ? "..."
-                : money(
-                    transactions?.total_value,
-                  )
-            }
-            subtitle={`${number(
-              transactions?.total_count,
-            )} transactions`}
-            icon={Activity}
-            loading={loading}
-          />
-
-          <StatCard
-            title="Successful value"
-            value={
-              loading
-                ? "..."
-                : money(
-                    transactions?.successful_value,
-                  )
-            }
-            subtitle={`${successRate.toFixed(
-              1,
-            )}% success rate`}
-            icon={CheckCircle2}
-            loading={loading}
-          />
-
-          <StatCard
-            title="Total revenue"
-            value={
-              loading
-                ? "..."
-                : money(
-                    revenue?.total,
-                  )
-            }
-            subtitle="IyanjuPay fees generated"
-            icon={TrendingUp}
-            loading={loading}
-          />
-
-          <StatCard
-            title="Total customers"
-            value={
-              loading
-                ? "..."
-                : number(
-                    kyc?.total_users,
-                  )
-            }
-            subtitle="Registered platform users"
-            icon={Users}
-            loading={loading}
-          />
-
-        </div>
-
-
-        {/* ====================================================
-            TRANSACTION PERFORMANCE
-        ==================================================== */}
-
-        <section>
-          <SectionHeader
-            title="Transaction performance"
-            description="Overall transaction outcome and value distribution."
-            icon={Activity}
-          />
-
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-
-            <StatCard
-              title="Successful"
-              value={number(
-                transactions?.successful_count,
-              )}
-              subtitle={money(
-                transactions?.successful_value,
-              )}
-              icon={CheckCircle2}
-            />
-
-            <StatCard
-              title="Pending"
-              value={number(
-                transactions?.pending_count,
-              )}
-              subtitle={`${pendingRate.toFixed(
-                1,
-              )}% of transactions`}
-              icon={Clock3}
-            />
-
-            <StatCard
-              title="Failed"
-              value={number(
-                transactions?.failed_count,
-              )}
-              subtitle={`${failureRate.toFixed(
-                1,
-              )}% of transactions`}
-              icon={XCircle}
-            />
-
-            <StatCard
-              title="Success rate"
-              value={`${successRate.toFixed(
-                1,
-              )}%`}
-              subtitle={`${number(
-                transactions?.successful_count,
-              )} successful`}
-              icon={ShieldCheck}
-            />
-
-          </div>
-        </section>
-
-
-        {/* ====================================================
-            FINANCIAL ACTIVITY
-        ==================================================== */}
-
-        <section>
-          <SectionHeader
-            title="Financial activity"
-            description="Breakdown of major IyanjuPay transaction channels."
-            icon={Wallet}
-          />
-
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-
-            <Card>
-              <CardContent className="p-5">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted">
-                    <Wallet className="h-5 w-5" />
-                  </div>
-
-                  <div>
-                    <p className="text-sm text-muted-foreground">
-                      Funding
-                    </p>
-
-                    <p className="text-xl font-bold">
-                      {money(
-                        funding?.volume,
-                      )}
-                    </p>
-                  </div>
-                </div>
-
-                <p className="mt-4 text-xs text-muted-foreground">
-                  {number(
-                    funding?.count,
-                  )} successful funding transactions
-                </p>
-              </CardContent>
-            </Card>
-
-
-            <Card>
-              <CardContent className="p-5">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted">
-                    <CreditCard className="h-5 w-5" />
-                  </div>
-
-                  <div>
-                    <p className="text-sm text-muted-foreground">
-                      Bank transfers
-                    </p>
-
-                    <p className="text-xl font-bold">
-                      {money(
-                        transfers?.volume,
-                      )}
-                    </p>
-                  </div>
-                </div>
-
-                <p className="mt-4 text-xs text-muted-foreground">
-                  {number(
-                    transfers?.count,
-                  )} successful transfers
-                </p>
-              </CardContent>
-            </Card>
-
-
-            <Card>
-              <CardContent className="p-5">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted">
-                    <FileBarChart className="h-5 w-5" />
-                  </div>
-
-                  <div>
-                    <p className="text-sm text-muted-foreground">
-                      Bill payments
-                    </p>
-
-                    <p className="text-xl font-bold">
-                      {money(
-                        billPayments?.volume,
-                      )}
-                    </p>
-                  </div>
-                </div>
-
-                <p className="mt-4 text-xs text-muted-foreground">
-                  {number(
-                    billPayments?.count,
-                  )} successful payments
-                </p>
-              </CardContent>
-            </Card>
-
-
-            <Card>
-              <CardContent className="p-5">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted">
-                    <ArrowUpRight className="h-5 w-5" />
-                  </div>
-
-                  <div>
-                    <p className="text-sm text-muted-foreground">
-                      Internal transfers
-                    </p>
-
-                    <p className="text-xl font-bold">
-                      {money(
-                        internalTransfers?.volume,
-                      )}
-                    </p>
-                  </div>
-                </div>
-
-                <p className="mt-4 text-xs text-muted-foreground">
-                  {number(
-                    internalTransfers?.count,
-                  )} successful transfers
-                </p>
-              </CardContent>
-            </Card>
-
-          </div>
-        </section>
-
-
-        {/* ====================================================
-            REVENUE
-        ==================================================== */}
-
-        <section>
-          <SectionHeader
-            title="Revenue"
-            description="IyanjuPay revenue generated from applicable transaction fees."
-            icon={TrendingUp}
-          />
-
-          <Card>
-            <CardContent className="p-5">
-              <div className="grid gap-6 md:grid-cols-4">
-
-                <div>
-                  <p className="text-sm text-muted-foreground">
-                    Total revenue
-                  </p>
-
-                  <p className="mt-1 text-2xl font-bold">
-                    {money(
-                      revenue?.total,
-                    )}
-                  </p>
-                </div>
-
-                <div>
-                  <p className="text-sm text-muted-foreground">
-                    Transfer fees
-                  </p>
-
-                  <p className="mt-1 text-xl font-semibold">
-                    {money(
-                      revenue?.transfer_fees,
-                    )}
-                  </p>
-                </div>
-
-                <div>
-                  <p className="text-sm text-muted-foreground">
-                    Bill fees
-                  </p>
-
-                  <p className="mt-1 text-xl font-semibold">
-                    {money(
-                      revenue?.bill_fees,
-                    )}
-                  </p>
-                </div>
-
-                <div>
-                  <p className="text-sm text-muted-foreground">
-                    Other fees
-                  </p>
-
-                  <p className="mt-1 text-xl font-semibold">
-                    {money(
-                      revenue?.other_fees,
-                    )}
-                  </p>
-                </div>
-
-              </div>
-            </CardContent>
-          </Card>
-        </section>
-
-
-        {/* ====================================================
-            TRANSACTION TRENDS
-        ==================================================== */}
-
-        <section>
-          <SectionHeader
-            title="Transaction trends"
-            description="Track transaction activity and value over time."
-            icon={BarChart3}
-          />
-
-          <Card>
-            <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-              <CardTitle className="text-base">
-                Transaction value
-              </CardTitle>
-
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
               <Select
-                value={trendMode}
+                value={period}
                 onValueChange={(value) =>
-                  setTrendMode(
-                    value as TrendMode,
+                  setPeriod(
+                    value as AnalyticsPeriod,
                   )
                 }
               >
-                <SelectTrigger className="w-full sm:w-[150px]">
-                  <SelectValue />
+                <SelectTrigger className="w-full sm:w-[165px]">
+                  <SelectValue placeholder="Period" />
                 </SelectTrigger>
 
                 <SelectContent>
-                  <SelectItem value="daily">
-                    Daily
+                  <SelectItem value="7">
+                    Last 7 days
                   </SelectItem>
 
-                  <SelectItem value="weekly">
-                    Weekly
+                  <SelectItem value="30">
+                    Last 30 days
                   </SelectItem>
 
-                  <SelectItem value="monthly">
-                    Monthly
+                  <SelectItem value="90">
+                    Last 90 days
+                  </SelectItem>
+
+                  <SelectItem value="365">
+                    Last 12 months
+                  </SelectItem>
+
+                  <SelectItem value="custom">
+                    Custom range
                   </SelectItem>
                 </SelectContent>
               </Select>
-            </CardHeader>
 
-            <CardContent>
-              <TrendChart
-                data={trendData}
-                valueKey="transaction_value"
-                title={`${titleCase(
-                  trendMode,
-                )} transaction value`}
+              <Button
+                variant="outline"
+                onClick={() =>
+                  void loadAnalytics(true)
+                }
+                disabled={
+                  loading ||
+                  refreshing ||
+                  !dateRange
+                }
+              >
+                {refreshing ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                )}
+
+                Refresh
+              </Button>
+
+              <Button
+                variant="outline"
+                onClick={exportAnalyticsCsv}
+                disabled={
+                  !analytics ||
+                  loading ||
+                  refreshing
+                }
+              >
+                <Download className="mr-2 h-4 w-4" />
+                Export CSV
+              </Button>
+            </div>
+          </div>
+
+          {/* ====================================================
+              CUSTOM DATE RANGE
+          ==================================================== */}
+
+          {period === "custom" && (
+            <Card>
+              <CardContent className="p-4">
+                <div className="grid gap-4 md:grid-cols-3 md:items-end">
+                  <div>
+                    <label className="mb-2 block text-sm font-medium">
+                      Start date
+                    </label>
+
+                    <Input
+                      type="date"
+                      value={customStart}
+                      onChange={(event) =>
+                        setCustomStart(
+                          event.target.value,
+                        )
+                      }
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-2 block text-sm font-medium">
+                      End date
+                    </label>
+
+                    <Input
+                      type="date"
+                      value={customEnd}
+                      onChange={(event) =>
+                        setCustomEnd(
+                          event.target.value,
+                        )
+                      }
+                    />
+                  </div>
+
+                  <div className="text-sm text-muted-foreground">
+                    {!customStart ||
+                    !customEnd ? (
+                      "Select both dates to load analytics."
+                    ) : dateRange ? (
+                      <>
+                        Showing{" "}
+                        <strong>
+                          {formatDate(
+                            dateRange.start,
+                          )}
+                        </strong>{" "}
+                        to{" "}
+                        <strong>
+                          {formatDate(
+                            dateRange.end,
+                          )}
+                        </strong>
+                      </>
+                    ) : (
+                      <span className="text-destructive">
+                        Invalid date range.
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* ====================================================
+              PERIOD
+          ==================================================== */}
+
+          {summary?.period && (
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+              <span>Reporting period:</span>
+
+              <span className="font-medium text-foreground">
+                {formatDate(
+                  summary.period.start_at,
+                )}
+              </span>
+
+              <span>—</span>
+
+              <span className="font-medium text-foreground">
+                {formatDate(
+                  summary.period.end_at,
+                )}
+              </span>
+
+              {analytics?.generated_at && (
+                <>
+                  <span className="mx-1 hidden sm:inline">
+                    •
+                  </span>
+
+                  <span>
+                    Updated{" "}
+                    {formatDateTime(
+                      analytics.generated_at,
+                    )}
+                  </span>
+                </>
+              )}
+            </div>
+          )}
+
+          {/* ====================================================
+              PRIMARY KPI
+          ==================================================== */}
+
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <StatCard
+              title="Transaction volume"
+              value={
+                loading
+                  ? "..."
+                  : money(
+                      transactions?.total_value,
+                    )
+              }
+              subtitle={`${number(
+                transactions?.total_count,
+              )} transactions`}
+              icon={Activity}
+              loading={loading}
+            />
+
+            <StatCard
+              title="Successful value"
+              value={
+                loading
+                  ? "..."
+                  : money(
+                      transactions?.successful_value,
+                    )
+              }
+              subtitle={`${successRate.toFixed(
+                1,
+              )}% success rate`}
+              icon={CheckCircle2}
+              loading={loading}
+            />
+
+            <StatCard
+              title="Total revenue"
+              value={
+                loading
+                  ? "..."
+                  : money(revenue?.total)
+              }
+              subtitle="IyanjuPay fees generated"
+              icon={TrendingUp}
+              loading={loading}
+            />
+
+            <StatCard
+              title="Total customers"
+              value={
+                loading
+                  ? "..."
+                  : number(
+                      kyc?.total_users,
+                    )
+              }
+              subtitle="Registered platform users"
+              icon={Users}
+              loading={loading}
+            />
+          </div>
+
+          {/* ====================================================
+              TRANSACTION PERFORMANCE
+          ==================================================== */}
+
+          <section>
+            <SectionHeader
+              title="Transaction performance"
+              description="Overall transaction outcome and value distribution."
+              icon={Activity}
+            />
+
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <StatCard
+                title="Successful"
+                value={number(
+                  transactions?.successful_count,
+                )}
+                subtitle={money(
+                  transactions?.successful_value,
+                )}
+                icon={CheckCircle2}
               />
-            </CardContent>
-          </Card>
-        </section>
 
-
-        {/* ====================================================
-            REVENUE + SUCCESSFUL VALUE
-        ==================================================== */}
-
-        <div className="grid gap-4 lg:grid-cols-2">
-
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">
-                Revenue trend
-              </CardTitle>
-            </CardHeader>
-
-            <CardContent>
-              <TrendChart
-                data={trendData}
-                valueKey="revenue"
-                title="Revenue generated"
+              <StatCard
+                title="Pending"
+                value={number(
+                  transactions?.pending_count,
+                )}
+                subtitle={`${pendingRate.toFixed(
+                  1,
+                )}% of transactions`}
+                icon={Clock3}
               />
-            </CardContent>
-          </Card>
 
-
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">
-                Successful transaction value
-              </CardTitle>
-            </CardHeader>
-
-            <CardContent>
-              <TrendChart
-                data={trendData}
-                valueKey="successful_value"
-                title="Successful transaction value"
+              <StatCard
+                title="Failed"
+                value={number(
+                  transactions?.failed_count,
+                )}
+                subtitle={`${failureRate.toFixed(
+                  1,
+                )}% of transactions`}
+                icon={XCircle}
               />
-            </CardContent>
-          </Card>
 
-        </div>
-
-
-        {/* ====================================================
-            FUNDING + TRANSFER TRENDS
-        ==================================================== */}
-
-        <div className="grid gap-4 lg:grid-cols-2">
-
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">
-                Funding trend
-              </CardTitle>
-            </CardHeader>
-
-            <CardContent>
-              <TrendChart
-                data={trendData}
-                valueKey="funding_volume"
-                title="Funding volume"
+              <StatCard
+                title="Success rate"
+                value={`${successRate.toFixed(
+                  1,
+                )}%`}
+                subtitle={`${number(
+                  transactions?.successful_count,
+                )} successful`}
+                icon={ShieldCheck}
               />
-            </CardContent>
-          </Card>
+            </div>
+          </section>
 
+          {/* ====================================================
+              FINANCIAL ACTIVITY
+          ==================================================== */}
 
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">
-                Transfer trend
-              </CardTitle>
-            </CardHeader>
+          <section>
+            <SectionHeader
+              title="Financial activity"
+              description="Breakdown of major IyanjuPay transaction channels."
+              icon={Wallet}
+            />
 
-            <CardContent>
-              <TrendChart
-                data={trendData}
-                valueKey="transfer_volume"
-                title="Transfer volume"
-              />
-            </CardContent>
-          </Card>
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <Card>
+                <CardContent className="p-5">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted">
+                      <Wallet className="h-5 w-5" />
+                    </div>
 
-        </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">
+                        Funding
+                      </p>
 
+                      <p className="text-xl font-bold">
+                        {money(
+                          funding?.volume,
+                        )}
+                      </p>
+                    </div>
+                  </div>
 
-        {/* ====================================================
-            BREAKDOWN
-        ==================================================== */}
+                  <p className="mt-4 text-xs text-muted-foreground">
+                    {number(
+                      funding?.count,
+                    )}{" "}
+                    successful funding
+                    transactions
+                  </p>
+                </CardContent>
+              </Card>
 
-        <section>
-          <SectionHeader
-            title="Transaction breakdown"
-            description="Understand where transaction activity is coming from."
-            icon={Database}
-          />
+              <Card>
+                <CardContent className="p-5">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted">
+                      <CreditCard className="h-5 w-5" />
+                    </div>
+
+                    <div>
+                      <p className="text-sm text-muted-foreground">
+                        Bank transfers
+                      </p>
+
+                      <p className="text-xl font-bold">
+                        {money(
+                          transfers?.volume,
+                        )}
+                      </p>
+                    </div>
+                  </div>
+
+                  <p className="mt-4 text-xs text-muted-foreground">
+                    {number(
+                      transfers?.count,
+                    )}{" "}
+                    successful transfers
+                  </p>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardContent className="p-5">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted">
+                      <FileBarChart className="h-5 w-5" />
+                    </div>
+
+                    <div>
+                      <p className="text-sm text-muted-foreground">
+                        Bill payments
+                      </p>
+
+                      <p className="text-xl font-bold">
+                        {money(
+                          billPayments?.volume,
+                        )}
+                      </p>
+                    </div>
+                  </div>
+
+                  <p className="mt-4 text-xs text-muted-foreground">
+                    {number(
+                      billPayments?.count,
+                    )}{" "}
+                    successful payments
+                  </p>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardContent className="p-5">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted">
+                      <ArrowUpRight className="h-5 w-5" />
+                    </div>
+
+                    <div>
+                      <p className="text-sm text-muted-foreground">
+                        Internal transfers
+                      </p>
+
+                      <p className="text-xl font-bold">
+                        {money(
+                          internalTransfers?.volume,
+                        )}
+                      </p>
+                    </div>
+                  </div>
+
+                  <p className="mt-4 text-xs text-muted-foreground">
+                    {number(
+                      internalTransfers?.count,
+                    )}{" "}
+                    successful transfers
+                  </p>
+                </CardContent>
+              </Card>
+            </div>
+          </section>
+
+          {/* ====================================================
+              REVENUE
+          ==================================================== */}
+
+          <section>
+            <SectionHeader
+              title="Revenue"
+              description="IyanjuPay revenue generated from applicable transaction fees."
+              icon={TrendingUp}
+            />
+
+            <Card>
+              <CardContent className="p-5">
+                <div className="grid gap-6 md:grid-cols-4">
+                  <div>
+                    <p className="text-sm text-muted-foreground">
+                      Total revenue
+                    </p>
+
+                    <p className="mt-1 text-2xl font-bold">
+                      {money(revenue?.total)}
+                    </p>
+                  </div>
+
+                  <div>
+                    <p className="text-sm text-muted-foreground">
+                      Transfer fees
+                    </p>
+
+                    <p className="mt-1 text-xl font-semibold">
+                      {money(
+                        revenue?.transfer_fees,
+                      )}
+                    </p>
+                  </div>
+
+                  <div>
+                    <p className="text-sm text-muted-foreground">
+                      Bill fees
+                    </p>
+
+                    <p className="mt-1 text-xl font-semibold">
+                      {money(
+                        revenue?.bill_fees,
+                      )}
+                    </p>
+                  </div>
+
+                  <div>
+                    <p className="text-sm text-muted-foreground">
+                      Other fees
+                    </p>
+
+                    <p className="mt-1 text-xl font-semibold">
+                      {money(
+                        revenue?.other_fees,
+                      )}
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </section>
+
+          {/* ====================================================
+              TRANSACTION TRENDS
+          ==================================================== */}
+
+          <section>
+            <SectionHeader
+              title="Transaction trends"
+              description="Track transaction activity and value over time."
+              icon={BarChart3}
+            />
+
+            <Card>
+              <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <CardTitle className="text-base">
+                  Transaction value
+                </CardTitle>
+
+                <Select
+                  value={trendMode}
+                  onValueChange={(value) =>
+                    setTrendMode(
+                      value as TrendMode,
+                    )
+                  }
+                >
+                  <SelectTrigger className="w-full sm:w-[150px]">
+                    <SelectValue />
+                  </SelectTrigger>
+
+                  <SelectContent>
+                    <SelectItem value="daily">
+                      Daily
+                    </SelectItem>
+
+                    <SelectItem value="weekly">
+                      Weekly
+                    </SelectItem>
+
+                    <SelectItem value="monthly">
+                      Monthly
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </CardHeader>
+
+              <CardContent>
+                <TrendChart
+                  data={trendData}
+                  valueKey="transaction_value"
+                  title={`${titleCase(
+                    trendMode,
+                  )} transaction value`}
+                />
+              </CardContent>
+            </Card>
+          </section>
+
+          {/* ====================================================
+              REVENUE + SUCCESSFUL VALUE
+          ==================================================== */}
 
           <div className="grid gap-4 lg:grid-cols-2">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">
+                  Revenue trend
+                </CardTitle>
+              </CardHeader>
 
-            {/* CATEGORY */}
+              <CardContent>
+                <TrendChart
+                  data={trendData}
+                  valueKey="revenue"
+                  title="Revenue generated"
+                />
+              </CardContent>
+            </Card>
 
             <Card>
               <CardHeader>
                 <CardTitle className="text-base">
-                  By category
+                  Successful transaction value
                 </CardTitle>
               </CardHeader>
 
-              <CardContent className="space-y-5">
-                {!breakdown?.by_category
-                  ?.length ? (
-                  <EmptyState
-                    title="No category data"
-                    description="No categorized transactions were found for this period."
-                  />
-                ) : (
-                  breakdown.by_category
-                    .slice(0, 8)
-                    .map(
-                      (item) => (
+              <CardContent>
+                <TrendChart
+                  data={trendData}
+                  valueKey="successful_value"
+                  title="Successful transaction value"
+                />
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* ====================================================
+              FUNDING + TRANSFER TRENDS
+          ==================================================== */}
+
+          <div className="grid gap-4 lg:grid-cols-2">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">
+                  Funding trend
+                </CardTitle>
+              </CardHeader>
+
+              <CardContent>
+                <TrendChart
+                  data={trendData}
+                  valueKey="funding_volume"
+                  title="Funding volume"
+                />
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">
+                  Transfer trend
+                </CardTitle>
+              </CardHeader>
+
+              <CardContent>
+                <TrendChart
+                  data={trendData}
+                  valueKey="transfer_volume"
+                  title="Transfer volume"
+                />
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* ====================================================
+              BREAKDOWN
+          ==================================================== */}
+
+          <section>
+            <SectionHeader
+              title="Transaction breakdown"
+              description="Understand where transaction activity is coming from."
+              icon={Database}
+            />
+
+            <div className="grid gap-4 lg:grid-cols-2">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">
+                    By category
+                  </CardTitle>
+                </CardHeader>
+
+                <CardContent className="space-y-5">
+                  {!breakdown?.by_category
+                    ?.length ? (
+                    <EmptyState
+                      title="No category data"
+                      description="No categorized transactions were found for this period."
+                    />
+                  ) : (
+                    breakdown.by_category
+                      .slice(0, 8)
+                      .map((item) => (
                         <ProgressBar
                           key={
                             item.category ||
@@ -3018,34 +2394,29 @@ function AnalyticsPage() {
                             item.volume,
                           )}
                         />
-                      ),
-                    )
-                )}
-              </CardContent>
-            </Card>
+                      ))
+                  )}
+                </CardContent>
+              </Card>
 
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">
+                    By provider
+                  </CardTitle>
+                </CardHeader>
 
-            {/* PROVIDER */}
-
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">
-                  By provider
-                </CardTitle>
-              </CardHeader>
-
-              <CardContent className="space-y-5">
-                {!breakdown?.by_provider
-                  ?.length ? (
-                  <EmptyState
-                    title="No provider data"
-                    description="No provider information was found for this period."
-                  />
-                ) : (
-                  breakdown.by_provider
-                    .slice(0, 8)
-                    .map(
-                      (item) => (
+                <CardContent className="space-y-5">
+                  {!breakdown?.by_provider
+                    ?.length ? (
+                    <EmptyState
+                      title="No provider data"
+                      description="No provider information was found for this period."
+                    />
+                  ) : (
+                    breakdown.by_provider
+                      .slice(0, 8)
+                      .map((item) => (
                         <ProgressBar
                           key={
                             item.provider ||
@@ -3069,34 +2440,29 @@ function AnalyticsPage() {
                             item.volume,
                           )}
                         />
-                      ),
-                    )
-                )}
-              </CardContent>
-            </Card>
+                      ))
+                  )}
+                </CardContent>
+              </Card>
 
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">
+                    By status
+                  </CardTitle>
+                </CardHeader>
 
-            {/* STATUS */}
-
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">
-                  By status
-                </CardTitle>
-              </CardHeader>
-
-              <CardContent className="space-y-5">
-                {!breakdown?.by_status
-                  ?.length ? (
-                  <EmptyState
-                    title="No status data"
-                    description="No transaction status data was found."
-                  />
-                ) : (
-                  breakdown.by_status
-                    .slice(0, 8)
-                    .map(
-                      (item) => (
+                <CardContent className="space-y-5">
+                  {!breakdown?.by_status
+                    ?.length ? (
+                    <EmptyState
+                      title="No status data"
+                      description="No transaction status data was found."
+                    />
+                  ) : (
+                    breakdown.by_status
+                      .slice(0, 8)
+                      .map((item) => (
                         <ProgressBar
                           key={
                             item.status ||
@@ -3120,34 +2486,29 @@ function AnalyticsPage() {
                             item.volume,
                           )}
                         />
-                      ),
-                    )
-                )}
-              </CardContent>
-            </Card>
+                      ))
+                  )}
+                </CardContent>
+              </Card>
 
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">
+                    By transaction type
+                  </CardTitle>
+                </CardHeader>
 
-            {/* TRANSACTION TYPE */}
-
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">
-                  By transaction type
-                </CardTitle>
-              </CardHeader>
-
-              <CardContent className="space-y-5">
-                {!breakdown?.by_transaction_type
-                  ?.length ? (
-                  <EmptyState
-                    title="No transaction type data"
-                    description="No transaction type information was found."
-                  />
-                ) : (
-                  breakdown.by_transaction_type
-                    .slice(0, 8)
-                    .map(
-                      (item) => (
+                <CardContent className="space-y-5">
+                  {!breakdown?.by_transaction_type
+                    ?.length ? (
+                    <EmptyState
+                      title="No transaction type data"
+                      description="No transaction type information was found for this period."
+                    />
+                  ) : (
+                    breakdown.by_transaction_type
+                      .slice(0, 8)
+                      .map((item) => (
                         <ProgressBar
                           key={
                             item.transaction_type ||
@@ -3171,251 +2532,224 @@ function AnalyticsPage() {
                             item.volume,
                           )}
                         />
-                      ),
-                    )
-                )}
-              </CardContent>
-            </Card>
-
-          </div>
-        </section>
-
-
-        {/* ====================================================
-            CUSTOMER GROWTH
-        ==================================================== */}
-
-        <section>
-          <SectionHeader
-            title="Customer growth"
-            description="New customer registrations during the selected period."
-            icon={Users}
-          />
-
-          <Card>
-            <CardContent className="p-5">
-              <CustomerGrowthChart
-                data={
-                  customerGrowth
-                }
-              />
-            </CardContent>
-          </Card>
-        </section>
-
-
-        {/* ====================================================
-            KYC
-        ==================================================== */}
-
-        <section>
-          <SectionHeader
-            title="KYC overview"
-            description="Customer verification and KYC-level distribution."
-            icon={ShieldCheck}
-          />
-
-          <div className="grid gap-4 lg:grid-cols-2">
-
-            {/* VERIFICATION */}
-
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">
-                  Verification status
-                </CardTitle>
-              </CardHeader>
-
-              <CardContent className="space-y-6">
-
-                <ProgressBar
-                  label="Verified"
-                  count={safeNumber(
-                    kyc?.verified,
+                      ))
                   )}
-                  total={safeNumber(
-                    kyc?.total_users,
-                  )}
-                  value={
-                    kycVerifiedRate
-                  }
-                />
+                </CardContent>
+              </Card>
+            </div>
+          </section>
 
-                <ProgressBar
-                  label="Pending"
-                  count={safeNumber(
-                    kyc?.pending,
-                  )}
-                  total={safeNumber(
-                    kyc?.total_users,
-                  )}
-                  value={percentage(
-                    kyc?.pending,
-                    kyc?.total_users,
-                  )}
-                />
+          {/* ====================================================
+              CUSTOMER GROWTH
+          ==================================================== */}
 
-                <ProgressBar
-                  label="Unverified"
-                  count={safeNumber(
-                    kyc?.unverified,
-                  )}
-                  total={safeNumber(
-                    kyc?.total_users,
-                  )}
-                  value={percentage(
-                    kyc?.unverified,
-                    kyc?.total_users,
-                  )}
-                />
-
-              </CardContent>
-            </Card>
-
-
-            {/* LEVELS */}
-
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">
-                  KYC levels
-                </CardTitle>
-              </CardHeader>
-
-              <CardContent className="space-y-6">
-
-                <ProgressBar
-                  label="Level 1"
-                  count={safeNumber(
-                    kyc?.levels
-                      ?.level_1,
-                  )}
-                  total={safeNumber(
-                    kyc?.total_users,
-                  )}
-                  value={percentage(
-                    kyc?.levels
-                      ?.level_1,
-                    kyc?.total_users,
-                  )}
-                />
-
-                <ProgressBar
-                  label="Level 2"
-                  count={safeNumber(
-                    kyc?.levels
-                      ?.level_2,
-                  )}
-                  total={safeNumber(
-                    kyc?.total_users,
-                  )}
-                  value={percentage(
-                    kyc?.levels
-                      ?.level_2,
-                    kyc?.total_users,
-                  )}
-                />
-
-                <ProgressBar
-                  label="Level 3"
-                  count={safeNumber(
-                    kyc?.levels
-                      ?.level_3,
-                  )}
-                  total={safeNumber(
-                    kyc?.total_users,
-                  )}
-                  value={percentage(
-                    kyc?.levels
-                      ?.level_3,
-                    kyc?.total_users,
-                  )}
-                />
-
-              </CardContent>
-            </Card>
-
-          </div>
-
-
-          {/* KYC KPI */}
-
-          <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-
-            <StatCard
-              title="Total users"
-              value={number(
-                kyc?.total_users,
-              )}
-              subtitle="All registered users"
+          <section>
+            <SectionHeader
+              title="Customer growth"
+              description="New customer registrations during the selected period."
               icon={Users}
             />
 
-            <StatCard
-              title="Verified users"
-              value={number(
-                kyc?.verified,
-              )}
-              subtitle={`${kycVerifiedRate.toFixed(
-                1,
-              )}% verified`}
-              icon={CheckCircle2}
-            />
+            <Card>
+              <CardContent className="p-5">
+                <CustomerGrowthChart
+                  data={customerGrowth}
+                />
+              </CardContent>
+            </Card>
+          </section>
 
-            <StatCard
-              title="Pending KYC"
-              value={number(
-                kyc?.pending,
-              )}
-              subtitle="Awaiting verification"
-              icon={Clock3}
-            />
+          {/* ====================================================
+              KYC
+          ==================================================== */}
 
-            <StatCard
-              title="BVN verified"
-              value={number(
-                kyc?.bvn_verified,
-              )}
-              subtitle={`${bvnVerifiedRate.toFixed(
-                1,
-              )}% of users`}
+          <section>
+            <SectionHeader
+              title="KYC overview"
+              description="Customer verification and KYC-level distribution."
               icon={ShieldCheck}
             />
 
-          </div>
-        </section>
+            <div className="grid gap-4 lg:grid-cols-2">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">
+                    Verification status
+                  </CardTitle>
+                </CardHeader>
 
+                <CardContent className="space-y-6">
+                  <ProgressBar
+                    label="Verified"
+                    count={safeNumber(
+                      kyc?.verified,
+                    )}
+                    total={safeNumber(
+                      kyc?.total_users,
+                    )}
+                    value={
+                      kycVerifiedRate
+                    }
+                  />
 
-        {/* ====================================================
-            FOOTER
-        ==================================================== */}
+                  <ProgressBar
+                    label="Pending"
+                    count={safeNumber(
+                      kyc?.pending,
+                    )}
+                    total={safeNumber(
+                      kyc?.total_users,
+                    )}
+                    value={percentage(
+                      kyc?.pending,
+                      kyc?.total_users,
+                    )}
+                  />
 
-        <div className="border-t pt-6">
-          <div className="flex flex-col gap-2 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex items-center gap-2">
-              <Activity className="h-3.5 w-3.5" />
+                  <ProgressBar
+                    label="Unverified"
+                    count={safeNumber(
+                      kyc?.unverified,
+                    )}
+                    total={safeNumber(
+                      kyc?.total_users,
+                    )}
+                    value={percentage(
+                      kyc?.unverified,
+                      kyc?.total_users,
+                    )}
+                  />
+                </CardContent>
+              </Card>
 
-              <span>
-                Analytics are calculated from the existing IyanjuPay
-                transactions and customer records.
-              </span>
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">
+                    KYC levels
+                  </CardTitle>
+                </CardHeader>
+
+                <CardContent className="space-y-6">
+                  <ProgressBar
+                    label="Level 1"
+                    count={safeNumber(
+                      kyc?.levels?.level_1,
+                    )}
+                    total={safeNumber(
+                      kyc?.total_users,
+                    )}
+                    value={percentage(
+                      kyc?.levels?.level_1,
+                      kyc?.total_users,
+                    )}
+                  />
+
+                  <ProgressBar
+                    label="Level 2"
+                    count={safeNumber(
+                      kyc?.levels?.level_2,
+                    )}
+                    total={safeNumber(
+                      kyc?.total_users,
+                    )}
+                    value={percentage(
+                      kyc?.levels?.level_2,
+                      kyc?.total_users,
+                    )}
+                  />
+
+                  <ProgressBar
+                    label="Level 3"
+                    count={safeNumber(
+                      kyc?.levels?.level_3,
+                    )}
+                    total={safeNumber(
+                      kyc?.total_users,
+                    )}
+                    value={percentage(
+                      kyc?.levels?.level_3,
+                      kyc?.total_users,
+                    )}
+                  />
+                </CardContent>
+              </Card>
             </div>
 
-            {analytics?.generated_at && (
-              <span>
-                Last generated{" "}
-                {formatDateTime(
-                  analytics.generated_at,
+            {/* KYC KPI */}
+
+            <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <StatCard
+                title="Total users"
+                value={number(
+                  kyc?.total_users,
                 )}
-              </span>
-            )}
+                subtitle="All registered users"
+                icon={Users}
+              />
+
+              <StatCard
+                title="Verified users"
+                value={number(
+                  kyc?.verified,
+                )}
+                subtitle={`${kycVerifiedRate.toFixed(
+                  1,
+                )}% verified`}
+                icon={CheckCircle2}
+              />
+
+              <StatCard
+                title="Pending KYC"
+                value={number(
+                  kyc?.pending,
+                )}
+                subtitle="Awaiting verification"
+                icon={Clock3}
+              />
+
+              <StatCard
+                title="BVN verified"
+                value={number(
+                  kyc?.bvn_verified,
+                )}
+                subtitle={`${bvnVerifiedRate.toFixed(
+                  1,
+                )}% of users`}
+                icon={ShieldCheck}
+              />
+            </div>
+          </section>
+
+          {/* ====================================================
+              FOOTER
+          ==================================================== */}
+
+          <div className="border-t pt-6">
+            <div className="flex flex-col gap-2 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-2">
+                <Activity className="h-3.5 w-3.5" />
+
+                <span>
+                  Analytics are calculated from the
+                  existing IyanjuPay transactions and
+                  customer records.
+                </span>
+              </div>
+
+              {analytics?.generated_at && (
+                <span>
+                  Last generated{" "}
+                  {formatDateTime(
+                    analytics.generated_at,
+                  )}
+                </span>
+              )}
+            </div>
           </div>
         </div>
-
       </div>
-    </div>
+    </AdminLayout>
   );
 }
-
 
 export default AnalyticsPage;

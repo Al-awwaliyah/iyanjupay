@@ -798,7 +798,7 @@ const ReconciliationPage = () => {
           <Button
             type="button"
             variant="ghost"
-            onClick={() => navigate(/admin)}
+            onClick={() => navigate("/admin)}
             className="gap-2 -ml-2 text-gray-600 hover:text-gray-900"
           >
             <ArrowLeft className="h-4 w-4" />

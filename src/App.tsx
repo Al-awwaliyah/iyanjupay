@@ -41,6 +41,7 @@ import AdminDisputesPage from "@/pages/admin/AdminDisputesPage";
 import ReconciliationPage from "@/pages/admin/ReconciliationPage";
 import AnalyticsPage from "@/pages/admin/AnalyticsPage";
 import NotificationsPage from "@/pages/admin/NotificationsPage";
+import AuditLogsPage from "@/pages/admin/AuditLogsPage";
 import UserDisputesPage from "@/components/disputes/UserDisputesPage";
 import VerifyPaymentPinResetOtp from "@/pages/VerifyPaymentPinResetOtp";
 import ResetPaymentPin from "@/pages/ResetPaymentPin";
@@ -235,6 +236,11 @@ const App = () => {
             <Route
               path="/admin/notifications"
               element={<NotificationsPage />}
+            />
+
+            <Route
+              path="/admin/audit-logs"
+              element={<AuditLogsPage />}
             />
             
             <Route

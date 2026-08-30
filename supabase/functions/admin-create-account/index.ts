@@ -25,55 +25,91 @@ const VALID_ROLES: AdminRole[] = [
   "read_only_admin",
 ];
 
+type JsonRecord = Record<string, unknown>;
+
 function jsonResponse(
-  body: Record<string, unknown>,
+  body: JsonRecord,
   status = 200,
-) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: corsHeaders,
-  });
+): Response {
+  return new Response(
+    JSON.stringify(body),
+    {
+      status,
+      headers: corsHeaders,
+    },
+  );
 }
 
-function normalizeName(value: unknown): string {
-  return typeof value === "string"
-    ? value.trim().replace(/\s+/g, " ")
-    : "";
+function normalizeName(
+  value: unknown,
+): string {
+  if (typeof value !== "string") {
+    return "";
+  }
+
+  return value
+    .trim()
+    .replace(/\s+/g, " ");
 }
 
-function normalizeEmail(value: unknown): string {
-  return typeof value === "string"
-    ? value.trim().toLowerCase()
-    : "";
+function normalizeEmail(
+  value: unknown,
+): string {
+  if (typeof value !== "string") {
+    return "";
+  }
+
+  return value
+    .trim()
+    .toLowerCase();
 }
 
-function normalizeRole(value: unknown): AdminRole | null {
+function normalizeRole(
+  value: unknown,
+): AdminRole | null {
   if (typeof value !== "string") {
     return null;
   }
 
-  const role = value.trim().toLowerCase();
+  const role =
+    value
+      .trim()
+      .toLowerCase();
 
-  return VALID_ROLES.includes(role as AdminRole)
-    ? (role as AdminRole)
-    : null;
+  if (
+    !VALID_ROLES.includes(
+      role as AdminRole,
+    )
+  ) {
+    return null;
+  }
+
+  return role as AdminRole;
 }
 
-function getLastName(fullName: string): string {
-  const parts = fullName
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean);
+function getLastName(
+  fullName: string,
+): string {
+  const parts =
+    fullName
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean);
 
   if (parts.length === 0) {
     return "";
   }
 
-  return parts[parts.length - 1];
+  return parts[
+    parts.length - 1
+  ];
 }
 
-function buildTemporaryPassword(fullName: string): string {
-  const lastName = getLastName(fullName);
+function buildTemporaryPassword(
+  fullName: string,
+): string {
+  const lastName =
+    getLastName(fullName);
 
   if (!lastName) {
     throw new Error(
@@ -82,121 +118,172 @@ function buildTemporaryPassword(fullName: string): string {
   }
 
   const normalizedLastName =
-    lastName.charAt(0).toUpperCase() +
+    lastName
+      .charAt(0)
+      .toUpperCase() +
     lastName.slice(1);
 
   return `${normalizedLastName}@123`;
 }
 
-function getRoleLabel(role: AdminRole): string {
-  const labels: Record<AdminRole, string> = {
-    super_admin: "Super Admin",
-    operations_admin: "Operations Admin",
-    support_admin: "Support Admin",
-    finance_admin: "Finance Admin",
-    compliance_admin: "Compliance Admin",
-    read_only_admin: "Read Only Admin",
+function getRoleLabel(
+  role: AdminRole,
+): string {
+  const labels: Record<
+    AdminRole,
+    string
+  > = {
+    super_admin:
+      "Super Admin",
+
+    operations_admin:
+      "Operations Admin",
+
+    support_admin:
+      "Support Admin",
+
+    finance_admin:
+      "Finance Admin",
+
+    compliance_admin:
+      "Compliance Admin",
+
+    read_only_admin:
+      "Read Only Admin",
   };
 
   return labels[role];
 }
 
-function escapeHtml(value: string): string {
+function escapeHtml(
+  value: string,
+): string {
   return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
+    .replaceAll(
+      "&",
+      "&amp;",
+    )
+    .replaceAll(
+      "<",
+      "&lt;",
+    )
+    .replaceAll(
+      ">",
+      "&gt;",
+    )
+    .replaceAll(
+      '"',
+      "&quot;",
+    )
+    .replaceAll(
+      "'",
+      "&#039;",
+    );
 }
 
-async function sendBrevoEmail(params: {
-  recipientEmail: string;
-  recipientName: string;
-  temporaryPassword: string;
-  role: AdminRole;
-  adminPortalUrl: string;
-}) {
-  const host =
-    Deno.env.get("BREVO_SMTP_HOST")?.trim() || "";
-
-  const port =
-    Number(Deno.env.get("BREVO_SMTP_PORT") || "587");
-
-  const username =
-    Deno.env.get("BREVO_SMTP_USER")?.trim() || "";
-
-  const password =
-    Deno.env.get("BREVO_SMTP_PASSWORD") || "";
+async function sendBrevoEmail(
+  params: {
+    recipientEmail: string;
+    recipientName: string;
+    temporaryPassword: string;
+    role: AdminRole;
+    adminPortalUrl: string;
+  },
+) {
+  const apiKey =
+    Deno.env
+      .get(
+        "BREVO_SMTP_PASSWORD",
+      )
+      ?.trim() || "";
 
   const fromEmail =
-    Deno.env.get("BREVO_FROM_EMAIL")?.trim() || "";
+    Deno.env
+      .get(
+        "BREVO_FROM_EMAIL",
+      )
+      ?.trim() || "";
 
   const fromName =
-    Deno.env.get("BREVO_FROM_NAME")?.trim() ||
+    Deno.env
+      .get(
+        "BREVO_FROM_NAME",
+      )
+      ?.trim() ||
     "IyanjuPay";
 
   const portalUrl =
-    Deno.env.get("ADMIN_PORTAL_URL")?.trim() ||
+    params.adminPortalUrl?.trim() ||
+    Deno.env
+      .get(
+        "ADMIN_PORTAL_URL",
+      )
+      ?.trim() ||
     "https://iyanjupay.vercel.app/admin/login";
 
-  if (
-    !host ||
-    !port ||
-    !username ||
-    !password ||
-    !fromEmail
-  ) {
+  if (!apiKey) {
     throw new Error(
-      "Brevo SMTP environment variables are not fully configured.",
+      "Brevo API credentials are not configured.",
     );
   }
 
-  if (!params.adminPortalUrl) {
+  if (!fromEmail) {
+    throw new Error(
+      "Brevo sender email is not configured.",
+    );
+  }
+
+  if (!portalUrl) {
     throw new Error(
       "Admin portal URL is not configured.",
     );
   }
 
-  /*
-   * Brevo SMTP is exposed through the SMTP protocol.
-   *
-   * Deno's standard runtime does not provide a native
-   * SMTP client, so use the Brevo transactional email API
-   * with the configured Brevo credentials.
-   *
-   * BREVO_SMTP_PASSWORD is the Brevo SMTP/API credential
-   * stored in Supabase Secrets.
-   */
-  const response = await fetch(
-    "https://api.brevo.com/v3/smtp/email",
-    {
-      method: "POST",
-      headers: {
-        accept: "application/json",
-        "api-key": password,
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({
-        sender: {
-          name: fromName,
-          email: fromEmail,
+  const response =
+    await fetch(
+      "https://api.brevo.com/v3/smtp/email",
+      {
+        method: "POST",
+
+        headers: {
+          accept:
+            "application/json",
+          "api-key":
+            apiKey,
+          "content-type":
+            "application/json",
         },
-        to: [
-          {
-            email: params.recipientEmail,
-            name: params.recipientName,
+
+        body: JSON.stringify({
+          sender: {
+            name: fromName,
+            email: fromEmail,
           },
-        ],
-        subject:
-          "Your IyanjuPay Administrator Account",
-        htmlContent: `
+
+          to: [
+            {
+              email:
+                params.recipientEmail,
+              name:
+                params.recipientName,
+            },
+          ],
+
+          subject:
+            "Your IyanjuPay Administrator Account",
+
+          htmlContent: `
 <!DOCTYPE html>
 <html>
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>IyanjuPay Administrator Account</title>
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0"
+  />
+  <title>
+    IyanjuPay Administrator Account
+  </title>
 </head>
 
 <body style="
@@ -242,7 +329,10 @@ async function sendBrevoEmail(params: {
         margin:0 0 16px;
         font-size:22px;
       ">
-        Welcome, ${escapeHtml(params.recipientName)}
+        Welcome,
+        ${escapeHtml(
+          params.recipientName,
+        )}
       </h2>
 
       <p style="
@@ -250,8 +340,8 @@ async function sendBrevoEmail(params: {
         line-height:1.6;
         color:#475569;
       ">
-        A new IyanjuPay administrator account has been
-        created for you.
+        A new IyanjuPay administrator
+        account has been created for you.
       </p>
 
       <div style="
@@ -275,7 +365,11 @@ async function sendBrevoEmail(params: {
           font-size:16px;
           font-weight:bold;
         ">
-          ${escapeHtml(getRoleLabel(params.role))}
+          ${escapeHtml(
+            getRoleLabel(
+              params.role,
+            ),
+          )}
         </p>
 
         <p style="
@@ -291,7 +385,9 @@ async function sendBrevoEmail(params: {
           font-size:16px;
           font-weight:bold;
         ">
-          ${escapeHtml(params.recipientEmail)}
+          ${escapeHtml(
+            params.recipientEmail,
+          )}
         </p>
 
         <p style="
@@ -313,7 +409,9 @@ async function sendBrevoEmail(params: {
           font-weight:bold;
           letter-spacing:.5px;
         ">
-          ${escapeHtml(params.temporaryPassword)}
+          ${escapeHtml(
+            params.temporaryPassword,
+          )}
         </div>
 
       </div>
@@ -323,8 +421,9 @@ async function sendBrevoEmail(params: {
         line-height:1.6;
         color:#475569;
       ">
-        Please sign in through the administrator portal
-        using the email address and temporary password
+        Please sign in through the
+        administrator portal using the
+        email address and temporary password
         provided above.
       </p>
 
@@ -333,7 +432,9 @@ async function sendBrevoEmail(params: {
         text-align:center;
       ">
         <a
-          href="${escapeHtml(portalUrl)}"
+          href="${escapeHtml(
+            portalUrl,
+          )}"
           style="
             display:inline-block;
             padding:13px 22px;
@@ -362,11 +463,15 @@ async function sendBrevoEmail(params: {
           line-height:1.6;
           color:#9a3412;
         ">
-          <strong>Security notice:</strong>
-          This is a temporary password. You will be
-          required to change it after your first
-          administrator login. Do not share your
-          administrator credentials with anyone.
+          <strong>
+            Security notice:
+          </strong>
+
+          This is a temporary password.
+          You will be required to change it
+          after your first administrator login.
+          Do not share your administrator
+          credentials with anyone.
         </p>
       </div>
 
@@ -376,9 +481,10 @@ async function sendBrevoEmail(params: {
         line-height:1.5;
         color:#94a3b8;
       ">
-        If you were not expecting this administrator
-        account, please contact the IyanjuPay
-        administration team immediately.
+        If you were not expecting this
+        administrator account, please contact
+        the IyanjuPay administration team
+        immediately.
       </p>
 
     </div>
@@ -394,7 +500,8 @@ async function sendBrevoEmail(params: {
         font-size:12px;
         color:#94a3b8;
       ">
-        © ${new Date().getFullYear()} IyanjuPay.
+        © ${new Date().getFullYear()}
+        IyanjuPay.
         All rights reserved.
       </p>
     </div>
@@ -402,21 +509,27 @@ async function sendBrevoEmail(params: {
   </div>
 </body>
 </html>
-        `,
-      }),
-    },
-  );
+          `,
+        }),
+      },
+    );
 
-  const responseText = await response.text();
+  const responseText =
+    await response.text();
 
-  let responseData: unknown = null;
+  let responseData:
+    unknown = null;
 
   try {
-    responseData = responseText
-      ? JSON.parse(responseText)
-      : null;
+    responseData =
+      responseText
+        ? JSON.parse(
+            responseText,
+          )
+        : null;
   } catch {
-    responseData = responseText;
+    responseData =
+      responseText;
   }
 
   if (!response.ok) {
@@ -434,727 +547,977 @@ async function sendBrevoEmail(params: {
   return responseData;
 }
 
-Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") {
-    return new Response("ok", {
-      headers: corsHeaders,
-    });
-  }
+async function findAuthUserByEmail(
+  adminClient: ReturnType<
+    typeof createClient
+  >,
+  email: string,
+): Promise<{
+  id: string;
+  email: string | null;
+} | null> {
+  let page = 1;
 
-  if (req.method !== "POST") {
-    return jsonResponse(
-      {
-        success: false,
-        error: "Method not allowed",
-      },
-      405,
-    );
-  }
+  const perPage = 1000;
 
-  const supabaseUrl =
-    Deno.env.get("SUPABASE_URL")?.trim() || "";
-
-  const serviceRoleKey =
-    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")?.trim() ||
-    "";
-
-  const anonKey =
-    Deno.env.get("SUPABASE_ANON_KEY")?.trim() || "";
-
-  if (
-    !supabaseUrl ||
-    !serviceRoleKey ||
-    !anonKey
-  ) {
-    return jsonResponse(
-      {
-        success: false,
-        error:
-          "Supabase environment variables are not configured.",
-      },
-      500,
-    );
-  }
-
-  const authorization =
-    req.headers.get("Authorization");
-
-  if (!authorization) {
-    return jsonResponse(
-      {
-        success: false,
-        error: "Unauthorized",
-      },
-      401,
-    );
-  }
-
-  try {
-    /*
-     * User-scoped client.
-     *
-     * This preserves the authenticated caller's JWT.
-     */
-    const userClient = createClient(
-      supabaseUrl,
-      anonKey,
-      {
-        global: {
-          headers: {
-            Authorization: authorization,
-          },
-        },
-        auth: {
-          autoRefreshToken: false,
-          persistSession: false,
-        },
-      },
-    );
-
+  while (true) {
     const {
-      data: { user },
-      error: userError,
-    } = await userClient.auth.getUser();
+      data,
+      error,
+    } =
+      await adminClient
+        .auth
+        .admin
+        .listUsers({
+          page,
+          perPage,
+        });
 
-    if (userError || !user) {
+    if (error) {
+      throw new Error(
+        "Unable to verify whether the email address already exists.",
+      );
+    }
+
+    const users =
+      data?.users || [];
+
+    const matchingUser =
+      users.find(
+        (authUser) =>
+          authUser.email
+            ?.trim()
+            .toLowerCase() ===
+          email,
+      );
+
+    if (matchingUser) {
+      return {
+        id:
+          matchingUser.id,
+        email:
+          matchingUser.email ??
+          null,
+      };
+    }
+
+    if (
+      users.length <
+      perPage
+    ) {
+      break;
+    }
+
+    page += 1;
+  }
+
+  return null;
+}
+
+Deno.serve(
+  async (req) => {
+    if (
+      req.method ===
+      "OPTIONS"
+    ) {
+      return new Response(
+        "ok",
+        {
+          headers:
+            corsHeaders,
+        },
+      );
+    }
+
+    if (
+      req.method !==
+      "POST"
+    ) {
       return jsonResponse(
         {
           success: false,
-          error: "Unauthorized",
+          error:
+            "Method not allowed.",
+        },
+        405,
+      );
+    }
+
+    const supabaseUrl =
+      Deno.env
+        .get(
+          "SUPABASE_URL",
+        )
+        ?.trim() || "";
+
+    const serviceRoleKey =
+      Deno.env
+        .get(
+          "SUPABASE_SERVICE_ROLE_KEY",
+        )
+        ?.trim() || "";
+
+    const anonKey =
+      Deno.env
+        .get(
+          "SUPABASE_ANON_KEY",
+        )
+        ?.trim() || "";
+
+    if (
+      !supabaseUrl ||
+      !serviceRoleKey ||
+      !anonKey
+    ) {
+      return jsonResponse(
+        {
+          success: false,
+          error:
+            "Supabase environment variables are not configured.",
+        },
+        500,
+      );
+    }
+
+    const authorization =
+      req.headers.get(
+        "Authorization",
+      );
+
+    if (
+      !authorization
+    ) {
+      return jsonResponse(
+        {
+          success: false,
+          error:
+            "Unauthorized.",
         },
         401,
       );
     }
 
-    /*
-     * Service-role client.
-     *
-     * Used only inside this trusted Edge Function.
-     */
-    const admin = createClient(
-      supabaseUrl,
-      serviceRoleKey,
-      {
-        auth: {
-          autoRefreshToken: false,
-          persistSession: false,
-        },
-      },
-    );
-
-    /*
-     * Require the caller to be a super administrator.
-     */
-    const { data: isSuperAdmin, error: permissionError } =
-      await admin.rpc(
-        "admin_management_require_super_admin",
-      );
-
-    /*
-     * The RPC is designed as an authorization guard.
-     * If it succeeds, the current authenticated user
-     * must be a super administrator.
-     *
-     * Because the service-role client does not carry
-     * the caller JWT, explicitly perform the check below.
-     */
-    if (permissionError) {
-      /*
-       * Do the authorization check directly against
-       * support_admins as a service-side fallback.
-       */
-      const {
-        data: callerAdmin,
-        error: callerAdminError,
-      } = await admin
-        .from("support_admins")
-        .select("user_id, role, is_active")
-        .eq("user_id", user.id)
-        .maybeSingle();
-
-      if (
-        callerAdminError ||
-        !callerAdmin ||
-        callerAdmin.role !== "super_admin" ||
-        callerAdmin.is_active !== true
-      ) {
-        return jsonResponse(
-          {
-            success: false,
-            error:
-              "Only an active Super Admin can create administrator accounts.",
-          },
-          403,
-        );
-      }
-    } else {
-      /*
-       * The direct RPC result is not relied upon because
-       * service-role auth.uid() may not represent the
-       * caller. Verify explicitly as well.
-       */
-      const {
-        data: callerAdmin,
-        error: callerAdminError,
-      } = await admin
-        .from("support_admins")
-        .select("user_id, role, is_active")
-        .eq("user_id", user.id)
-        .maybeSingle();
-
-      if (
-        callerAdminError ||
-        !callerAdmin ||
-        callerAdmin.role !== "super_admin" ||
-        callerAdmin.is_active !== true
-      ) {
-        return jsonResponse(
-          {
-            success: false,
-            error:
-              "Only an active Super Admin can create administrator accounts.",
-          },
-          403,
-        );
-      }
-    }
-
-    /*
-     * Parse request.
-     */
-    let body: Record<string, unknown>;
-
     try {
-      body = await req.json();
-    } catch {
-      return jsonResponse(
-        {
-          success: false,
-          error: "Invalid JSON request body.",
-        },
-        400,
-      );
-    }
+      /*
+       * Caller-scoped client.
+       *
+       * This client carries the actual
+       * administrator JWT.
+       */
+      const userClient =
+        createClient(
+          supabaseUrl,
+          anonKey,
+          {
+            global: {
+              headers: {
+                Authorization:
+                  authorization,
+              },
+            },
 
-    const fullName = normalizeName(
-      body.full_name,
-    );
+            auth: {
+              autoRefreshToken:
+                false,
 
-    const email = normalizeEmail(
-      body.email,
-    );
+              persistSession:
+                false,
+            },
+          },
+        );
 
-    const role = normalizeRole(
-      body.role,
-    );
-
-    const displayName =
-      normalizeName(body.display_name) ||
-      fullName;
-
-    const notes =
-      typeof body.notes === "string"
-        ? body.notes.trim()
-        : null;
-
-    if (!fullName) {
-      return jsonResponse(
-        {
-          success: false,
-          error: "Full name is required.",
-        },
-        400,
-      );
-    }
-
-    if (fullName.length < 2) {
-      return jsonResponse(
-        {
-          success: false,
-          error:
-            "Please provide the administrator's full name.",
-        },
-        400,
-      );
-    }
-
-    if (!email) {
-      return jsonResponse(
-        {
-          success: false,
-          error: "Email address is required.",
-        },
-        400,
-      );
-    }
-
-    const emailPattern =
-      /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-    if (!emailPattern.test(email)) {
-      return jsonResponse(
-        {
-          success: false,
-          error: "Please provide a valid email address.",
-        },
-        400,
-      );
-    }
-
-    if (!role) {
-      return jsonResponse(
-        {
-          success: false,
-          error:
-            "A valid administrator role is required.",
-        },
-        400,
-      );
-    }
-
-    /*
-     * Prevent accidental self-account duplication.
-     */
-    if (
-      user.email?.trim().toLowerCase() === email
-    ) {
-      return jsonResponse(
-        {
-          success: false,
-          error:
-            "The current administrator already has an account.",
-        },
-        400,
-      );
-    }
-
-    /*
-     * Check whether the email already belongs to an
-     * administrator.
-     *
-     * We first search Auth users.
-     */
-    let existingAuthUserId: string | null = null;
-
-    /*
-     * Supabase Admin API does not provide an efficient
-     * email lookup endpoint in every version, so use
-     * listUsers with pagination.
-     */
-    let authPage = 1;
-    const authPerPage = 1000;
-
-    while (true) {
       const {
-        data: usersPage,
-        error: usersError,
-      } = await admin.auth.admin.listUsers({
-        page: authPage,
-        perPage: authPerPage,
-      });
+        data: {
+          user,
+        },
+        error:
+          userError,
+      } =
+        await userClient.auth.getUser();
 
-      if (usersError) {
+      if (
+        userError ||
+        !user
+      ) {
+        return jsonResponse(
+          {
+            success: false,
+            error:
+              "Unauthorized.",
+          },
+          401,
+        );
+      }
+
+      /*
+       * Service-role client.
+       *
+       * Used only for trusted server-side
+       * database/Auth administration.
+       */
+      const adminClient =
+        createClient(
+          supabaseUrl,
+          serviceRoleKey,
+          {
+            auth: {
+              autoRefreshToken:
+                false,
+
+              persistSession:
+                false,
+            },
+          },
+        );
+
+      /*
+       * Verify that the authenticated caller
+       * is an active Super Admin.
+       *
+       * We intentionally query support_admins
+       * directly instead of using an RPC through
+       * the service-role client because the latter
+       * does not carry the caller's auth.uid().
+       */
+      const {
+        data:
+          callerAdmin,
+        error:
+          callerAdminError,
+      } =
+        await adminClient
+          .from(
+            "support_admins",
+          )
+          .select(
+            "user_id, role, is_active",
+          )
+          .eq(
+            "user_id",
+            user.id,
+          )
+          .maybeSingle();
+
+      if (
+        callerAdminError
+      ) {
         console.error(
-          "Failed to inspect existing Auth users:",
-          usersError,
+          "Caller administrator lookup failed:",
+          callerAdminError,
         );
 
         return jsonResponse(
           {
             success: false,
             error:
-              "Unable to verify whether the email address already exists.",
+              "Unable to verify administrator permissions.",
           },
           500,
         );
-      }
-
-      const matchingUser =
-        usersPage.users.find(
-          (authUser) =>
-            authUser.email?.trim().toLowerCase() ===
-            email,
-        );
-
-      if (matchingUser) {
-        existingAuthUserId =
-          matchingUser.id;
-        break;
       }
 
       if (
-        usersPage.users.length < authPerPage
+        !callerAdmin ||
+        callerAdmin.role !==
+          "super_admin" ||
+        callerAdmin.is_active !==
+          true
       ) {
-        break;
-      }
-
-      authPage += 1;
-    }
-
-    if (existingAuthUserId) {
-      const {
-        data: existingAdmin,
-        error: existingAdminError,
-      } = await admin
-        .from("support_admins")
-        .select("user_id, role, is_active")
-        .eq(
-          "user_id",
-          existingAuthUserId,
-        )
-        .maybeSingle();
-
-      if (existingAdminError) {
-        console.error(
-          "Existing administrator lookup failed:",
-          existingAdminError,
-        );
-
         return jsonResponse(
           {
             success: false,
             error:
-              "Unable to verify the existing account.",
+              "Only an active Super Admin can create administrator accounts.",
           },
-          500,
+          403,
         );
       }
 
-      if (existingAdmin) {
+      /*
+       * Parse request body.
+       */
+      let body:
+        JsonRecord;
+
+      try {
+        body =
+          await req.json();
+      } catch {
         return jsonResponse(
           {
             success: false,
             error:
-              "This email address already belongs to an administrator.",
+              "Invalid JSON request body.",
+          },
+          400,
+        );
+      }
+
+      const fullName =
+        normalizeName(
+          body.full_name,
+        );
+
+      const email =
+        normalizeEmail(
+          body.email,
+        );
+
+      const role =
+        normalizeRole(
+          body.role,
+        );
+
+      const displayName =
+        normalizeName(
+          body.display_name,
+        ) ||
+        fullName;
+
+      const notes =
+        typeof body.notes ===
+        "string"
+          ? body.notes.trim()
+          : null;
+
+      /*
+       * Validate full name.
+       */
+      if (!fullName) {
+        return jsonResponse(
+          {
+            success: false,
+            error:
+              "Full name is required.",
+          },
+          400,
+        );
+      }
+
+      if (
+        fullName.length <
+        2
+      ) {
+        return jsonResponse(
+          {
+            success: false,
+            error:
+              "Please provide the administrator's full name.",
+          },
+          400,
+        );
+      }
+
+      /*
+       * Validate email.
+       */
+      if (!email) {
+        return jsonResponse(
+          {
+            success: false,
+            error:
+              "Email address is required.",
+          },
+          400,
+        );
+      }
+
+      const emailPattern =
+        /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+      if (
+        !emailPattern.test(
+          email,
+        )
+      ) {
+        return jsonResponse(
+          {
+            success: false,
+            error:
+              "Please provide a valid email address.",
+          },
+          400,
+        );
+      }
+
+      /*
+       * Validate role.
+       */
+      if (!role) {
+        return jsonResponse(
+          {
+            success: false,
+            error:
+              "A valid administrator role is required.",
+          },
+          400,
+        );
+      }
+
+      /*
+       * Prevent a Super Admin from creating
+       * another account using their own email.
+       */
+      if (
+        user.email
+          ?.trim()
+          .toLowerCase() ===
+        email
+      ) {
+        return jsonResponse(
+          {
+            success: false,
+            error:
+              "The current administrator already has an account.",
           },
           409,
         );
       }
 
-      return jsonResponse(
+      /*
+       * Find an existing Supabase Auth user.
+       *
+       * Administrator creation intentionally
+       * requires a new email address.
+       */
+      let existingAuthUser:
         {
-          success: false,
-          error:
-            "An account with this email address already exists. Administrator creation only supports creating a new account.",
-        },
-        409,
-      );
-    }
+          id: string;
+          email:
+            | string
+            | null;
+        } | null = null;
 
-    /*
-     * Generate temporary password.
-     *
-     * Example:
-     * "John Johnson" -> Johnson@123
-     */
-    const temporaryPassword =
-      buildTemporaryPassword(fullName);
-
-    /*
-     * Create the Auth account.
-     *
-     * email_confirm: true means the administrator
-     * does not need the normal user email-verification
-     * flow before entering the admin portal.
-     */
-    const {
-      data: createdUser,
-      error: createUserError,
-    } = await admin.auth.admin.createUser({
-      email,
-      password: temporaryPassword,
-      email_confirm: true,
-      user_metadata: {
-        full_name: fullName,
-        display_name: displayName,
-        account_type: "admin",
-        admin_role: role,
-        must_change_password: true,
-        created_by_admin_id: user.id,
-      },
-    });
-
-    if (
-      createUserError ||
-      !createdUser.user
-    ) {
-      console.error(
-        "Admin Auth account creation failed:",
-        createUserError,
-      );
-
-      return jsonResponse(
-        {
-          success: false,
-          error:
-            createUserError?.message ||
-            "Failed to create the administrator account.",
-        },
-        400,
-      );
-    }
-
-    const newAdminId =
-      createdUser.user.id;
-
-    /*
-     * Create support_admins record.
-     *
-     * This table has user_id as its primary key.
-     */
-    const {
-      error: adminInsertError,
-    } = await admin
-      .from("support_admins")
-      .insert({
-        user_id: newAdminId,
-        role,
-        is_active: true,
-        created_by: user.id,
-      });
-
-    if (adminInsertError) {
-      console.error(
-        "support_admins insert failed:",
-        adminInsertError,
-      );
-
-      await admin.auth.admin.deleteUser(
-        newAdminId,
-      );
-
-      return jsonResponse(
-        {
-          success: false,
-          error:
-            "Administrator account could not be provisioned.",
-        },
-        500,
-      );
-    }
-
-    /*
-     * Create administrator metadata.
-     */
-    const {
-      error: metadataError,
-    } = await admin
-      .from("admin_management_metadata")
-      .insert({
-        admin_user_id: newAdminId,
-        display_name:
-          displayName || fullName,
-        notes,
-        last_activity_at: null,
-        must_change_password: true,
-      });
-
-    if (metadataError) {
-      console.error(
-        "Admin metadata insert failed:",
-        metadataError,
-      );
-
-      await admin
-        .from("support_admins")
-        .delete()
-        .eq(
-          "user_id",
-          newAdminId,
+      try {
+        existingAuthUser =
+          await findAuthUserByEmail(
+            adminClient,
+            email,
+          );
+      } catch (
+        lookupError
+      ) {
+        console.error(
+          "Existing Auth user lookup failed:",
+          lookupError,
         );
 
-      await admin.auth.admin.deleteUser(
-        newAdminId,
-      );
-
-      return jsonResponse(
-        {
-          success: false,
-          error:
-            "Administrator metadata could not be created.",
-        },
-        500,
-      );
-    }
-
-    /*
-     * Send credentials.
-     */
-    const adminPortalUrl =
-      Deno.env.get("ADMIN_PORTAL_URL")?.trim() ||
-      "https://iyanjupay.vercel.app/admin/login";
-
-    try {
-      await sendBrevoEmail({
-        recipientEmail: email,
-        recipientName: fullName,
-        temporaryPassword,
-        role,
-        adminPortalUrl,
-      });
-    } catch (emailError) {
-      console.error(
-        "Administrator credential email failed:",
-        emailError,
-      );
+        return jsonResponse(
+          {
+            success: false,
+            error:
+              lookupError instanceof
+              Error
+                ? lookupError.message
+                : "Unable to verify whether the email address already exists.",
+          },
+          500,
+        );
+      }
 
       /*
-       * Do not leave an account that the new administrator
-       * cannot receive credentials for.
+       * Existing email = conflict.
        */
-      await admin
-        .from("admin_management_metadata")
-        .delete()
-        .eq(
-          "admin_user_id",
-          newAdminId,
-        );
-
-      await admin
-        .from("support_admins")
-        .delete()
-        .eq(
-          "user_id",
-          newAdminId,
-        );
-
-      await admin.auth.admin.deleteUser(
-        newAdminId,
-      );
-
-      return jsonResponse(
-        {
-          success: false,
+      if (
+        existingAuthUser
+      ) {
+        const {
+          data:
+            existingAdmin,
           error:
-            emailError instanceof Error
-              ? emailError.message
-              : "Failed to send administrator credentials.",
-        },
-        502,
-      );
-    }
+            existingAdminError,
+        } =
+          await adminClient
+            .from(
+              "support_admins",
+            )
+            .select(
+              "user_id, role, is_active",
+            )
+            .eq(
+              "user_id",
+              existingAuthUser.id,
+            )
+            .maybeSingle();
 
-    /*
-     * Audit log.
-     *
-     * We insert directly because the audit helper
-     * derives auth.uid(), which is not guaranteed to
-     * represent the caller when using the service-role
-     * client.
-     */
-    const { data: actingAdmin } =
-      await admin
-        .from("support_admins")
-        .select("role")
-        .eq(
-          "user_id",
-          user.id,
-        )
-        .maybeSingle();
+        if (
+          existingAdminError
+        ) {
+          console.error(
+            "Existing administrator lookup failed:",
+            existingAdminError,
+          );
 
-    const { data: actingProfile } =
-      await admin
-        .from("profiles")
-        .select("full_name, email")
-        .eq(
-          "id",
-          user.id,
-        )
-        .maybeSingle();
+          return jsonResponse(
+            {
+              success: false,
+              error:
+                "Unable to verify the existing account.",
+            },
+            500,
+          );
+        }
 
-    const { error: auditError } =
-      await admin
-        .from("admin_audit_logs")
-        .insert({
-          admin_user_id: user.id,
-          admin_email:
-            actingProfile?.email ||
-            user.email ||
-            null,
-          admin_name:
-            actingProfile?.full_name ||
-            user.user_metadata?.full_name ||
-            null,
-          admin_role:
-            actingAdmin?.role ||
-            "super_admin",
-          category:
-            "admin_management",
-          action:
-            "admin_account_created",
-          description:
-            "A new administrator account was created.",
-          target_type:
-            "admin",
-          target_id:
-            newAdminId,
-          user_id:
-            newAdminId,
-          before_data:
-            null,
-          after_data: {
-            user_id: newAdminId,
-            email,
-            full_name: fullName,
-            role,
-            is_active: true,
-            must_change_password: true,
+        if (
+          existingAdmin
+        ) {
+          return jsonResponse(
+            {
+              success: false,
+              error:
+                "This email address already belongs to an administrator.",
+              code:
+                "ADMIN_EMAIL_ALREADY_EXISTS",
+            },
+            409,
+          );
+        }
+
+        return jsonResponse(
+          {
+            success: false,
+            error:
+              "An account with this email address already exists. Administrator creation requires a new email address.",
+            code:
+              "AUTH_EMAIL_ALREADY_EXISTS",
           },
-          metadata: {
-            source:
-              "admin-create-account",
+          409,
+        );
+      }
+
+      /*
+       * Generate the temporary password.
+       */
+      const temporaryPassword =
+        buildTemporaryPassword(
+          fullName,
+        );
+
+      /*
+       * Create the Supabase Auth user.
+       */
+      const {
+        data:
+          createdUser,
+        error:
+          createUserError,
+      } =
+        await adminClient
+          .auth
+          .admin
+          .createUser({
+            email,
+            password:
+              temporaryPassword,
+            email_confirm:
+              true,
+
+            user_metadata: {
+              full_name:
+                fullName,
+
+              display_name:
+                displayName,
+
+              account_type:
+                "admin",
+
+              admin_role:
+                role,
+
+              must_change_password:
+                true,
+
+              created_by_admin_id:
+                user.id,
+            },
+          });
+
+      if (
+        createUserError ||
+        !createdUser.user
+      ) {
+        console.error(
+          "Admin Auth account creation failed:",
+          createUserError,
+        );
+
+        /*
+         * Supabase can still reject an email due
+         * to a race condition after our duplicate
+         * lookup. Convert known duplicate errors
+         * into a proper 409.
+         */
+        const createErrorMessage =
+          createUserError?.message ||
+          "";
+
+        const duplicateEmail =
+          /already registered|already exists|email.*exist|user.*exist/i.test(
+            createErrorMessage,
+          );
+
+        return jsonResponse(
+          {
+            success: false,
+            error:
+              duplicateEmail
+                ? "An account with this email address already exists. Administrator creation requires a new email address."
+                : createErrorMessage ||
+                  "Failed to create the administrator account.",
+            code:
+              duplicateEmail
+                ? "AUTH_EMAIL_ALREADY_EXISTS"
+                : "ADMIN_AUTH_CREATE_FAILED",
+          },
+          duplicateEmail
+            ? 409
+            : 400,
+        );
+      }
+
+      const newAdminId =
+        createdUser.user.id;
+
+      /*
+       * Create support_admins record.
+       */
+      const {
+        error:
+          adminInsertError,
+      } =
+        await adminClient
+          .from(
+            "support_admins",
+          )
+          .insert({
+            user_id:
+              newAdminId,
+
+            role,
+
+            is_active:
+              true,
+
             created_by:
               user.id,
-            credential_delivery:
-              "brevo",
-          },
-        });
+          });
 
-    if (auditError) {
+      if (
+        adminInsertError
+      ) {
+        console.error(
+          "support_admins insert failed:",
+          adminInsertError,
+        );
+
+        await adminClient.auth.admin.deleteUser(
+          newAdminId,
+        );
+
+        return jsonResponse(
+          {
+            success: false,
+            error:
+              "Administrator account could not be provisioned.",
+          },
+          500,
+        );
+      }
+
       /*
-       * Do not roll back the account after credentials
-       * have already been delivered solely because audit
-       * logging failed. Log the failure for investigation.
+       * Create administrator metadata.
        */
+      const {
+        error:
+          metadataError,
+      } =
+        await adminClient
+          .from(
+            "admin_management_metadata",
+          )
+          .insert({
+            admin_user_id:
+              newAdminId,
+
+            display_name:
+              displayName ||
+              fullName,
+
+            notes,
+
+            last_activity_at:
+              null,
+
+            must_change_password:
+              true,
+          });
+
+      if (
+        metadataError
+      ) {
+        console.error(
+          "Admin metadata insert failed:",
+          metadataError,
+        );
+
+        await adminClient
+          .from(
+            "support_admins",
+          )
+          .delete()
+          .eq(
+            "user_id",
+            newAdminId,
+          );
+
+        await adminClient.auth.admin.deleteUser(
+          newAdminId,
+        );
+
+        return jsonResponse(
+          {
+            success: false,
+            error:
+              "Administrator metadata could not be created.",
+          },
+          500,
+        );
+      }
+
+      /*
+       * Send credentials.
+       */
+      const adminPortalUrl =
+        Deno.env
+          .get(
+            "ADMIN_PORTAL_URL",
+          )
+          ?.trim() ||
+        "https://iyanjupay.vercel.app/admin/login";
+
+      try {
+        await sendBrevoEmail({
+          recipientEmail:
+            email,
+
+          recipientName:
+            fullName,
+
+          temporaryPassword,
+
+          role,
+
+          adminPortalUrl,
+        });
+      } catch (
+        emailError
+      ) {
+        console.error(
+          "Administrator credential email failed:",
+          emailError,
+        );
+
+        /*
+         * Roll back the entire administrator
+         * provisioning because the new user has
+         * not received their credentials.
+         */
+        await adminClient
+          .from(
+            "admin_management_metadata",
+          )
+          .delete()
+          .eq(
+            "admin_user_id",
+            newAdminId,
+          );
+
+        await adminClient
+          .from(
+            "support_admins",
+          )
+          .delete()
+          .eq(
+            "user_id",
+            newAdminId,
+          );
+
+        await adminClient.auth.admin.deleteUser(
+          newAdminId,
+        );
+
+        return jsonResponse(
+          {
+            success: false,
+            error:
+              emailError instanceof
+              Error
+                ? emailError.message
+                : "Failed to send administrator credentials.",
+          },
+          502,
+        );
+      }
+
+      /*
+       * Fetch acting administrator information
+       * for the audit record.
+       */
+      const {
+        data:
+          actingProfile,
+      } =
+        await adminClient
+          .from(
+            "profiles",
+          )
+          .select(
+            "full_name, email",
+          )
+          .eq(
+            "id",
+            user.id,
+          )
+          .maybeSingle();
+
+      /*
+       * Write audit log.
+       *
+       * Failure here does NOT roll back an account
+       * whose credentials have already been delivered.
+       */
+      const {
+        error:
+          auditError,
+      } =
+        await adminClient
+          .from(
+            "admin_audit_logs",
+          )
+          .insert({
+            admin_user_id:
+              user.id,
+
+            admin_email:
+              actingProfile?.email ||
+              user.email ||
+              null,
+
+            admin_name:
+              actingProfile?.full_name ||
+              user.user_metadata
+                ?.full_name ||
+              null,
+
+            admin_role:
+              callerAdmin.role,
+
+            category:
+              "admin_management",
+
+            action:
+              "admin_account_created",
+
+            description:
+              "A new administrator account was created.",
+
+            target_type:
+              "admin",
+
+            target_id:
+              newAdminId,
+
+            user_id:
+              newAdminId,
+
+            before_data:
+              null,
+
+            after_data: {
+              user_id:
+                newAdminId,
+
+              email,
+
+              full_name:
+                fullName,
+
+              role,
+
+              is_active:
+                true,
+
+              must_change_password:
+                true,
+            },
+
+            metadata: {
+              source:
+                "admin-create-account",
+
+              created_by:
+                user.id,
+
+              credential_delivery:
+                "brevo",
+            },
+          });
+
+      if (
+        auditError
+      ) {
+        console.error(
+          "Administrator audit log failed:",
+          auditError,
+        );
+      }
+
+      /*
+       * Never return the temporary password.
+       */
+      return jsonResponse({
+        success:
+          true,
+
+        admin: {
+          user_id:
+            newAdminId,
+
+          email,
+
+          full_name:
+            fullName,
+
+          role,
+
+          is_active:
+            true,
+
+          must_change_password:
+            true,
+        },
+
+        message:
+          "Administrator account created successfully and login credentials were sent by email.",
+      });
+    } catch (error) {
       console.error(
-        "Administrator audit log failed:",
-        auditError,
+        "admin-create-account failed:",
+        error,
+      );
+
+      return jsonResponse(
+        {
+          success: false,
+          error:
+            error instanceof
+            Error
+              ? error.message
+              : "An unexpected error occurred while creating the administrator account.",
+        },
+        500,
       );
     }
-
-    /*
-     * Return safe data only.
-     *
-     * NEVER return temporaryPassword.
-     */
-    return jsonResponse({
-      success: true,
-      admin: {
-        user_id: newAdminId,
-        email,
-        full_name: fullName,
-        role,
-        is_active: true,
-        must_change_password: true,
-      },
-      message:
-        "Administrator account created successfully and login credentials were sent by email.",
-    });
-  } catch (error) {
-    console.error(
-      "admin-create-account failed:",
-      error,
-    );
-
-    return jsonResponse(
-      {
-        success: false,
-        error:
-          error instanceof Error
-            ? error.message
-            : "An unexpected error occurred while creating the administrator account.",
-      },
-      500,
-    );
-  }
-});
+  },
+);

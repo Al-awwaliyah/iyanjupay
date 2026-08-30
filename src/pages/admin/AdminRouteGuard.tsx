@@ -16,9 +16,7 @@ Navigate,
 useLocation,
 } from "react-router-dom";
 
-import {
-supabase,
-} from "@/integrations/supabase/client";
+import { supabase } from "@/integrations/supabase/client";
 
 type AdminRole =
 | "super_admin"
@@ -57,12 +55,10 @@ if (!value || typeof value !== "object") {
 return null;
 }
 
-const state =
-value as Record<string, unknown>;
+const state = value as Record<string, unknown>;
 
 return {
-is_admin:
-state.is_admin === true,
+is_admin: state.is_admin === true,
 
 
 user_id:
@@ -75,8 +71,7 @@ role:
     ? state.role
     : null,
 
-is_active:
-  state.is_active === true,
+is_active: state.is_active === true,
 
 must_change_password:
   state.must_change_password === true,
@@ -107,8 +102,7 @@ return error;
 }
 
 if (typeof error === "object") {
-const value =
-error as {
+const value = error as {
 message?: string;
 error_description?: string;
 details?: string;
@@ -130,13 +124,10 @@ return (
 return "Unable to verify administrator access.";
 }
 
-const AdminRouteGuard: React.FC<
-AdminRouteGuardProps
-
-> = ({
-> children,
-> }) => {
-> const location = useLocation();
+const AdminRouteGuard: React.FC<AdminRouteGuardProps> = ({
+children,
+}) => {
+const location = useLocation();
 
 const [status, setStatus] =
 useState<GuardStatus>("checking");
@@ -159,14 +150,13 @@ setErrorMessage(null);
 
 
     /*
-     * First verify that a Supabase session exists.
+     * Verify that a Supabase session exists.
      */
     const {
       data: {
         session,
       },
-    } =
-      await supabase.auth.getSession();
+    } = await supabase.auth.getSession();
 
     if (!session) {
       setAdminState(null);
@@ -175,16 +165,15 @@ setErrorMessage(null);
     }
 
     /*
-     * Confirm that the session still represents
-     * a valid authenticated user.
+     * Confirm that the session represents a valid
+     * authenticated Supabase user.
      */
     const {
       data: {
         user,
       },
       error: userError,
-    } =
-      await supabase.auth.getUser();
+    } = await supabase.auth.getUser();
 
     if (userError || !user) {
       console.error(
@@ -216,10 +205,9 @@ setErrorMessage(null);
     const {
       data,
       error: stateError,
-    } =
-      await supabase.rpc(
-        "admin_auth_get_state",
-      );
+    } = await supabase.rpc(
+      "admin_auth_get_state",
+    );
 
     if (stateError) {
       console.error(
@@ -229,9 +217,7 @@ setErrorMessage(null);
 
       setAdminState(null);
       setErrorMessage(
-        getErrorMessage(
-          stateError,
-        ),
+        getErrorMessage(stateError),
       );
       setStatus("error");
       return;
@@ -282,7 +268,7 @@ setErrorMessage(null);
 
     /*
      * Administrator is fully authenticated,
-     * registered, active, and cleared for access.
+     * active, and authorized.
      */
     setAdminState(state);
     setStatus("authenticated");
@@ -307,15 +293,13 @@ setErrorMessage(null);
 
 /*
 
-* Initial administrator verification.
+* Initial administrator access verification.
   */
   useEffect(() => {
   let mounted = true;
 
 
 const runVerification =
-
-
 
   async () => {
     if (!mounted) {
@@ -346,15 +330,14 @@ verifyAdminAccess,
   data: {
   subscription,
   },
-  } =
-  supabase.auth.onAuthStateChange(
+  } = supabase.auth.onAuthStateChange(
   (
   event,
   session,
   ) => {
   /*
-  * If the session disappears, immediately
-  * remove administrator access.
+  * SIGNED_OUT or missing session:
+  * immediately remove administrator access.
   */
   if (
   event === "SIGNED_OUT" ||
@@ -366,25 +349,23 @@ verifyAdminAccess,
   return;
   }
 
-  
-   /*
-    * Re-check administrator membership after
-    * authentication/session changes.
-    */
-   if (
-     event === "SIGNED_IN" ||
-     event === "TOKEN_REFRESHED" ||
-     event === "USER_UPDATED" ||
-     event === "INITIAL_SESSION"
-   ) {
-     window.setTimeout(() => {
-       void verifyAdminAccess();
-     }, 0);
-   }
-  
-
+  /*
+  * Re-check administrator membership after
+  * authentication/session changes.
+  */
+  if (
+  event === "SIGNED_IN" ||
+  event === "TOKEN_REFRESHED" ||
+  event === "USER_UPDATED" ||
+  event === "INITIAL_SESSION"
+  ) {
+  window.setTimeout(() => {
+  void verifyAdminAccess();
+  }, 0);
+  }
   },
   );
+
 
 return () => {
 
@@ -393,15 +374,13 @@ return () => {
   subscription.unsubscribe();
 };
 
-
 }, [
 verifyAdminAccess,
 ]);
 
 /*
 
-* Loading state while administrator access
-* is being verified.
+* Loading state.
   */
   if (
   status === "checking" ||
@@ -415,6 +394,7 @@ verifyAdminAccess,
          <Loader2 className="h-7 w-7 animate-spin text-white" />
        </div>
 
+  
    <h1 className="mt-5 text-lg font-semibold text-slate-900">
      Verifying Administrator Access
    </h1>
@@ -436,8 +416,8 @@ verifyAdminAccess,
 
 /*
 
-* No authenticated Supabase session or the
-* authenticated user is not an administrator.
+* No authenticated session OR authenticated user
+* is not an administrator.
   */
   if (
   status === "unauthenticated"
@@ -456,7 +436,7 @@ verifyAdminAccess,
 
 /*
 
-* Administrator exists but is inactive.
+* Administrator account exists but is inactive.
   */
   if (
   status === "inactive"
@@ -509,11 +489,10 @@ verifyAdminAccess,
 
 /*
 
-* Administrator is active but still needs to
-* change the temporary password.
+* Administrator must change the temporary password.
 *
-* The password-change page itself is allowed so
-* the administrator can complete the requirement.
+* The change-password route itself remains accessible
+* so the administrator can complete the requirement.
   */
   if (
   status ===
@@ -552,9 +531,8 @@ return (
 
 * Verification failed.
 *
-* Fail closed: never render protected
-* administrator content when access cannot
-* be securely verified.
+* Fail closed and never render protected
+* administrator functionality.
   */
   if (
   status === "error"
@@ -617,7 +595,9 @@ return (
      </div>
    </div>
 
+
 );
+
 
 }
 
@@ -627,10 +607,10 @@ return (
 *
 * Protected children are rendered ONLY when:
 *
-* 1. The user is authenticated.
-* 2. The user is a registered administrator.
-* 3. The administrator is active.
-* 4. The temporary password requirement is complete.
+* 1. User is authenticated.
+* 2. User is a registered administrator.
+* 3. Administrator is active.
+* 4. Temporary password requirement is complete.
      */
      if (
      status !== "authenticated" ||

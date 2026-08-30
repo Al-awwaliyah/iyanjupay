@@ -66,33 +66,260 @@ type AdminLoginResponse = {
   message?: string;
 };
 
+/*
+ * ============================================================
+ * ERROR HANDLING
+ * ============================================================
+ */
+
 function extractError(error: unknown): string {
   if (!error) {
     return "Unable to sign in.";
   }
 
   if (typeof error === "string") {
-    return error;
+    return error.trim() || "Unable to sign in.";
+  }
+
+  if (error instanceof Error) {
+    if (error.message?.trim()) {
+      return error.message.trim();
+    }
+
+    return "Unable to sign in.";
   }
 
   if (typeof error === "object") {
     const value = error as {
-      message?: string;
-      error_description?: string;
-      details?: string;
-      hint?: string;
+      message?: unknown;
+      error_description?: unknown;
+      details?: unknown;
+      hint?: unknown;
+      error?: unknown;
+      code?: unknown;
+      status?: unknown;
+      name?: unknown;
     };
 
-    return (
-      value.message ??
-      value.error_description ??
-      value.details ??
-      value.hint ??
-      "Unable to sign in."
-    );
+    const candidates = [
+      value.message,
+      value.error_description,
+      value.details,
+      value.hint,
+      value.error,
+    ];
+
+    for (const candidate of candidates) {
+      if (
+        typeof candidate === "string" &&
+        candidate.trim()
+      ) {
+        return candidate.trim();
+      }
+    }
+
+    /*
+     * Some Supabase/Edge Function errors may expose a
+     * structured response body rather than a useful message.
+     */
+    if (
+      typeof value.error === "object" &&
+      value.error !== null
+    ) {
+      const nested =
+        value.error as {
+          message?: unknown;
+          error?: unknown;
+          details?: unknown;
+        };
+
+      const nestedCandidates = [
+        nested.message,
+        nested.error,
+        nested.details,
+      ];
+
+      for (const candidate of nestedCandidates) {
+        if (
+          typeof candidate === "string" &&
+          candidate.trim()
+        ) {
+          return candidate.trim();
+        }
+      }
+    }
+
+    if (
+      typeof value.code === "string" &&
+      value.code.trim()
+    ) {
+      return `Authentication error (${value.code.trim()}).`;
+    }
+
+    if (
+      typeof value.status === "number"
+    ) {
+      if (value.status === 401) {
+        return "Invalid administrator email or password.";
+      }
+
+      if (value.status === 403) {
+        return "You are not authorized to access the administrator portal.";
+      }
+
+      if (value.status >= 500) {
+        return "The administrator authentication service is temporarily unavailable. Please try again.";
+      }
+    }
   }
 
-  return "Unable to sign in.";
+  return "Unable to sign in. Please try again.";
+}
+
+function getFriendlyAdminLoginError(
+  error: unknown,
+): string {
+  const message =
+    extractError(error);
+
+  const normalized =
+    message.toLowerCase();
+
+  /*
+   * Authentication-related errors.
+   */
+  if (
+    normalized.includes(
+      "invalid login credentials",
+    ) ||
+    normalized.includes(
+      "invalid credentials",
+    ) ||
+    normalized.includes(
+      "invalid email or password",
+    ) ||
+    normalized.includes(
+      "invalid administrator credentials",
+    )
+  ) {
+    return "Invalid administrator email or password.";
+  }
+
+  /*
+   * Authorization-related errors.
+   */
+  if (
+    normalized.includes(
+      "not authorized",
+    ) ||
+    normalized.includes(
+      "unauthorized",
+    ) ||
+    normalized.includes(
+      "access denied",
+    ) ||
+    normalized.includes(
+      "permission denied",
+    )
+  ) {
+    return "You are not authorized to access the administrator portal.";
+  }
+
+  /*
+   * Network / connectivity errors.
+   */
+  if (
+    normalized.includes(
+      "failed to fetch",
+    ) ||
+    normalized.includes(
+      "network error",
+    ) ||
+    normalized.includes(
+      "network request failed",
+    ) ||
+    normalized.includes(
+      "fetch failed",
+    ) ||
+    normalized.includes(
+      "load failed",
+    ) ||
+    normalized.includes(
+      "connection refused",
+    ) ||
+    normalized.includes(
+      "connection reset",
+    ) ||
+    normalized.includes(
+      "timeout",
+    )
+  ) {
+    return "Unable to connect to the administrator authentication service. Please check your internet connection and try again.";
+  }
+
+  /*
+   * Edge Function availability/errors.
+   */
+  if (
+    normalized.includes(
+      "failed to invoke function",
+    ) ||
+    normalized.includes(
+      "edge function",
+    ) ||
+    normalized.includes(
+      "functionshttp",
+    ) ||
+    normalized.includes(
+      "function invocation",
+    )
+  ) {
+    return "The administrator authentication service is temporarily unavailable. Please try again.";
+  }
+
+  /*
+   * Session establishment errors.
+   */
+  if (
+    normalized.includes(
+      "session could not be established",
+    ) ||
+    normalized.includes(
+      "session could not be established",
+    ) ||
+    normalized.includes(
+      "invalid session",
+    )
+  ) {
+    return "Administrator authentication succeeded, but your secure session could not be established. Please try again.";
+  }
+
+  /*
+   * Administrator verification errors.
+   */
+  if (
+    normalized.includes(
+      "administrator privileges could not be verified",
+    ) ||
+    normalized.includes(
+      "administrator session could not be verified",
+    ) ||
+    normalized.includes(
+      "administrator identity verification failed",
+    )
+  ) {
+    return "Your administrator account could not be verified. Please try signing in again.";
+  }
+
+  /*
+   * Keep deliberate server-side messages such as:
+   * - account inactive
+   * - administrator information missing
+   * - temporary password requirements
+   *
+   * rather than hiding them behind a generic message.
+   */
+  return message;
 }
 
 function getRoleLabel(
@@ -215,9 +442,10 @@ const AdminLoginPage: React.FC = () => {
           const {
             data,
             error: stateError,
-          } = await supabase.rpc(
-            "admin_auth_get_state",
-          );
+          } =
+            await supabase.rpc(
+              "admin_auth_get_state",
+            );
 
           if (!mounted) {
             return;
@@ -230,8 +458,8 @@ const AdminLoginPage: React.FC = () => {
             );
 
             /*
-             * Do not allow an unverified session to remain
-             * active on the login page.
+             * Existing behavior is preserved:
+             * an unverified administrator session is cleared.
              */
             try {
               await supabase.auth.signOut();
@@ -243,6 +471,11 @@ const AdminLoginPage: React.FC = () => {
             }
 
             if (mounted) {
+              setError(
+                getFriendlyAdminLoginError(
+                  stateError,
+                ),
+              );
               setCheckingSession(false);
             }
 
@@ -253,6 +486,11 @@ const AdminLoginPage: React.FC = () => {
             !data ||
             typeof data !== "object"
           ) {
+            console.error(
+              "Administrator state RPC returned an invalid response:",
+              data,
+            );
+
             try {
               await supabase.auth.signOut();
             } catch (signOutError) {
@@ -263,6 +501,9 @@ const AdminLoginPage: React.FC = () => {
             }
 
             if (mounted) {
+              setError(
+                "Unable to verify your administrator session. Please sign in again.",
+              );
               setCheckingSession(false);
             }
 
@@ -331,6 +572,12 @@ const AdminLoginPage: React.FC = () => {
           );
 
           if (mounted) {
+            setError(
+              getFriendlyAdminLoginError(
+                existingSessionError,
+              ),
+            );
+
             setCheckingSession(false);
           }
         }
@@ -385,6 +632,10 @@ const AdminLoginPage: React.FC = () => {
       try {
         await supabase.auth.signOut();
       } catch (signOutError) {
+        /*
+         * This cleanup failure should not prevent the
+         * administrator from attempting to authenticate.
+         */
         console.warn(
           "Unable to clear previous session before administrator login:",
           signOutError,
@@ -480,7 +731,14 @@ const AdminLoginPage: React.FC = () => {
         response.admin;
 
       if (!admin) {
-        await supabase.auth.signOut();
+        try {
+          await supabase.auth.signOut();
+        } catch (signOutError) {
+          console.error(
+            "Failed to clear session after missing administrator information:",
+            signOutError,
+          );
+        }
 
         throw new Error(
           "Administrator information was not returned by the authentication service.",
@@ -488,7 +746,14 @@ const AdminLoginPage: React.FC = () => {
       }
 
       if (!admin.user_id) {
-        await supabase.auth.signOut();
+        try {
+          await supabase.auth.signOut();
+        } catch (signOutError) {
+          console.error(
+            "Failed to clear session after missing administrator identity:",
+            signOutError,
+          );
+        }
 
         throw new Error(
           "Administrator user identity was not returned.",
@@ -496,7 +761,14 @@ const AdminLoginPage: React.FC = () => {
       }
 
       if (admin.is_active !== true) {
-        await supabase.auth.signOut();
+        try {
+          await supabase.auth.signOut();
+        } catch (signOutError) {
+          console.error(
+            "Failed to clear inactive administrator session:",
+            signOutError,
+          );
+        }
 
         throw new Error(
           "This administrator account is inactive.",
@@ -525,7 +797,14 @@ const AdminLoginPage: React.FC = () => {
         );
 
       if (verifiedStateError) {
-        await supabase.auth.signOut();
+        try {
+          await supabase.auth.signOut();
+        } catch (signOutError) {
+          console.error(
+            "Failed to clear session after administrator verification failure:",
+            signOutError,
+          );
+        }
 
         throw verifiedStateError;
       }
@@ -534,7 +813,14 @@ const AdminLoginPage: React.FC = () => {
         !verifiedState ||
         typeof verifiedState !== "object"
       ) {
-        await supabase.auth.signOut();
+        try {
+          await supabase.auth.signOut();
+        } catch (signOutError) {
+          console.error(
+            "Failed to clear session after invalid administrator verification response:",
+            signOutError,
+          );
+        }
 
         throw new Error(
           "The administrator session could not be verified.",
@@ -551,7 +837,14 @@ const AdminLoginPage: React.FC = () => {
         verified.is_admin !== true ||
         verified.is_active !== true
       ) {
-        await supabase.auth.signOut();
+        try {
+          await supabase.auth.signOut();
+        } catch (signOutError) {
+          console.error(
+            "Failed to clear unauthorized administrator session:",
+            signOutError,
+          );
+        }
 
         throw new Error(
           "Administrator privileges could not be verified.",
@@ -623,15 +916,42 @@ const AdminLoginPage: React.FC = () => {
       try {
         await supabase.auth.signOut();
       } catch (signOutError) {
+        /*
+         * The original authentication error is more important
+         * than a cleanup failure, so only log this error.
+         */
         console.error(
           "Failed to clear failed administrator session:",
           signOutError,
         );
       }
 
+      if (submitError instanceof Response) {
+        try {
+          const responseText =
+            await submitError.text();
+
+          if (responseText) {
+            console.error(
+              "Administrator authentication HTTP response:",
+              responseText,
+            );
+          }
+        } catch (responseReadError) {
+          console.error(
+            "Failed to read administrator authentication error response:",
+            responseReadError,
+          );
+        }
+      }
+
       setError(
-        extractError(submitError),
+        getFriendlyAdminLoginError(
+          submitError,
+        ),
       );
+
+      setSuccess(null);
     } finally {
       setLoading(false);
     }

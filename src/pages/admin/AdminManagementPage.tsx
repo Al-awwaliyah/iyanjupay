@@ -291,7 +291,7 @@ details?: string;
 hint?: string;
 };
 
-```
+
 if (value.message) {
   return value.message;
 }
@@ -303,7 +303,7 @@ if (value.details) {
 if (value.hint) {
   return value.hint;
 }
-```
+
 
 }
 
@@ -352,10 +352,10 @@ isSuperAdmin
 ) : ( <Shield className="h-3.5 w-3.5" />
 )}
 
-```
+
   {getRoleLabel(role)}
 </span>
-```
+
 
 );
 }
@@ -379,10 +379,10 @@ active
 ) : ( <UserX className="h-3.5 w-3.5" />
 )}
 
-```
+
   {active ? "Active" : "Inactive"}
 </span>
-```
+
 
 );
 }
@@ -485,13 +485,12 @@ type,
 message,
 });
 
-```
   window.setTimeout(() => {
     setToast(null);
   }, 5000);
 },
 [],
-```
+
 
 );
 
@@ -501,12 +500,12 @@ const {
 data: { user },
 } = await supabase.auth.getUser();
 
-```
+
   setCurrentAdminId(
     user?.id ?? null,
   );
 }, []);
-```
+
 
 const loadSummary =
 useCallback(async () => {
@@ -517,7 +516,7 @@ error,
 "admin_management_summary",
 );
 
-```
+
   if (error) {
     throw error;
   }
@@ -610,7 +609,7 @@ error,
       ) || 0,
   });
 }, []);
-```
+
 
 const loadAdmins = useCallback(
 async (
@@ -623,7 +622,7 @@ setRefreshing(true);
 setLoading(true);
 }
 
-```
+
     const normalizedSearch =
       search.trim() || null;
 
@@ -706,7 +705,7 @@ setLoading(true);
   search,
   showToast,
 ],
-```
+
 
 );
 
@@ -720,13 +719,13 @@ window.setTimeout(() => {
 void loadAdmins();
 }, 250);
 
-```
+
 return () => {
   window.clearTimeout(
     timer,
   );
 };
-```
+
 
 }, [loadAdmins]);
 
@@ -750,7 +749,7 @@ event: FormEvent<HTMLFormElement>,
 ) => {
 event.preventDefault();
 
-```
+
   const fullName =
     addFullName
       .trim()
@@ -906,7 +905,7 @@ event.preventDefault();
     );
   }
 };
-```
+
 
 const openRoleDialog = (
 admin: AdminRecord,
@@ -922,7 +921,7 @@ showToast(
 return;
 }
 
-```
+
 setSelectedAdmin(
   admin,
 );
@@ -943,7 +942,7 @@ setNewRole(
 setRoleDialogOpen(
   true,
 );
-```
+
 
 };
 
@@ -953,7 +952,7 @@ if (!selectedAdmin) {
 return;
 }
 
-```
+
   if (
     selectedAdmin.user_id ===
     currentAdminId
@@ -1046,7 +1045,7 @@ return;
     );
   }
 };
-```
+
 
 const openStatusDialog = (
 admin: AdminRecord,
@@ -1062,7 +1061,7 @@ showToast(
 return;
 }
 
-```
+
 setStatusTarget(
   admin,
 );
@@ -1070,7 +1069,7 @@ setStatusTarget(
 setStatusDialogOpen(
   true,
 );
-```
+
 
 };
 
@@ -1080,7 +1079,7 @@ if (!statusTarget) {
 return;
 }
 
-```
+
   if (
     statusTarget.user_id ===
     currentAdminId
@@ -1168,7 +1167,6 @@ return;
     );
   }
 };
-```
 
 const clearFilters =
 () => {
@@ -1200,7 +1198,7 @@ toast.type ===
 ) : ( <AlertCircle className="h-4 w-4" />
 )}
 
-```
+
             <AlertTitle>
               {toast.type ===
               "success"
@@ -2379,7 +2377,7 @@ toast.type ===
     </Dialog>
   </div>
 </AdminLayout>
-```
+
 
 );
 };

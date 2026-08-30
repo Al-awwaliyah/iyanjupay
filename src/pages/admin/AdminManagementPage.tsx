@@ -123,6 +123,16 @@ type ToastState = {
   message: string;
 } | null;
 
+type EdgeFunctionErrorPayload = {
+  success?: boolean;
+  error?: string;
+  message?: string;
+  code?: string;
+  details?: string;
+  hint?: string;
+  field?: string;
+};
+
 const PAGE_SIZE = 10;
 
 const ROLE_OPTIONS: Array<{
@@ -214,10 +224,7 @@ function getInitials(
   fullName: string | null | undefined,
   email: string | null | undefined,
 ) {
-  const source =
-    fullName?.trim() ||
-    email?.trim() ||
-    "Admin";
+  const source = fullName?.trim() || email?.trim() || "Admin";
 
   const parts = source
     .split(/\s+/)
@@ -225,9 +232,7 @@ function getInitials(
     .slice(0, 2);
 
   if (parts.length === 1) {
-    return parts[0]
-      .slice(0, 2)
-      .toUpperCase();
+    return parts[0].slice(0, 2).toUpperCase();
   }
 
   return parts
@@ -242,18 +247,14 @@ function normalizeListResponse(
   admins: AdminRecord[];
   total: number;
 } {
-  if (
-    !response ||
-    typeof response !== "object"
-  ) {
+  if (!response || typeof response !== "object") {
     return {
       admins: [],
       total: 0,
     };
   }
 
-  const value =
-    response as AdminListResponse;
+  const value = response as AdminListResponse;
 
   const admins = Array.isArray(value.admins)
     ? value.admins
@@ -288,6 +289,7 @@ function extractRpcError(error: unknown) {
       message?: string;
       details?: string;
       hint?: string;
+      code?: string;
     };
 
     if (value.message) {
@@ -301,9 +303,126 @@ function extractRpcError(error: unknown) {
     if (value.hint) {
       return value.hint;
     }
+
+    if (value.code) {
+      return `Request failed with code ${value.code}.`;
+    }
   }
 
   return "An unexpected error occurred.";
+}
+
+/**
+ * Extract a useful error message from a Supabase Edge Function invocation.
+ *
+ * Supabase functions.invoke() can return a FunctionsHttpError where the
+ * actual JSON error body is available through error.context.
+ *
+ * This is particularly important for HTTP 409 responses from
+ * admin-create-account.
+ */
+async function extractFunctionError(
+  error: unknown,
+): Promise<string> {
+  if (!error) {
+    return "An unexpected error occurred.";
+  }
+
+  if (typeof error === "string") {
+    return error;
+  }
+
+  if (typeof error !== "object") {
+    return "An unexpected error occurred.";
+  }
+
+  const value = error as {
+    message?: string;
+    name?: string;
+    context?: unknown;
+  };
+
+  const context = value.context;
+
+  if (context instanceof Response) {
+    try {
+      const response = context.clone();
+
+      let payload: EdgeFunctionErrorPayload | null =
+        null;
+
+      const contentType =
+        response.headers.get("content-type") ?? "";
+
+      if (contentType.includes("application/json")) {
+        try {
+          payload =
+            (await response.json()) as EdgeFunctionErrorPayload;
+        } catch {
+          payload = null;
+        }
+      } else {
+        try {
+          const text = await response.text();
+
+          if (text.trim()) {
+            try {
+              payload = JSON.parse(
+                text,
+              ) as EdgeFunctionErrorPayload;
+            } catch {
+              return text.trim();
+            }
+          }
+        } catch {
+          // Fall through to the generic error below.
+        }
+      }
+
+      if (payload) {
+        const message =
+          payload.error ||
+          payload.message ||
+          payload.details ||
+          payload.hint;
+
+        if (message) {
+          return message;
+        }
+      }
+
+      if (response.status === 409) {
+        return "An administrator account with this email address already exists.";
+      }
+
+      if (response.status === 401) {
+        return "You are not authorized to create administrator accounts.";
+      }
+
+      if (response.status === 403) {
+        return "You do not have permission to create administrator accounts.";
+      }
+
+      if (response.status >= 500) {
+        return "The administrator account service encountered an error. Please try again.";
+      }
+    } catch {
+      // Fall through to the regular error extraction.
+    }
+  }
+
+  if (
+    value.message &&
+    value.message !== "Edge Function returned a non-2xx status code"
+  ) {
+    return value.message;
+  }
+
+  if (value.message === "Edge Function returned a non-2xx status code") {
+    return "The administrator account request was rejected.";
+  }
+
+  return extractRpcError(error);
 }
 
 function RoleBadge({
@@ -311,20 +430,11 @@ function RoleBadge({
 }: {
   role: string;
 }) {
-  const isSuperAdmin =
-    role === "super_admin";
-
-  const isOperationsAdmin =
-    role === "operations_admin";
-
-  const isSupportAdmin =
-    role === "support_admin";
-
-  const isFinanceAdmin =
-    role === "finance_admin";
-
-  const isComplianceAdmin =
-    role === "compliance_admin";
+  const isSuperAdmin = role === "super_admin";
+  const isOperationsAdmin = role === "operations_admin";
+  const isSupportAdmin = role === "support_admin";
+  const isFinanceAdmin = role === "finance_admin";
+  const isComplianceAdmin = role === "compliance_admin";
 
   return (
     <span
@@ -723,11 +833,25 @@ const AdminManagementPage: React.FC = () => {
     setAddNotes("");
   };
 
+  /**
+   * Creates a new administrator through the protected
+   * admin-create-account Edge Function.
+   *
+   * Important:
+   * - Do not create the Auth user directly from the browser.
+   * - Do not expose service-role credentials here.
+   * - The Edge Function owns password generation,
+   *   profile/admin metadata creation, and email delivery.
+   */
   const handleAddAdmin =
     async (
       event: FormEvent<HTMLFormElement>,
     ) => {
       event.preventDefault();
+
+      if (actionLoading) {
+        return;
+      }
 
       const fullName =
         addFullName
@@ -743,7 +867,12 @@ const AdminManagementPage: React.FC = () => {
           .toLowerCase();
 
       const notes =
-        addNotes.trim();
+        addNotes
+          .trim()
+          .replace(
+            /\s+/g,
+            " ",
+          );
 
       if (!fullName) {
         showToast(
@@ -757,6 +886,14 @@ const AdminManagementPage: React.FC = () => {
         showToast(
           "error",
           "Please enter a valid administrator name.",
+        );
+        return;
+      }
+
+      if (fullName.length > 150) {
+        showToast(
+          "error",
+          "Administrator name is too long.",
         );
         return;
       }
@@ -782,6 +919,14 @@ const AdminManagementPage: React.FC = () => {
         return;
       }
 
+      if (email.length > 254) {
+        showToast(
+          "error",
+          "Administrator email address is too long.",
+        );
+        return;
+      }
+
       if (!addRole) {
         showToast(
           "error",
@@ -790,9 +935,46 @@ const AdminManagementPage: React.FC = () => {
         return;
       }
 
+      const isValidRole =
+        ROLE_OPTIONS.some(
+          (option) =>
+            option.value ===
+            addRole,
+        );
+
+      if (!isValidRole) {
+        showToast(
+          "error",
+          "Please select a valid administrator role.",
+        );
+        return;
+      }
+
+      if (notes.length > 2000) {
+        showToast(
+          "error",
+          "Administrative notes cannot exceed 2,000 characters.",
+        );
+        return;
+      }
+
       try {
         setActionLoading(true);
 
+        /**
+         * The Edge Function is responsible for:
+         * 1. Authorizing the current administrator.
+         * 2. Checking whether the email already exists.
+         * 3. Creating the Supabase Auth account.
+         * 4. Creating/updating the profile/admin metadata.
+         * 5. Assigning the requested role.
+         * 6. Generating the temporary password.
+         * 7. Sending the credentials email.
+         *
+         * display_name and notes are intentionally sent as
+         * separate fields because the backend stores them as
+         * administrator metadata.
+         */
         const {
           data,
           error,
@@ -803,49 +985,55 @@ const AdminManagementPage: React.FC = () => {
               body: {
                 full_name:
                   fullName,
+                display_name:
+                  fullName,
                 email,
                 role: addRole,
                 notes:
                   notes || null,
-                display_name:
-                  fullName,
               },
             },
           );
 
         if (error) {
-          throw error;
+          const message =
+            await extractFunctionError(
+              error,
+            );
+
+          throw new Error(
+            message,
+          );
         }
 
         if (
           !data ||
           typeof data !==
-            "object" ||
-          !(
-            data as Record<
-              string,
-              unknown
-            >
-          ).success
+            "object"
+        ) {
+          throw new Error(
+            "Administrator account creation returned an invalid response.",
+          );
+        }
+
+        const response =
+          data as Record<
+            string,
+            unknown
+          >;
+
+        if (
+          response.success !==
+          true
         ) {
           const message =
-            data &&
-            typeof data ===
-              "object" &&
-            typeof (
-              data as Record<
-                string,
-                unknown
-              >
-            ).error ===
-              "string"
-              ? (
-                  data as Record<
-                    string,
-                    unknown
-                  >
-                ).error
-              : "Administrator account creation did not complete successfully.";
+            typeof response.error ===
+            "string"
+              ? response.error
+              : typeof response.message ===
+                  "string"
+                ? response.message
+                : "Administrator account creation did not complete successfully.";
 
           throw new Error(
             message,
@@ -860,6 +1048,9 @@ const AdminManagementPage: React.FC = () => {
           "Administrator account created successfully. Login credentials have been sent by email.",
         );
 
+        /**
+         * Refresh the directory and summary after creation.
+         */
         await loadAdmins(true);
       } catch (error) {
         console.error(
@@ -869,7 +1060,9 @@ const AdminManagementPage: React.FC = () => {
 
         showToast(
           "error",
-          extractRpcError(error),
+          await extractFunctionError(
+            error,
+          ),
         );
       } finally {
         setActionLoading(false);
@@ -908,6 +1101,10 @@ const AdminManagementPage: React.FC = () => {
   const handleChangeRole =
     async () => {
       if (!selectedAdmin) {
+        return;
+      }
+
+      if (actionLoading) {
         return;
       }
 
@@ -962,8 +1159,21 @@ const AdminManagementPage: React.FC = () => {
             >
           ).success
         ) {
+          const response =
+            data &&
+            typeof data ===
+              "object"
+              ? (data as Record<
+                  string,
+                  unknown
+                >)
+              : null;
+
           throw new Error(
-            "Administrator role change did not complete successfully.",
+            typeof response?.error ===
+              "string"
+              ? response.error
+              : "Administrator role change did not complete successfully.",
           );
         }
 
@@ -1015,6 +1225,10 @@ const AdminManagementPage: React.FC = () => {
         return;
       }
 
+      if (actionLoading) {
+        return;
+      }
+
       if (
         statusTarget.user_id ===
         currentAdminId
@@ -1061,8 +1275,21 @@ const AdminManagementPage: React.FC = () => {
             >
           ).success
         ) {
+          const response =
+            data &&
+            typeof data ===
+              "object"
+              ? (data as Record<
+                  string,
+                  unknown
+                >)
+              : null;
+
           throw new Error(
-            "Administrator status update did not complete successfully.",
+            typeof response?.error ===
+              "string"
+              ? response.error
+              : "Administrator status update did not complete successfully.",
           );
         }
 
@@ -1180,6 +1407,7 @@ const AdminManagementPage: React.FC = () => {
                   resetAddForm();
                   setAddDialogOpen(true);
                 }}
+                disabled={actionLoading}
               >
                 <UserPlus className="mr-2 h-4 w-4" />
                 Add Admin
@@ -1317,7 +1545,6 @@ const AdminManagementPage: React.FC = () => {
                       setPage(1);
                     }}
                     placeholder="Search by name, email, or user ID..."
-                    className="pl-9"
                   />
                 </div>
 
@@ -1542,7 +1769,8 @@ const AdminManagementPage: React.FC = () => {
                                 variant="outline"
                                 size="sm"
                                 disabled={
-                                  isCurrentAdmin
+                                  isCurrentAdmin ||
+                                  actionLoading
                                 }
                                 onClick={() =>
                                   openRoleDialog(
@@ -1567,7 +1795,8 @@ const AdminManagementPage: React.FC = () => {
                                 }
                                 size="sm"
                                 disabled={
-                                  isCurrentAdmin
+                                  isCurrentAdmin ||
+                                  actionLoading
                                 }
                                 onClick={() =>
                                   openStatusDialog(
@@ -1694,7 +1923,6 @@ const AdminManagementPage: React.FC = () => {
               p-0
             "
           >
-            {/* Fixed header */}
             <DialogHeader className="shrink-0 border-b px-6 py-5">
               <DialogTitle className="flex items-center gap-2">
                 <UserPlus className="h-5 w-5" />
@@ -1708,7 +1936,6 @@ const AdminManagementPage: React.FC = () => {
               </DialogDescription>
             </DialogHeader>
 
-            {/* Scrollable content */}
             <div className="min-h-0 flex-1 overflow-y-auto">
               <form
                 id="create-admin-form"
@@ -1850,6 +2077,11 @@ const AdminManagementPage: React.FC = () => {
                       disabled:opacity-50
                     "
                   />
+
+                  <p className="text-xs text-slate-500">
+                    Optional internal metadata for this
+                    administrator account.
+                  </p>
                 </div>
 
                 <Alert>
@@ -1887,13 +2119,10 @@ const AdminManagementPage: React.FC = () => {
                   </Alert>
                 )}
 
-                {/* Bottom padding so the final content
-                    is never hidden behind the footer */}
                 <div className="h-1" />
               </form>
             </div>
 
-            {/* Fixed footer */}
             <DialogFooter className="shrink-0 border-t bg-white px-6 py-4">
               <Button
                 type="button"
@@ -1917,7 +2146,9 @@ const AdminManagementPage: React.FC = () => {
                   <UserPlus className="mr-2 h-4 w-4" />
                 )}
 
-                Create Administrator
+                {actionLoading
+                  ? "Creating..."
+                  : "Create Administrator"}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -1931,6 +2162,10 @@ const AdminManagementPage: React.FC = () => {
           onOpenChange={(open) => {
             if (!actionLoading) {
               setRoleDialogOpen(open);
+
+              if (!open) {
+                setSelectedAdmin(null);
+              }
             }
           }}
         >
@@ -2037,9 +2272,10 @@ const AdminManagementPage: React.FC = () => {
               <Button
                 variant="outline"
                 disabled={actionLoading}
-                onClick={() =>
-                  setRoleDialogOpen(false)
-                }
+                onClick={() => {
+                  setRoleDialogOpen(false);
+                  setSelectedAdmin(null);
+                }}
               >
                 Cancel
               </Button>
@@ -2057,7 +2293,9 @@ const AdminManagementPage: React.FC = () => {
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 )}
 
-                Update Role
+                {actionLoading
+                  ? "Updating..."
+                  : "Update Role"}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -2071,6 +2309,10 @@ const AdminManagementPage: React.FC = () => {
           onOpenChange={(open) => {
             if (!actionLoading) {
               setStatusDialogOpen(open);
+
+              if (!open) {
+                setStatusTarget(null);
+              }
             }
           }}
         >
@@ -2144,9 +2386,10 @@ const AdminManagementPage: React.FC = () => {
               <Button
                 variant="outline"
                 disabled={actionLoading}
-                onClick={() =>
-                  setStatusDialogOpen(false)
-                }
+                onClick={() => {
+                  setStatusDialogOpen(false);
+                  setStatusTarget(null);
+                }}
               >
                 Cancel
               </Button>
@@ -2157,7 +2400,10 @@ const AdminManagementPage: React.FC = () => {
                     ? "destructive"
                     : "default"
                 }
-                disabled={actionLoading}
+                disabled={
+                  actionLoading ||
+                  !statusTarget
+                }
                 onClick={
                   handleChangeStatus
                 }
@@ -2170,9 +2416,11 @@ const AdminManagementPage: React.FC = () => {
                   <UserCheck className="mr-2 h-4 w-4" />
                 )}
 
-                {statusTarget?.is_active
-                  ? "Disable Administrator"
-                  : "Reactivate Administrator"}
+                {actionLoading
+                  ? "Processing..."
+                  : statusTarget?.is_active
+                    ? "Disable Administrator"
+                    : "Reactivate Administrator"}
               </Button>
             </DialogFooter>
           </DialogContent>

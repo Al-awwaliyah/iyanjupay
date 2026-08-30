@@ -1,5 +1,4 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import nodemailer from "npm:nodemailer@9.0.0";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -119,7 +118,9 @@ function buildTemporaryPassword(
   }
 
   const normalizedLastName =
-    lastName.charAt(0).toUpperCase() +
+    lastName
+      .charAt(0)
+      .toUpperCase() +
     lastName.slice(1);
 
   return `${normalizedLastName}@123`;
@@ -158,106 +159,26 @@ function escapeHtml(
   value: string,
 ): string {
   return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
-}
-
-/**
- * Creates the Brevo SMTP transport.
- *
- * Brevo SMTP:
- *   Host: smtp-relay.brevo.com
- *   Port: 587
- *   Encryption: STARTTLS
- *
- * BREVO_SMTP_PASSWORD must contain the
- * Brevo SMTP key, NOT a Brevo API key.
- */
-function createBrevoTransport() {
-  const smtpHost =
-    Deno.env
-      .get("BREVO_SMTP_HOST")
-      ?.trim() ||
-    "smtp-relay.brevo.com";
-
-  const smtpPortRaw =
-    Deno.env
-      .get("BREVO_SMTP_PORT")
-      ?.trim() ||
-    "587";
-
-  const smtpPort =
-    Number(smtpPortRaw);
-
-  const smtpUser =
-    Deno.env
-      .get("BREVO_SMTP_USER")
-      ?.trim() ||
-    "";
-
-  const smtpPassword =
-    Deno.env
-      .get("BREVO_SMTP_PASSWORD")
-      ?.trim() ||
-    "";
-
-  if (!smtpHost) {
-    throw new Error(
-      "Brevo SMTP host is not configured.",
+    .replaceAll(
+      "&",
+      "&amp;",
+    )
+    .replaceAll(
+      "<",
+      "&lt;",
+    )
+    .replaceAll(
+      ">",
+      "&gt;",
+    )
+    .replaceAll(
+      '"',
+      "&quot;",
+    )
+    .replaceAll(
+      "'",
+      "&#039;",
     );
-  }
-
-  if (
-    !Number.isInteger(smtpPort) ||
-    smtpPort <= 0
-  ) {
-    throw new Error(
-      "Brevo SMTP port is invalid.",
-    );
-  }
-
-  if (!smtpUser) {
-    throw new Error(
-      "Brevo SMTP username is not configured.",
-    );
-  }
-
-  if (!smtpPassword) {
-    throw new Error(
-      "Brevo SMTP password/key is not configured.",
-    );
-  }
-
-  return nodemailer.createTransport({
-    host: smtpHost,
-
-    port: smtpPort,
-
-    /*
-     * Port 587 uses STARTTLS.
-     * Therefore secure must be false.
-     */
-    secure: false,
-
-    auth: {
-      user: smtpUser,
-      pass: smtpPassword,
-    },
-
-    /*
-     * Upgrade the connection to TLS.
-     */
-    requireTLS: true,
-
-    connectionTimeout: 15000,
-
-    greetingTimeout: 15000,
-
-    socketTimeout: 30000,
-  });
 }
 
 async function sendBrevoEmail(
@@ -268,25 +189,43 @@ async function sendBrevoEmail(
     role: AdminRole;
     adminPortalUrl: string;
   },
-): Promise<void> {
+) {
+  const apiKey =
+    Deno.env
+      .get(
+        "BREVO_SMTP_PASSWORD",
+      )
+      ?.trim() || "";
+
   const fromEmail =
     Deno.env
-      .get("BREVO_FROM_EMAIL")
-      ?.trim() ||
-    "";
+      .get(
+        "BREVO_FROM_EMAIL",
+      )
+      ?.trim() || "";
 
   const fromName =
     Deno.env
-      .get("BREVO_FROM_NAME")
+      .get(
+        "BREVO_FROM_NAME",
+      )
       ?.trim() ||
     "IyanjuPay";
 
   const portalUrl =
     params.adminPortalUrl?.trim() ||
     Deno.env
-      .get("ADMIN_PORTAL_URL")
+      .get(
+        "ADMIN_PORTAL_URL",
+      )
       ?.trim() ||
     "https://iyanjupay.vercel.app/admin/login";
+
+  if (!apiKey) {
+    throw new Error(
+      "Brevo API credentials are not configured.",
+    );
+  }
 
   if (!fromEmail) {
     throw new Error(
@@ -300,47 +239,48 @@ async function sendBrevoEmail(
     );
   }
 
-  const transport =
-    createBrevoTransport();
+  const response =
+    await fetch(
+      "https://api.brevo.com/v3/smtp/email",
+      {
+        method: "POST",
 
-  const recipientName =
-    escapeHtml(
-      params.recipientName,
-    );
+        headers: {
+          accept:
+            "application/json",
+          "api-key":
+            apiKey,
+          "content-type":
+            "application/json",
+        },
 
-  const recipientEmail =
-    escapeHtml(
-      params.recipientEmail,
-    );
+        body: JSON.stringify({
+          sender: {
+            name: fromName,
+            email: fromEmail,
+          },
 
-  const temporaryPassword =
-    escapeHtml(
-      params.temporaryPassword,
-    );
+          to: [
+            {
+              email:
+                params.recipientEmail,
+              name:
+                params.recipientName,
+            },
+          ],
 
-  const roleLabel =
-    escapeHtml(
-      getRoleLabel(
-        params.role,
-      ),
-    );
+          subject:
+            "Your IyanjuPay Administrator Account",
 
-  const safePortalUrl =
-    escapeHtml(
-      portalUrl,
-    );
-
-  const htmlContent = `
+          htmlContent: `
 <!DOCTYPE html>
 <html>
 <head>
   <meta charset="UTF-8" />
-
   <meta
     name="viewport"
     content="width=device-width, initial-scale=1.0"
   />
-
   <title>
     IyanjuPay Administrator Account
   </title>
@@ -353,7 +293,6 @@ async function sendBrevoEmail(
   font-family:Arial,Helvetica,sans-serif;
   color:#0f172a;
 ">
-
   <div style="
     max-width:620px;
     margin:40px auto;
@@ -368,7 +307,6 @@ async function sendBrevoEmail(
       padding:28px 32px;
       color:#ffffff;
     ">
-
       <h1 style="
         margin:0;
         font-size:24px;
@@ -383,19 +321,18 @@ async function sendBrevoEmail(
       ">
         Administrator Portal
       </p>
-
     </div>
 
-    <div style="
-      padding:32px;
-    ">
+    <div style="padding:32px;">
 
       <h2 style="
         margin:0 0 16px;
         font-size:22px;
       ">
         Welcome,
-        ${recipientName}
+        ${escapeHtml(
+          params.recipientName,
+        )}
       </h2>
 
       <p style="
@@ -428,7 +365,11 @@ async function sendBrevoEmail(
           font-size:16px;
           font-weight:bold;
         ">
-          ${roleLabel}
+          ${escapeHtml(
+            getRoleLabel(
+              params.role,
+            ),
+          )}
         </p>
 
         <p style="
@@ -444,7 +385,9 @@ async function sendBrevoEmail(
           font-size:16px;
           font-weight:bold;
         ">
-          ${recipientEmail}
+          ${escapeHtml(
+            params.recipientEmail,
+          )}
         </p>
 
         <p style="
@@ -466,7 +409,9 @@ async function sendBrevoEmail(
           font-weight:bold;
           letter-spacing:.5px;
         ">
-          ${temporaryPassword}
+          ${escapeHtml(
+            params.temporaryPassword,
+          )}
         </div>
 
       </div>
@@ -486,9 +431,10 @@ async function sendBrevoEmail(
         margin:24px 0;
         text-align:center;
       ">
-
         <a
-          href="${safePortalUrl}"
+          href="${escapeHtml(
+            portalUrl,
+          )}"
           style="
             display:inline-block;
             padding:13px 22px;
@@ -502,7 +448,6 @@ async function sendBrevoEmail(
         >
           Open Admin Portal
         </a>
-
       </div>
 
       <div style="
@@ -512,14 +457,12 @@ async function sendBrevoEmail(
         border:1px solid #fed7aa;
         border-radius:10px;
       ">
-
         <p style="
           margin:0;
           font-size:13px;
           line-height:1.6;
           color:#9a3412;
         ">
-
           <strong>
             Security notice:
           </strong>
@@ -529,9 +472,7 @@ async function sendBrevoEmail(
           after your first administrator login.
           Do not share your administrator
           credentials with anyone.
-
         </p>
-
       </div>
 
       <p style="
@@ -540,12 +481,10 @@ async function sendBrevoEmail(
         line-height:1.5;
         color:#94a3b8;
       ">
-
         If you were not expecting this
         administrator account, please contact
         the IyanjuPay administration team
         immediately.
-
       </p>
 
     </div>
@@ -556,7 +495,6 @@ async function sendBrevoEmail(
       border-top:1px solid #e2e8f0;
       text-align:center;
     ">
-
       <p style="
         margin:0;
         font-size:12px;
@@ -566,151 +504,47 @@ async function sendBrevoEmail(
         IyanjuPay.
         All rights reserved.
       </p>
-
     </div>
 
   </div>
-
 </body>
 </html>
-  `;
+          `,
+        }),
+      },
+    );
 
-  const textContent = `
-IyanjuPay Administrator Portal
+  const responseText =
+    await response.text();
 
-Welcome, ${params.recipientName}
-
-A new IyanjuPay administrator account has been created for you.
-
-Administrator Role:
-${getRoleLabel(params.role)}
-
-Email:
-${params.recipientEmail}
-
-Temporary Password:
-${params.temporaryPassword}
-
-Admin Portal:
-${portalUrl}
-
-This is a temporary password. You will be required to change it after your first administrator login.
-
-Do not share your administrator credentials with anyone.
-
-If you were not expecting this administrator account, please contact the IyanjuPay administration team immediately.
-  `.trim();
+  let responseData:
+    unknown = null;
 
   try {
-    /*
-     * Verify the SMTP connection before attempting
-     * to send the actual message.
-     *
-     * This gives us a useful authentication/
-     * connection error in the Edge Function logs.
-     */
-    await transport.verify();
+    responseData =
+      responseText
+        ? JSON.parse(
+            responseText,
+          )
+        : null;
+  } catch {
+    responseData =
+      responseText;
+  }
 
-    await new Promise<void>(
-      (resolve, reject) => {
-        transport.sendMail(
-          {
-            from: {
-              name: fromName,
-              address: fromEmail,
-            },
-
-            to: [
-              {
-                name:
-                  params.recipientName,
-                address:
-                  params.recipientEmail,
-              },
-            ],
-
-            subject:
-              "Your IyanjuPay Administrator Account",
-
-            text:
-              textContent,
-
-            html:
-              htmlContent,
-          },
-
-          (error) => {
-            if (error) {
-              reject(error);
-              return;
-            }
-
-            resolve();
-          },
-        );
-      },
-    );
-  } catch (error) {
+  if (!response.ok) {
     console.error(
-      "Brevo SMTP email failed:",
-      {
-        name:
-          error instanceof Error
-            ? error.name
-            : undefined,
-
-        message:
-          error instanceof Error
-            ? error.message
-            : String(error),
-
-        stack:
-          error instanceof Error
-            ? error.stack
-            : undefined,
-      },
+      "Brevo email API failed:",
+      response.status,
+      responseData,
     );
-
-    const message =
-      error instanceof Error
-        ? error.message
-        : String(error);
-
-    /*
-     * Do not expose SMTP credentials or
-     * unnecessary provider internals to
-     * the browser.
-     */
-    if (
-      /535|authentication|auth|invalid credentials|username|password/i.test(
-        message,
-      )
-    ) {
-      throw new Error(
-        "The administrator account was created, but Brevo SMTP authentication failed. Please verify the Brevo SMTP login and SMTP key.",
-      );
-    }
-
-    if (
-      /connect|connection|timeout|socket|network|tls|certificate/i.test(
-        message,
-      )
-    ) {
-      throw new Error(
-        "The administrator account was created, but the application could not connect to Brevo SMTP.",
-      );
-    }
 
     throw new Error(
       "The administrator account was created, but the credential email could not be sent.",
     );
-  } finally {
-    try {
-      transport.close();
-    } catch {
-      // Ignore transport cleanup errors.
-    }
   }
+
+  return responseData;
 }
 
 async function findAuthUserByEmail(
@@ -761,7 +595,6 @@ async function findAuthUserByEmail(
       return {
         id:
           matchingUser.id,
-
         email:
           matchingUser.email ??
           null,
@@ -940,6 +773,11 @@ Deno.serve(
       /*
        * Verify that the authenticated caller
        * is an active Super Admin.
+       *
+       * We intentionally query support_admins
+       * directly instead of using an RPC through
+       * the service-role client because the latter
+       * does not carry the caller's auth.uid().
        */
       const {
         data:
@@ -1138,6 +976,9 @@ Deno.serve(
 
       /*
        * Find an existing Supabase Auth user.
+       *
+       * Administrator creation intentionally
+       * requires a new email address.
        */
       let existingAuthUser:
         {
@@ -1266,10 +1107,8 @@ Deno.serve(
           .admin
           .createUser({
             email,
-
             password:
               temporaryPassword,
-
             email_confirm:
               true,
 
@@ -1303,6 +1142,12 @@ Deno.serve(
           createUserError,
         );
 
+        /*
+         * Supabase can still reject an email due
+         * to a race condition after our duplicate
+         * lookup. Convert known duplicate errors
+         * into a proper 409.
+         */
         const createErrorMessage =
           createUserError?.message ||
           "";
@@ -1315,19 +1160,16 @@ Deno.serve(
         return jsonResponse(
           {
             success: false,
-
             error:
               duplicateEmail
                 ? "An account with this email address already exists. Administrator creation requires a new email address."
                 : createErrorMessage ||
                   "Failed to create the administrator account.",
-
             code:
               duplicateEmail
                 ? "AUTH_EMAIL_ALREADY_EXISTS"
                 : "ADMIN_AUTH_CREATE_FAILED",
           },
-
           duplicateEmail
             ? 409
             : 400,
@@ -1444,8 +1286,7 @@ Deno.serve(
       }
 
       /*
-       * Send administrator credentials through
-       * Brevo SMTP.
+       * Send credentials.
        */
       const adminPortalUrl =
         Deno.env
@@ -1479,8 +1320,8 @@ Deno.serve(
 
         /*
          * Roll back the entire administrator
-         * provisioning because the credentials
-         * were not delivered.
+         * provisioning because the new user has
+         * not received their credentials.
          */
         await adminClient
           .from(
@@ -1509,15 +1350,11 @@ Deno.serve(
         return jsonResponse(
           {
             success: false,
-
             error:
               emailError instanceof
               Error
                 ? emailError.message
                 : "Failed to send administrator credentials.",
-
-            code:
-              "ADMIN_CREDENTIAL_EMAIL_FAILED",
           },
           502,
         );
@@ -1623,7 +1460,7 @@ Deno.serve(
                 user.id,
 
               credential_delivery:
-                "brevo_smtp",
+                "brevo",
             },
           });
 
@@ -1673,7 +1510,6 @@ Deno.serve(
       return jsonResponse(
         {
           success: false,
-
           error:
             error instanceof
             Error
@@ -1685,4 +1521,3 @@ Deno.serve(
     }
   },
 );
-

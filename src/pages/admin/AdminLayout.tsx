@@ -171,7 +171,6 @@ const Navigation = ({
       path: "/admin/admins",
       icon: ShieldCheck,
       roles: ["super_admin"],
-      badge: "Soon",
     },
     {
       label: "Settings",

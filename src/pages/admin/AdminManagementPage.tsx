@@ -483,11 +483,11 @@ const timer = window.setTimeout(() => {
 loadAdmins();
 }, 250);
 
-```
+
 return () => {
   window.clearTimeout(timer);
 };
-```
+
 
 }, [
 loadAdmins,

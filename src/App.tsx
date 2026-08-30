@@ -43,6 +43,8 @@ import AnalyticsPage from "@/pages/admin/AnalyticsPage";
 import NotificationsPage from "@/pages/admin/NotificationsPage";
 import AuditLogsPage from "@/pages/admin/AuditLogsPage";
 import AdminManagementPage from "@/pages/admin/AdminManagementPage";
+import AdminLoginPage from "@/pages/admin/AdminLoginPage";
+import AdminChangePasswordPage from "@/pages/admin/AdminChangePasswordPage";
 import UserDisputesPage from "@/components/disputes/UserDisputesPage";
 import VerifyPaymentPinResetOtp from "@/pages/VerifyPaymentPinResetOtp";
 import ResetPaymentPin from "@/pages/ResetPaymentPin";
@@ -247,6 +249,16 @@ const App = () => {
             <Route
               path="/admin/management"
               element={<AdminManagementPage />}
+            />
+
+            <Route
+              path="/admin/login"
+              element={<AdminLoginPage />}
+            />
+
+            <Route
+              path="/admin/change-password"
+              element={<AdminChangePasswordPage />}
             />
             
             <Route

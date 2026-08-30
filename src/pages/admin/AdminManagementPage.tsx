@@ -1,1069 +1,1116 @@
 import React, {
-useCallback,
-useEffect,
-useMemo,
-useState,
+  FormEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
 } from "react";
 
 import {
-Activity,
-AlertCircle,
-CheckCircle2,
-ChevronLeft,
-ChevronRight,
-Edit3,
-Loader2,
-Plus,
-RefreshCw,
-Search,
-Shield,
-ShieldCheck,
-ShieldOff,
-UserPlus,
-Users,
-X,
+  Activity,
+  AlertCircle,
+  CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
+  Edit3,
+  Loader2,
+  Plus,
+  RefreshCw,
+  Search,
+  Shield,
+  ShieldCheck,
+  UserCheck,
+  UserPlus,
+  UserX,
+  X,
 } from "lucide-react";
 
+import AdminLayout from "@/components/admin/AdminLayout";
 import { supabase } from "@/integrations/supabase/client";
-import AdminLayout from "@/pages/admin/AdminLayout";
+
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+
+import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
+} from "@/components/ui/alert";
+
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 
 type AdminRole =
-| "super_admin"
-| "operations_admin"
-| "finance_admin"
-| "read_only_admin";
+  | "super_admin"
+  | "operations_admin"
+  | "finance_admin"
+  | "read_only_admin";
 
 type AdminRecord = {
-user_id: string;
-email: string | null;
-full_name: string | null;
-role: AdminRole | string;
-is_active: boolean;
-created_at: string;
-created_by: string | null;
-last_sign_in_at?: string | null;
-display_name?: string | null;
-notes?: string | null;
+  user_id: string;
+  email: string | null;
+  full_name: string | null;
+  role: AdminRole | string;
+  is_active: boolean;
+  created_at: string;
+  created_by: string | null;
+  last_sign_in_at?: string | null;
+  display_name?: string | null;
+  notes?: string | null;
+};
+
+type AdminListResponse = {
+  success?: boolean;
+  admins?: AdminRecord[];
+  data?: AdminRecord[];
+  total?: number;
+  total_count?: number;
+  page?: number;
+  page_size?: number;
+  pages?: number;
+  summary?: {
+    total?: number;
+    active?: number;
+    inactive?: number;
+    super_admin?: number;
+    operations_admin?: number;
+    finance_admin?: number;
+    read_only_admin?: number;
+  };
 };
 
 type AdminSummary = {
-total_admins: number;
-active_admins: number;
-inactive_admins: number;
-super_admins: number;
-operations_admins: number;
-finance_admins: number;
-read_only_admins: number;
+  total: number;
+  active: number;
+  inactive: number;
+  super_admin: number;
+  operations_admin: number;
+  finance_admin: number;
+  read_only_admin: number;
 };
 
-type ListResponse = {
-success?: boolean;
-admins?: AdminRecord[];
-data?: AdminRecord[];
-total?: number;
-count?: number;
-total_count?: number;
-page?: number;
-page_size?: number;
-[key: string]: unknown;
-};
-
-const ROLE_OPTIONS: Array<{
-value: AdminRole;
-label: string;
-description: string;
-}> = [
-{
-value: "super_admin",
-label: "Super Admin",
-description: "Full administrative access.",
-},
-{
-value: "operations_admin",
-label: "Operations Admin",
-description: "Operational and customer-management access.",
-},
-{
-value: "finance_admin",
-label: "Finance Admin",
-description: "Financial and transaction-management access.",
-},
-{
-value: "read_only_admin",
-label: "Read Only Admin",
-description: "View-only administrative access.",
-},
-];
+type ToastState = {
+  type: "success" | "error";
+  message: string;
+} | null;
 
 const PAGE_SIZE = 10;
 
-function getRoleLabel(role: string | null | undefined) {
-const found = ROLE_OPTIONS.find(
-(item) => item.value === role,
-);
+const ROLE_OPTIONS: Array<{
+  value: AdminRole;
+  label: string;
+  description: string;
+}> = [
+  {
+    value: "super_admin",
+    label: "Super Admin",
+    description: "Full administrative access",
+  },
+  {
+    value: "operations_admin",
+    label: "Operations Admin",
+    description: "Operational and transaction management",
+  },
+  {
+    value: "finance_admin",
+    label: "Finance Admin",
+    description: "Finance and financial operations",
+  },
+  {
+    value: "read_only_admin",
+    label: "Read Only Admin",
+    description: "View-only administrative access",
+  },
+];
 
-return found?.label ?? role ?? "Unknown";
+const ROLE_LABELS: Record<string, string> = {
+  super_admin: "Super Admin",
+  operations_admin: "Operations Admin",
+  finance_admin: "Finance Admin",
+  read_only_admin: "Read Only Admin",
+};
+
+const ROLE_DESCRIPTIONS: Record<string, string> = {
+  super_admin: "Full administrative access",
+  operations_admin: "Operational and transaction management",
+  finance_admin: "Finance and financial operations",
+  read_only_admin: "View-only administrative access",
+};
+
+function getRoleLabel(role: string | null | undefined) {
+  if (!role) return "Unknown";
+  return ROLE_LABELS[role] ?? role;
 }
 
 function getRoleDescription(role: string | null | undefined) {
-const found = ROLE_OPTIONS.find(
-(item) => item.value === role,
-);
-
-return found?.description ?? "";
-}
-
-function getRoleBadgeClass(role: string | null | undefined) {
-switch (role) {
-case "super_admin":
-return "bg-purple-100 text-purple-700 border-purple-200";
-
-
-case "operations_admin":
-  return "bg-blue-100 text-blue-700 border-blue-200";
-
-case "finance_admin":
-  return "bg-emerald-100 text-emerald-700 border-emerald-200";
-
-case "read_only_admin":
-  return "bg-slate-100 text-slate-700 border-slate-200";
-
-default:
-  return "bg-gray-100 text-gray-700 border-gray-200";
-
-}
+  if (!role) return "";
+  return ROLE_DESCRIPTIONS[role] ?? "";
 }
 
 function formatDate(value: string | null | undefined) {
-if (!value) {
-return "Never";
-}
+  if (!value) return "—";
 
-const date = new Date(value);
+  const date = new Date(value);
 
-if (Number.isNaN(date.getTime())) {
-return "—";
-}
+  if (Number.isNaN(date.getTime())) {
+    return "—";
+  }
 
-return date.toLocaleString();
+  return date.toLocaleString();
 }
 
 function getInitials(
-fullName: string | null | undefined,
-email: string | null | undefined,
+  fullName: string | null | undefined,
+  email: string | null | undefined,
 ) {
-const source = (fullName || email || "A").trim();
+  const source = fullName?.trim() || email?.trim() || "Admin";
 
-if (!source) {
-return "A";
+  const parts = source
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2);
+
+  if (parts.length === 1) {
+    return parts[0].slice(0, 2).toUpperCase();
+  }
+
+  return parts
+    .map((part) => part[0])
+    .join("")
+    .toUpperCase();
 }
 
-const parts = source.split(/\s+/).filter(Boolean);
+function normalizeListResponse(response: unknown): {
+  admins: AdminRecord[];
+  total: number;
+} {
+  if (!response || typeof response !== "object") {
+    return {
+      admins: [],
+      total: 0,
+    };
+  }
 
-if (parts.length >= 2) {
-return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+  const value = response as AdminListResponse;
+
+  const admins = Array.isArray(value.admins)
+    ? value.admins
+    : Array.isArray(value.data)
+      ? value.data
+      : [];
+
+  const total =
+    typeof value.total === "number"
+      ? value.total
+      : typeof value.total_count === "number"
+        ? value.total_count
+        : admins.length;
+
+  return {
+    admins,
+    total,
+  };
 }
 
-return source.slice(0, 2).toUpperCase();
+function extractRpcError(error: unknown) {
+  if (!error) {
+    return "An unexpected error occurred.";
+  }
+
+  if (typeof error === "string") {
+    return error;
+  }
+
+  if (typeof error === "object") {
+    const value = error as {
+      message?: string;
+      details?: string;
+      hint?: string;
+    };
+
+    if (value.message) {
+      return value.message;
+    }
+
+    if (value.details) {
+      return value.details;
+    }
+
+    if (value.hint) {
+      return value.hint;
+    }
+  }
+
+  return "An unexpected error occurred.";
 }
 
-function extractAdmins(data: unknown): AdminRecord[] {
-if (!data || typeof data !== "object") {
-return [];
+function RoleBadge({ role }: { role: string }) {
+  const isSuperAdmin = role === "super_admin";
+
+  return (
+    <span
+      className={[
+        "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1",
+        "text-xs font-medium",
+        isSuperAdmin
+          ? "bg-amber-100 text-amber-800"
+          : role === "operations_admin"
+            ? "bg-blue-100 text-blue-800"
+            : role === "finance_admin"
+              ? "bg-emerald-100 text-emerald-800"
+              : "bg-slate-100 text-slate-700",
+      ].join(" ")}
+    >
+      {isSuperAdmin ? (
+        <ShieldCheck className="h-3.5 w-3.5" />
+      ) : (
+        <Shield className="h-3.5 w-3.5" />
+      )}
+      {getRoleLabel(role)}
+    </span>
+  );
 }
 
-const value = data as ListResponse;
-
-if (Array.isArray(value.admins)) {
-return value.admins;
+function StatusBadge({ active }: { active: boolean }) {
+  return (
+    <span
+      className={[
+        "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1",
+        "text-xs font-medium",
+        active
+          ? "bg-emerald-100 text-emerald-800"
+          : "bg-red-100 text-red-800",
+      ].join(" ")}
+    >
+      {active ? (
+        <CheckCircle2 className="h-3.5 w-3.5" />
+      ) : (
+        <UserX className="h-3.5 w-3.5" />
+      )}
+      {active ? "Active" : "Inactive"}
+    </span>
+  );
 }
 
-if (Array.isArray(value.data)) {
-return value.data;
-}
+const AdminManagementPage: React.FC = () => {
+  const [admins, setAdmins] = useState<AdminRecord[]>([]);
+  const [total, setTotal] = useState(0);
 
-return [];
-}
+  const [summary, setSummary] = useState<AdminSummary>({
+    total: 0,
+    active: 0,
+    inactive: 0,
+    super_admin: 0,
+    operations_admin: 0,
+    finance_admin: 0,
+    read_only_admin: 0,
+  });
 
-function extractTotal(
-data: unknown,
-fallback: number,
-) {
-if (!data || typeof data !== "object") {
-return fallback;
-}
+  const [search, setSearch] = useState("");
+  const [roleFilter, setRoleFilter] = useState<string>("all");
+  const [activeFilter, setActiveFilter] = useState<string>("all");
 
-const value = data as ListResponse;
+  const [page, setPage] = useState(1);
 
-if (typeof value.total_count === "number") {
-return value.total_count;
-}
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
-if (typeof value.total === "number") {
-return value.total;
-}
+  const [toast, setToast] = useState<ToastState>(null);
 
-if (typeof value.count === "number") {
-return value.count;
-}
+  const [addDialogOpen, setAddDialogOpen] = useState(false);
+  const [roleDialogOpen, setRoleDialogOpen] = useState(false);
+  const [statusDialogOpen, setStatusDialogOpen] = useState(false);
 
-return fallback;
-}
+  const [selectedAdmin, setSelectedAdmin] =
+    useState<AdminRecord | null>(null);
 
-function extractAdminFromRpc(data: unknown): AdminRecord | null {
-if (!data || typeof data !== "object") {
-return null;
-}
+  const [addUserId, setAddUserId] = useState("");
+  const [addRole, setAddRole] =
+    useState<AdminRole>("operations_admin");
+  const [addDisplayName, setAddDisplayName] = useState("");
+  const [addNotes, setAddNotes] = useState("");
 
-const value = data as {
-admin?: AdminRecord | null;
-data?: AdminRecord | null;
-};
+  const [newRole, setNewRole] =
+    useState<AdminRole>("operations_admin");
 
-if (value.admin && typeof value.admin === "object") {
-return value.admin;
-}
+  const [statusTarget, setStatusTarget] =
+    useState<AdminRecord | null>(null);
 
-if (value.data && typeof value.data === "object") {
-return value.data;
-}
+  const [actionLoading, setActionLoading] = useState(false);
 
-return null;
-}
+  const [currentAdminId, setCurrentAdminId] = useState<string | null>(
+    null,
+  );
 
-function getErrorMessage(error: unknown) {
-if (!error) {
-return "An unexpected error occurred.";
-}
+  const totalPages = useMemo(() => {
+    return Math.max(1, Math.ceil(total / PAGE_SIZE));
+  }, [total]);
 
-if (typeof error === "string") {
-return error;
-}
+  const showToast = useCallback(
+    (type: "success" | "error", message: string) => {
+      setToast({
+        type,
+        message,
+      });
 
-if (typeof error === "object") {
-const value = error as {
-message?: string;
-details?: string;
-hint?: string;
-};
+      window.setTimeout(() => {
+        setToast(null);
+      }, 5000);
+    },
+    [],
+  );
 
+  const loadCurrentUser = useCallback(async () => {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
 
-if (value.message) {
-  return value.message;
-}
+    setCurrentAdminId(user?.id ?? null);
+  }, []);
 
-if (value.details) {
-  return value.details;
-}
+  const loadSummary = useCallback(async () => {
+    const { data, error } = await supabase.rpc(
+      "admin_management_summary",
+    );
 
-if (value.hint) {
-  return value.hint;
-}
+    if (error) {
+      throw error;
+    }
 
+    if (!data) {
+      return;
+    }
 
-}
+    const raw = Array.isArray(data) ? data[0] : data;
 
-return "An unexpected error occurred.";
-}
+    if (!raw || typeof raw !== "object") {
+      return;
+    }
 
-function AdminManagementPage() {
-const [admins, setAdmins] = useState<AdminRecord[]>([]);
-const [summary, setSummary] = useState<AdminSummary>({
-total_admins: 0,
-active_admins: 0,
-inactive_admins: 0,
-super_admins: 0,
-operations_admins: 0,
-finance_admins: 0,
-read_only_admins: 0,
-});
+    const value = raw as Record<string, unknown>;
 
-const [search, setSearch] = useState("");
-const [roleFilter, setRoleFilter] = useState("all");
-const [statusFilter, setStatusFilter] = useState("all");
+    setSummary({
+      total:
+        Number(
+          value.total ??
+            value.total_admins ??
+            value.admin_count ??
+            0,
+        ) || 0,
 
-const [page, setPage] = useState(1);
-const [total, setTotal] = useState(0);
+      active:
+        Number(
+          value.active ??
+            value.active_admins ??
+            0,
+        ) || 0,
 
-const [loading, setLoading] = useState(true);
-const [refreshing, setRefreshing] = useState(false);
+      inactive:
+        Number(
+          value.inactive ??
+            value.inactive_admins ??
+            0,
+        ) || 0,
 
-const [error, setError] = useState("");
-const [success, setSuccess] = useState("");
+      super_admin:
+        Number(
+          value.super_admin ??
+            value.super_admins ??
+            0,
+        ) || 0,
 
-const [showAddModal, setShowAddModal] = useState(false);
+      operations_admin:
+        Number(
+          value.operations_admin ??
+            value.operations_admins ??
+            0,
+        ) || 0,
 
-const [selectedAdmin, setSelectedAdmin] =
-useState<AdminRecord | null>(null);
+      finance_admin:
+        Number(
+          value.finance_admin ??
+            value.finance_admins ??
+            0,
+        ) || 0,
 
-const [showRoleModal, setShowRoleModal] = useState(false);
+      read_only_admin:
+        Number(
+          value.read_only_admin ??
+            value.read_only_admins ??
+            0,
+        ) || 0,
+    });
+  }, []);
 
-const [addLoading, setAddLoading] = useState(false);
-const [roleLoading, setRoleLoading] = useState(false);
-const [statusLoading, setStatusLoading] = useState(false);
+  const loadAdmins = useCallback(
+    async (showRefresh = false) => {
+      try {
+        if (showRefresh) {
+          setRefreshing(true);
+        } else {
+          setLoading(true);
+        }
 
-const [newAdminUserId, setNewAdminUserId] = useState("");
-const [newAdminRole, setNewAdminRole] =
-useState<AdminRole>("read_only_admin");
-const [newAdminDisplayName, setNewAdminDisplayName] =
-useState("");
-const [newAdminNotes, setNewAdminNotes] =
-useState("");
+        const normalizedSearch = search.trim() || null;
 
-const [newRole, setNewRole] =
-useState<AdminRole>("read_only_admin");
+        const role =
+          roleFilter === "all"
+            ? null
+            : roleFilter;
 
-const totalPages = useMemo(() => {
-if (total <= 0) {
-return 1;
-}
+        let isActive: boolean | null = null;
 
+        if (activeFilter === "active") {
+          isActive = true;
+        } else if (activeFilter === "inactive") {
+          isActive = false;
+        }
 
-return Math.max(1, Math.ceil(total / PAGE_SIZE));
+        const { data, error } = await supabase.rpc(
+          "admin_management_list",
+          {
+            p_search: normalizedSearch,
+            p_role: role,
+            p_is_active: isActive,
+            p_limit: PAGE_SIZE,
+            p_offset: (page - 1) * PAGE_SIZE,
+          },
+        );
 
+        if (error) {
+          throw error;
+        }
 
-}, [total]);
+        const normalized = normalizeListResponse(data);
 
-const loadSummary = useCallback(async () => {
-const { data, error: rpcError } =
-await supabase.rpc("admin_management_summary");
+        setAdmins(normalized.admins);
+        setTotal(normalized.total);
 
+        await loadSummary();
+      } catch (error) {
+        console.error(
+          "Failed to load administrator management data:",
+          error,
+        );
 
-if (rpcError) {
-  throw rpcError;
-}
+        showToast(
+          "error",
+          extractRpcError(error),
+        );
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
+      }
+    },
+    [
+      activeFilter,
+      loadSummary,
+      page,
+      roleFilter,
+      search,
+      showToast,
+    ],
+  );
 
-if (!data || typeof data !== "object") {
-  return;
-}
+  useEffect(() => {
+    void loadCurrentUser();
+  }, [loadCurrentUser]);
 
-const value = data as Record<string, unknown>;
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      void loadAdmins();
+    }, 250);
 
-setSummary({
-  total_admins:
-    Number(
-      value.total_admins ??
-        value.total ??
-        0,
-    ) || 0,
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [
+    loadAdmins,
+  ]);
 
-  active_admins:
-    Number(
-      value.active_admins ??
-        value.active ??
-        0,
-    ) || 0,
+  const handleRefresh = async () => {
+    await loadAdmins(true);
+  };
 
-  inactive_admins:
-    Number(
-      value.inactive_admins ??
-        value.inactive ??
-        0,
-    ) || 0,
+  const resetAddForm = () => {
+    setAddUserId("");
+    setAddRole("operations_admin");
+    setAddDisplayName("");
+    setAddNotes("");
+  };
 
-  super_admins:
-    Number(
-      value.super_admins ??
-        value.super_admin ??
-        0,
-    ) || 0,
+  const handleAddAdmin = async (
+    event: FormEvent<HTMLFormElement>,
+  ) => {
+    event.preventDefault();
 
-  operations_admins:
-    Number(
-      value.operations_admins ??
-        value.operations_admin ??
-        0,
-    ) || 0,
+    const userId = addUserId.trim();
 
-  finance_admins:
-    Number(
-      value.finance_admins ??
-        value.finance_admin ??
-        0,
-    ) || 0,
+    if (!userId) {
+      showToast(
+        "error",
+        "Admin user ID is required.",
+      );
+      return;
+    }
 
-  read_only_admins:
-    Number(
-      value.read_only_admins ??
-        value.read_only_admin ??
-        0,
-    ) || 0,
-});
+    if (!addRole) {
+      showToast(
+        "error",
+        "Administrator role is required.",
+      );
+      return;
+    }
 
+    try {
+      setActionLoading(true);
 
-}, []);
-
-const loadAdmins = useCallback(
-async (showRefreshState = false) => {
-if (showRefreshState) {
-setRefreshing(true);
-} else {
-setLoading(true);
-}
-
-
-  setError("");
-
-  try {
-    const normalizedSearch =
-      search.trim() || null;
-
-    const normalizedRole =
-      roleFilter === "all"
-        ? null
-        : roleFilter;
-
-    const normalizedStatus =
-      statusFilter === "all"
-        ? null
-        : statusFilter === "active"
-          ? true
-          : false;
-
-    const { data, error: rpcError } =
-      await supabase.rpc(
-        "admin_management_list",
+      const { data, error } = await supabase.rpc(
+        "admin_management_add",
         {
-          p_search:
-            normalizedSearch,
-          p_role:
-            normalizedRole,
-          p_is_active:
-            normalizedStatus,
-          p_page:
-            page,
-          p_page_size:
-            PAGE_SIZE,
+          p_admin_user_id: userId,
+          p_role: addRole,
+          p_display_name:
+            addDisplayName.trim() || null,
+          p_notes:
+            addNotes.trim() || null,
         },
       );
 
-    if (rpcError) {
-      throw rpcError;
+      if (error) {
+        throw error;
+      }
+
+      if (
+        !data ||
+        typeof data !== "object" ||
+        !(data as Record<string, unknown>).success
+      ) {
+        throw new Error(
+          "Administrator creation did not complete successfully.",
+        );
+      }
+
+      setAddDialogOpen(false);
+      resetAddForm();
+
+      showToast(
+        "success",
+        "Administrator added successfully.",
+      );
+
+      await loadAdmins(true);
+    } catch (error) {
+      console.error(
+        "Failed to add administrator:",
+        error,
+      );
+
+      showToast(
+        "error",
+        extractRpcError(error),
+      );
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const openRoleDialog = (admin: AdminRecord) => {
+    if (admin.user_id === currentAdminId) {
+      showToast(
+        "error",
+        "You cannot change your own administrator role.",
+      );
+      return;
     }
 
-    const rows =
-      extractAdmins(data);
-
-    setAdmins(rows);
-
-    setTotal(
-      extractTotal(
-        data,
-        rows.length,
-      ),
-    );
-
-    await loadSummary();
-  } catch (rpcError) {
-    setAdmins([]);
-    setTotal(0);
-
-    setError(
-      getErrorMessage(rpcError),
-    );
-  } finally {
-    setLoading(false);
-    setRefreshing(false);
-  }
-},
-[
-  loadSummary,
-  page,
-  roleFilter,
-  search,
-  statusFilter,
-],
-
-
-);
-
-useEffect(() => {
-const timer = window.setTimeout(() => {
-loadAdmins();
-}, 250);
-
-
-return () => {
-  window.clearTimeout(timer);
-};
-
-
-}, [
-loadAdmins,
-]);
-
-const handleRefresh = async () => {
-setSuccess("");
-await loadAdmins(true);
-};
-
-const handleSearchChange = (
-value: string,
-) => {
-setSearch(value);
-setPage(1);
-};
-
-const handleRoleFilterChange = (
-value: string,
-) => {
-setRoleFilter(value);
-setPage(1);
-};
-
-const handleStatusFilterChange = (
-value: string,
-) => {
-setStatusFilter(value);
-setPage(1);
-};
-
-const resetAddForm = () => {
-setNewAdminUserId("");
-setNewAdminRole(
-"read_only_admin",
-);
-setNewAdminDisplayName("");
-setNewAdminNotes("");
-};
-
-const closeAddModal = () => {
-if (addLoading) {
-return;
-}
-
-
-setShowAddModal(false);
-resetAddForm();
-
-
-};
-
-const handleAddAdmin = async (
-event: React.FormEvent,
-) => {
-event.preventDefault();
-
-
-setError("");
-setSuccess("");
-
-const userId =
-  newAdminUserId.trim();
-
-if (!userId) {
-  setError(
-    "Enter the user's Supabase Auth user ID.",
-  );
-  return;
-}
-
-setAddLoading(true);
-
-try {
-  const { data, error: rpcError } =
-    await supabase.rpc(
-      "admin_management_add",
-      {
-        p_admin_user_id: userId,
-        p_role: newAdminRole,
-        p_display_name:
-          newAdminDisplayName.trim() ||
-          null,
-        p_notes:
-          newAdminNotes.trim() ||
-          null,
-      },
-    );
-
-  if (rpcError) {
-    throw rpcError;
-  }
-
-  const createdAdmin =
-    extractAdminFromRpc(data);
-
-  setSuccess(
-    createdAdmin
-      ? `${getRoleLabel(
-          createdAdmin.role,
-        )} added successfully.`
-      : "Administrator added successfully.",
-  );
-
-  closeAddModal();
-
-  setPage(1);
-
-  await loadAdmins(true);
-} catch (rpcError) {
-  setError(
-    getErrorMessage(rpcError),
-  );
-} finally {
-  setAddLoading(false);
-}
-
-
-};
-
-const openRoleModal = (
-admin: AdminRecord,
-) => {
-setSelectedAdmin(admin);
-
-
-setNewRole(
-  ROLE_OPTIONS.some(
-    (item) =>
-      item.value === admin.role,
-  )
-    ? (admin.role as AdminRole)
-    : "read_only_admin",
-);
-
-setShowRoleModal(true);
-setError("");
-setSuccess("");
-
-};
-
-const closeRoleModal = () => {
-if (roleLoading) {
-return;
-}
-
-
-setShowRoleModal(false);
-setSelectedAdmin(null);
-
-};
-
-const handleChangeRole = async (
-event: React.FormEvent,
-) => {
-event.preventDefault();
-
-if (!selectedAdmin) {
-  return;
-}
-
-if (
-  selectedAdmin.role === newRole
-) {
-  setSuccess(
-    "No role change was necessary.",
-  );
-  closeRoleModal();
-  return;
-}
-
-setRoleLoading(true);
-setError("");
-setSuccess("");
-
-try {
-  const { error: rpcError } =
-    await supabase.rpc(
-      "admin_management_change_role",
-      {
-        p_admin_user_id:
-          selectedAdmin.user_id,
-        p_new_role: newRole,
-      },
-    );
-
-  if (rpcError) {
-    throw rpcError;
-  }
-
-  setSuccess(
-    `Administrator role changed to ${getRoleLabel(
-      newRole,
-    )}.`,
-  );
-
-  closeRoleModal();
-
-  await loadAdmins(true);
-} catch (rpcError) {
-  setError(
-    getErrorMessage(rpcError),
-  );
-} finally {
-  setRoleLoading(false);
-}
-
-
-};
-
-const handleToggleStatus = async (
-admin: AdminRecord,
-) => {
-const action = admin.is_active
-? "deactivate"
-: "activate";
-
-
-const confirmed =
-  window.confirm(
-    `Are you sure you want to ${action} ${admin.email || "this administrator"}?`,
-  );
-
-if (!confirmed) {
-  return;
-}
-
-setStatusLoading(true);
-setError("");
-setSuccess("");
-
-try {
-  const { error: rpcError } =
-    await supabase.rpc(
-      "admin_management_set_status",
-      {
-        p_admin_user_id:
-          admin.user_id,
-        p_is_active:
-          !admin.is_active,
-      },
-    );
-
-  if (rpcError) {
-    throw rpcError;
-  }
-
-  setSuccess(
-    admin.is_active
-      ? "Administrator disabled successfully."
-      : "Administrator reactivated successfully.",
-  );
-
-  await loadAdmins(true);
-} catch (rpcError) {
-  setError(
-    getErrorMessage(rpcError),
-  );
-} finally {
-  setStatusLoading(false);
-}
-
-
-};
-
-const stats = [
-{
-label: "Total Admins",
-value: summary.total_admins,
-icon: Users,
-},
-{
-label: "Active",
-value: summary.active_admins,
-icon: CheckCircle2,
-},
-{
-label: "Inactive",
-value: summary.inactive_admins,
-icon: ShieldOff,
-},
-{
-label: "Super Admins",
-value: summary.super_admins,
-icon: ShieldCheck,
-},
-];
-
-return ( <AdminLayout> <div className="min-h-screen bg-slate-50"> <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8"> <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between"> <div> <div className="mb-2 flex items-center gap-2 text-sm text-slate-500"> <Shield className="h-4 w-4" /> <span>Administration</span> <span>/</span> <span>Admin Management</span> </div>
-
-
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900">
-            Admin Management
-          </h1>
-
-          <p className="mt-1 text-sm text-slate-500">
-            Manage administrator accounts,
-            roles, access status, and
-            administrative permissions.
-          </p>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={handleRefresh}
-            disabled={refreshing}
-            className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            <RefreshCw
-              className={`h-4 w-4 ${
-                refreshing
-                  ? "animate-spin"
-                  : ""
-              }`}
-            />
-            Refresh
-          </button>
-
-          <button
-            type="button"
-            onClick={() => {
-              setError("");
-              setSuccess("");
-              setShowAddModal(true);
-            }}
-            className="inline-flex items-center justify-center gap-2 rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800"
-          >
-            <UserPlus className="h-4 w-4" />
-            Add Admin
-          </button>
-        </div>
-      </div>
-
-      {error && (
-        <div className="mb-5 flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-          <AlertCircle className="mt-0.5 h-5 w-5 shrink-0" />
-
-          <div className="min-w-0 flex-1">
-            <p className="font-semibold">
-              Operation failed
-            </p>
-            <p className="mt-1 break-words">
-              {error}
-            </p>
-          </div>
-
-          <button
-            type="button"
-            onClick={() =>
-              setError("")
-            }
-            className="rounded-md p-1 hover:bg-red-100"
-            aria-label="Dismiss error"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-      )}
-
-      {success && (
-        <div className="mb-5 flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-700">
-          <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0" />
-
-          <div className="min-w-0 flex-1">
-            <p className="font-semibold">
-              Success
-            </p>
-
-            <p className="mt-1">
-              {success}
-            </p>
-          </div>
-
-          <button
-            type="button"
-            onClick={() =>
-              setSuccess("")
-            }
-            className="rounded-md p-1 hover:bg-emerald-100"
-            aria-label="Dismiss success message"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-      )}
-
-      <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {stats.map((item) => {
-          const Icon = item.icon;
-
-          return (
-            <div
-              key={item.label}
-              className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm"
-            >
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-slate-500">
-                    {item.label}
-                  </p>
-
-                  <p className="mt-2 text-2xl font-bold text-slate-900">
-                    {item.value}
-                  </p>
-                </div>
-
-                <div className="rounded-lg bg-slate-100 p-3">
-                  <Icon className="h-5 w-5 text-slate-700" />
-                </div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      <div className="mb-6 grid gap-4 md:grid-cols-3">
-        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-          <p className="text-xs font-medium uppercase tracking-wide text-slate-400">
-            Operations
-          </p>
-
-          <p className="mt-1 text-xl font-bold text-slate-900">
-            {summary.operations_admins}
-          </p>
-        </div>
-
-        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-          <p className="text-xs font-medium uppercase tracking-wide text-slate-400">
-            Finance
-          </p>
-
-          <p className="mt-1 text-xl font-bold text-slate-900">
-            {summary.finance_admins}
-          </p>
-        </div>
-
-        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-          <p className="text-xs font-medium uppercase tracking-wide text-slate-400">
-            Read Only
-          </p>
-
-          <p className="mt-1 text-xl font-bold text-slate-900">
-            {summary.read_only_admins}
-          </p>
-        </div>
-      </div>
-
-      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-        <div className="border-b border-slate-200 p-4">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
-            <div className="relative flex-1">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-
-              <input
-                type="text"
-                value={search}
-                onChange={(event) =>
-                  handleSearchChange(
-                    event.target.value,
-                  )
+    setSelectedAdmin(admin);
+
+    const existingRole =
+      ROLE_OPTIONS.some(
+        (option) => option.value === admin.role,
+      )
+        ? (admin.role as AdminRole)
+        : "read_only_admin";
+
+    setNewRole(existingRole);
+    setRoleDialogOpen(true);
+  };
+
+  const handleChangeRole = async () => {
+    if (!selectedAdmin) {
+      return;
+    }
+
+    if (selectedAdmin.user_id === currentAdminId) {
+      showToast(
+        "error",
+        "You cannot change your own administrator role.",
+      );
+      return;
+    }
+
+    if (selectedAdmin.role === newRole) {
+      setRoleDialogOpen(false);
+      return;
+    }
+
+    try {
+      setActionLoading(true);
+
+      const { data, error } = await supabase.rpc(
+        "admin_management_change_role",
+        {
+          p_admin_user_id:
+            selectedAdmin.user_id,
+          p_new_role: newRole,
+        },
+      );
+
+      if (error) {
+        throw error;
+      }
+
+      if (
+        !data ||
+        typeof data !== "object" ||
+        !(data as Record<string, unknown>).success
+      ) {
+        throw new Error(
+          "Administrator role change did not complete successfully.",
+        );
+      }
+
+      setRoleDialogOpen(false);
+      setSelectedAdmin(null);
+
+      showToast(
+        "success",
+        "Administrator role updated successfully.",
+      );
+
+      await loadAdmins(true);
+    } catch (error) {
+      console.error(
+        "Failed to change administrator role:",
+        error,
+      );
+
+      showToast(
+        "error",
+        extractRpcError(error),
+      );
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const openStatusDialog = (admin: AdminRecord) => {
+    if (admin.user_id === currentAdminId) {
+      showToast(
+        "error",
+        "You cannot disable or deactivate your own administrator account.",
+      );
+      return;
+    }
+
+    setStatusTarget(admin);
+    setStatusDialogOpen(true);
+  };
+
+  const handleChangeStatus = async () => {
+    if (!statusTarget) {
+      return;
+    }
+
+    if (statusTarget.user_id === currentAdminId) {
+      showToast(
+        "error",
+        "You cannot disable or deactivate your own administrator account.",
+      );
+      return;
+    }
+
+    const nextStatus = !statusTarget.is_active;
+
+    try {
+      setActionLoading(true);
+
+      const { data, error } = await supabase.rpc(
+        "admin_management_set_status",
+        {
+          p_admin_user_id:
+            statusTarget.user_id,
+          p_is_active: nextStatus,
+        },
+      );
+
+      if (error) {
+        throw error;
+      }
+
+      if (
+        !data ||
+        typeof data !== "object" ||
+        !(data as Record<string, unknown>).success
+      ) {
+        throw new Error(
+          "Administrator status update did not complete successfully.",
+        );
+      }
+
+      setStatusDialogOpen(false);
+      setStatusTarget(null);
+
+      showToast(
+        "success",
+        nextStatus
+          ? "Administrator reactivated successfully."
+          : "Administrator disabled successfully.",
+      );
+
+      await loadAdmins(true);
+    } catch (error) {
+      console.error(
+        "Failed to change administrator status:",
+        error,
+      );
+
+      showToast(
+        "error",
+        extractRpcError(error),
+      );
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const clearFilters = () => {
+    setSearch("");
+    setRoleFilter("all");
+    setActiveFilter("all");
+    setPage(1);
+  };
+
+  const hasFilters =
+    search.trim() !== "" ||
+    roleFilter !== "all" ||
+    activeFilter !== "all";
+
+  return (
+    <AdminLayout>
+      <div className="min-h-screen bg-slate-50">
+        <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+          {toast && (
+            <div className="fixed right-4 top-4 z-[100] w-[min(420px,calc(100vw-2rem))]">
+              <Alert
+                variant={
+                  toast.type === "error"
+                    ? "destructive"
+                    : "default"
                 }
-                placeholder="Search administrators..."
-                className="h-10 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-sm outline-none transition placeholder:text-slate-400 focus:border-slate-400 focus:ring-2 focus:ring-slate-100"
-              />
+              >
+                {toast.type === "success" ? (
+                  <CheckCircle2 className="h-4 w-4" />
+                ) : (
+                  <AlertCircle className="h-4 w-4" />
+                )}
+
+                <AlertTitle>
+                  {toast.type === "success"
+                    ? "Success"
+                    : "Error"}
+                </AlertTitle>
+
+                <AlertDescription>
+                  {toast.message}
+                </AlertDescription>
+              </Alert>
+            </div>
+          )}
+
+          <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div>
+              <div className="mb-2 flex items-center gap-2 text-sm text-slate-500">
+                <Shield className="h-4 w-4" />
+                Administration
+              </div>
+
+              <h1 className="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
+                Admin Management
+              </h1>
+
+              <p className="mt-1 max-w-2xl text-sm text-slate-600">
+                Manage administrator accounts, roles,
+                access status, and administrative permissions.
+              </p>
             </div>
 
-            <select
-              value={roleFilter}
-              onChange={(event) =>
-                handleRoleFilterChange(
-                  event.target.value,
-                )
-              }
-              className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none focus:border-slate-400"
-            >
-              <option value="all">
-                All Roles
-              </option>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                variant="outline"
+                onClick={handleRefresh}
+                disabled={refreshing || loading}
+              >
+                {refreshing ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                )}
+                Refresh
+              </Button>
 
-              {ROLE_OPTIONS.map(
-                (role) => (
-                  <option
-                    key={role.value}
-                    value={role.value}
-                  >
-                    {role.label}
-                  </option>
-                ),
-              )}
-            </select>
-
-            <select
-              value={statusFilter}
-              onChange={(event) =>
-                handleStatusFilterChange(
-                  event.target.value,
-                )
-              }
-              className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none focus:border-slate-400"
-            >
-              <option value="all">
-                All Statuses
-              </option>
-
-              <option value="active">
-                Active
-              </option>
-
-              <option value="inactive">
-                Inactive
-              </option>
-            </select>
-          </div>
-        </div>
-
-        {loading ? (
-          <div className="flex min-h-[360px] items-center justify-center">
-            <div className="flex flex-col items-center gap-3 text-slate-500">
-              <Loader2 className="h-7 w-7 animate-spin" />
-              <span className="text-sm">
-                Loading administrators...
-              </span>
+              <Button
+                onClick={() => {
+                  resetAddForm();
+                  setAddDialogOpen(true);
+                }}
+              >
+                <UserPlus className="mr-2 h-4 w-4" />
+                Add Admin
+              </Button>
             </div>
           </div>
-        ) : admins.length === 0 ? (
-          <div className="flex min-h-[360px] flex-col items-center justify-center px-6 text-center">
-            <div className="mb-4 rounded-full bg-slate-100 p-4">
-              <Users className="h-7 w-7 text-slate-400" />
-            </div>
 
-            <h3 className="text-base font-semibold text-slate-900">
-              No administrators found
-            </h3>
+          <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
+            <Card>
+              <CardContent className="p-5">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-slate-500">
+                      Total Admins
+                    </p>
 
-            <p className="mt-1 max-w-md text-sm text-slate-500">
-              No administrator accounts
-              match the current search
-              and filter settings.
-            </p>
+                    <p className="mt-1 text-2xl font-bold text-slate-900">
+                      {summary.total}
+                    </p>
+                  </div>
 
-            <button
-              type="button"
-              onClick={() => {
-                setSearch("");
-                setRoleFilter("all");
-                setStatusFilter("all");
-                setPage(1);
-              }}
-              className="mt-4 text-sm font-semibold text-slate-900 underline underline-offset-4"
-            >
-              Clear filters
-            </button>
+                  <div className="rounded-xl bg-slate-100 p-3">
+                    <Shield className="h-5 w-5 text-slate-700" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardContent className="p-5">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-slate-500">
+                      Active
+                    </p>
+
+                    <p className="mt-1 text-2xl font-bold text-emerald-700">
+                      {summary.active}
+                    </p>
+                  </div>
+
+                  <div className="rounded-xl bg-emerald-50 p-3">
+                    <UserCheck className="h-5 w-5 text-emerald-700" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardContent className="p-5">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-slate-500">
+                      Inactive
+                    </p>
+
+                    <p className="mt-1 text-2xl font-bold text-red-700">
+                      {summary.inactive}
+                    </p>
+                  </div>
+
+                  <div className="rounded-xl bg-red-50 p-3">
+                    <UserX className="h-5 w-5 text-red-700" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardContent className="p-5">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-slate-500">
+                      Super Admins
+                    </p>
+
+                    <p className="mt-1 text-2xl font-bold text-amber-700">
+                      {summary.super_admin}
+                    </p>
+                  </div>
+
+                  <div className="rounded-xl bg-amber-50 p-3">
+                    <ShieldCheck className="h-5 w-5 text-amber-700" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardContent className="p-5">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-slate-500">
+                      Other Admins
+                    </p>
+
+                    <p className="mt-1 text-2xl font-bold text-blue-700">
+                      {Math.max(
+                        0,
+                        summary.operations_admin +
+                          summary.finance_admin +
+                          summary.read_only_admin,
+                      )}
+                    </p>
+                  </div>
+
+                  <div className="rounded-xl bg-blue-50 p-3">
+                    <Activity className="h-5 w-5 text-blue-700" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
           </div>
-        ) : (
-          <>
+
+          <Card className="mb-6">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">
+                Administrator Directory
+              </CardTitle>
+            </CardHeader>
+
+            <CardContent>
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,1fr)_220px_180px_auto]">
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+
+                  <Input
+                    value={search}
+                    onChange={(event) => {
+                      setSearch(event.target.value);
+                      setPage(1);
+                    }}
+                    placeholder="Search by name, email, or user ID..."
+                    className="pl-9"
+                  />
+                </div>
+
+                <Select
+                  value={roleFilter}
+                  onValueChange={(value) => {
+                    setRoleFilter(value);
+                    setPage(1);
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="All roles" />
+                  </SelectTrigger>
+
+                  <SelectContent>
+                    <SelectItem value="all">
+                      All roles
+                    </SelectItem>
+
+                    {ROLE_OPTIONS.map((role) => (
+                      <SelectItem
+                        key={role.value}
+                        value={role.value}
+                      >
+                        {role.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                <Select
+                  value={activeFilter}
+                  onValueChange={(value) => {
+                    setActiveFilter(value);
+                    setPage(1);
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="All statuses" />
+                  </SelectTrigger>
+
+                  <SelectContent>
+                    <SelectItem value="all">
+                      All statuses
+                    </SelectItem>
+
+                    <SelectItem value="active">
+                      Active
+                    </SelectItem>
+
+                    <SelectItem value="inactive">
+                      Inactive
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+
+                <Button
+                  variant="outline"
+                  onClick={clearFilters}
+                  disabled={!hasFilters}
+                >
+                  <X className="mr-2 h-4 w-4" />
+                  Clear
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="overflow-hidden">
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[950px] text-left">
-                <thead className="border-b border-slate-200 bg-slate-50">
-                  <tr>
-                    <th className="px-5 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
+              <table className="w-full min-w-[1000px]">
+                <thead>
+                  <tr className="border-b bg-slate-50">
+                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                       Administrator
                     </th>
 
-                    <th className="px-5 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                       Role
                     </th>
 
-                    <th className="px-5 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                       Status
                     </th>
 
-                    <th className="px-5 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                       Created
                     </th>
 
-                    <th className="px-5 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                       Last Sign In
                     </th>
 
@@ -1073,578 +1120,643 @@ return ( <AdminLayout> <div className="min-h-screen bg-slate-50"> <div className
                   </tr>
                 </thead>
 
-                <tbody className="divide-y divide-slate-100">
-                  {admins.map(
-                    (admin) => (
-                      <tr
-                        key={
-                          admin.user_id
-                        }
-                        className="transition hover:bg-slate-50/70"
+                <tbody className="divide-y">
+                  {loading ? (
+                    <tr>
+                      <td
+                        colSpan={6}
+                        className="px-5 py-16 text-center"
                       >
-                        <td className="px-5 py-4">
-                          <div className="flex items-center gap-3">
-                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-900 text-xs font-bold text-white">
-                              {getInitials(
-                                admin.full_name,
-                                admin.email,
-                              )}
+                        <Loader2 className="mx-auto h-7 w-7 animate-spin text-slate-400" />
+
+                        <p className="mt-3 text-sm text-slate-500">
+                          Loading administrators...
+                        </p>
+                      </td>
+                    </tr>
+                  ) : admins.length === 0 ? (
+                    <tr>
+                      <td
+                        colSpan={6}
+                        className="px-5 py-16 text-center"
+                      >
+                        <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-slate-100">
+                          <Shield className="h-6 w-6 text-slate-400" />
+                        </div>
+
+                        <p className="mt-4 text-sm font-medium text-slate-900">
+                          No administrators found
+                        </p>
+
+                        <p className="mt-1 text-sm text-slate-500">
+                          {hasFilters
+                            ? "Try changing your search or filters."
+                            : "No administrator accounts are available."}
+                        </p>
+                      </td>
+                    </tr>
+                  ) : (
+                    admins.map((admin) => {
+                      const isCurrentAdmin =
+                        admin.user_id === currentAdminId;
+
+                      return (
+                        <tr
+                          key={admin.user_id}
+                          className="transition-colors hover:bg-slate-50/80"
+                        >
+                          <td className="px-5 py-4">
+                            <div className="flex items-center gap-3">
+                              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-100 text-sm font-semibold text-slate-700">
+                                {getInitials(
+                                  admin.full_name ||
+                                    admin.display_name,
+                                  admin.email,
+                                )}
+                              </div>
+
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <p className="truncate font-medium text-slate-900">
+                                    {admin.full_name ||
+                                      admin.display_name ||
+                                      "Unnamed Administrator"}
+                                  </p>
+
+                                  {isCurrentAdmin && (
+                                    <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-semibold text-blue-700">
+                                      YOU
+                                    </span>
+                                  )}
+                                </div>
+
+                                <p className="truncate text-sm text-slate-500">
+                                  {admin.email || "No email"}
+                                </p>
+
+                                <p className="mt-0.5 font-mono text-[11px] text-slate-400">
+                                  {admin.user_id}
+                                </p>
+                              </div>
                             </div>
+                          </td>
 
-                            <div className="min-w-0">
-                              <p className="truncate text-sm font-semibold text-slate-900">
-                                {admin.full_name ||
-                                  admin.display_name ||
-                                  "Administrator"}
-                              </p>
+                          <td className="px-5 py-4 align-middle">
+                            <div>
+                              <RoleBadge role={admin.role} />
 
-                              <p className="truncate text-xs text-slate-500">
-                                {admin.email ||
-                                  "No email"}
-                              </p>
-
-                              <p className="mt-0.5 max-w-[280px] truncate font-mono text-[10px] text-slate-400">
-                                {admin.user_id}
+                              <p className="mt-1 text-xs text-slate-500">
+                                {getRoleDescription(
+                                  admin.role,
+                                )}
                               </p>
                             </div>
-                          </div>
-                        </td>
+                          </td>
 
-                        <td className="px-5 py-4">
-                          <div>
-                            <span
-                              className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold ${getRoleBadgeClass(
-                                admin.role,
-                              )}`}
-                            >
-                              {getRoleLabel(
-                                admin.role,
-                              )}
-                            </span>
+                          <td className="px-5 py-4 align-middle">
+                            <StatusBadge
+                              active={admin.is_active}
+                            />
+                          </td>
 
-                            <p className="mt-1 max-w-[220px] text-xs text-slate-400">
-                              {getRoleDescription(
-                                admin.role,
-                              )}
-                            </p>
-                          </div>
-                        </td>
+                          <td className="px-5 py-4 align-middle text-sm text-slate-600">
+                            {formatDate(
+                              admin.created_at,
+                            )}
+                          </td>
 
-                        <td className="px-5 py-4">
-                          {admin.is_active ? (
-                            <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
-                              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                              Active
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center gap-1.5 rounded-full bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-700">
-                              <span className="h-1.5 w-1.5 rounded-full bg-red-500" />
-                              Inactive
-                            </span>
-                          )}
-                        </td>
+                          <td className="px-5 py-4 align-middle text-sm text-slate-600">
+                            {formatDate(
+                              admin.last_sign_in_at,
+                            )}
+                          </td>
 
-                        <td className="px-5 py-4 text-sm text-slate-600">
-                          {formatDate(
-                            admin.created_at,
-                          )}
-                        </td>
+                          <td className="px-5 py-4 align-middle">
+                            <div className="flex justify-end gap-2">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                disabled={isCurrentAdmin}
+                                onClick={() =>
+                                  openRoleDialog(admin)
+                                }
+                                title={
+                                  isCurrentAdmin
+                                    ? "You cannot change your own role"
+                                    : "Change role"
+                                }
+                              >
+                                <Edit3 className="mr-1.5 h-3.5 w-3.5" />
+                                Role
+                              </Button>
 
-                        <td className="px-5 py-4 text-sm text-slate-600">
-                          {formatDate(
-                            admin.last_sign_in_at,
-                          )}
-                        </td>
-
-                        <td className="px-5 py-4">
-                          <div className="flex items-center justify-end gap-2">
-                            <button
-                              type="button"
-                              onClick={() =>
-                                openRoleModal(
-                                  admin,
-                                )
-                              }
-                              disabled={
-                                statusLoading
-                              }
-                              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-                            >
-                              <Edit3 className="h-3.5 w-3.5" />
-                              Role
-                            </button>
-
-                            <button
-                              type="button"
-                              onClick={() =>
-                                handleToggleStatus(
-                                  admin,
-                                )
-                              }
-                              disabled={
-                                statusLoading
-                              }
-                              className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${
-                                admin.is_active
-                                  ? "bg-red-50 text-red-700 hover:bg-red-100"
-                                  : "bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
-                              }`}
-                            >
-                              {statusLoading ? (
-                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                              ) : admin.is_active ? (
-                                <ShieldOff className="h-3.5 w-3.5" />
-                              ) : (
-                                <ShieldCheck className="h-3.5 w-3.5" />
-                              )}
-
-                              {admin.is_active
-                                ? "Disable"
-                                : "Activate"}
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ),
+                              <Button
+                                variant={
+                                  admin.is_active
+                                    ? "outline"
+                                    : "default"
+                                }
+                                size="sm"
+                                disabled={isCurrentAdmin}
+                                onClick={() =>
+                                  openStatusDialog(admin)
+                                }
+                                title={
+                                  isCurrentAdmin
+                                    ? "You cannot change your own status"
+                                    : admin.is_active
+                                      ? "Disable administrator"
+                                      : "Reactivate administrator"
+                                }
+                              >
+                                {admin.is_active ? (
+                                  <>
+                                    <UserX className="mr-1.5 h-3.5 w-3.5" />
+                                    Disable
+                                  </>
+                                ) : (
+                                  <>
+                                    <UserCheck className="mr-1.5 h-3.5 w-3.5" />
+                                    Activate
+                                  </>
+                                )}
+                              </Button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
                   )}
                 </tbody>
               </table>
             </div>
 
-            <div className="flex flex-col gap-3 border-t border-slate-200 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex flex-col gap-3 border-t bg-slate-50/70 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
               <p className="text-sm text-slate-500">
-                Showing{" "}
-                <span className="font-semibold text-slate-700">
-                  {admins.length}
-                </span>{" "}
-                of{" "}
-                <span className="font-semibold text-slate-700">
-                  {total}
-                </span>{" "}
-                administrators
+                {total === 0
+                  ? "No administrators"
+                  : `Showing ${
+                      (page - 1) * PAGE_SIZE + 1
+                    }–${Math.min(
+                      page * PAGE_SIZE,
+                      total,
+                    )} of ${total}`}
               </p>
 
               <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  disabled={
-                    page <= 1 ||
-                    loading
-                  }
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={page <= 1 || loading}
                   onClick={() =>
-                    setPage(
-                      (current) =>
-                        Math.max(
-                          1,
-                          current - 1,
-                        ),
+                    setPage((current) =>
+                      Math.max(1, current - 1),
                     )
                   }
-                  className="inline-flex h-9 items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
                 >
-                  <ChevronLeft className="h-4 w-4" />
+                  <ChevronLeft className="mr-1 h-4 w-4" />
                   Previous
-                </button>
+                </Button>
 
-                <span className="px-2 text-sm text-slate-500">
-                  Page{" "}
-                  <span className="font-semibold text-slate-800">
-                    {page}
-                  </span>{" "}
-                  of{" "}
-                  <span className="font-semibold text-slate-800">
-                    {totalPages}
-                  </span>
+                <span className="min-w-[100px] text-center text-sm text-slate-600">
+                  Page {page} of {totalPages}
                 </span>
 
-                <button
-                  type="button"
+                <Button
+                  variant="outline"
+                  size="sm"
                   disabled={
-                    page >=
-                      totalPages ||
+                    page >= totalPages ||
                     loading
                   }
                   onClick={() =>
-                    setPage(
-                      (current) =>
-                        Math.min(
-                          totalPages,
-                          current + 1,
-                        ),
+                    setPage((current) =>
+                      Math.min(
+                        totalPages,
+                        current + 1,
+                      ),
                     )
                   }
-                  className="inline-flex h-9 items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   Next
-                  <ChevronRight className="h-4 w-4" />
-                </button>
+                  <ChevronRight className="ml-1 h-4 w-4" />
+                </Button>
               </div>
             </div>
-          </>
-        )}
-      </div>
-
-      <div className="mt-5 flex items-start gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-        <Activity className="mt-0.5 h-5 w-5 shrink-0 text-slate-500" />
-
-        <div>
-          <p className="text-sm font-semibold text-slate-800">
-            Administrative actions are
-            audited
-          </p>
-
-          <p className="mt-1 text-xs leading-5 text-slate-500">
-            Adding administrators, changing
-            administrator roles, and changing
-            administrator status are protected
-            by the server-side super-admin
-            authorization layer and are recorded
-            in the administrative audit log.
-          </p>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  {showAddModal && (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4">
-      <div
-        className="absolute inset-0"
-        onClick={closeAddModal}
-      />
-
-      <div className="relative z-10 w-full max-w-lg rounded-2xl bg-white shadow-2xl">
-        <div className="flex items-start justify-between border-b border-slate-200 p-5">
-          <div>
-            <div className="mb-2 flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100">
-              <UserPlus className="h-5 w-5 text-slate-700" />
-            </div>
-
-            <h2 className="text-lg font-bold text-slate-900">
-              Add Administrator
-            </h2>
-
-            <p className="mt-1 text-sm text-slate-500">
-              Add an existing authenticated
-              user as an administrator.
-            </p>
-          </div>
-
-          <button
-            type="button"
-            onClick={closeAddModal}
-            disabled={addLoading}
-            className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 disabled:opacity-50"
-            aria-label="Close"
-          >
-            <X className="h-5 w-5" />
-          </button>
+          </Card>
         </div>
 
-        <form
-          onSubmit={handleAddAdmin}
-          className="space-y-5 p-5"
+        <Dialog
+          open={addDialogOpen}
+          onOpenChange={(open) => {
+            if (!actionLoading) {
+              setAddDialogOpen(open);
+            }
+          }}
         >
-          <div>
-            <label
-              htmlFor="admin-user-id"
-              className="mb-1.5 block text-sm font-semibold text-slate-700"
+          <DialogContent className="sm:max-w-lg">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <UserPlus className="h-5 w-5" />
+                Add Administrator
+              </DialogTitle>
+
+              <DialogDescription>
+                Add an existing IyanjuPay user as an
+                administrator. The user must already exist
+                in Supabase Auth.
+              </DialogDescription>
+            </DialogHeader>
+
+            <form
+              onSubmit={handleAddAdmin}
+              className="space-y-5"
             >
-              User ID
-            </label>
+              <div className="space-y-2">
+                <Label htmlFor="admin-user-id">
+                  User ID
+                </Label>
 
-            <input
-              id="admin-user-id"
-              type="text"
-              value={newAdminUserId}
-              onChange={(event) =>
-                setNewAdminUserId(
-                  event.target.value,
-                )
-              }
-              placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-              disabled={addLoading}
-              required
-              className="h-11 w-full rounded-lg border border-slate-200 px-3 font-mono text-sm outline-none transition placeholder:text-slate-400 focus:border-slate-400 focus:ring-2 focus:ring-slate-100 disabled:bg-slate-50"
-            />
+                <Input
+                  id="admin-user-id"
+                  value={addUserId}
+                  onChange={(event) =>
+                    setAddUserId(event.target.value)
+                  }
+                  placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                  disabled={actionLoading}
+                  autoComplete="off"
+                />
 
-            <p className="mt-1.5 text-xs text-slate-400">
-              This must be the UUID of an existing
-              user in Supabase Auth.
-            </p>
-          </div>
-
-          <div>
-            <label
-              htmlFor="admin-role"
-              className="mb-1.5 block text-sm font-semibold text-slate-700"
-            >
-              Administrator Role
-            </label>
-
-            <select
-              id="admin-role"
-              value={newAdminRole}
-              onChange={(event) =>
-                setNewAdminRole(
-                  event.target
-                    .value as AdminRole,
-                )
-              }
-              disabled={addLoading}
-              className="h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-100"
-            >
-              {ROLE_OPTIONS.map(
-                (role) => (
-                  <option
-                    key={role.value}
-                    value={role.value}
-                  >
-                    {role.label}
-                  </option>
-                ),
-              )}
-            </select>
-
-            <p className="mt-1.5 text-xs text-slate-400">
-              {getRoleDescription(
-                newAdminRole,
-              )}
-            </p>
-          </div>
-
-          <div>
-            <label
-              htmlFor="admin-display-name"
-              className="mb-1.5 block text-sm font-semibold text-slate-700"
-            >
-              Display Name
-              <span className="ml-1 font-normal text-slate-400">
-                Optional
-              </span>
-            </label>
-
-            <input
-              id="admin-display-name"
-              type="text"
-              value={
-                newAdminDisplayName
-              }
-              onChange={(event) =>
-                setNewAdminDisplayName(
-                  event.target.value,
-                )
-              }
-              placeholder="e.g. Operations Manager"
-              disabled={addLoading}
-              className="h-11 w-full rounded-lg border border-slate-200 px-3 text-sm outline-none transition placeholder:text-slate-400 focus:border-slate-400 focus:ring-2 focus:ring-slate-100 disabled:bg-slate-50"
-            />
-          </div>
-
-          <div>
-            <label
-              htmlFor="admin-notes"
-              className="mb-1.5 block text-sm font-semibold text-slate-700"
-            >
-              Notes
-              <span className="ml-1 font-normal text-slate-400">
-                Optional
-              </span>
-            </label>
-
-            <textarea
-              id="admin-notes"
-              value={newAdminNotes}
-              onChange={(event) =>
-                setNewAdminNotes(
-                  event.target.value,
-                )
-              }
-              placeholder="Optional internal notes..."
-              rows={3}
-              disabled={addLoading}
-              className="w-full resize-none rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none transition placeholder:text-slate-400 focus:border-slate-400 focus:ring-2 focus:ring-slate-100 disabled:bg-slate-50"
-            />
-          </div>
-
-          <div className="flex items-center justify-end gap-3 border-t border-slate-100 pt-4">
-            <button
-              type="button"
-              onClick={closeAddModal}
-              disabled={addLoading}
-              className="rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
-            >
-              Cancel
-            </button>
-
-            <button
-              type="submit"
-              disabled={
-                addLoading ||
-                !newAdminUserId.trim()
-              }
-              className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {addLoading ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Adding...
-                </>
-              ) : (
-                <>
-                  <Plus className="h-4 w-4" />
-                  Add Administrator
-                </>
-              )}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  )}
-
-  {showRoleModal &&
-    selectedAdmin && (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4">
-        <div
-          className="absolute inset-0"
-          onClick={closeRoleModal}
-        />
-
-        <div className="relative z-10 w-full max-w-md rounded-2xl bg-white shadow-2xl">
-          <div className="flex items-start justify-between border-b border-slate-200 p-5">
-            <div>
-              <div className="mb-2 flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100">
-                <Edit3 className="h-5 w-5 text-slate-700" />
+                <p className="text-xs text-slate-500">
+                  Enter the UUID of the existing
+                  authenticated user.
+                </p>
               </div>
 
-              <h2 className="text-lg font-bold text-slate-900">
+              <div className="space-y-2">
+                <Label htmlFor="admin-role">
+                  Administrator Role
+                </Label>
+
+                <Select
+                  value={addRole}
+                  onValueChange={(value) =>
+                    setAddRole(value as AdminRole)
+                  }
+                  disabled={actionLoading}
+                >
+                  <SelectTrigger id="admin-role">
+                    <SelectValue />
+                  </SelectTrigger>
+
+                  <SelectContent>
+                    {ROLE_OPTIONS.map((role) => (
+                      <SelectItem
+                        key={role.value}
+                        value={role.value}
+                      >
+                        <div className="flex flex-col">
+                          <span>
+                            {role.label}
+                          </span>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                <p className="text-xs text-slate-500">
+                  {getRoleDescription(addRole)}
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="admin-display-name">
+                  Display Name
+                  <span className="ml-1 font-normal text-slate-400">
+                    (optional)
+                  </span>
+                </Label>
+
+                <Input
+                  id="admin-display-name"
+                  value={addDisplayName}
+                  onChange={(event) =>
+                    setAddDisplayName(
+                      event.target.value,
+                    )
+                  }
+                  placeholder="e.g. Finance Manager"
+                  disabled={actionLoading}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="admin-notes">
+                  Notes
+                  <span className="ml-1 font-normal text-slate-400">
+                    (optional)
+                  </span>
+                </Label>
+
+                <textarea
+                  id="admin-notes"
+                  value={addNotes}
+                  onChange={(event) =>
+                    setAddNotes(event.target.value)
+                  }
+                  placeholder="Administrative notes..."
+                  disabled={actionLoading}
+                  rows={3}
+                  className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                />
+              </div>
+
+              {addRole === "super_admin" && (
+                <Alert>
+                  <ShieldCheck className="h-4 w-4" />
+
+                  <AlertTitle>
+                    High-privilege role
+                  </AlertTitle>
+
+                  <AlertDescription>
+                    Super Admin has full administrative
+                    access. Only assign this role to a
+                    trusted administrator.
+                  </AlertDescription>
+                </Alert>
+              )}
+
+              <DialogFooter>
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={actionLoading}
+                  onClick={() =>
+                    setAddDialogOpen(false)
+                  }
+                >
+                  Cancel
+                </Button>
+
+                <Button
+                  type="submit"
+                  disabled={actionLoading}
+                >
+                  {actionLoading ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <Plus className="mr-2 h-4 w-4" />
+                  )}
+                  Add Administrator
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog
+          open={roleDialogOpen}
+          onOpenChange={(open) => {
+            if (!actionLoading) {
+              setRoleDialogOpen(open);
+            }
+          }}
+        >
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>
                 Change Administrator Role
-              </h2>
+              </DialogTitle>
 
-              <p className="mt-1 text-sm text-slate-500">
-                {selectedAdmin.email ||
-                  selectedAdmin.full_name ||
-                  "Administrator"}
-              </p>
+              <DialogDescription>
+                Update the administrative role for{" "}
+                <strong>
+                  {selectedAdmin?.full_name ||
+                    selectedAdmin?.email ||
+                    "this administrator"}
+                </strong>
+                .
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-4">
+              <div className="rounded-lg border bg-slate-50 p-4">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-sm font-semibold text-slate-700 shadow-sm">
+                    {getInitials(
+                      selectedAdmin?.full_name ||
+                        selectedAdmin?.display_name,
+                      selectedAdmin?.email,
+                    )}
+                  </div>
+
+                  <div className="min-w-0">
+                    <p className="truncate font-medium text-slate-900">
+                      {selectedAdmin?.full_name ||
+                        selectedAdmin?.display_name ||
+                        "Unnamed Administrator"}
+                    </p>
+
+                    <p className="truncate text-sm text-slate-500">
+                      {selectedAdmin?.email ||
+                        "No email"}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label>
+                  New Role
+                </Label>
+
+                <Select
+                  value={newRole}
+                  onValueChange={(value) =>
+                    setNewRole(value as AdminRole)
+                  }
+                  disabled={actionLoading}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+
+                  <SelectContent>
+                    {ROLE_OPTIONS.map((role) => (
+                      <SelectItem
+                        key={role.value}
+                        value={role.value}
+                      >
+                        {role.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                <p className="text-xs text-slate-500">
+                  {getRoleDescription(newRole)}
+                </p>
+              </div>
+
+              {newRole === "super_admin" && (
+                <Alert>
+                  <ShieldCheck className="h-4 w-4" />
+
+                  <AlertTitle>
+                    Full administrative access
+                  </AlertTitle>
+
+                  <AlertDescription>
+                    This role grants the administrator
+                    full access to privileged management
+                    operations.
+                  </AlertDescription>
+                </Alert>
+              )}
             </div>
 
-            <button
-              type="button"
-              onClick={closeRoleModal}
-              disabled={roleLoading}
-              className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 disabled:opacity-50"
-              aria-label="Close"
-            >
-              <X className="h-5 w-5" />
-            </button>
-          </div>
-
-          <form
-            onSubmit={handleChangeRole}
-            className="space-y-5 p-5"
-          >
-            <div>
-              <label
-                htmlFor="change-admin-role"
-                className="mb-1.5 block text-sm font-semibold text-slate-700"
-              >
-                New Role
-              </label>
-
-              <select
-                id="change-admin-role"
-                value={newRole}
-                onChange={(event) =>
-                  setNewRole(
-                    event.target
-                      .value as AdminRole,
-                  )
+            <DialogFooter>
+              <Button
+                variant="outline"
+                disabled={actionLoading}
+                onClick={() =>
+                  setRoleDialogOpen(false)
                 }
-                disabled={roleLoading}
-                className="h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-100"
-              >
-                {ROLE_OPTIONS.map(
-                  (role) => (
-                    <option
-                      key={role.value}
-                      value={role.value}
-                    >
-                      {role.label}
-                    </option>
-                  ),
-                )}
-              </select>
-
-              <p className="mt-2 text-xs leading-5 text-slate-500">
-                {getRoleDescription(
-                  newRole,
-                )}
-              </p>
-            </div>
-
-            {selectedAdmin.role ===
-              "super_admin" &&
-              newRole !==
-                "super_admin" && (
-                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-800">
-                  This will remove the
-                  administrator's super-admin
-                  privileges.
-                </div>
-              )}
-
-            {selectedAdmin.role !==
-              "super_admin" &&
-              newRole ===
-                "super_admin" && (
-                <div className="rounded-lg border border-purple-200 bg-purple-50 p-3 text-xs leading-5 text-purple-800">
-                  This grants full
-                  administrator privileges.
-                  Only assign this role to a
-                  trusted administrator.
-                </div>
-              )}
-
-            <div className="flex items-center justify-end gap-3 border-t border-slate-100 pt-4">
-              <button
-                type="button"
-                onClick={closeRoleModal}
-                disabled={roleLoading}
-                className="rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
               >
                 Cancel
-              </button>
+              </Button>
 
-              <button
-                type="submit"
+              <Button
                 disabled={
-                  roleLoading ||
-                  selectedAdmin.role ===
-                    newRole
+                  actionLoading ||
+                  !selectedAdmin ||
+                  selectedAdmin.role === newRole
                 }
-                className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                onClick={handleChangeRole}
               >
-                {roleLoading ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Updating...
-                  </>
-                ) : (
-                  <>
-                    <Shield className="h-4 w-4" />
-                    Update Role
-                  </>
+                {actionLoading && (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 )}
-              </button>
-            </div>
-          </form>
-        </div>
-      </div>
-    )}
-</AdminLayout>
 
-);
-}
+                Update Role
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog
+          open={statusDialogOpen}
+          onOpenChange={(open) => {
+            if (!actionLoading) {
+              setStatusDialogOpen(open);
+            }
+          }}
+        >
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>
+                {statusTarget?.is_active
+                  ? "Disable Administrator"
+                  : "Reactivate Administrator"}
+              </DialogTitle>
+
+              <DialogDescription>
+                {statusTarget?.is_active
+                  ? "This administrator will no longer be able to use administrative functionality until reactivated."
+                  : "This administrator will regain access to administrative functionality."}
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="rounded-lg border bg-slate-50 p-4">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-sm font-semibold text-slate-700 shadow-sm">
+                  {getInitials(
+                    statusTarget?.full_name ||
+                      statusTarget?.display_name,
+                    statusTarget?.email,
+                  )}
+                </div>
+
+                <div className="min-w-0">
+                  <p className="truncate font-medium text-slate-900">
+                    {statusTarget?.full_name ||
+                      statusTarget?.display_name ||
+                      "Unnamed Administrator"}
+                  </p>
+
+                  <p className="truncate text-sm text-slate-500">
+                    {statusTarget?.email ||
+                      "No email"}
+                  </p>
+
+                  <div className="mt-2">
+                    {statusTarget && (
+                      <RoleBadge
+                        role={statusTarget.role}
+                      />
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {statusTarget?.is_active && (
+              <Alert variant="destructive">
+                <AlertCircle className="h-4 w-4" />
+
+                <AlertTitle>
+                  Access will be disabled
+                </AlertTitle>
+
+                <AlertDescription>
+                  The administrator will remain in the
+                  administrator directory but will be
+                  marked inactive.
+                </AlertDescription>
+              </Alert>
+            )}
+
+            <DialogFooter>
+              <Button
+                variant="outline"
+                disabled={actionLoading}
+                onClick={() =>
+                  setStatusDialogOpen(false)
+                }
+              >
+                Cancel
+              </Button>
+
+              <Button
+                variant={
+                  statusTarget?.is_active
+                    ? "destructive"
+                    : "default"
+                }
+                disabled={actionLoading}
+                onClick={handleChangeStatus}
+              >
+                {actionLoading ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : statusTarget?.is_active ? (
+                  <UserX className="mr-2 h-4 w-4" />
+                ) : (
+                  <UserCheck className="mr-2 h-4 w-4" />
+                )}
+
+                {statusTarget?.is_active
+                  ? "Disable Administrator"
+                  : "Reactivate Administrator"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </div>
+    </AdminLayout>
+  );
+};
 
 export default AdminManagementPage;

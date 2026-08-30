@@ -43,6 +43,7 @@ import AnalyticsPage from "@/pages/admin/AnalyticsPage";
 import NotificationsPage from "@/pages/admin/NotificationsPage";
 import AuditLogsPage from "@/pages/admin/AuditLogsPage";
 import AdminManagementPage from "@/pages/admin/AdminManagementPage";
+import AdminSettingsPage from "@/pages/admin/AdminSettingsPage";
 import AdminLoginPage from "@/pages/admin/AdminLoginPage";
 import AdminChangePasswordPage from "@/pages/admin/AdminChangePasswordPage";
 import AdminRouteGuard from "@/pages/admin/AdminRouteGuard";
@@ -211,86 +212,94 @@ const App = () => {
               }
             />
 
-<Route
-  path="/admin/customers"
-  element={
-    <AdminRouteGuard>
-      <AdminCustomersPage />
-    </AdminRouteGuard>
-  }
-/>
+            <Route
+              path="/admin/customers"
+              element={
+                <AdminRouteGuard>
+                  <AdminCustomersPage />
+                </AdminRouteGuard>
+              }
+            />
 
-<Route
-  path="/admin/support"
-  element={
-    <AdminRouteGuard>
-      <AdminSupportPage />
-    </AdminRouteGuard>
-  }
-/>
+            <Route
+              path="/admin/support"
+              element={
+                <AdminRouteGuard>
+                  <AdminSupportPage />
+                </AdminRouteGuard>
+              }
+            />
 
-<Route
-  path="/admin/disputes"
-  element={
-    <AdminRouteGuard>
-      <AdminDisputesPage />
-    </AdminRouteGuard>
-  }
-/>
+            <Route
+              path="/admin/disputes"
+              element={
+                <AdminRouteGuard>
+                  <AdminDisputesPage />
+                </AdminRouteGuard>
+              }
+            />
 
-<Route
-  path="/admin/transactions"
-  element={
-    <AdminRouteGuard>
-      <AdminTransactionsPage />
-    </AdminRouteGuard>
-  }
-/>
+            <Route
+              path="/admin/transactions"
+              element={
+                <AdminRouteGuard>
+                  <AdminTransactionsPage />
+                </AdminRouteGuard>
+              }
+            />
 
-<Route
-  path="/admin/reconciliation"
-  element={
-    <AdminRouteGuard>
-      <ReconciliationPage />
-    </AdminRouteGuard>
-  }
-/>
+            <Route
+              path="/admin/reconciliation"
+              element={
+                <AdminRouteGuard>
+                  <ReconciliationPage />
+                </AdminRouteGuard>
+              }
+            />
 
-<Route
-  path="/admin/analytics"
-  element={
-    <AdminRouteGuard>
-      <AnalyticsPage />
-    </AdminRouteGuard>
-  }
-/>
+            <Route
+              path="/admin/analytics"
+              element={
+                <AdminRouteGuard>
+                  <AnalyticsPage />
+                </AdminRouteGuard>
+              }
+            />
 
-<Route
-  path="/admin/notifications"
-  element={
-    <AdminRouteGuard>
-      <NotificationsPage />
-    </AdminRouteGuard>
-  }
-/>
+            <Route
+              path="/admin/notifications"
+              element={
+                <AdminRouteGuard>
+                  <NotificationsPage />
+                </AdminRouteGuard>
+              }
+            />
 
-<Route
-  path="/admin/audit-logs"
-  element={
-    <AdminRouteGuard>
-      <AuditLogsPage />
-    </AdminRouteGuard>
-  }
-/>
+            <Route
+              path="/admin/audit-logs"
+              element={
+                <AdminRouteGuard>
+                  <AuditLogsPage />
+                </AdminRouteGuard>
+              }
+            />
 
-<Route
-  path="/admin/management"
-  element={
-    <AdminRouteGuard>
-      <AdminManagementPage />
-    </AdminRouteGuard>
-  }
-/>
+            <Route
+              path="/admin/management"
+              element={
+                <AdminRouteGuard>
+                  <AdminManagementPage />
+                </AdminRouteGuard>
+              }
+            />
+            <Route
+              path="/admin/settings"
+              element={
+                <AdminRouteGuard>
+                  <AdminSettingsPage />
+                </AdminRouteGuard>
+              }
+            />
 
             <Route
               path="/admin/login"

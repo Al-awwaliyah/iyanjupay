@@ -168,7 +168,7 @@ const Navigation = ({
     },
     {
       label: "Admin Management",
-      path: "/admin/admins",
+      path: "/admin/management",
       icon: ShieldCheck,
       roles: ["super_admin"],
     },

@@ -11,7 +11,6 @@ import {
   Bell,
   ChevronLeft,
   ChevronRight,
-  CircleDollarSign,
   ClipboardList,
   FileText,
   Headphones,
@@ -81,6 +80,56 @@ const ALL_ROLES: AdminRole[] = [
   "compliance_admin",
   "read_only_admin",
 ];
+
+/**
+ * Safely extracts a useful error message without exposing
+ * unnecessary implementation details to the administrator.
+ */
+function getErrorMessage(
+  error: unknown,
+  fallback: string,
+): string {
+  if (!error) {
+    return fallback;
+  }
+
+  if (typeof error === "string") {
+    return error.trim() || fallback;
+  }
+
+  if (error instanceof Error) {
+    return error.message.trim() || fallback;
+  }
+
+  if (typeof error === "object") {
+    const value = error as {
+      message?: unknown;
+      error?: unknown;
+      error_description?: unknown;
+      details?: unknown;
+      hint?: unknown;
+    };
+
+    const candidates = [
+      value.message,
+      value.error,
+      value.error_description,
+      value.details,
+      value.hint,
+    ];
+
+    for (const candidate of candidates) {
+      if (
+        typeof candidate === "string" &&
+        candidate.trim()
+      ) {
+        return candidate.trim();
+      }
+    }
+  }
+
+  return fallback;
+}
 
 const Navigation = ({
   adminRole,
@@ -184,7 +233,7 @@ const Navigation = ({
   return items.filter(
     (item) =>
       !item.roles ||
-      item.roles.includes(adminRole)
+      item.roles.includes(adminRole),
   );
 };
 
@@ -219,6 +268,7 @@ const AdminLayout = ({
   const checkAdminAccess =
     useCallback(async () => {
       if (!user?.id) {
+        setAdminRecord(null);
         setCheckingAccess(false);
         return;
       }
@@ -250,7 +300,91 @@ const AdminLayout = ({
             variant: "destructive",
           });
 
-          navigate("/", {
+          /*
+           * Explicitly clear the authenticated session when
+           * administrator access cannot be established.
+           *
+           * This prevents a normal-user session from being
+           * left behind while attempting to access /admin.
+           */
+          try {
+            await supabase.auth.signOut();
+          } catch (signOutError) {
+            console.error(
+              "Failed to clear unauthorized session:",
+              signOutError,
+            );
+          }
+
+          navigate("/admin/login", {
+            replace: true,
+          });
+
+          return;
+        }
+
+        /*
+         * Defensive validation of the returned administrator
+         * record before allowing the layout to render.
+         */
+        if (
+          !data.user_id ||
+          !data.role ||
+          data.is_active !== true
+        ) {
+          setAdminRecord(null);
+
+          try {
+            await supabase.auth.signOut();
+          } catch (signOutError) {
+            console.error(
+              "Failed to clear invalid administrator session:",
+              signOutError,
+            );
+          }
+
+          toast({
+            title: "Access denied",
+            description:
+              "Your administrator account could not be verified.",
+            variant: "destructive",
+          });
+
+          navigate("/admin/login", {
+            replace: true,
+          });
+
+          return;
+        }
+
+        /*
+         * Only accept roles that are explicitly supported
+         * by the administrator portal.
+         */
+        if (
+          !ALL_ROLES.includes(
+            data.role as AdminRole,
+          )
+        ) {
+          setAdminRecord(null);
+
+          try {
+            await supabase.auth.signOut();
+          } catch (signOutError) {
+            console.error(
+              "Failed to clear unsupported administrator session:",
+              signOutError,
+            );
+          }
+
+          toast({
+            title: "Access denied",
+            description:
+              "Your administrator role is not recognized.",
+            variant: "destructive",
+          });
+
+          navigate("/admin/login", {
             replace: true,
           });
 
@@ -258,25 +392,39 @@ const AdminLayout = ({
         }
 
         setAdminRecord(
-          data as SupportAdmin
+          data as SupportAdmin,
         );
-      } catch (error: any) {
+      } catch (error: unknown) {
         console.error(
           "Admin access verification failed:",
-          error
+          error,
         );
 
         setAdminRecord(null);
 
+        /*
+         * Do not leave an authenticated session active when
+         * administrator access verification itself fails.
+         */
+        try {
+          await supabase.auth.signOut();
+        } catch (signOutError) {
+          console.error(
+            "Failed to clear administrator session after access verification error:",
+            signOutError,
+          );
+        }
+
         toast({
-          title: "Access denied",
-          description:
-            error?.message ||
-            "Unable to verify administrator access.",
+          title: "Unable to verify access",
+          description: getErrorMessage(
+            error,
+            "We could not verify your administrator access. Please sign in again.",
+          ),
           variant: "destructive",
         });
 
-        navigate("/", {
+        navigate("/admin/login", {
           replace: true,
         });
       } finally {
@@ -294,14 +442,17 @@ const AdminLayout = ({
     }
 
     if (!user) {
-      navigate("/", {
+      setAdminRecord(null);
+      setCheckingAccess(false);
+
+      navigate("/admin/login", {
         replace: true,
       });
 
       return;
     }
 
-    checkAdminAccess();
+    void checkAdminAccess();
   }, [
     authLoading,
     user,
@@ -317,23 +468,73 @@ const AdminLayout = ({
     setLoggingOut(true);
 
     try {
-      await signOut();
+      /*
+       * Clear local administrator state immediately so the
+       * protected interface is no longer considered valid.
+       */
+      setAdminRecord(null);
+      setMobileMenuOpen(false);
 
-      navigate("/", {
+      const { error } =
+        await supabase.auth.signOut();
+
+      if (error) {
+        throw error;
+      }
+
+      /*
+       * Keep the existing hook logout in the flow because
+       * the application auth state may also depend on it.
+       */
+      try {
+        await signOut();
+      } catch (hookSignOutError) {
+        /*
+         * Supabase session is already cleared above.
+         * Do not prevent the user from reaching the login page
+         * merely because the secondary hook cleanup failed.
+         */
+        console.warn(
+          "Secondary auth hook signOut reported an error:",
+          hookSignOutError,
+        );
+      }
+
+      navigate("/admin/login", {
         replace: true,
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error(
         "Admin logout failed:",
-        error
+        error,
       );
 
+      /*
+       * Even if the primary logout request reports an error,
+       * make a second attempt to clear the session.
+       */
+      try {
+        await supabase.auth.signOut();
+      } catch (signOutError) {
+        console.error(
+          "Fallback administrator signOut failed:",
+          signOutError,
+        );
+      }
+
       toast({
-        title: "Logout failed",
+        title: "Logout completed with warning",
         description:
-          error?.message ||
-          "Unable to log out.",
+          "Your administrator session has been cleared. Returning to the administrator login page.",
         variant: "destructive",
+      });
+
+      /*
+       * Do not trap the administrator inside the protected
+       * interface after a logout failure.
+       */
+      navigate("/admin/login", {
+        replace: true,
       });
     } finally {
       setLoggingOut(false);
@@ -349,16 +550,18 @@ const AdminLayout = ({
       : [];
 
   const isActive = (
-    path: string
+    path: string,
   ) => {
     if (path === "/admin") {
-      return location.pathname === "/admin";
+      return (
+        location.pathname === "/admin"
+      );
     }
 
     return (
       location.pathname === path ||
       location.pathname.startsWith(
-        `${path}/`
+        `${path}/`,
       )
     );
   };
@@ -541,7 +744,7 @@ const AdminLayout = ({
 
                 const active =
                   isActive(
-                    item.path
+                    item.path,
                   );
 
                 return (
@@ -552,11 +755,11 @@ const AdminLayout = ({
                     }
                     onClick={() => {
                       navigate(
-                        item.path
+                        item.path,
                       );
 
                       setMobileMenuOpen(
-                        false
+                        false,
                       );
                     }}
                     title={
@@ -607,7 +810,7 @@ const AdminLayout = ({
                     )}
                   </button>
                 );
-              }
+              },
             )}
           </div>
         </nav>
@@ -620,7 +823,7 @@ const AdminLayout = ({
             onClick={() =>
               setCollapsed(
                 (value) =>
-                  !value
+                  !value,
               )
             }
             className="hidden lg:flex w-full items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-gray-500 hover:bg-gray-100"
@@ -690,7 +893,7 @@ const AdminLayout = ({
               className="lg:hidden"
               onClick={() =>
                 setMobileMenuOpen(
-                  true
+                  true,
                 )
               }
             >
@@ -705,8 +908,8 @@ const AdminLayout = ({
                   : navigation.find(
                       (item) =>
                         isActive(
-                          item.path
-                        )
+                          item.path,
+                        ),
                     )?.label ||
                     "Administration"}
               </h1>
@@ -723,7 +926,7 @@ const AdminLayout = ({
               className="relative w-9 h-9 rounded-lg hover:bg-gray-100 flex items-center justify-center"
               onClick={() =>
                 navigate(
-                  "/admin/notifications"
+                  "/admin/notifications",
                 )
               }
             >

@@ -24,6 +24,10 @@ import AdminLayout from "./AdminLayout";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 
+/* ============================================================
+   TYPES
+   ============================================================ */
+
 interface DashboardUserStats {
   total: number;
   verified: number;
@@ -104,6 +108,43 @@ interface DashboardStats {
   generated_at: string;
 }
 
+/* ============================================================
+   SAFE FRONTEND ERROR MESSAGES
+   ============================================================ */
+
+/**
+ * IMPORTANT:
+ *
+ * Never expose raw Supabase/PostgreSQL/Edge Function errors
+ * directly to the frontend.
+ *
+ * Backend errors are logged to the browser console for
+ * debugging, while the user receives a safe generic message.
+ */
+const SAFE_ERROR_MESSAGES = {
+  dashboardLoad:
+    "We couldn't load the dashboard right now. Please try again.",
+} as const;
+
+/**
+ * Converts any backend/runtime error into a safe user-facing
+ * message.
+ *
+ * Do NOT return error.message, error.details, error.hint,
+ * PostgreSQL error codes, SQL statements, function names,
+ * Supabase internals, or Edge Function responses here.
+ */
+const getSafeErrorMessage = (
+  _error: unknown,
+  fallback: string
+): string => {
+  return fallback;
+};
+
+/* ============================================================
+   FORMATTERS
+   ============================================================ */
+
 const formatNumber = (
   value: number
 ) => {
@@ -180,6 +221,10 @@ const getStatusClasses = (
   return "bg-red-100 text-red-700";
 };
 
+/* ============================================================
+   PAGE
+   ============================================================ */
+
 const AdminDashboardPage =
   () => {
     const { toast } =
@@ -200,6 +245,10 @@ const AdminDashboardPage =
       useState<string | null>(
         null
       );
+
+    /* ========================================================
+       LOAD DASHBOARD
+       ======================================================== */
 
     const loadDashboard =
       useCallback(
@@ -223,36 +272,59 @@ const AdminDashboardPage =
                 "get_admin_dashboard_stats"
               );
 
+            /*
+             * IMPORTANT:
+             *
+             * Keep the actual backend error for console/debugging,
+             * but NEVER send its message/details/hint to the UI.
+             */
             if (rpcError) {
+              console.error(
+                "Admin dashboard RPC failed:",
+                rpcError
+              );
+
               throw rpcError;
             }
 
             if (!data) {
+              console.error(
+                "Admin dashboard RPC returned no data."
+              );
+
               throw new Error(
-                "No dashboard data was returned."
+                "Dashboard data unavailable."
               );
             }
 
             setStats(
               data as DashboardStats
             );
-          } catch (err: any) {
+          } catch (err: unknown) {
+            /*
+             * The complete backend error is available only in the
+             * developer console. It is NOT rendered to the user.
+             */
             console.error(
               "Admin dashboard loading failed:",
               err
             );
 
-            const message =
-              err?.message ||
-              "Unable to load dashboard statistics.";
+            const safeMessage =
+              getSafeErrorMessage(
+                err,
+                SAFE_ERROR_MESSAGES.dashboardLoad
+              );
 
-            setError(message);
+            setError(
+              safeMessage
+            );
 
             toast({
               title:
                 "Dashboard unavailable",
               description:
-                message,
+                safeMessage,
               variant:
                 "destructive",
             });
@@ -264,9 +336,17 @@ const AdminDashboardPage =
         [toast]
       );
 
+    /* ========================================================
+       INITIAL LOAD
+       ======================================================== */
+
     useEffect(() => {
-      loadDashboard();
+      void loadDashboard();
     }, [loadDashboard]);
+
+    /* ========================================================
+       LOADING STATE
+       ======================================================== */
 
     if (loading) {
       return (
@@ -290,6 +370,10 @@ const AdminDashboardPage =
       );
     }
 
+    /* ========================================================
+       ERROR STATE
+       ======================================================== */
+
     if (
       error ||
       !stats
@@ -308,17 +392,18 @@ const AdminDashboardPage =
 
               <p className="text-sm text-gray-500 mt-2">
                 {error ||
-                  "No dashboard data is available."}
+                  SAFE_ERROR_MESSAGES.dashboardLoad}
               </p>
 
               <button
                 type="button"
                 onClick={() =>
-                  loadDashboard()
+                  void loadDashboard()
                 }
                 className="mt-5 inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-purple-600 text-white text-sm font-semibold hover:bg-purple-700"
               >
                 <RefreshCw className="h-4 w-4" />
+
                 Try again
               </button>
             </div>
@@ -326,6 +411,10 @@ const AdminDashboardPage =
         </AdminLayout>
       );
     }
+
+    /* ========================================================
+       MAIN DASHBOARD
+       ======================================================== */
 
     return (
       <AdminLayout>
@@ -349,7 +438,7 @@ const AdminDashboardPage =
             <button
               type="button"
               onClick={() =>
-                loadDashboard(true)
+                void loadDashboard(true)
               }
               disabled={refreshing}
               className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border bg-white text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60"
@@ -367,7 +456,6 @@ const AdminDashboardPage =
                 : "Refresh"}
             </button>
           </section>
-
 
           {/* ==================================================
               PRIMARY STATISTICS
@@ -417,7 +505,6 @@ const AdminDashboardPage =
               </div>
             </div>
 
-
             {/* WALLET */}
 
             <div className="bg-white border rounded-2xl p-5">
@@ -447,7 +534,6 @@ const AdminDashboardPage =
               </p>
             </div>
 
-
             {/* TRANSACTIONS */}
 
             <div className="bg-white border rounded-2xl p-5">
@@ -476,7 +562,6 @@ const AdminDashboardPage =
                 total volume
               </p>
             </div>
-
 
             {/* TODAY */}
 
@@ -508,7 +593,6 @@ const AdminDashboardPage =
             </div>
           </section>
 
-
           {/* ==================================================
               TODAY'S FINANCIAL ACTIVITY
           ================================================== */}
@@ -535,7 +619,6 @@ const AdminDashboardPage =
               </div>
             </div>
 
-
             <div className="bg-white border rounded-2xl p-5">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-blue-100 flex items-center justify-center">
@@ -555,7 +638,6 @@ const AdminDashboardPage =
                 </div>
               </div>
             </div>
-
 
             <div className="bg-white border rounded-2xl p-5">
               <div className="flex items-center gap-3">
@@ -578,7 +660,6 @@ const AdminDashboardPage =
             </div>
 
           </section>
-
 
           {/* ==================================================
               TRANSACTION STATUS + KYC
@@ -604,7 +685,6 @@ const AdminDashboardPage =
                 <Activity className="h-5 w-5 text-gray-400" />
               </div>
 
-
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-5">
 
                 <div className="rounded-xl border bg-green-50 p-4">
@@ -629,7 +709,6 @@ const AdminDashboardPage =
                   </p>
                 </div>
 
-
                 <div className="rounded-xl border bg-yellow-50 p-4">
                   <div className="flex items-center gap-2">
                     <Clock3 className="h-4 w-4 text-yellow-600" />
@@ -651,7 +730,6 @@ const AdminDashboardPage =
                     )}
                   </p>
                 </div>
-
 
                 <div className="rounded-xl border bg-red-50 p-4">
                   <div className="flex items-center gap-2">
@@ -678,7 +756,6 @@ const AdminDashboardPage =
               </div>
             </div>
 
-
             {/* KYC */}
 
             <div className="bg-white border rounded-2xl p-5">
@@ -698,7 +775,6 @@ const AdminDashboardPage =
                   </p>
                 </div>
               </div>
-
 
               <div className="mt-5 space-y-4">
 
@@ -743,7 +819,6 @@ const AdminDashboardPage =
 
           </section>
 
-
           {/* ==================================================
               RECENT TRANSACTIONS
           ================================================== */}
@@ -765,7 +840,6 @@ const AdminDashboardPage =
               <Activity className="h-5 w-5 text-gray-400" />
 
             </div>
-
 
             {stats.recent_transactions.length === 0 ? (
 
@@ -839,7 +913,6 @@ const AdminDashboardPage =
 
                           </td>
 
-
                           <td className="px-5 py-4">
 
                             <p className="text-sm font-medium text-gray-800">
@@ -856,7 +929,6 @@ const AdminDashboardPage =
 
                           </td>
 
-
                           <td className="px-5 py-4">
 
                             <span className="text-xs font-medium text-gray-700 capitalize">
@@ -865,7 +937,6 @@ const AdminDashboardPage =
                             </span>
 
                           </td>
-
 
                           <td className="px-5 py-4 text-right">
 
@@ -880,7 +951,6 @@ const AdminDashboardPage =
                             </p>
 
                           </td>
-
 
                           <td className="px-5 py-4 text-center">
 
@@ -906,7 +976,6 @@ const AdminDashboardPage =
 
                           </td>
 
-
                           <td className="px-5 py-4 text-right">
 
                             <p className="text-xs text-gray-500 whitespace-nowrap">
@@ -931,7 +1000,6 @@ const AdminDashboardPage =
 
           </section>
 
-
           {/* ==================================================
               TRANSACTION TYPES
           ================================================== */}
@@ -953,7 +1021,6 @@ const AdminDashboardPage =
               <Activity className="h-5 w-5 text-gray-400" />
 
             </div>
-
 
             {stats.transaction_types.length === 0 ? (
 
@@ -1008,7 +1075,6 @@ const AdminDashboardPage =
 
           </section>
 
-
           {/* ==================================================
               WALLET POSITION
           ================================================== */}
@@ -1033,7 +1099,6 @@ const AdminDashboardPage =
 
             </div>
 
-
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-5">
 
               <div className="rounded-xl bg-purple-50 border border-purple-100 p-4">
@@ -1049,7 +1114,6 @@ const AdminDashboardPage =
                 </p>
 
               </div>
-
 
               <div className="rounded-xl bg-orange-50 border border-orange-100 p-4">
 
@@ -1069,7 +1133,6 @@ const AdminDashboardPage =
 
           </section>
 
-
           {/* ==================================================
               QUICK ACCESS
           ================================================== */}
@@ -1085,7 +1148,6 @@ const AdminDashboardPage =
                 Access the administrative tools available to your role.
               </p>
             </div>
-
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mt-5">
 
@@ -1108,7 +1170,6 @@ const AdminDashboardPage =
                 </p>
               </button>
 
-
               <div className="rounded-xl border p-4 bg-gray-50">
 
                 <Users className="h-5 w-5 text-blue-600" />
@@ -1123,7 +1184,6 @@ const AdminDashboardPage =
 
               </div>
 
-
               <div className="rounded-xl border p-4 bg-gray-50">
 
                 <Activity className="h-5 w-5 text-green-600" />
@@ -1137,7 +1197,6 @@ const AdminDashboardPage =
                 </p>
 
               </div>
-
 
               <div className="rounded-xl border p-4 bg-gray-50">
 
@@ -1156,7 +1215,6 @@ const AdminDashboardPage =
             </div>
 
           </section>
-
 
           {/* ==================================================
               FOOTER

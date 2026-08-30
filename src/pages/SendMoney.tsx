@@ -1,4 +1,6 @@
 import React, {
+  ReactNode,
+  useCallback,
   useEffect,
   useRef,
   useState,
@@ -13,6 +15,8 @@ import {
   Building2,
   Search,
   ShieldCheck,
+  Wifi,
+  WifiOff,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -24,7 +28,6 @@ import {
   SelectContent,
   SelectItem,
   SelectTrigger,
-  SelectValue,
 } from "@/components/ui/select";
 
 import {
@@ -116,6 +119,17 @@ const SendMoneyPage = ({
   const { toast } = useToast();
 
   // ==========================================================
+  // CONNECTION
+  // ==========================================================
+
+  const [isOnline, setIsOnline] =
+    useState<boolean>(
+      typeof navigator !== "undefined"
+        ? navigator.onLine
+        : true
+    );
+
+  // ==========================================================
   // PROCESSING PAGE
   // ==========================================================
 
@@ -148,21 +162,12 @@ const SendMoneyPage = ({
     setPendingBankTransfer,
   ] = useState<PendingBankTransfer | null>(null);
 
-  /**
-   * Whether the authenticated user has a Payment PIN.
-   */
   const [hasPaymentPin, setHasPaymentPin] =
     useState<boolean | null>(null);
 
-  /**
-   * Loading state while checking PIN existence.
-   */
   const [checkingPaymentPin, setCheckingPaymentPin] =
     useState(false);
 
-  /**
-   * Create Payment PIN dialog.
-   */
   const [createPinOpen, setCreatePinOpen] =
     useState(false);
 
@@ -178,10 +183,6 @@ const SendMoneyPage = ({
   const [creatingPin, setCreatingPin] =
     useState(false);
 
-  /**
-   * This stores the transfer action that was waiting
-   * for the user to create a PIN.
-   */
   const [pendingPinAction, setPendingPinAction] =
     useState(false);
 
@@ -241,10 +242,70 @@ const SendMoneyPage = ({
   const resolveRequestRef = useRef(0);
 
   // ==========================================================
+  // CONNECTION MONITORING
+  // ==========================================================
+
+  useEffect(() => {
+    const handleOnline = () => {
+      setIsOnline(true);
+
+      toast({
+        title: "Internet connection restored",
+        description:
+          "You are back online.",
+      });
+    };
+
+    const handleOffline = () => {
+      setIsOnline(false);
+
+      toast({
+        title: "No internet connection",
+        description:
+          "Please reconnect to the internet before continuing.",
+        variant: "destructive",
+      });
+    };
+
+    window.addEventListener(
+      "online",
+      handleOnline
+    );
+
+    window.addEventListener(
+      "offline",
+      handleOffline
+    );
+
+    return () => {
+      window.removeEventListener(
+        "online",
+        handleOnline
+      );
+
+      window.removeEventListener(
+        "offline",
+        handleOffline
+      );
+    };
+  }, [toast]);
+
+  // ==========================================================
   // CHECK PAYMENT PIN
   // ==========================================================
 
   const checkPaymentPin = async (): Promise<boolean> => {
+    if (!isOnline) {
+      toast({
+        title: "No internet connection",
+        description:
+          "Please reconnect to the internet and try again.",
+        variant: "destructive",
+      });
+
+      return false;
+    }
+
     setCheckingPaymentPin(true);
 
     try {
@@ -262,7 +323,8 @@ const SendMoneyPage = ({
         );
 
         toast({
-          title: "Unable to check Payment PIN",
+          title:
+            "Unable to check Payment PIN",
           description:
             error.message ||
             "Please try again.",
@@ -272,17 +334,6 @@ const SendMoneyPage = ({
         return false;
       }
 
-      /**
-       * Supabase RPC may return:
-       *
-       * true
-       *
-       * or:
-       *
-       * { has_payment_pin: true }
-       *
-       * Support both formats.
-       */
       const exists =
         typeof data === "boolean"
           ? data
@@ -300,7 +351,8 @@ const SendMoneyPage = ({
       );
 
       toast({
-        title: "Unable to check Payment PIN",
+        title:
+          "Unable to check Payment PIN",
         description:
           error?.message ||
           "Please try again.",
@@ -313,24 +365,34 @@ const SendMoneyPage = ({
     }
   };
 
-  /**
-   * Check Payment PIN when the page loads.
-   */
-  useEffect(() => {
-    checkPaymentPin();
-  }, []);
+  // ==========================================================
+  // CHECK PAYMENT PIN ON PAGE LOAD
+  // ==========================================================
 
-  /**
-   * Focus create-PIN input when dialog opens.
-   */
+  useEffect(() => {
+    if (!isOnline) {
+      return;
+    }
+
+    checkPaymentPin();
+  }, [isOnline]);
+
+  // ==========================================================
+  // FOCUS CREATE PIN
+  // ==========================================================
+
   useEffect(() => {
     if (!createPinOpen) {
       return;
     }
 
-    setTimeout(() => {
+    const timeout = window.setTimeout(() => {
       createPinInputRef.current?.focus();
     }, 100);
+
+    return () => {
+      window.clearTimeout(timeout);
+    };
   }, [createPinOpen]);
 
   // ==========================================================
@@ -342,9 +404,21 @@ const SendMoneyPage = ({
       bankItem.name
         .toLowerCase()
         .includes(
-          bankSearch.trim().toLowerCase()
+          bankSearch
+            .trim()
+            .toLowerCase()
         )
   );
+
+  // ==========================================================
+  // SELECTED BANK NAME
+  // ==========================================================
+
+  const selectedBankName =
+    banks.find(
+      (item) =>
+        item.code === bank
+    )?.name || "";
 
   // ==========================================================
   // TRANSFER PRICING
@@ -375,6 +449,10 @@ const SendMoneyPage = ({
     let cancelled = false;
 
     const loadBanks = async () => {
+      if (!isOnline) {
+        return;
+      }
+
       setBanksLoading(true);
 
       try {
@@ -404,7 +482,37 @@ const SendMoneyPage = ({
           );
         }
 
-        setBanks(data.banks);
+        const normalizedBanks =
+          data.banks
+            .filter(
+              (item: any) =>
+                item &&
+                item.name &&
+                item.code
+            )
+            .map(
+              (item: any) => ({
+                name:
+                  String(
+                    item.name
+                  ).trim(),
+                code:
+                  String(
+                    item.code
+                  ).trim(),
+              })
+            )
+            .sort(
+              (
+                a: Bank,
+                b: Bank
+              ) =>
+                a.name.localeCompare(
+                  b.name
+                )
+            );
+
+        setBanks(normalizedBanks);
       } catch (error: any) {
         if (cancelled) {
           return;
@@ -416,11 +524,15 @@ const SendMoneyPage = ({
         );
 
         toast({
-          title: "Unable to load banks",
+          title:
+            "Unable to load banks",
           description:
-            error?.message ||
-            "Please try again later.",
-          variant: "destructive",
+            !isOnline
+              ? "Please check your internet connection."
+              : error?.message ||
+                "Please try again later.",
+          variant:
+            "destructive",
         });
       } finally {
         if (!cancelled) {
@@ -434,7 +546,7 @@ const SendMoneyPage = ({
     return () => {
       cancelled = true;
     };
-  }, [toast]);
+  }, [isOnline, toast]);
 
   // ==========================================================
   // RESOLVE BANK ACCOUNT
@@ -446,7 +558,10 @@ const SendMoneyPage = ({
     }
 
     const cleanAccountNumber =
-      accountNumber.replace(/\D/g, "");
+      accountNumber.replace(
+        /\D/g,
+        ""
+      );
 
     if (
       !bank ||
@@ -459,11 +574,32 @@ const SendMoneyPage = ({
       return;
     }
 
+    if (!isOnline) {
+      setResolvedAccount(null);
+      setResolving(false);
+      return;
+    }
+
     const requestId =
       ++resolveRequestRef.current;
 
     const timeout =
       window.setTimeout(async () => {
+        if (!navigator.onLine) {
+          setResolving(false);
+
+          toast({
+            title:
+              "No internet connection",
+            description:
+              "Reconnect to the internet to verify the account.",
+            variant:
+              "destructive",
+          });
+
+          return;
+        }
+
         setResolving(true);
         setResolvedAccount(null);
 
@@ -478,7 +614,9 @@ const SendMoneyPage = ({
                 body: {
                   account_number:
                     cleanAccountNumber,
-                  account_bank: bank,
+
+                  account_bank:
+                    bank,
                 },
               }
             );
@@ -498,8 +636,10 @@ const SendMoneyPage = ({
             try {
               if (
                 error.context &&
-                typeof error.context
-                  .json === "function"
+                typeof error
+                  .context
+                  .json ===
+                  "function"
               ) {
                 const payload =
                   await error.context.json();
@@ -513,7 +653,9 @@ const SendMoneyPage = ({
               // Keep original message.
             }
 
-            throw new Error(message);
+            throw new Error(
+              message
+            );
           }
 
           if (
@@ -528,17 +670,24 @@ const SendMoneyPage = ({
 
           setResolvedAccount({
             account_number:
-              data.account.account_number,
+              data.account
+                .account_number,
+
             account_name:
-              data.account.account_name,
+              data.account
+                .account_name,
+
             bank_code:
-              data.account.bank_code,
+              data.account
+                .bank_code,
           });
 
           toast({
-            title: "Account verified",
+            title:
+              "Account verified",
             description:
-              data.account.account_name,
+              data.account
+                .account_name,
           });
         } catch (error: any) {
           if (
@@ -553,15 +702,22 @@ const SendMoneyPage = ({
             error
           );
 
-          setResolvedAccount(null);
+          setResolvedAccount(
+            null
+          );
 
           toast({
             title:
               "Account verification failed",
+
             description:
-              error?.message ||
-              "We could not verify this bank account.",
-            variant: "destructive",
+              !navigator.onLine
+                ? "Your internet connection was lost. Please reconnect and try again."
+                : error?.message ||
+                  "We could not verify this bank account.",
+
+            variant:
+              "destructive",
           });
         } finally {
           if (
@@ -580,6 +736,7 @@ const SendMoneyPage = ({
     accountNumber,
     bank,
     transferType,
+    isOnline,
     toast,
   ]);
 
@@ -599,12 +756,31 @@ const SendMoneyPage = ({
       );
 
     if (
-      !/^\d{8}$/.test(cleanWalletId)
+      !/^\d{8}$/.test(
+        cleanWalletId
+      )
     ) {
       iyanjuPayResolveRequestRef.current++;
 
-      setResolvedIyanjuPayRecipient(null);
-      setResolvingIyanjuPayRecipient(false);
+      setResolvedIyanjuPayRecipient(
+        null
+      );
+
+      setResolvingIyanjuPayRecipient(
+        false
+      );
+
+      return;
+    }
+
+    if (!isOnline) {
+      setResolvedIyanjuPayRecipient(
+        null
+      );
+
+      setResolvingIyanjuPayRecipient(
+        false
+      );
 
       return;
     }
@@ -614,8 +790,21 @@ const SendMoneyPage = ({
 
     const timeout =
       window.setTimeout(async () => {
-        setResolvingIyanjuPayRecipient(true);
-        setResolvedIyanjuPayRecipient(null);
+        if (!navigator.onLine) {
+          setResolvingIyanjuPayRecipient(
+            false
+          );
+
+          return;
+        }
+
+        setResolvingIyanjuPayRecipient(
+          true
+        );
+
+        setResolvedIyanjuPayRecipient(
+          null
+        );
 
         try {
           const {
@@ -647,8 +836,10 @@ const SendMoneyPage = ({
             try {
               if (
                 error.context &&
-                typeof error.context
-                  .json === "function"
+                typeof error
+                  .context
+                  .json ===
+                  "function"
               ) {
                 const payload =
                   await error.context.json();
@@ -662,7 +853,9 @@ const SendMoneyPage = ({
               // Keep original message.
             }
 
-            throw new Error(message);
+            throw new Error(
+              message
+            );
           }
 
           if (
@@ -678,21 +871,30 @@ const SendMoneyPage = ({
 
           setResolvedIyanjuPayRecipient({
             wallet_id:
-              data.recipient.wallet_id,
+              data.recipient
+                .wallet_id,
+
             name:
-              data.recipient.name,
+              data.recipient
+                .name,
+
             full_name:
-              data.recipient.full_name ??
+              data.recipient
+                .full_name ??
               null,
+
             nickname:
-              data.recipient.nickname ??
+              data.recipient
+                .nickname ??
               null,
           });
 
           toast({
-            title: "Recipient verified",
+            title:
+              "Recipient verified",
             description:
-              data.recipient.name,
+              data.recipient
+                .name,
           });
         } catch (error: any) {
           if (
@@ -707,22 +909,31 @@ const SendMoneyPage = ({
             error
           );
 
-          setResolvedIyanjuPayRecipient(null);
+          setResolvedIyanjuPayRecipient(
+            null
+          );
 
           toast({
             title:
               "Wallet ID verification failed",
+
             description:
-              error?.message ||
-              "We could not find this IyanjuPay Wallet ID.",
-            variant: "destructive",
+              !navigator.onLine
+                ? "Your internet connection was lost. Please reconnect and try again."
+                : error?.message ||
+                  "We could not find this IyanjuPay Wallet ID.",
+
+            variant:
+              "destructive",
           });
         } finally {
           if (
             requestId ===
             iyanjuPayResolveRequestRef.current
           ) {
-            setResolvingIyanjuPayRecipient(false);
+            setResolvingIyanjuPayRecipient(
+              false
+            );
           }
         }
       }, 500);
@@ -733,6 +944,7 @@ const SendMoneyPage = ({
   }, [
     iyanjupayWalletId,
     transferType,
+    isOnline,
     toast,
   ]);
 
@@ -752,9 +964,17 @@ const SendMoneyPage = ({
     setNarration("");
 
     setIyanjuPayWalletId("");
-    setResolvedIyanjuPayRecipient(null);
-    setResolvingIyanjuPayRecipient(false);
-    setIyanjuPayTransferring(false);
+    setResolvedIyanjuPayRecipient(
+      null
+    );
+
+    setResolvingIyanjuPayRecipient(
+      false
+    );
+
+    setIyanjuPayTransferring(
+      false
+    );
 
     setBank("");
     setBankSearch("");
@@ -764,7 +984,10 @@ const SendMoneyPage = ({
     setResolving(false);
 
     setPaymentPinOpen(false);
-    setPendingBankTransfer(null);
+    setPendingBankTransfer(
+      null
+    );
+
     setProcessingTransfer(null);
   };
 
@@ -774,6 +997,14 @@ const SendMoneyPage = ({
 
   const handleCreatePin = async () => {
     setCreatePinError("");
+
+    if (!isOnline) {
+      setCreatePinError(
+        "No internet connection. Please reconnect and try again."
+      );
+
+      return;
+    }
 
     if (!/^\d{4}$/.test(newPin)) {
       setCreatePinError(
@@ -839,9 +1070,6 @@ const SendMoneyPage = ({
         return;
       }
 
-      /**
-       * PIN successfully created.
-       */
       setHasPaymentPin(true);
 
       setNewPin("");
@@ -851,20 +1079,19 @@ const SendMoneyPage = ({
       setCreatePinOpen(false);
 
       toast({
-        title: "Payment PIN created",
+        title:
+          "Payment PIN created",
         description:
           "Your Payment PIN has been created successfully.",
       });
 
-      /**
-       * If a transfer was waiting for PIN creation,
-       * immediately continue to PIN authorization.
-       */
       if (pendingPinAction) {
         setPendingPinAction(false);
 
         setTimeout(() => {
-          setPaymentPinOpen(true);
+          if (navigator.onLine) {
+            setPaymentPinOpen(true);
+          }
         }, 150);
       }
     } catch (error: any) {
@@ -874,8 +1101,10 @@ const SendMoneyPage = ({
       );
 
       setCreatePinError(
-        error?.message ||
-          "Something went wrong while creating your Payment PIN."
+        !navigator.onLine
+          ? "Your internet connection was lost. Please reconnect and try again."
+          : error?.message ||
+              "Something went wrong while creating your Payment PIN."
       );
     } finally {
       setCreatingPin(false);
@@ -897,10 +1126,6 @@ const SendMoneyPage = ({
     setConfirmPin("");
     setCreatePinError("");
 
-    /**
-     * The transfer is cancelled if the user
-     * chooses not to create a PIN.
-     */
     setPendingPinAction(false);
   };
 
@@ -909,6 +1134,19 @@ const SendMoneyPage = ({
   // ==========================================================
 
   const handleTransfer = async () => {
+    if (!isOnline) {
+      toast({
+        title:
+          "No internet connection",
+        description:
+          "Please reconnect to the internet before making a transfer.",
+        variant:
+          "destructive",
+      });
+
+      return;
+    }
+
     const transferAmountValue =
       Number(amount);
 
@@ -922,7 +1160,8 @@ const SendMoneyPage = ({
         title: "Invalid amount",
         description:
           "Please enter a valid transfer amount.",
-        variant: "destructive",
+        variant:
+          "destructive",
       });
 
       return;
@@ -932,18 +1171,25 @@ const SendMoneyPage = ({
     // IYANJUPAY
     // --------------------------------------------------------
 
-    if (transferType === "iyanjupay") {
+    if (
+      transferType ===
+      "iyanjupay"
+    ) {
       const walletId =
         iyanjupayWalletId.trim();
 
       if (
-        !/^\d{8}$/.test(walletId)
+        !/^\d{8}$/.test(
+          walletId
+        )
       ) {
         toast({
-          title: "Invalid Wallet ID",
+          title:
+            "Invalid Wallet ID",
           description:
             "IyanjuPay Wallet ID must be exactly 8 digits.",
-          variant: "destructive",
+          variant:
+            "destructive",
         });
 
         return;
@@ -959,7 +1205,8 @@ const SendMoneyPage = ({
             "Recipient not verified",
           description:
             "Please enter a valid IyanjuPay Wallet ID and wait for the recipient name to be verified.",
-          variant: "destructive",
+          variant:
+            "destructive",
         });
 
         return;
@@ -974,20 +1221,12 @@ const SendMoneyPage = ({
             "Insufficient Balance",
           description:
             `You need ₦${transferAmountValue.toLocaleString()} to complete this transfer.`,
-          variant: "destructive",
+          variant:
+            "destructive",
         });
 
         return;
       }
-
-      /**
-       * ======================================================
-       * PAYMENT PIN CHECK
-       * ======================================================
-       *
-       * Before opening the PIN verification modal,
-       * verify that the user actually has a PIN.
-       */
 
       const pinExists =
         hasPaymentPin !== null
@@ -995,10 +1234,6 @@ const SendMoneyPage = ({
           : await checkPaymentPin();
 
       if (!pinExists) {
-        /**
-         * Store the fact that this transfer should continue
-         * after PIN creation.
-         */
         setPendingPinAction(true);
 
         setCreatePinError("");
@@ -1010,11 +1245,6 @@ const SendMoneyPage = ({
         return;
       }
 
-      /**
-       * PIN exists.
-       *
-       * Ask the user to authorize the transfer.
-       */
       setPaymentPinOpen(true);
 
       return;
@@ -1024,18 +1254,37 @@ const SendMoneyPage = ({
     // BANK
     // --------------------------------------------------------
 
-    const fee = BANK_TRANSFER_FEE;
+    const fee =
+      BANK_TRANSFER_FEE;
 
     const total =
-      transferAmountValue + fee;
+      transferAmountValue +
+      fee;
 
-    if (total > walletBalance) {
+    if (
+      total >
+      walletBalance
+    ) {
       toast({
         title:
           "Insufficient Balance",
         description:
           `You need ₦${total.toLocaleString()} to complete this transfer.`,
-        variant: "destructive",
+        variant:
+          "destructive",
+      });
+
+      return;
+    }
+
+    if (!bank) {
+      toast({
+        title:
+          "Select a bank",
+        description:
+          "Please search for and select the recipient's bank.",
+        variant:
+          "destructive",
       });
 
       return;
@@ -1047,7 +1296,8 @@ const SendMoneyPage = ({
           "Account not verified",
         description:
           "Please enter a valid 10-digit account number and wait for verification.",
-        variant: "destructive",
+        variant:
+          "destructive",
       });
 
       return;
@@ -1066,6 +1316,7 @@ const SendMoneyPage = ({
 
       bank:
         selectedBank?.name ||
+        selectedBankName ||
         "Bank",
 
       bankCode:
@@ -1078,31 +1329,24 @@ const SendMoneyPage = ({
         narration.trim() ||
         "Bank transfer",
 
-      type: "transfer",
+      type:
+        "transfer",
 
       transferAmount:
         transferAmountValue,
 
       fee,
 
-      totalCharged: total,
+      totalCharged:
+        total,
     };
 
-    /**
-     * Store the validated bank transfer.
-     * Nothing is executed yet.
-     */
     setPendingBankTransfer({
       amount:
         transferAmountValue,
+
       details,
     });
-
-    /**
-     * ======================================================
-     * PAYMENT PIN CHECK
-     * ======================================================
-     */
 
     const pinExists =
       hasPaymentPin !== null
@@ -1121,9 +1365,6 @@ const SendMoneyPage = ({
       return;
     }
 
-    /**
-     * PIN exists.
-     */
     setPaymentPinOpen(true);
   };
 
@@ -1133,15 +1374,22 @@ const SendMoneyPage = ({
 
   const handlePaymentPinVerified =
     async () => {
-      /**
-       * Close PIN modal immediately.
-       */
       setPaymentPinOpen(false);
 
-      /**
-       * Prevent accidental second submission.
-       */
       if (processingTransfer) {
+        return;
+      }
+
+      if (!isOnline) {
+        toast({
+          title:
+            "No internet connection",
+          description:
+            "Please reconnect before authorizing the transfer.",
+          variant:
+            "destructive",
+        });
+
         return;
       }
 
@@ -1204,12 +1452,6 @@ const SendMoneyPage = ({
             transferAmountValue,
         };
 
-        /**
-         * Move to processing page.
-         *
-         * TransactionProcessingPage executes
-         * the actual Edge Function.
-         */
         setProcessingTransfer({
           transferType:
             "iyanjupay",
@@ -1229,25 +1471,24 @@ const SendMoneyPage = ({
       // BANK
       // ------------------------------------------------------
 
-      if (pendingBankTransfer) {
+      if (
+        pendingBankTransfer
+      ) {
         const {
           amount:
             transferAmountValue,
+
           details,
-        } = pendingBankTransfer;
+        } =
+          pendingBankTransfer;
 
         const idempotencyKey =
           `bank_${crypto.randomUUID()}`;
 
-        /**
-         * Clear immediately so the same
-         * transfer cannot be submitted twice.
-         */
-        setPendingBankTransfer(null);
+        setPendingBankTransfer(
+          null
+        );
 
-        /**
-         * Move to processing page.
-         */
         setProcessingTransfer({
           transferType:
             "bank",
@@ -1269,7 +1510,9 @@ const SendMoneyPage = ({
   const handlePaymentPinCancel =
     () => {
       setPaymentPinOpen(false);
-      setPendingBankTransfer(null);
+      setPendingBankTransfer(
+        null
+      );
       setPendingPinAction(false);
     };
 
@@ -1279,11 +1522,10 @@ const SendMoneyPage = ({
 
   const handleProcessingDone =
     async () => {
-      setProcessingTransfer(null);
+      setProcessingTransfer(
+        null
+      );
 
-      /**
-       * Refresh wallet/dashboard data.
-       */
       if (onTransferSuccess) {
         try {
           await onTransferSuccess();
@@ -1295,9 +1537,6 @@ const SendMoneyPage = ({
         }
       }
 
-      /**
-       * Return to Dashboard.
-       */
       handleBack();
     };
 
@@ -1307,7 +1546,9 @@ const SendMoneyPage = ({
 
   const handleProcessingBack =
     () => {
-      setProcessingTransfer(null);
+      setProcessingTransfer(
+        null
+      );
     };
 
   // ==========================================================
@@ -1321,12 +1562,19 @@ const SendMoneyPage = ({
     setPaymentPinOpen(false);
     setCreatePinOpen(false);
 
-    setPendingBankTransfer(null);
+    setPendingBankTransfer(
+      null
+    );
+
     setPendingPinAction(false);
 
-    setProcessingTransfer(null);
+    setProcessingTransfer(
+      null
+    );
 
-    setTransferType("iyanjupay");
+    setTransferType(
+      "iyanjupay"
+    );
 
     setAmount("");
     setNarration("");
@@ -1341,13 +1589,18 @@ const SendMoneyPage = ({
       false
     );
 
-    setIyanjuPayTransferring(false);
+    setIyanjuPayTransferring(
+      false
+    );
 
     setBank("");
     setBankSearch("");
     setAccountNumber("");
 
-    setResolvedAccount(null);
+    setResolvedAccount(
+      null
+    );
+
     setResolving(false);
 
     onBack();
@@ -1387,6 +1640,7 @@ const SendMoneyPage = ({
   // ==========================================================
 
   const isTransferDisabled =
+    !isOnline ||
     !amount ||
     transferAmount <= 0 ||
     hasInsufficientBalance ||
@@ -1403,8 +1657,10 @@ const SendMoneyPage = ({
         resolvingIyanjuPayRecipient ||
         !resolvedIyanjuPayRecipient
       )) ||
-    (transferType === "bank" &&
+    (transferType ===
+      "bank" &&
       (
+        !bank ||
         !resolvedAccount ||
         resolving
       ));
@@ -1417,6 +1673,24 @@ const SendMoneyPage = ({
     <>
       <div className="min-h-screen bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-50">
 
+        {/* ====================================================
+            OFFLINE BANNER
+        ==================================================== */}
+
+        {!isOnline && (
+          <div className="sticky top-0 z-50 bg-red-600 text-white">
+            <div className="max-w-3xl mx-auto px-4 sm:px-6 py-2.5">
+              <div className="flex items-center justify-center gap-2 text-sm font-medium">
+                <WifiOff className="h-4 w-4 shrink-0" />
+
+                <span>
+                  No internet connection. Reconnect to continue.
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* HEADER */}
 
         <header className="bg-gradient-to-r from-purple-600 to-blue-600 text-white sticky top-0 z-30 shadow-md">
@@ -1426,7 +1700,9 @@ const SendMoneyPage = ({
               <Button
                 type="button"
                 variant="ghost"
-                onClick={handleBack}
+                onClick={
+                  handleBack
+                }
                 className="text-white hover:bg-white/20 mr-2"
               >
                 <ArrowLeft className="h-5 w-5 mr-2" />
@@ -1450,13 +1726,39 @@ const SendMoneyPage = ({
         <main className="max-w-3xl mx-auto px-4 sm:px-6 py-6 pb-12">
 
           <div className="mb-6">
-            <h2 className="text-2xl font-bold text-gray-900">
-              Send Money
-            </h2>
+            <div className="flex items-center justify-between gap-3">
 
-            <p className="text-gray-600 mt-1">
-              Send money securely to an IyanjuPay user or bank account.
-            </p>
+              <div>
+                <h2 className="text-2xl font-bold text-gray-900">
+                  Send Money
+                </h2>
+
+                <p className="text-gray-600 mt-1">
+                  Send money securely to an IyanjuPay user or bank account.
+                </p>
+              </div>
+
+              <div
+                className={`hidden sm:flex items-center gap-1.5 text-xs font-medium ${
+                  isOnline
+                    ? "text-green-600"
+                    : "text-red-600"
+                }`}
+              >
+                {isOnline ? (
+                  <>
+                    <Wifi className="h-4 w-4" />
+                    Online
+                  </>
+                ) : (
+                  <>
+                    <WifiOff className="h-4 w-4" />
+                    Offline
+                  </>
+                )}
+              </div>
+
+            </div>
           </div>
 
           <div className="bg-white rounded-2xl shadow-sm border p-5 sm:p-6 space-y-6">
@@ -1587,6 +1889,7 @@ const SendMoneyPage = ({
                     autoComplete="off"
                     inputMode="numeric"
                     maxLength={8}
+                    disabled={!isOnline}
                   />
 
                   <p className="text-xs text-gray-500">
@@ -1651,7 +1954,8 @@ const SendMoneyPage = ({
                   {!resolvingIyanjuPayRecipient &&
                     iyanjupayWalletId.length ===
                       8 &&
-                    !resolvedIyanjuPayRecipient && (
+                    !resolvedIyanjuPayRecipient &&
+                    isOnline && (
                     <div className="rounded-lg border border-red-200 bg-red-50 p-3">
                       <p className="text-sm text-red-700">
                         Wallet ID could not be verified. Please check the recipient's Wallet ID.
@@ -1670,6 +1974,8 @@ const SendMoneyPage = ({
               "bank" && (
               <div className="space-y-5">
 
+                {/* BANK SELECT */}
+
                 <div className="space-y-2">
 
                   <Label htmlFor="bank">
@@ -1682,29 +1988,54 @@ const SendMoneyPage = ({
                       resolveRequestRef.current++;
 
                       setBank(value);
-                      setResolvedAccount(null);
-                      setResolving(false);
+                      setResolvedAccount(
+                        null
+                      );
+
+                      setResolving(
+                        false
+                      );
+
                       setBankSearch("");
                     }}
                     disabled={
-                      banksLoading
+                      banksLoading ||
+                      !isOnline ||
+                      banks.length === 0
                     }
                   >
 
-                    <SelectTrigger id="bank">
-                      <SelectValue
-                        placeholder={
-                          banksLoading
-                            ? "Loading banks..."
-                            : "Select bank"
-                        }
-                      />
+                    <SelectTrigger
+                      id="bank"
+                      className="h-12"
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+
+                        <Building2 className="h-4 w-4 text-gray-400 shrink-0" />
+
+                        {selectedBankName ? (
+                          <span className="truncate text-gray-900">
+                            {selectedBankName}
+                          </span>
+                        ) : (
+                          <span className="text-gray-500">
+                            {banksLoading
+                              ? "Loading banks..."
+                              : !isOnline
+                                ? "Reconnect to load banks"
+                                : "Search and select your bank"}
+                          </span>
+                        )}
+
+                      </div>
                     </SelectTrigger>
 
-                    <SelectContent>
+                    <SelectContent className="max-h-[420px]">
+
+                      {/* SEARCH */}
 
                       <div
-                        className="sticky top-0 z-10 bg-white p-2 border-b"
+                        className="sticky top-0 z-20 bg-white p-2 border-b"
                         onPointerDown={(e) =>
                           e.stopPropagation()
                         }
@@ -1729,48 +2060,110 @@ const SendMoneyPage = ({
                               e.stopPropagation()
                             }
                             placeholder="Search bank name..."
-                            className="pl-9"
+                            className="pl-9 h-10"
                             autoComplete="off"
+                            autoFocus
                           />
 
                         </div>
                       </div>
 
+                      {/* LOADING */}
+
                       {banksLoading ? (
-                        <div className="flex items-center justify-center gap-2 p-4 text-sm text-gray-500">
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                          Loading banks...
+                        <div className="flex flex-col items-center justify-center gap-2 p-6 text-sm text-gray-500">
+                          <Loader2 className="h-5 w-5 animate-spin text-green-600" />
+
+                          <span>
+                            Loading banks...
+                          </span>
+                        </div>
+                      ) : !isOnline ? (
+                        <div className="flex flex-col items-center justify-center p-6 text-center">
+
+                          <WifiOff className="h-8 w-8 text-red-300 mb-2" />
+
+                          <p className="text-sm font-medium text-gray-700">
+                            No internet connection
+                          </p>
+
+                          <p className="text-xs text-gray-500 mt-1">
+                            Reconnect to load the bank list.
+                          </p>
+
                         </div>
                       ) : filteredBanks.length >
                         0 ? (
-                        filteredBanks.map(
-                          (
-                            bankItem
-                          ) => (
-                            <SelectItem
-                              key={
-                                bankItem.code
-                              }
-                              value={
-                                bankItem.code
-                              }
-                            >
-                              {
-                                bankItem.name
-                              }
-                            </SelectItem>
-                          )
-                        )
+                        <>
+
+                          <div className="px-3 py-2 text-xs text-gray-400">
+                            {filteredBanks.length}{" "}
+                            {filteredBanks.length ===
+                            1
+                              ? "bank"
+                              : "banks"}{" "}
+                            found
+                          </div>
+
+                          {filteredBanks.map(
+                            (
+                              bankItem
+                            ) => (
+                              <SelectItem
+                                key={
+                                  bankItem.code
+                                }
+                                value={
+                                  bankItem.code
+                                }
+                                className="py-3"
+                              >
+
+                                <div className="flex items-center gap-2 min-w-0">
+
+                                  <div className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center shrink-0">
+                                    <Building2 className="h-4 w-4 text-gray-500" />
+                                  </div>
+
+                                  <span className="truncate">
+                                    {
+                                      bankItem.name
+                                    }
+                                  </span>
+
+                                </div>
+
+                              </SelectItem>
+                            )
+                          )}
+
+                        </>
                       ) : (
-                        <div className="p-4 text-center text-sm text-gray-500">
-                          No bank found.
+                        <div className="flex flex-col items-center justify-center p-6 text-center">
+
+                          <Building2 className="h-8 w-8 text-gray-300 mb-2" />
+
+                          <p className="text-sm font-medium text-gray-700">
+                            No bank found
+                          </p>
+
+                          <p className="text-xs text-gray-500 mt-1">
+                            Try another bank name.
+                          </p>
+
                         </div>
                       )}
 
                     </SelectContent>
                   </Select>
 
+                  <p className="text-xs text-gray-500">
+                    Search by bank name and select the recipient's bank.
+                  </p>
+
                 </div>
+
+                {/* ACCOUNT NUMBER */}
 
                 <div className="space-y-2">
 
@@ -1803,11 +2196,16 @@ const SendMoneyPage = ({
                         null
                       );
 
-                      setResolving(false);
+                      setResolving(
+                        false
+                      );
                     }}
                     placeholder="Enter 10-digit account number"
                     maxLength={10}
                     inputMode="numeric"
+                    disabled={
+                      !isOnline
+                    }
                   />
 
                   {resolving && (
@@ -1831,6 +2229,8 @@ const SendMoneyPage = ({
                   )}
 
                 </div>
+
+                {/* VERIFIED ACCOUNT */}
 
                 {resolvedAccount && (
                   <div className="rounded-lg border border-green-200 bg-green-50 p-4">
@@ -1856,6 +2256,12 @@ const SendMoneyPage = ({
                             resolvedAccount.account_number
                           }
                         </p>
+
+                        {selectedBankName && (
+                          <p className="text-sm text-gray-600 mt-0.5">
+                            {selectedBankName}
+                          </p>
+                        )}
 
                       </div>
 
@@ -1887,6 +2293,9 @@ const SendMoneyPage = ({
                 placeholder="Enter amount"
                 min="1"
                 step="0.01"
+                disabled={
+                  !isOnline
+                }
               />
 
             </div>
@@ -2010,6 +2419,9 @@ const SendMoneyPage = ({
                   )
                 }
                 placeholder="Enter transaction description"
+                disabled={
+                  !isOnline
+                }
               />
 
             </div>
@@ -2026,7 +2438,12 @@ const SendMoneyPage = ({
               }
               className="w-full h-12 bg-green-600 hover:bg-green-700 text-base font-semibold"
             >
-              {checkingPaymentPin ? (
+              {!isOnline ? (
+                <>
+                  <WifiOff className="h-4 w-4 mr-2" />
+                  No Internet Connection
+                </>
+              ) : checkingPaymentPin ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                   Checking Payment PIN...
@@ -2059,9 +2476,14 @@ const SendMoneyPage = ({
           ====================================================== */}
 
       <Dialog
-        open={createPinOpen}
+        open={
+          createPinOpen
+        }
         onOpenChange={(open) => {
-          if (!open && !creatingPin) {
+          if (
+            !open &&
+            !creatingPin
+          ) {
             handleCreatePinCancel();
           }
         }}
@@ -2080,6 +2502,7 @@ const SendMoneyPage = ({
           }}
         >
           <DialogHeader>
+
             <DialogTitle className="flex items-center gap-2">
               <ShieldCheck className="h-5 w-5 text-green-600" />
               Create Payment PIN
@@ -2088,6 +2511,7 @@ const SendMoneyPage = ({
             <DialogDescription>
               You need a 4-digit Payment PIN before you can make payments or transfers.
             </DialogDescription>
+
           </DialogHeader>
 
           <div className="space-y-4">
@@ -2099,12 +2523,15 @@ const SendMoneyPage = ({
             </div>
 
             <div className="space-y-2">
+
               <Label htmlFor="newPaymentPin">
                 Create 4-digit PIN
               </Label>
 
               <Input
-                ref={createPinInputRef}
+                ref={
+                  createPinInputRef
+                }
                 id="newPaymentPin"
                 type="password"
                 inputMode="numeric"
@@ -2114,22 +2541,38 @@ const SendMoneyPage = ({
                 onChange={(e) => {
                   const value =
                     e.target.value
-                      .replace(/\D/g, "")
-                      .slice(0, 4);
+                      .replace(
+                        /\D/g,
+                        ""
+                      )
+                      .slice(
+                        0,
+                        4
+                      );
 
-                  setNewPin(value);
+                  setNewPin(
+                    value
+                  );
 
-                  if (createPinError) {
-                    setCreatePinError("");
+                  if (
+                    createPinError
+                  ) {
+                    setCreatePinError(
+                      ""
+                    );
                   }
                 }}
                 placeholder="••••"
-                disabled={creatingPin}
+                disabled={
+                  creatingPin
+                }
                 className="text-center text-2xl tracking-[0.5em]"
               />
+
             </div>
 
             <div className="space-y-2">
+
               <Label htmlFor="confirmPaymentPin">
                 Confirm Payment PIN
               </Label>
@@ -2140,32 +2583,51 @@ const SendMoneyPage = ({
                 inputMode="numeric"
                 autoComplete="new-password"
                 maxLength={4}
-                value={confirmPin}
+                value={
+                  confirmPin
+                }
                 onChange={(e) => {
                   const value =
                     e.target.value
-                      .replace(/\D/g, "")
-                      .slice(0, 4);
+                      .replace(
+                        /\D/g,
+                        ""
+                      )
+                      .slice(
+                        0,
+                        4
+                      );
 
-                  setConfirmPin(value);
+                  setConfirmPin(
+                    value
+                  );
 
-                  if (createPinError) {
-                    setCreatePinError("");
+                  if (
+                    createPinError
+                  ) {
+                    setCreatePinError(
+                      ""
+                    );
                   }
                 }}
                 onKeyDown={(e) => {
                   if (
-                    e.key === "Enter" &&
+                    e.key ===
+                      "Enter" &&
                     !creatingPin
                   ) {
                     e.preventDefault();
+
                     handleCreatePin();
                   }
                 }}
                 placeholder="••••"
-                disabled={creatingPin}
+                disabled={
+                  creatingPin
+                }
                 className="text-center text-2xl tracking-[0.5em]"
               />
+
             </div>
 
             {createPinError && (
@@ -2188,7 +2650,9 @@ const SendMoneyPage = ({
               onClick={
                 handleCreatePinCancel
               }
-              disabled={creatingPin}
+              disabled={
+                creatingPin
+              }
             >
               Cancel
             </Button>
@@ -2201,8 +2665,11 @@ const SendMoneyPage = ({
               }
               disabled={
                 creatingPin ||
-                newPin.length !== 4 ||
-                confirmPin.length !== 4
+                newPin.length !==
+                  4 ||
+                confirmPin.length !==
+                  4 ||
+                !isOnline
               }
             >
               {creatingPin ? (
@@ -2224,7 +2691,9 @@ const SendMoneyPage = ({
           ====================================================== */}
 
       <PaymentPinModal
-        open={paymentPinOpen}
+        open={
+          paymentPinOpen
+        }
         onCancel={
           handlePaymentPinCancel
         }

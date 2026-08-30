@@ -78,142 +78,336 @@ const AuthForm = () => {
   const [phoneOtpSent, setPhoneOtpSent] = useState(false);
 
   // ============================================================
-  // DETERMINE INITIAL TAB
+  // ERROR HANDLING HELPERS
   // ============================================================
 
-  /*
-   * If the user opens:
-   *
-   * /signup
-   *
-   * or:
-   *
-   * /signup?ref=AL12345678
-   *
-   * automatically show Sign Up.
-   */
-  const initialTab =
-    location.pathname === "/signup"
-      ? "signup"
-      : "signin";
+  const isOnline = (): boolean => {
+    return typeof navigator === "undefined"
+      ? true
+      : navigator.onLine;
+  };
 
-  // ============================================================
-  // READ REFERRAL CODE FROM URL
-  // ============================================================
-
-  useEffect(() => {
-    const params = new URLSearchParams(
-      location.search,
-    );
-
-    const urlReferral =
-      params.get("ref") ||
-      params.get("referral") ||
-      params.get("referral_code");
-
-    if (urlReferral) {
-      const cleanedReferral =
-        urlReferral
-          .trim()
-          .toUpperCase()
-          .slice(0, 32);
-
-      setReferralCode(cleanedReferral);
-
-      /*
-       * Keep referral code available in case the
-       * user refreshes the signup page.
-       */
-      sessionStorage.setItem(
-        "iyanjupay_referral_code",
-        cleanedReferral,
-      );
-    } else {
-      /*
-       * If there is no referral in the current URL,
-       * recover a previously captured referral code.
-       */
-      const savedReferral =
-        sessionStorage.getItem(
-          "iyanjupay_referral_code",
-        );
-
-      if (savedReferral) {
-        setReferralCode(
-          savedReferral.toUpperCase(),
-        );
-      }
+  const isNetworkError = (error: unknown): boolean => {
+    if (!error) {
+      return false;
     }
-  }, [location.pathname, location.search]);
 
-  // ============================================================
-  // EDGE FUNCTION ERROR HANDLER
-  // ============================================================
+    const errorObject =
+      typeof error === "object"
+        ? (error as {
+            message?: string;
+            name?: string;
+            code?: string;
+            status?: number;
+            context?: Response;
+          })
+        : null;
+
+    const message = String(
+      errorObject?.message ?? error ?? "",
+    ).toLowerCase();
+
+    const name = String(
+      errorObject?.name ?? "",
+    ).toLowerCase();
+
+    const code = String(
+      errorObject?.code ?? "",
+    ).toLowerCase();
+
+    const status = errorObject?.status;
+
+    if (
+      message.includes("failed to fetch") ||
+      message.includes("fetch failed") ||
+      message.includes("network error") ||
+      message.includes("network request failed") ||
+      message.includes("networkerror") ||
+      message.includes("internet") ||
+      message.includes("connection refused") ||
+      message.includes("connection reset") ||
+      message.includes("connection timed out") ||
+      message.includes("timed out") ||
+      message.includes("offline") ||
+      name.includes("networkerror") ||
+      name.includes("typeerror") &&
+        message.includes("fetch") ||
+      code === "network_error" ||
+      code === "err_network"
+    ) {
+      return true;
+    }
+
+    if (
+      status === 0 ||
+      status === 502 ||
+      status === 503 ||
+      status === 504
+    ) {
+      return true;
+    }
+
+    return false;
+  };
 
   const getEdgeFunctionErrorMessage =
     async (
-      error: any,
+      error: unknown,
       fallback: string,
     ): Promise<string> => {
+      if (!isOnline()) {
+        return "No internet connection. Please check your internet connection and try again.";
+      }
+
+      if (isNetworkError(error)) {
+        return "Unable to connect to the server. Please check your internet connection and try again.";
+      }
+
       try {
-        if (error?.context) {
+        const errorObject =
+          typeof error === "object" &&
+          error !== null
+            ? (error as {
+                context?: unknown;
+                message?: string;
+                error_description?: string;
+                details?: string;
+                hint?: string;
+                code?: string;
+              })
+            : null;
+
+        if (errorObject?.context) {
           const response =
-            typeof error.context.clone ===
-            "function"
-              ? error.context.clone()
-              : error.context;
+            errorObject.context instanceof Response
+              ? errorObject.context.clone()
+              : errorObject.context;
 
           if (
-            typeof response.json ===
-            "function"
+            response &&
+            typeof (
+              response as {
+                json?: () => Promise<unknown>;
+              }
+            ).json === "function"
           ) {
-            const data =
-              await response.json();
+            try {
+              const data =
+                await (
+                  response as {
+                    json: () => Promise<unknown>;
+                  }
+                ).json();
 
-            if (
-              typeof data?.error ===
-                "string" &&
-              data.error.trim()
-            ) {
-              return data.error.trim();
+              if (
+                data &&
+                typeof data === "object"
+              ) {
+                const body =
+                  data as {
+                    error?: unknown;
+                    message?: unknown;
+                    detail?: unknown;
+                    error_description?: unknown;
+                  };
+
+                if (
+                  typeof body.error === "string" &&
+                  body.error.trim()
+                ) {
+                  return body.error.trim();
+                }
+
+                if (
+                  typeof body.message === "string" &&
+                  body.message.trim()
+                ) {
+                  return body.message.trim();
+                }
+
+                if (
+                  typeof body.detail === "string" &&
+                  body.detail.trim()
+                ) {
+                  return body.detail.trim();
+                }
+
+                if (
+                  typeof body.error_description ===
+                    "string" &&
+                  body.error_description.trim()
+                ) {
+                  return body.error_description.trim();
+                }
+              }
+            } catch (jsonError) {
+              console.warn(
+                "Unable to parse Edge Function JSON error:",
+                jsonError,
+              );
             }
 
-            if (
-              typeof data?.message ===
-                "string" &&
-              data.message.trim()
-            ) {
-              return data.message.trim();
-            }
+            try {
+              if (
+                typeof (
+                  response as {
+                    text?: () => Promise<string>;
+                  }
+                ).text === "function"
+              ) {
+                const text =
+                  await (
+                    response as {
+                      text: () => Promise<string>;
+                    }
+                  ).text();
 
-            if (
-              typeof data?.detail ===
-                "string" &&
-              data.detail.trim()
-            ) {
-              return data.detail.trim();
+                if (text.trim()) {
+                  try {
+                    const parsed =
+                      JSON.parse(text) as {
+                        error?: unknown;
+                        message?: unknown;
+                        detail?: unknown;
+                      };
+
+                    if (
+                      typeof parsed.error === "string" &&
+                      parsed.error.trim()
+                    ) {
+                      return parsed.error.trim();
+                    }
+
+                    if (
+                      typeof parsed.message ===
+                        "string" &&
+                      parsed.message.trim()
+                    ) {
+                      return parsed.message.trim();
+                    }
+
+                    if (
+                      typeof parsed.detail === "string" &&
+                      parsed.detail.trim()
+                    ) {
+                      return parsed.detail.trim();
+                    }
+                  } catch {
+                    if (text.trim()) {
+                      return text.trim();
+                    }
+                  }
+                }
+              }
+            } catch (textError) {
+              console.warn(
+                "Unable to parse Edge Function text error:",
+                textError,
+              );
             }
           }
         }
+
+        if (
+          typeof errorObject?.error_description ===
+            "string" &&
+          errorObject.error_description.trim()
+        ) {
+          return errorObject.error_description.trim();
+        }
+
+        if (
+          typeof errorObject?.message === "string" &&
+          errorObject.message.trim() &&
+          errorObject.message !==
+            "Edge Function returned a non-2xx status code"
+        ) {
+          return errorObject.message.trim();
+        }
+
+        if (
+          typeof errorObject?.details === "string" &&
+          errorObject.details.trim()
+        ) {
+          return errorObject.details.trim();
+        }
+
+        if (
+          typeof errorObject?.hint === "string" &&
+          errorObject.hint.trim()
+        ) {
+          return errorObject.hint.trim();
+        }
       } catch (parseError) {
         console.error(
-          "Unable to parse Edge Function error:",
+          "Unable to extract Edge Function error:",
           parseError,
         );
       }
 
-      if (
-        typeof error?.message ===
-          "string" &&
-        error.message.trim() &&
-        error.message !==
-          "Edge Function returned a non-2xx status code"
-      ) {
-        return error.message.trim();
-      }
-
       return fallback;
     };
+
+  const getGeneralErrorMessage = (
+    error: unknown,
+    fallback: string,
+  ): string => {
+    if (!isOnline()) {
+      return "No internet connection. Please check your internet connection and try again.";
+    }
+
+    if (isNetworkError(error)) {
+      return "Unable to connect to the server. Please check your internet connection and try again.";
+    }
+
+    if (
+      error &&
+      typeof error === "object"
+    ) {
+      const errorObject =
+        error as {
+          message?: unknown;
+          error_description?: unknown;
+          details?: unknown;
+          hint?: unknown;
+        };
+
+      if (
+        typeof errorObject.message === "string" &&
+        errorObject.message.trim()
+      ) {
+        return errorObject.message.trim();
+      }
+
+      if (
+        typeof errorObject.error_description ===
+          "string" &&
+        errorObject.error_description.trim()
+      ) {
+        return errorObject.error_description.trim();
+      }
+
+      if (
+        typeof errorObject.details === "string" &&
+        errorObject.details.trim()
+      ) {
+        return errorObject.details.trim();
+      }
+
+      if (
+        typeof errorObject.hint === "string" &&
+        errorObject.hint.trim()
+      ) {
+        return errorObject.hint.trim();
+      }
+    }
+
+    if (typeof error === "string" && error.trim()) {
+      return error.trim();
+    }
+
+    return fallback;
+  };
 
   // ============================================================
   // PHONE NORMALIZATION
@@ -252,6 +446,56 @@ const AuthForm = () => {
       .replace(/\s/g, "")
       .slice(0, 32);
   };
+
+  // ============================================================
+  // DETERMINE INITIAL TAB
+  // ============================================================
+
+  const initialTab =
+    location.pathname === "/signup"
+      ? "signup"
+      : "signin";
+
+  // ============================================================
+  // READ REFERRAL CODE FROM URL
+  // ============================================================
+
+  useEffect(() => {
+    const params = new URLSearchParams(
+      location.search,
+    );
+
+    const urlReferral =
+      params.get("ref") ||
+      params.get("referral") ||
+      params.get("referral_code");
+
+    if (urlReferral) {
+      const cleanedReferral =
+        urlReferral
+          .trim()
+          .toUpperCase()
+          .slice(0, 32);
+
+      setReferralCode(cleanedReferral);
+
+      sessionStorage.setItem(
+        "iyanjupay_referral_code",
+        cleanedReferral,
+      );
+    } else {
+      const savedReferral =
+        sessionStorage.getItem(
+          "iyanjupay_referral_code",
+        );
+
+      if (savedReferral) {
+        setReferralCode(
+          savedReferral.toUpperCase(),
+        );
+      }
+    }
+  }, [location.pathname, location.search]);
 
   // ============================================================
   // SIGN UP
@@ -340,16 +584,6 @@ const AuthForm = () => {
         referralCode,
       );
 
-    /*
-     * Basic referral code validation.
-     *
-     * Your generated codes currently look like:
-     *
-     * ALXXXXXXXX
-     *
-     * We allow letters and numbers generally so
-     * this remains compatible with future codes.
-     */
     if (
       normalizedReferral &&
       !/^[A-Z0-9_-]{4,32}$/.test(
@@ -365,13 +599,19 @@ const AuthForm = () => {
       return;
     }
 
+    if (!isOnline()) {
+      toast({
+        title: "No internet connection",
+        description:
+          "Please check your internet connection and try again.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsLoading(true);
 
     try {
-      /*
-       * Save referral code locally so it remains available
-       * through the email/phone verification process.
-       */
       if (normalizedReferral) {
         sessionStorage.setItem(
           "iyanjupay_referral_code",
@@ -387,15 +627,8 @@ const AuthForm = () => {
             data: {
               full_name:
                 fullName.trim(),
-
               phone_number:
                 normalizedPhone,
-
-              /*
-               * The referral code is included in auth
-               * metadata so the server-side signup/referral
-               * process can use it.
-               */
               referral_code:
                 normalizedReferral || null,
             },
@@ -403,21 +636,20 @@ const AuthForm = () => {
         });
 
       if (error) {
-        throw error;
+        const message =
+          await getEdgeFunctionErrorMessage(
+            error,
+            "Unable to create your account. Please try again.",
+          );
+
+        throw new Error(message);
       }
 
       if (!data.user) {
         throw new Error(
-          "Unable to create your account.",
+          "Unable to create your account. Please try again.",
         );
       }
-
-      /*
-       * Profile is created server-side by your
-       * auth.users -> profiles trigger.
-       *
-       * We do NOT insert profiles from the client.
-       */
 
       setVerificationMethod(null);
       setOtp("");
@@ -431,20 +663,23 @@ const AuthForm = () => {
             ? "Your referral code has been saved. Choose how you want to verify your account."
             : "Choose how you want to verify your IyanjuPay account.",
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error(
         "Signup error:",
         error,
       );
 
-      const message =
-        error?.message ||
-        "Something went wrong.";
-
       toast({
         title:
-          "Unable to create account",
-        description: message,
+          isNetworkError(error) ||
+          !isOnline()
+            ? "Connection problem"
+            : "Unable to create account",
+        description:
+          getGeneralErrorMessage(
+            error,
+            "Something went wrong while creating your account. Please try again.",
+          ),
         variant: "destructive",
       });
     } finally {
@@ -473,6 +708,16 @@ const AuthForm = () => {
             "Invalid phone number",
           description:
             "Enter a valid Nigerian phone number.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      if (!isOnline()) {
+        toast({
+          title: "No internet connection",
+          description:
+            "Please check your internet connection and try again.",
           variant: "destructive",
         });
         return;
@@ -508,6 +753,7 @@ const AuthForm = () => {
         if (!data?.success) {
           throw new Error(
             data?.error ||
+              data?.message ||
               "Unable to send verification code.",
           );
         }
@@ -521,7 +767,7 @@ const AuthForm = () => {
           description:
             "An 8-digit verification code has been sent to your phone.",
         });
-      } catch (error: any) {
+      } catch (error: unknown) {
         console.error(
           "Termii send OTP error:",
           error,
@@ -529,10 +775,15 @@ const AuthForm = () => {
 
         toast({
           title:
-            "Unable to send code",
+            isNetworkError(error) ||
+            !isOnline()
+              ? "Connection problem"
+              : "Unable to send code",
           description:
-            error?.message ||
-            "Please try again.",
+            getGeneralErrorMessage(
+              error,
+              "Please check your connection and try again.",
+            ),
           variant: "destructive",
         });
       } finally {
@@ -563,6 +814,16 @@ const AuthForm = () => {
           title: "Invalid code",
           description:
             "Enter the 8-digit verification code you received.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      if (!isOnline()) {
+        toast({
+          title: "No internet connection",
+          description:
+            "Please check your internet connection and try again.",
           variant: "destructive",
         });
         return;
@@ -619,13 +880,7 @@ const AuthForm = () => {
           description:
             "Your phone number has been verified. You can now continue.",
         });
-
-        /*
-         * Do not remove referral information here.
-         * It may still be needed by your server-side
-         * referral completion logic.
-         */
-      } catch (error: any) {
+      } catch (error: unknown) {
         console.error(
           "Termii verify OTP error:",
           error,
@@ -633,10 +888,15 @@ const AuthForm = () => {
 
         toast({
           title:
-            "Verification failed",
+            isNetworkError(error) ||
+            !isOnline()
+              ? "Connection problem"
+              : "Verification failed",
           description:
-            error?.message ||
-            "The 8-digit verification code is incorrect.",
+            getGeneralErrorMessage(
+              error,
+              "The 8-digit verification code is incorrect.",
+            ),
           variant: "destructive",
         });
       } finally {
@@ -663,6 +923,16 @@ const AuthForm = () => {
         return;
       }
 
+      if (!isOnline()) {
+        toast({
+          title: "No internet connection",
+          description:
+            "Please check your internet connection and try again.",
+          variant: "destructive",
+        });
+        return;
+      }
+
       setOtpLoading(true);
 
       try {
@@ -674,7 +944,13 @@ const AuthForm = () => {
           });
 
         if (error) {
-          throw error;
+          const message =
+            await getEdgeFunctionErrorMessage(
+              error,
+              "Unable to send verification code.",
+            );
+
+          throw new Error(message);
         }
 
         sessionStorage.setItem(
@@ -682,9 +958,6 @@ const AuthForm = () => {
           normalizedEmail,
         );
 
-        /*
-         * Preserve referral code through email verification.
-         */
         const normalizedReferral =
           normalizeReferralCode(
             referralCode,
@@ -724,7 +997,7 @@ const AuthForm = () => {
             },
           },
         );
-      } catch (error: any) {
+      } catch (error: unknown) {
         console.error(
           "Email OTP send error:",
           error,
@@ -732,10 +1005,15 @@ const AuthForm = () => {
 
         toast({
           title:
-            "Unable to send verification code",
+            isNetworkError(error) ||
+            !isOnline()
+              ? "Connection problem"
+              : "Unable to send verification code",
           description:
-            error?.message ||
-            "Please try again.",
+            getGeneralErrorMessage(
+              error,
+              "Please check your connection and try again.",
+            ),
           variant: "destructive",
         });
       } finally {
@@ -772,6 +1050,16 @@ const AuthForm = () => {
           "Password required",
         description:
           "Please enter your password.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!isOnline()) {
+      toast({
+        title: "No internet connection",
+        description:
+          "Please check your internet connection and try again.",
         variant: "destructive",
       });
       return;
@@ -814,6 +1102,15 @@ const AuthForm = () => {
         );
       }
 
+      if (
+        !data.session.access_token ||
+        !data.session.refresh_token
+      ) {
+        throw new Error(
+          "Login succeeded, but a valid session could not be established. Please try again.",
+        );
+      }
+
       const {
         error: sessionError,
       } =
@@ -830,7 +1127,13 @@ const AuthForm = () => {
         );
 
       if (sessionError) {
-        throw sessionError;
+        const message =
+          await getEdgeFunctionErrorMessage(
+            sessionError,
+            "Unable to establish your login session.",
+          );
+
+        throw new Error(message);
       }
 
       toast({
@@ -839,7 +1142,7 @@ const AuthForm = () => {
         description:
           "You have successfully signed in.",
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error(
         "Sign-in error:",
         error,
@@ -847,10 +1150,15 @@ const AuthForm = () => {
 
       toast({
         title:
-          "Unable to sign in",
+          isNetworkError(error) ||
+          !isOnline()
+            ? "Connection problem"
+            : "Unable to sign in",
         description:
-          error?.message ||
-          "Invalid login credentials.",
+          getGeneralErrorMessage(
+            error,
+            "Invalid login credentials. Please check your details and try again.",
+          ),
         variant: "destructive",
       });
     } finally {

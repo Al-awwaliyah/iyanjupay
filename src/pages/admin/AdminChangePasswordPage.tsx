@@ -1,7 +1,7 @@
 import React, {
 FormEvent,
-useCallback,
 useEffect,
+useMemo,
 useState,
 } from "react";
 
@@ -12,7 +12,7 @@ Eye,
 EyeOff,
 KeyRound,
 Loader2,
-LogOut,
+LockKeyhole,
 ShieldCheck,
 } from "lucide-react";
 
@@ -39,20 +39,12 @@ type AdminRole =
 | "compliance_admin"
 | "read_only_admin";
 
-type AdminAuthState = {
+type AdminState = {
 is_admin?: boolean;
 is_active?: boolean;
 role?: AdminRole | string | null;
-must_change_password?: boolean;
-user_id?: string | null;
-email?: string | null;
 display_name?: string | null;
-};
-
-type PasswordStrength = {
-score: number;
-label: string;
-valid: boolean;
+must_change_password?: boolean;
 };
 
 function extractError(error: unknown): string {
@@ -87,66 +79,6 @@ return (
 return "An unexpected error occurred.";
 }
 
-function getPasswordStrength(
-password: string,
-): PasswordStrength {
-if (!password) {
-return {
-score: 0,
-label: "",
-valid: false,
-};
-}
-
-let score = 0;
-
-if (password.length >= 8) {
-score += 1;
-}
-
-if (password.length >= 12) {
-score += 1;
-}
-
-if (/[A-Z]/.test(password)) {
-score += 1;
-}
-
-if (/[a-z]/.test(password)) {
-score += 1;
-}
-
-if (/[0-9]/.test(password)) {
-score += 1;
-}
-
-if (/[^A-Za-z0-9]/.test(password)) {
-score += 1;
-}
-
-if (score <= 2) {
-return {
-score,
-label: "Weak",
-valid: false,
-};
-}
-
-if (score <= 4) {
-return {
-score,
-label: "Moderate",
-valid: false,
-};
-}
-
-return {
-score,
-label: "Strong",
-valid: true,
-};
-}
-
 function getRoleLabel(
 role: AdminRole | string | null | undefined,
 ) {
@@ -177,13 +109,30 @@ default:
 }
 }
 
+function validatePassword(password: string) {
+const errors: string[] = [];
+
+if (password.length < 8) {
+errors.push("at least 8 characters");
+}
+
+if (!/[A-Z]/.test(password)) {
+errors.push("one uppercase letter");
+}
+
+if (!/[a-z]/.test(password)) {
+errors.push("one lowercase letter");
+}
+
+if (!/[0-9]/.test(password)) {
+errors.push("one number");
+}
+
+return errors;
+}
+
 const AdminChangePasswordPage: React.FC = () => {
 const navigate = useNavigate();
-
-const [checking, setChecking] = useState(true);
-
-const [adminState, setAdminState] =
-useState<AdminAuthState | null>(null);
 
 const [currentPassword, setCurrentPassword] =
 useState("");
@@ -203,8 +152,12 @@ useState(false);
 const [showConfirmPassword, setShowConfirmPassword] =
 useState(false);
 
-const [loading, setLoading] = useState(false);
-const [signingOut, setSigningOut] = useState(false);
+const [adminState, setAdminState] =
+useState<AdminState | null>(null);
+
+const [loading, setLoading] = useState(true);
+const [submitting, setSubmitting] =
+useState(false);
 
 const [error, setError] =
 useState<string | null>(null);
@@ -212,19 +165,45 @@ useState<string | null>(null);
 const [success, setSuccess] =
 useState<string | null>(null);
 
-const passwordStrength =
-getPasswordStrength(newPassword);
+const passwordErrors = useMemo(
+() => validatePassword(newPassword),
+[newPassword],
+);
 
-const validateAdminSession =
-useCallback(async () => {
-try {
-setChecking(true);
-setError(null);
+const passwordsMatch =
+newPassword.length > 0 &&
+confirmPassword.length > 0 &&
+newPassword === confirmPassword;
 
+const passwordIsValid =
+newPassword.length > 0 &&
+passwordErrors.length === 0;
+
+const canSubmit =
+!submitting &&
+!loading &&
+currentPassword.length > 0 &&
+passwordIsValid &&
+passwordsMatch;
+
+useEffect(() => {
+let mounted = true;
+
+
+const loadAdminState = async () => {
+  try {
+    setLoading(true);
+    setError(null);
 
     const {
-      data: { session },
+      data: {
+        session,
+      },
     } = await supabase.auth.getSession();
+
+    if (!mounted) {
+      return;
+    }
 
     if (!session) {
       navigate("/admin/login", {
@@ -245,18 +224,17 @@ setError(null);
       throw stateError;
     }
 
-    if (!data || typeof data !== "object") {
-      await supabase.auth.signOut();
-
-      navigate("/admin/login", {
-        replace: true,
-      });
-
-      return;
+    if (
+      !data ||
+      typeof data !== "object"
+    ) {
+      throw new Error(
+        "Unable to verify administrator account.",
+      );
     }
 
     const state =
-      data as AdminAuthState;
+      data as AdminState;
 
     if (
       state.is_admin !== true ||
@@ -264,10 +242,6 @@ setError(null);
     ) {
       await supabase.auth.signOut();
 
-      setError(
-        "This account is not authorized to access the administrator portal.",
-      );
-
       navigate("/admin/login", {
         replace: true,
       });
@@ -275,13 +249,6 @@ setError(null);
       return;
     }
 
-    setAdminState(state);
-
-    /*
-     * If the administrator has already changed the
-     * temporary password, there is no reason to remain
-     * on this page.
-     */
     if (
       state.must_change_password !== true
     ) {
@@ -292,68 +259,35 @@ setError(null);
       return;
     }
 
-    /*
-     * Keep the admin's activity timestamp current
-     * when this page is opened.
-     */
-    try {
-      await supabase.rpc(
-        "admin_auth_touch_activity",
-      );
-    } catch (activityError) {
-      /*
-       * Activity tracking must not prevent a legitimate
-       * administrator from changing their password.
-       */
-      console.warn(
-        "Unable to update administrator activity:",
-        activityError,
+    if (mounted) {
+      setAdminState(state);
+    }
+  } catch (loadError) {
+    console.error(
+      "Failed to load administrator password-change state:",
+      loadError,
+    );
+
+    if (mounted) {
+      setError(
+        extractError(loadError),
       );
     }
-  } catch (validationError) {
-    console.error(
-      "Failed to validate administrator session:",
-      validationError,
-    );
-
-    setError(
-      extractError(validationError),
-    );
   } finally {
-    setChecking(false);
+    if (mounted) {
+      setLoading(false);
+    }
   }
-}, [navigate]);
-
-
-useEffect(() => {
-void validateAdminSession();
-}, [validateAdminSession]);
-
-const handleSignOut = async () => {
-try {
-setSigningOut(true);
-
-
-  await supabase.auth.signOut();
-
-  navigate("/admin/login", {
-    replace: true,
-  });
-} catch (signOutError) {
-  console.error(
-    "Failed to sign out administrator:",
-    signOutError,
-  );
-
-  setError(
-    extractError(signOutError),
-  );
-} finally {
-  setSigningOut(false);
-}
-
-
 };
+
+void loadAdminState();
+
+return () => {
+  mounted = false;
+};
+
+
+}, [navigate]);
 
 const handleSubmit = async (
 event: FormEvent<HTMLFormElement>,
@@ -378,16 +312,11 @@ if (!newPassword) {
   return;
 }
 
-if (newPassword.length < 8) {
+if (passwordErrors.length > 0) {
   setError(
-    "Your new password must contain at least 8 characters.",
-  );
-  return;
-}
-
-if (!passwordStrength.valid) {
-  setError(
-    "Choose a stronger password containing uppercase and lowercase letters, numbers, and a special character.",
+    `Password must contain ${passwordErrors.join(
+      ", ",
+    )}.`,
   );
   return;
 }
@@ -401,80 +330,27 @@ if (newPassword === currentPassword) {
 
 if (newPassword !== confirmPassword) {
   setError(
-    "The password confirmation does not match.",
+    "The new passwords do not match.",
   );
   return;
 }
 
 try {
-  setLoading(true);
+  setSubmitting(true);
 
   /*
-   * Verify that the current authenticated session still
-   * belongs to an active administrator who is required
-   * to change their password.
-   */
-  const {
-    data: stateData,
-    error: stateError,
-  } = await supabase.rpc(
-    "admin_auth_get_state",
-  );
-
-  if (stateError) {
-    throw stateError;
-  }
-
-  if (
-    !stateData ||
-    typeof stateData !== "object"
-  ) {
-    throw new Error(
-      "Unable to verify administrator account state.",
-    );
-  }
-
-  const state =
-    stateData as AdminAuthState;
-
-  if (
-    state.is_admin !== true ||
-    state.is_active !== true
-  ) {
-    await supabase.auth.signOut();
-
-    navigate("/admin/login", {
-      replace: true,
-    });
-
-    return;
-  }
-
-  if (
-    state.must_change_password !== true
-  ) {
-    navigate("/admin/dashboard", {
-      replace: true,
-    });
-
-    return;
-  }
-
-  /*
-   * Re-authenticate using the temporary/current password.
+   * Verify the temporary/current password before
+   * allowing the password-change operation.
    *
-   * This prevents somebody who merely obtains an existing
-   * browser session from changing the administrator's
-   * password without knowing the current password.
+   * We deliberately use the authenticated user's
+   * email from the Supabase session rather than
+   * trusting an email supplied by the browser.
    */
   const {
-    data: { user },
-    error: userError,
+    data: {
+      user,
+    },
   } = await supabase.auth.getUser();
-
-  if (userError) {
-    throw userError;
-  }
 
   if (!user?.email) {
     throw new Error(
@@ -482,21 +358,28 @@ try {
     );
   }
 
+  /*
+   * Re-authenticate with the current password.
+   *
+   * This protects the password-change operation if
+   * an administrator's existing browser session has
+   * been left open.
+   */
   const {
-    error: reauthenticationError,
+    error: verificationError,
   } = await supabase.auth.signInWithPassword({
     email: user.email,
     password: currentPassword,
   });
 
-  if (reauthenticationError) {
+  if (verificationError) {
     throw new Error(
-      "The current password is incorrect.",
+      "The current temporary password is incorrect.",
     );
   }
 
   /*
-   * Set the new Supabase Auth password.
+   * Change the authenticated Supabase user's password.
    */
   const {
     error: passwordError,
@@ -509,11 +392,8 @@ try {
   }
 
   /*
-   * Clear the forced-password-change flag.
-   *
-   * This RPC must verify the authenticated administrator
-   * server-side and must not accept an arbitrary user ID
-   * from the browser.
+   * Only clear must_change_password AFTER the
+   * Supabase password update succeeds.
    */
   const {
     data: clearData,
@@ -527,34 +407,33 @@ try {
   }
 
   if (
-    clearData !== true &&
-    !(
-      clearData &&
-      typeof clearData === "object" &&
-      (
-        (clearData as Record<string, unknown>)
-          .success === true
-      )
-    )
+    !clearData ||
+    typeof clearData !== "object"
   ) {
     throw new Error(
-      "Password was changed, but the administrator password-change state could not be completed.",
+      "Password was changed, but administrator account state could not be updated.",
     );
   }
 
-  /*
-   * Update activity after successful password change.
-   */
-  try {
-    await supabase.rpc(
-      "admin_auth_touch_activity",
-    );
-  } catch (activityError) {
-    console.warn(
-      "Unable to update administrator activity:",
-      activityError,
+  const result =
+    clearData as Record<
+      string,
+      unknown
+    >;
+
+  if (
+    result.success !== true
+  ) {
+    throw new Error(
+      typeof result.message === "string"
+        ? result.message
+        : "Administrator password-change completion failed.",
     );
   }
+
+  setCurrentPassword("");
+  setNewPassword("");
+  setConfirmPassword("");
 
   setSuccess(
     "Your password has been changed successfully. Redirecting to the administrator dashboard...",
@@ -564,7 +443,7 @@ try {
     navigate("/admin/dashboard", {
       replace: true,
     });
-  }, 800);
+  }, 900);
 } catch (submitError) {
   console.error(
     "Failed to change administrator password:",
@@ -575,18 +454,18 @@ try {
     extractError(submitError),
   );
 } finally {
-  setLoading(false);
+  setSubmitting(false);
 }
 
 
 };
 
-if (checking) {
+if (loading) {
 return ( <AdminLayout> <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center bg-slate-50 px-4"> <div className="flex flex-col items-center text-center"> <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-900"> <Loader2 className="h-7 w-7 animate-spin text-white" /> </div>
 
 
         <p className="mt-4 text-sm font-medium text-slate-700">
-          Verifying administrator access...
+          Verifying administrator account...
         </p>
       </div>
     </div>
@@ -596,44 +475,25 @@ return ( <AdminLayout> <div className="flex min-h-[calc(100vh-4rem)] items-cente
 
 }
 
-return ( <AdminLayout> <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center bg-slate-50 px-4 py-10"> <div className="w-full max-w-lg"> <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"> <div className="bg-slate-900 px-6 py-8 text-white sm:px-8"> <div className="flex items-center justify-between gap-4"> <div className="flex items-center gap-3"> <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-white/10 ring-1 ring-white/20"> <KeyRound className="h-6 w-6" /> </div>
+return ( <AdminLayout> <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center bg-slate-50 px-4 py-10"> <div className="w-full max-w-lg"> <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"> <div className="bg-slate-900 px-6 py-8 text-white sm:px-8"> <div className="flex items-center gap-3"> <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-white/10 ring-1 ring-white/20"> <KeyRound className="h-6 w-6" /> </div>
 
 
-              <div>
-                <p className="text-xs font-medium uppercase tracking-[0.18em] text-slate-300">
-                  IyanjuPay
-                </p>
+            <div>
+              <p className="text-xs font-medium uppercase tracking-[0.18em] text-slate-300">
+                IyanjuPay
+              </p>
 
-                <h1 className="mt-1 text-xl font-bold">
-                  Change Password
-                </h1>
-              </div>
+              <h1 className="mt-1 text-xl font-bold">
+                Change Your Password
+              </h1>
             </div>
-
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={handleSignOut}
-              disabled={
-                loading || signingOut
-              }
-              className="text-slate-300 hover:bg-white/10 hover:text-white"
-            >
-              {signingOut ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <LogOut className="mr-2 h-4 w-4" />
-              )}
-              Sign out
-            </Button>
           </div>
 
           <p className="mt-6 text-sm leading-6 text-slate-300">
-            Your administrator account was created
-            with a temporary password. You must
-            create a new password before accessing
-            the administrator dashboard.
+            Your administrator account is using
+            a temporary password. You must create
+            a new password before accessing the
+            administrator dashboard.
           </p>
         </div>
 
@@ -641,40 +501,20 @@ return ( <AdminLayout> <div className="flex min-h-[calc(100vh-4rem)] items-cente
           {adminState && (
             <div className="mb-6 rounded-xl border border-slate-200 bg-slate-50 p-4">
               <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white text-sm font-semibold text-slate-700 shadow-sm">
-                  {(adminState.display_name ||
-                    adminState.email ||
-                    "AD")
-                    .trim()
-                    .split(/\s+/)
-                    .slice(0, 2)
-                    .map(
-                      (part) =>
-                        part[0],
-                    )
-                    .join("")
-                    .toUpperCase()}
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white shadow-sm">
+                  <ShieldCheck className="h-5 w-5 text-slate-700" />
                 </div>
 
                 <div className="min-w-0">
-                  <p className="truncate font-medium text-slate-900">
-                    {adminState.display_name ||
-                      adminState.email ||
-                      "Administrator"}
+                  <p className="text-sm font-semibold text-slate-900">
+                    Administrator Account
                   </p>
 
-                  {adminState.email && (
-                    <p className="truncate text-sm text-slate-500">
-                      {adminState.email}
-                    </p>
-                  )}
-
-                  <div className="mt-1 flex items-center gap-1.5 text-xs text-slate-500">
-                    <ShieldCheck className="h-3.5 w-3.5" />
+                  <p className="text-xs text-slate-500">
                     {getRoleLabel(
                       adminState.role,
                     )}
-                  </div>
+                  </p>
                 </div>
               </div>
             </div>
@@ -717,10 +557,12 @@ return ( <AdminLayout> <div className="flex min-h-[calc(100vh-4rem)] items-cente
           >
             <div className="space-y-2">
               <Label htmlFor="current-admin-password">
-                Current / Temporary Password
+                Temporary Password
               </Label>
 
               <div className="relative">
+                <LockKeyhole className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+
                 <Input
                   id="current-admin-password"
                   type={
@@ -738,17 +580,17 @@ return ( <AdminLayout> <div className="flex min-h-[calc(100vh-4rem)] items-cente
                   }}
                   placeholder="Enter your temporary password"
                   autoComplete="current-password"
-                  disabled={loading}
+                  disabled={submitting}
+                  className="pr-11 pl-10"
                   required
-                  className="pr-11"
                 />
 
                 <button
                   type="button"
                   aria-label={
                     showCurrentPassword
-                      ? "Hide current password"
-                      : "Show current password"
+                      ? "Hide temporary password"
+                      : "Show temporary password"
                   }
                   onClick={() =>
                     setShowCurrentPassword(
@@ -756,8 +598,8 @@ return ( <AdminLayout> <div className="flex min-h-[calc(100vh-4rem)] items-cente
                         !current,
                     )
                   }
-                  disabled={loading}
-                  className="absolute right-2 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-md text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 disabled:pointer-events-none disabled:opacity-50"
+                  disabled={submitting}
+                  className="absolute right-2 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:pointer-events-none disabled:opacity-50"
                 >
                   {showCurrentPassword ? (
                     <EyeOff className="h-4 w-4" />
@@ -768,8 +610,8 @@ return ( <AdminLayout> <div className="flex min-h-[calc(100vh-4rem)] items-cente
               </div>
 
               <p className="text-xs text-slate-500">
-                Enter the temporary password you
-                received when your administrator
+                Enter the temporary password
+                provided when your administrator
                 account was created.
               </p>
             </div>
@@ -780,6 +622,8 @@ return ( <AdminLayout> <div className="flex min-h-[calc(100vh-4rem)] items-cente
               </Label>
 
               <div className="relative">
+                <LockKeyhole className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+
                 <Input
                   id="new-admin-password"
                   type={
@@ -795,11 +639,11 @@ return ( <AdminLayout> <div className="flex min-h-[calc(100vh-4rem)] items-cente
                     setError(null);
                     setSuccess(null);
                   }}
-                  placeholder="Create a strong password"
+                  placeholder="Create a new password"
                   autoComplete="new-password"
-                  disabled={loading}
+                  disabled={submitting}
+                  className="pr-11 pl-10"
                   required
-                  className="pr-11"
                 />
 
                 <button
@@ -815,8 +659,8 @@ return ( <AdminLayout> <div className="flex min-h-[calc(100vh-4rem)] items-cente
                         !current,
                     )
                   }
-                  disabled={loading}
-                  className="absolute right-2 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-md text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 disabled:pointer-events-none disabled:opacity-50"
+                  disabled={submitting}
+                  className="absolute right-2 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:pointer-events-none disabled:opacity-50"
                 >
                   {showNewPassword ? (
                     <EyeOff className="h-4 w-4" />
@@ -826,42 +670,60 @@ return ( <AdminLayout> <div className="flex min-h-[calc(100vh-4rem)] items-cente
                 </button>
               </div>
 
-              {newPassword && (
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-slate-500">
-                      Password strength
-                    </span>
+              <div className="rounded-lg bg-slate-50 p-3 text-xs">
+                <p className="font-medium text-slate-700">
+                  Password requirements
+                </p>
 
-                    <span
-                      className={
-                        passwordStrength.valid
-                          ? "font-medium text-emerald-600"
-                          : "font-medium text-amber-600"
-                      }
-                    >
-                      {passwordStrength.label}
-                    </span>
-                  </div>
+                <ul className="mt-2 space-y-1 text-slate-500">
+                  <li
+                    className={
+                      newPassword.length >=
+                      8
+                        ? "text-emerald-600"
+                        : ""
+                    }
+                  >
+                    • At least 8 characters
+                  </li>
 
-                  <div className="flex gap-1">
-                    {Array.from({
-                      length: 6,
-                    }).map((_, index) => (
-                      <div
-                        key={index}
-                        className={[
-                          "h-1 flex-1 rounded-full",
-                          index <
-                          passwordStrength.score
-                            ? "bg-slate-700"
-                            : "bg-slate-200",
-                        ].join(" ")}
-                      />
-                    ))}
-                  </div>
-                </div>
-              )}
+                  <li
+                    className={
+                      /[A-Z]/.test(
+                        newPassword,
+                      )
+                        ? "text-emerald-600"
+                        : ""
+                    }
+                  >
+                    • One uppercase letter
+                  </li>
+
+                  <li
+                    className={
+                      /[a-z]/.test(
+                        newPassword,
+                      )
+                        ? "text-emerald-600"
+                        : ""
+                    }
+                  >
+                    • One lowercase letter
+                  </li>
+
+                  <li
+                    className={
+                      /[0-9]/.test(
+                        newPassword,
+                      )
+                        ? "text-emerald-600"
+                        : ""
+                    }
+                  >
+                    • One number
+                  </li>
+                </ul>
+              </div>
             </div>
 
             <div className="space-y-2">
@@ -870,6 +732,8 @@ return ( <AdminLayout> <div className="flex min-h-[calc(100vh-4rem)] items-cente
               </Label>
 
               <div className="relative">
+                <LockKeyhole className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+
                 <Input
                   id="confirm-admin-password"
                   type={
@@ -885,11 +749,11 @@ return ( <AdminLayout> <div className="flex min-h-[calc(100vh-4rem)] items-cente
                     setError(null);
                     setSuccess(null);
                   }}
-                  placeholder="Repeat your new password"
+                  placeholder="Confirm your new password"
                   autoComplete="new-password"
-                  disabled={loading}
+                  disabled={submitting}
+                  className="pr-11 pl-10"
                   required
-                  className="pr-11"
                 />
 
                 <button
@@ -905,8 +769,8 @@ return ( <AdminLayout> <div className="flex min-h-[calc(100vh-4rem)] items-cente
                         !current,
                     )
                   }
-                  disabled={loading}
-                  className="absolute right-2 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-md text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 disabled:pointer-events-none disabled:opacity-50"
+                  disabled={submitting}
+                  className="absolute right-2 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:pointer-events-none disabled:opacity-50"
                 >
                   {showConfirmPassword ? (
                     <EyeOff className="h-4 w-4" />
@@ -916,71 +780,43 @@ return ( <AdminLayout> <div className="flex min-h-[calc(100vh-4rem)] items-cente
                 </button>
               </div>
 
-              {confirmPassword &&
-                newPassword !==
-                  confirmPassword && (
-                  <p className="text-xs text-red-600">
-                    Passwords do not match.
-                  </p>
-                )}
-
-              {confirmPassword &&
-                newPassword ===
-                  confirmPassword && (
-                  <p className="flex items-center gap-1 text-xs text-emerald-600">
-                    <CheckCircle2 className="h-3.5 w-3.5" />
-                    Passwords match.
-                  </p>
-                )}
+              {confirmPassword.length > 0 && (
+                <p
+                  className={`text-xs ${
+                    passwordsMatch
+                      ? "text-emerald-600"
+                      : "text-red-600"
+                  }`}
+                >
+                  {passwordsMatch
+                    ? "Passwords match."
+                    : "Passwords do not match."}
+                </p>
+              )}
             </div>
 
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-              <p className="text-sm font-medium text-slate-800">
-                Password requirements
-              </p>
+            <Alert>
+              <ShieldCheck className="h-4 w-4" />
 
-              <ul className="mt-2 space-y-1.5 text-xs text-slate-500">
-                <li>
-                  • At least 8 characters
-                </li>
+              <AlertTitle>
+                Secure administrator access
+              </AlertTitle>
 
-                <li>
-                  • At least one uppercase letter
-                </li>
-
-                <li>
-                  • At least one lowercase letter
-                </li>
-
-                <li>
-                  • At least one number
-                </li>
-
-                <li>
-                  • At least one special character
-                </li>
-
-                <li>
-                  • Must be different from the
-                  temporary password
-                </li>
-              </ul>
-            </div>
+              <AlertDescription>
+                After your password is changed,
+                the temporary-password requirement
+                will be removed and you will be
+                redirected to the administrator
+                dashboard.
+              </AlertDescription>
+            </Alert>
 
             <Button
               type="submit"
               className="h-11 w-full"
-              disabled={
-                loading ||
-                !currentPassword ||
-                !newPassword ||
-                !confirmPassword ||
-                newPassword !==
-                  confirmPassword ||
-                !passwordStrength.valid
-              }
+              disabled={!canSubmit}
             >
-              {loading ? (
+              {submitting ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   Changing Password...
@@ -988,7 +824,7 @@ return ( <AdminLayout> <div className="flex min-h-[calc(100vh-4rem)] items-cente
               ) : (
                 <>
                   <KeyRound className="mr-2 h-4 w-4" />
-                  Change Password
+                  Change Password & Continue
                 </>
               )}
             </Button>
@@ -1002,6 +838,7 @@ return ( <AdminLayout> <div className="flex min-h-[calc(100vh-4rem)] items-cente
     </div>
   </div>
 </AdminLayout>
+
 
 );
 };

@@ -90,7 +90,7 @@ const Navigation = ({
   const items: NavigationItem[] = [
     {
       label: "Dashboard",
-      path: "/admin",
+      path: "/admin/dashboard",
       icon: LayoutDashboard,
       roles: ALL_ROLES,
     },

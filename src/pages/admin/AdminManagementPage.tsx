@@ -65,7 +65,9 @@ import {
 type AdminRole =
   | "super_admin"
   | "operations_admin"
+  | "support_admin"
   | "finance_admin"
+  | "compliance_admin"
   | "read_only_admin";
 
 type AdminRecord = {

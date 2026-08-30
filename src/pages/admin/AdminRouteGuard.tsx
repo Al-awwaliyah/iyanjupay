@@ -9,7 +9,6 @@ import {
 AlertCircle,
 Loader2,
 ShieldAlert,
-ShieldCheck,
 } from "lucide-react";
 
 import {
@@ -161,9 +160,6 @@ setErrorMessage(null);
 
     /*
      * First verify that a Supabase session exists.
-     *
-     * This prevents unauthenticated visitors from
-     * reaching any protected administrator page.
      */
     const {
       data: {
@@ -179,8 +175,8 @@ setErrorMessage(null);
     }
 
     /*
-     * Confirm that the session still represents a
-     * real authenticated user.
+     * Confirm that the session still represents
+     * a valid authenticated user.
      */
     const {
       data: {
@@ -211,11 +207,11 @@ setErrorMessage(null);
     }
 
     /*
-     * The existence of a Supabase session does NOT
-     * grant administrator access.
+     * A Supabase session alone does NOT grant
+     * administrator access.
      *
-     * The support_admins table and admin_auth_get_state()
-     * determine whether this user is actually an admin.
+     * admin_auth_get_state() is the authoritative
+     * database-side administrator access check.
      */
     const {
       data,
@@ -254,8 +250,8 @@ setErrorMessage(null);
     }
 
     /*
-     * Prevent ordinary IyanjuPay users from entering
-     * the administrator portal.
+     * Prevent ordinary IyanjuPay users from
+     * accessing the administrator portal.
      */
     if (!state.is_admin) {
       setAdminState(state);
@@ -264,7 +260,7 @@ setErrorMessage(null);
     }
 
     /*
-     * An administrator account must also be active.
+     * Administrator accounts must be active.
      */
     if (!state.is_active) {
       setAdminState(state);
@@ -273,9 +269,8 @@ setErrorMessage(null);
     }
 
     /*
-     * Temporary-password administrators must complete
-     * the password-change process before accessing
-     * protected administrator functionality.
+     * Temporary-password administrators must
+     * complete the password-change process.
      */
     if (state.must_change_password) {
       setAdminState(state);
@@ -286,7 +281,8 @@ setErrorMessage(null);
     }
 
     /*
-     * Administrator is fully authenticated and active.
+     * Administrator is fully authenticated,
+     * registered, active, and cleared for access.
      */
     setAdminState(state);
     setStatus("authenticated");
@@ -309,11 +305,18 @@ setErrorMessage(null);
 }, []);
 
 
-useEffect(() => {
-let mounted = true;
+/*
+
+* Initial administrator verification.
+  */
+  useEffect(() => {
+  let mounted = true;
 
 
 const runVerification =
+
+
+
   async () => {
     if (!mounted) {
       return;
@@ -335,63 +338,53 @@ verifyAdminAccess,
 
 /*
 
-* Keep administrator access synchronized with
-* Supabase authentication changes.
-*
-* This handles:
-*
-* * sign in
-* * sign out
-* * token refresh
-* * session replacement
-    */
-    useEffect(() => {
-    const {
-    data: {
-    subscription,
-    },
-    } =
-    supabase.auth.onAuthStateChange(
-    (
-    event,
-    session,
-    ) => {
-    /*
-    * SIGNED_OUT:
-    * immediately remove administrator access.
-    */
-    if (
-    event === "SIGNED_OUT" ||
-    !session
-    ) {
-    setAdminState(null);
-    setStatus("unauthenticated");
-    return;
-    }
+* Keep administrator access synchronized
+* with Supabase authentication changes.
+  */
+  useEffect(() => {
+  const {
+  data: {
+  subscription,
+  },
+  } =
+  supabase.auth.onAuthStateChange(
+  (
+  event,
+  session,
+  ) => {
+  /*
+  * If the session disappears, immediately
+  * remove administrator access.
+  */
+  if (
+  event === "SIGNED_OUT" ||
+  !session
+  ) {
+  setAdminState(null);
+  setStatus("unauthenticated");
+  setErrorMessage(null);
+  return;
+  }
 
-    /*
-    * For token refreshes and other session
-    * changes, re-check administrator membership.
-    *
-    * Do not trust the session alone.
+  
+   /*
+    * Re-check administrator membership after
+    * authentication/session changes.
     */
-    if (
-    event ===
-    "SIGNED_IN" ||
-    event ===
-    "TOKEN_REFRESHED" ||
-    event ===
-    "USER_UPDATED" ||
-    event ===
-    "INITIAL_SESSION"
-    ) {
-    window.setTimeout(() => {
-    void verifyAdminAccess();
-    }, 0);
-    }
-    },
-    );
+   if (
+     event === "SIGNED_IN" ||
+     event === "TOKEN_REFRESHED" ||
+     event === "USER_UPDATED" ||
+     event === "INITIAL_SESSION"
+   ) {
+     window.setTimeout(() => {
+       void verifyAdminAccess();
+     }, 0);
+   }
+  
 
+  },
+  );
 
 return () => {
 
@@ -407,7 +400,7 @@ verifyAdminAccess,
 
 /*
 
-* Show a loading state while administrator access
+* Loading state while administrator access
 * is being verified.
   */
   if (
@@ -422,7 +415,6 @@ verifyAdminAccess,
          <Loader2 className="h-7 w-7 animate-spin text-white" />
        </div>
 
-  
    <h1 className="mt-5 text-lg font-semibold text-slate-900">
      Verifying Administrator Access
    </h1>
@@ -444,7 +436,8 @@ verifyAdminAccess,
 
 /*
 
-* No authenticated Supabase session.
+* No authenticated Supabase session or the
+* authenticated user is not an administrator.
   */
   if (
   status === "unauthenticated"
@@ -463,12 +456,7 @@ verifyAdminAccess,
 
 /*
 
-* Authenticated user exists but is not an active
-* administrator.
-*
-* We explicitly sign them out so a normal user
-* cannot continue using the existing user session
-* against administrator pages.
+* Administrator exists but is inactive.
   */
   if (
   status === "inactive"
@@ -481,7 +469,7 @@ verifyAdminAccess,
          <ShieldAlert className="h-7 w-7 text-red-600" />
        </div>
 
-
+  
    <h1 className="mt-5 text-xl font-bold text-slate-900">
      Administrator Access Disabled
    </h1>
@@ -497,11 +485,13 @@ verifyAdminAccess,
      type="button"
      className="mt-6 inline-flex h-10 items-center justify-center rounded-md bg-slate-900 px-5 text-sm font-medium text-white transition-colors hover:bg-slate-800"
      onClick={async () => {
-       await supabase.auth.signOut();
-
-       window.location.replace(
-         "/admin/login",
-       );
+       try {
+         await supabase.auth.signOut();
+       } finally {
+         window.location.replace(
+           "/admin/login",
+         );
+       }
      }}
    >
      Return to Admin Login
@@ -519,34 +509,26 @@ verifyAdminAccess,
 
 /*
 
-* Administrator exists and is active but must change
-* the temporary password.
+* Administrator is active but still needs to
+* change the temporary password.
 *
-* Prevent access to every protected admin route until
-* the password requirement has been completed.
+* The password-change page itself is allowed so
+* the administrator can complete the requirement.
   */
   if (
   status ===
   "password_change_required"
   ) {
-  /*
-
-  * Avoid redirecting if the user is already on the
-  * password-change page.
-  *
-  * This makes the guard safe to use around the
-  * password-change route as well.
-    */
-    if (
-    location.pathname ===
-    "/admin/change-password"
-    ) {
-    return (
-    <>
-    {children}
-    </>
-    );
-    }
+  if (
+  location.pathname ===
+  "/admin/change-password"
+  ) {
+  return (
+  <>
+  {children}
+  </>
+  );
+  }
 
 
 return (
@@ -568,11 +550,11 @@ return (
 
 /*
 
-* A verification error should fail closed.
+* Verification failed.
 *
-* We do NOT render protected administrator
-* functionality when administrator status cannot
-* be verified.
+* Fail closed: never render protected
+* administrator content when access cannot
+* be securely verified.
   */
   if (
   status === "error"
@@ -618,11 +600,13 @@ return (
        type="button"
        className="inline-flex h-10 items-center justify-center rounded-md bg-slate-900 px-5 text-sm font-medium text-white transition-colors hover:bg-slate-800"
        onClick={async () => {
-         await supabase.auth.signOut();
-
-         window.location.replace(
-           "/admin/login",
-         );
+         try {
+           await supabase.auth.signOut();
+         } finally {
+           window.location.replace(
+             "/admin/login",
+           );
+         }
        }}
      >
        Return to Admin Login
@@ -633,9 +617,7 @@ return (
      </div>
    </div>
 
-
 );
-
 
 }
 
@@ -643,12 +625,12 @@ return (
 
 * Final security check.
 *
-* Only render children when:
+* Protected children are rendered ONLY when:
 *
-* 1. Supabase session exists
-* 2. User is a registered administrator
-* 3. Administrator is active
-* 4. Temporary password requirement is complete
+* 1. The user is authenticated.
+* 2. The user is a registered administrator.
+* 3. The administrator is active.
+* 4. The temporary password requirement is complete.
      */
      if (
      status !== "authenticated" ||
@@ -656,9 +638,14 @@ return (
      !adminState.is_active ||
      adminState.must_change_password
      ) {
-     return ( <Navigate
+     return (
+     <Navigate
      to="/admin/login"
      replace
+     state={{
+     from:
+     `${location.pathname}${location.search}${location.hash}`,
+     }}
      />
      );
      }

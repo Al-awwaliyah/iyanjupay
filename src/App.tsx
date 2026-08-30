@@ -45,6 +45,7 @@ import AuditLogsPage from "@/pages/admin/AuditLogsPage";
 import AdminManagementPage from "@/pages/admin/AdminManagementPage";
 import AdminLoginPage from "@/pages/admin/AdminLoginPage";
 import AdminChangePasswordPage from "@/pages/admin/AdminChangePasswordPage";
+import AdminRouteGuard from "@/pages/admin/AdminRouteGuard";
 import UserDisputesPage from "@/components/disputes/UserDisputesPage";
 import VerifyPaymentPinResetOtp from "@/pages/VerifyPaymentPinResetOtp";
 import ResetPaymentPin from "@/pages/ResetPaymentPin";
@@ -203,53 +204,93 @@ const App = () => {
 
             <Route
               path="/admin"
-              element={<AdminDashboardPage />}
+              element={
+                <AdminRouteGuard>
+                  <AdminDashboardPage />
+                </AdminRouteGuard>
+              }
             />
 
-            <Route
-              path="/admin/customers"
-              element={<AdminCustomersPage />}
-            />
-          
-            <Route
-              path="/admin/support"
-              element={<AdminSupportPage />}
-            />
+<Route
+  path="/admin/customers"
+  element={
+    <AdminRouteGuard>
+      <AdminCustomersPage />
+    </AdminRouteGuard>
+  }
+/>
 
-            <Route
-              path="/admin/disputes"
-              element={<AdminDisputesPage />}
-            />
-            
-            <Route
-              path="/admin/transactions"
-              element={<AdminTransactionsPage />}
-            />
+<Route
+  path="/admin/support"
+  element={
+    <AdminRouteGuard>
+      <AdminSupportPage />
+    </AdminRouteGuard>
+  }
+/>
 
-            <Route
-              path="/admin/reconciliation"
-              element={<ReconciliationPage />}
-            />
+<Route
+  path="/admin/disputes"
+  element={
+    <AdminRouteGuard>
+      <AdminDisputesPage />
+    </AdminRouteGuard>
+  }
+/>
 
-            <Route
-              path="/admin/analytics"
-              element={<AnalyticsPage />}
-            />
+<Route
+  path="/admin/transactions"
+  element={
+    <AdminRouteGuard>
+      <AdminTransactionsPage />
+    </AdminRouteGuard>
+  }
+/>
 
-            <Route
-              path="/admin/notifications"
-              element={<NotificationsPage />}
-            />
+<Route
+  path="/admin/reconciliation"
+  element={
+    <AdminRouteGuard>
+      <ReconciliationPage />
+    </AdminRouteGuard>
+  }
+/>
 
-            <Route
-              path="/admin/audit-logs"
-              element={<AuditLogsPage />}
-            />
+<Route
+  path="/admin/analytics"
+  element={
+    <AdminRouteGuard>
+      <AnalyticsPage />
+    </AdminRouteGuard>
+  }
+/>
 
-            <Route
-              path="/admin/management"
-              element={<AdminManagementPage />}
-            />
+<Route
+  path="/admin/notifications"
+  element={
+    <AdminRouteGuard>
+      <NotificationsPage />
+    </AdminRouteGuard>
+  }
+/>
+
+<Route
+  path="/admin/audit-logs"
+  element={
+    <AdminRouteGuard>
+      <AuditLogsPage />
+    </AdminRouteGuard>
+  }
+/>
+
+<Route
+  path="/admin/management"
+  element={
+    <AdminRouteGuard>
+      <AdminManagementPage />
+    </AdminRouteGuard>
+  }
+/>
 
             <Route
               path="/admin/login"

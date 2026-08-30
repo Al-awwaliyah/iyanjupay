@@ -237,11 +237,9 @@ function getInitials(
 }
 
 /**
- * IMPORTANT:
- *
  * admin_management_list() is RETURNS TABLE.
  *
- * Therefore Supabase returns:
+ * Supabase therefore normally returns:
  *
  * [
  *   {
@@ -251,14 +249,11 @@ function getInitials(
  *   }
  * ]
  *
- * It does NOT return:
+ * It does not normally return:
  *
  * {
  *   admins: [...]
  * }
- *
- * This is the primary fix for the "No administrators found"
- * problem.
  */
 function normalizeAdminList(
   response: unknown,
@@ -293,11 +288,22 @@ function normalizeAdminList(
   return [];
 }
 
-function extractRpcError(
+/* ============================================================
+   SAFE ERROR HANDLING
+   ============================================================ */
+
+/**
+ * Extracts technical information only for internal classification.
+ *
+ * IMPORTANT:
+ * Never display the return value of this function directly
+ * to the administrator.
+ */
+function extractTechnicalErrorMessage(
   error: unknown,
 ): string {
   if (!error) {
-    return "An unexpected error occurred.";
+    return "";
   }
 
   if (typeof error === "string") {
@@ -305,7 +311,7 @@ function extractRpcError(
   }
 
   if (error instanceof Error) {
-    return error.message;
+    return error.message || "";
   }
 
   if (
@@ -314,30 +320,147 @@ function extractRpcError(
   ) {
     const value =
       error as {
-        message?: string;
-        details?: string;
-        hint?: string;
-        error?: string;
+        message?: unknown;
+        details?: unknown;
+        hint?: unknown;
+        error?: unknown;
+        code?: unknown;
       };
 
-    if (value.message) {
-      return value.message;
-    }
-
-    if (value.error) {
-      return value.error;
-    }
-
-    if (value.details) {
-      return value.details;
-    }
-
-    if (value.hint) {
-      return value.hint;
-    }
+    return [
+      typeof value.message === "string"
+        ? value.message
+        : "",
+      typeof value.details === "string"
+        ? value.details
+        : "",
+      typeof value.hint === "string"
+        ? value.hint
+        : "",
+      typeof value.error === "string"
+        ? value.error
+        : "",
+      typeof value.code === "string"
+        ? value.code
+        : "",
+    ]
+      .filter(Boolean)
+      .join(" ");
   }
 
-  return "An unexpected error occurred.";
+  return "";
+}
+
+/**
+ * Converts backend/database/Supabase/Edge Function errors
+ * into safe user-facing messages.
+ *
+ * Raw PostgreSQL errors must NEVER be displayed directly.
+ */
+function getSafeErrorMessage(
+  error: unknown,
+  fallback = "Something went wrong. Please try again.",
+): string {
+  /*
+   * Keep technical details in the browser console for debugging.
+   * They are intentionally NOT returned to the UI.
+   */
+  console.error("Technical error:", error);
+
+  const rawMessage =
+    extractTechnicalErrorMessage(error).toLowerCase();
+
+  /*
+   * Authentication/session errors.
+   */
+  if (
+    rawMessage.includes("authentication required") ||
+    rawMessage.includes("not authenticated") ||
+    rawMessage.includes("unauthenticated") ||
+    rawMessage.includes("invalid jwt") ||
+    rawMessage.includes("jwt expired") ||
+    rawMessage.includes("jwt") ||
+    rawMessage.includes("session expired") ||
+    rawMessage.includes("401")
+  ) {
+    return "Your session has expired. Please sign in again.";
+  }
+
+  /*
+   * Permission/authorization errors.
+   */
+  if (
+    rawMessage.includes("permission denied") ||
+    rawMessage.includes("not authorized") ||
+    rawMessage.includes("unauthorized") ||
+    rawMessage.includes("forbidden") ||
+    rawMessage.includes("access denied") ||
+    rawMessage.includes("insufficient privilege") ||
+    rawMessage.includes("403")
+  ) {
+    return "You do not have permission to perform this action.";
+  }
+
+  /*
+   * Network/connection errors.
+   */
+  if (
+    rawMessage.includes("network") ||
+    rawMessage.includes("failed to fetch") ||
+    rawMessage.includes("fetch failed") ||
+    rawMessage.includes("connection") ||
+    rawMessage.includes("timeout") ||
+    rawMessage.includes("timed out")
+  ) {
+    return "Unable to connect to the server. Please check your connection and try again.";
+  }
+
+  /*
+   * PostgreSQL/PostgREST/RPC errors.
+   *
+   * These must never be exposed to the frontend.
+   */
+  if (
+    rawMessage.includes("postgres") ||
+    rawMessage.includes("postgrest") ||
+    rawMessage.includes("plpgsql") ||
+    rawMessage.includes("failed to run sql") ||
+    rawMessage.includes("sql query") ||
+    rawMessage.includes("database") ||
+    rawMessage.includes("relation") ||
+    rawMessage.includes("column") ||
+    rawMessage.includes("constraint") ||
+    rawMessage.includes("violates") ||
+    rawMessage.includes("duplicate key") ||
+    rawMessage.includes("function") ||
+    rawMessage.includes("rpc") ||
+    rawMessage.includes("23505") ||
+    rawMessage.includes("42501") ||
+    rawMessage.includes("42883") ||
+    rawMessage.includes("42p01") ||
+    rawMessage.includes("42p13") ||
+    rawMessage.includes("p0001")
+  ) {
+    return fallback;
+  }
+
+  /*
+   * Edge Function invocation/server errors.
+   */
+  if (
+    rawMessage.includes("edge function") ||
+    rawMessage.includes("functions.invoke") ||
+    rawMessage.includes("function invocation") ||
+    rawMessage.includes("non-2xx") ||
+    rawMessage.includes("http error")
+  ) {
+    return fallback;
+  }
+
+  /*
+   * Do not expose arbitrary server-generated messages.
+   */
+  return fallback;
 }
 
 function isSuccessfulResponse(
@@ -569,6 +692,12 @@ const AdminManagementPage: React.FC =
             error,
           );
 
+          /*
+           * Do not show the raw authentication error.
+           *
+           * The page can still render. Other operations will
+           * enforce their own authorization.
+           */
           return;
         }
 
@@ -582,7 +711,7 @@ const AdminManagementPage: React.FC =
        ======================================================== */
 
     const loadSummary =
-      useCallback(async () => {
+      useCallback(async (): Promise<number> => {
         const {
           data,
           error,
@@ -595,7 +724,7 @@ const AdminManagementPage: React.FC =
         }
 
         if (!data) {
-          return;
+          return 0;
         }
 
         const raw =
@@ -607,7 +736,7 @@ const AdminManagementPage: React.FC =
           !raw ||
           typeof raw !== "object"
         ) {
-          return;
+          return 0;
         }
 
         const value =
@@ -616,71 +745,89 @@ const AdminManagementPage: React.FC =
             unknown
           >;
 
+        const total =
+          Number(
+            value.total ??
+              value.total_admins ??
+              value.admin_count ??
+              0,
+          ) || 0;
+
+        const active =
+          Number(
+            value.active ??
+              value.active_admins ??
+              0,
+          ) || 0;
+
+        const inactive =
+          Number(
+            value.inactive ??
+              value.inactive_admins ??
+              0,
+          ) || 0;
+
+        const superAdmin =
+          Number(
+            value.super_admin ??
+              value.super_admins ??
+              0,
+          ) || 0;
+
+        const operationsAdmin =
+          Number(
+            value.operations_admin ??
+              value.operations_admins ??
+              0,
+          ) || 0;
+
+        const supportAdmin =
+          Number(
+            value.support_admin ??
+              value.support_admins ??
+              0,
+          ) || 0;
+
+        const financeAdmin =
+          Number(
+            value.finance_admin ??
+              value.finance_admins ??
+              0,
+          ) || 0;
+
+        const complianceAdmin =
+          Number(
+            value.compliance_admin ??
+              value.compliance_admins ??
+              0,
+          ) || 0;
+
+        const readOnlyAdmin =
+          Number(
+            value.read_only_admin ??
+              value.read_only_admins ??
+              0,
+          ) || 0;
+
         setSummary({
-          total:
-            Number(
-              value.total ??
-                value.total_admins ??
-                value.admin_count ??
-                0,
-            ) || 0,
-
-          active:
-            Number(
-              value.active ??
-                value.active_admins ??
-                0,
-            ) || 0,
-
-          inactive:
-            Number(
-              value.inactive ??
-                value.inactive_admins ??
-                0,
-            ) || 0,
-
+          total,
+          active,
+          inactive,
           super_admin:
-            Number(
-              value.super_admin ??
-                value.super_admins ??
-                0,
-            ) || 0,
-
+            superAdmin,
           operations_admin:
-            Number(
-              value.operations_admin ??
-                value.operations_admins ??
-                0,
-            ) || 0,
-
+            operationsAdmin,
           support_admin:
-            Number(
-              value.support_admin ??
-                value.support_admins ??
-                0,
-            ) || 0,
-
+            supportAdmin,
           finance_admin:
-            Number(
-              value.finance_admin ??
-                value.finance_admins ??
-                0,
-            ) || 0,
-
+            financeAdmin,
           compliance_admin:
-            Number(
-              value.compliance_admin ??
-                value.compliance_admins ??
-                0,
-            ) || 0,
-
+            complianceAdmin,
           read_only_admin:
-            Number(
-              value.read_only_admin ??
-                value.read_only_admins ??
-                0,
-            ) || 0,
+            readOnlyAdmin,
         });
+
+        return total;
       }, []);
 
     /* ========================================================
@@ -725,20 +872,6 @@ const AdminManagementPage: React.FC =
               isActive = false;
             }
 
-            /* ------------------------------------------------
-               THIS IS THE CORRECT RPC CALL
-
-               Function:
-
-               admin_management_list(
-                 text,
-                 text,
-                 boolean,
-                 integer,
-                 integer
-               )
-               ------------------------------------------------ */
-
             const {
               data,
               error,
@@ -767,45 +900,32 @@ const AdminManagementPage: React.FC =
               throw error;
             }
 
-            /*
-             * IMPORTANT:
-             *
-             * data is an ARRAY because the SQL function
-             * uses RETURNS TABLE.
-             */
             const rows =
               normalizeAdminList(data);
 
             setAdmins(rows);
 
             /*
-             * admin_management_list() currently does not
-             * return total_count because it is RETURNS TABLE.
+             * Always obtain a fresh summary total instead of
+             * reading summary.total immediately after setSummary().
              *
-             * For an unfiltered directory, use the summary.
-             *
-             * For filtered results, use the returned row count
-             * when the current result is smaller than PAGE_SIZE.
-             *
-             * This keeps pagination correct for the current
-             * administrator dataset and prevents the previous
-             * "No administrators found" bug.
+             * React state updates are asynchronous.
              */
+            const summaryTotal =
+              await loadSummary();
 
+            /*
+             * For an unfiltered directory, the summary is the
+             * authoritative total.
+             */
             if (
               !search.trim() &&
               roleFilter === "all" &&
               activeFilter === "all"
             ) {
-              await loadSummary();
-
-              /*
-               * summary.total is the authoritative total
-               * administrator count.
-               */
               setTotal(
                 Math.max(
-                  summary.total,
+                  summaryTotal,
                   rows.length,
                 ),
               );
@@ -827,19 +947,18 @@ const AdminManagementPage: React.FC =
                 /*
                  * There is at least one more page.
                  *
-                 * Use a safe lower-bound total.
+                 * Use the known summary total where it provides
+                 * a stronger lower/actual bound.
                  */
                 setTotal(
                   Math.max(
                     page *
                       PAGE_SIZE +
                       1,
-                    summary.total,
+                    summaryTotal,
                   ),
                 );
               }
-
-              await loadSummary();
             }
           } catch (error) {
             console.error(
@@ -849,7 +968,10 @@ const AdminManagementPage: React.FC =
 
             showToast(
               "error",
-              extractRpcError(error),
+              getSafeErrorMessage(
+                error,
+                "Unable to load administrators. Please try again.",
+              ),
             );
 
             setAdmins([]);
@@ -895,7 +1017,12 @@ const AdminManagementPage: React.FC =
       async () => {
         await Promise.all([
           loadAdmins(true),
-          loadSummary(),
+          loadSummary().catch((error) => {
+            console.error(
+              "Failed to refresh administrator summary:",
+              error,
+            );
+          }),
         ]);
       };
 
@@ -984,13 +1111,6 @@ const AdminManagementPage: React.FC =
         try {
           setActionLoading(true);
 
-          /*
-           * CREATE ADMINISTRATOR
-           *
-           * Existing Edge Function:
-           *
-           * admin-create-account
-           */
           const {
             data,
             error,
@@ -1033,10 +1153,20 @@ const AdminManagementPage: React.FC =
                   }
                 | null;
 
+            /*
+             * This error is intentionally generic.
+             *
+             * Do not pass response.error or response.message
+             * directly to the frontend because they may contain
+             * backend/database implementation details.
+             */
+            console.error(
+              "Administrator account creation returned an unsuccessful response:",
+              response,
+            );
+
             throw new Error(
-              response?.error ||
-                response?.message ||
-                "Administrator account creation did not complete successfully.",
+              "Administrator account creation failed.",
             );
           }
 
@@ -1049,15 +1179,18 @@ const AdminManagementPage: React.FC =
             "Administrator account created successfully. Login credentials have been sent by email.",
           );
 
-          /*
-           * Reload both directory and counts.
-           */
           setPage(1);
 
-          await Promise.all([
-            loadSummary(),
-            loadAdmins(true),
-          ]);
+          /*
+           * Refresh after changing the page state.
+           *
+           * loadAdmins(true) still uses the current page closure,
+           * so explicitly refresh the directory again after the
+           * page state settles.
+           */
+          await loadSummary();
+
+          await loadAdmins(true);
         } catch (error) {
           console.error(
             "Failed to create administrator account:",
@@ -1066,7 +1199,10 @@ const AdminManagementPage: React.FC =
 
           showToast(
             "error",
-            extractRpcError(error),
+            getSafeErrorMessage(
+              error,
+              "Unable to create the administrator account. Please try again.",
+            ),
           );
         } finally {
           setActionLoading(false);
@@ -1139,9 +1275,6 @@ const AdminManagementPage: React.FC =
         try {
           setActionLoading(true);
 
-          /*
-           * EXISTING ROLE-ASSIGNMENT RPC
-           */
           const {
             data,
             error,
@@ -1166,8 +1299,13 @@ const AdminManagementPage: React.FC =
               data,
             )
           ) {
+            console.error(
+              "Administrator role change returned an unsuccessful response:",
+              data,
+            );
+
             throw new Error(
-              "Administrator role change did not complete successfully.",
+              "Administrator role change failed.",
             );
           }
 
@@ -1179,10 +1317,8 @@ const AdminManagementPage: React.FC =
             "Administrator role updated successfully.",
           );
 
-          await Promise.all([
-            loadSummary(),
-            loadAdmins(true),
-          ]);
+          await loadSummary();
+          await loadAdmins(true);
         } catch (error) {
           console.error(
             "Failed to change administrator role:",
@@ -1191,7 +1327,10 @@ const AdminManagementPage: React.FC =
 
           showToast(
             "error",
-            extractRpcError(error),
+            getSafeErrorMessage(
+              error,
+              "Unable to update the administrator role. Please try again.",
+            ),
           );
         } finally {
           setActionLoading(false);
@@ -1245,9 +1384,6 @@ const AdminManagementPage: React.FC =
         try {
           setActionLoading(true);
 
-          /*
-           * EXISTING STATUS RPC
-           */
           const {
             data,
             error,
@@ -1272,8 +1408,13 @@ const AdminManagementPage: React.FC =
               data,
             )
           ) {
+            console.error(
+              "Administrator status update returned an unsuccessful response:",
+              data,
+            );
+
             throw new Error(
-              "Administrator status update did not complete successfully.",
+              "Administrator status update failed.",
             );
           }
 
@@ -1290,10 +1431,8 @@ const AdminManagementPage: React.FC =
               : "Administrator disabled successfully.",
           );
 
-          await Promise.all([
-            loadSummary(),
-            loadAdmins(true),
-          ]);
+          await loadSummary();
+          await loadAdmins(true);
         } catch (error) {
           console.error(
             "Failed to change administrator status:",
@@ -1302,7 +1441,10 @@ const AdminManagementPage: React.FC =
 
           showToast(
             "error",
-            extractRpcError(error),
+            getSafeErrorMessage(
+              error,
+              "Unable to update the administrator status. Please try again.",
+            ),
           );
         } finally {
           setActionLoading(false);

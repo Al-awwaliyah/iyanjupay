@@ -118,7 +118,7 @@ switch (role) {
 case "super_admin":
 return "bg-purple-100 text-purple-700 border-purple-200";
 
-```
+
 case "operations_admin":
   return "bg-blue-100 text-blue-700 border-blue-200";
 
@@ -130,7 +130,6 @@ case "read_only_admin":
 
 default:
   return "bg-gray-100 text-gray-700 border-gray-200";
-```
 
 }
 }
@@ -248,7 +247,7 @@ details?: string;
 hint?: string;
 };
 
-```
+
 if (value.message) {
   return value.message;
 }
@@ -260,7 +259,7 @@ if (value.details) {
 if (value.hint) {
   return value.hint;
 }
-```
+
 
 }
 
@@ -319,9 +318,9 @@ if (total <= 0) {
 return 1;
 }
 
-```
+
 return Math.max(1, Math.ceil(total / PAGE_SIZE));
-```
+
 
 }, [total]);
 
@@ -329,7 +328,7 @@ const loadSummary = useCallback(async () => {
 const { data, error: rpcError } =
 await supabase.rpc("admin_management_summary");
 
-```
+
 if (rpcError) {
   throw rpcError;
 }
@@ -390,7 +389,7 @@ setSummary({
         0,
     ) || 0,
 });
-```
+
 
 }, []);
 
@@ -402,7 +401,7 @@ setRefreshing(true);
 setLoading(true);
 }
 
-```
+
   setError("");
 
   try {
@@ -474,7 +473,7 @@ setLoading(true);
   search,
   statusFilter,
 ],
-```
+
 
 );
 
@@ -533,10 +532,10 @@ if (addLoading) {
 return;
 }
 
-```
+
 setShowAddModal(false);
 resetAddForm();
-```
+
 
 };
 
@@ -545,7 +544,7 @@ event: React.FormEvent,
 ) => {
 event.preventDefault();
 
-```
+
 setError("");
 setSuccess("");
 
@@ -604,7 +603,7 @@ try {
 } finally {
   setAddLoading(false);
 }
-```
+
 
 };
 
@@ -613,7 +612,7 @@ admin: AdminRecord,
 ) => {
 setSelectedAdmin(admin);
 
-```
+
 setNewRole(
   ROLE_OPTIONS.some(
     (item) =>
@@ -626,7 +625,6 @@ setNewRole(
 setShowRoleModal(true);
 setError("");
 setSuccess("");
-```
 
 };
 
@@ -635,10 +633,9 @@ if (roleLoading) {
 return;
 }
 
-```
+
 setShowRoleModal(false);
 setSelectedAdmin(null);
-```
 
 };
 
@@ -647,7 +644,6 @@ event: React.FormEvent,
 ) => {
 event.preventDefault();
 
-```
 if (!selectedAdmin) {
   return;
 }
@@ -697,7 +693,7 @@ try {
 } finally {
   setRoleLoading(false);
 }
-```
+
 
 };
 
@@ -708,7 +704,7 @@ const action = admin.is_active
 ? "deactivate"
 : "activate";
 
-```
+
 const confirmed =
   window.confirm(
     `Are you sure you want to ${action} ${admin.email || "this administrator"}?`,
@@ -752,7 +748,7 @@ try {
 } finally {
   setStatusLoading(false);
 }
-```
+
 
 };
 
@@ -781,7 +777,7 @@ icon: ShieldCheck,
 
 return ( <AdminLayout> <div className="min-h-screen bg-slate-50"> <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8"> <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between"> <div> <div className="mb-2 flex items-center gap-2 text-sm text-slate-500"> <Shield className="h-4 w-4" /> <span>Administration</span> <span>/</span> <span>Admin Management</span> </div>
 
-```
+
           <h1 className="text-2xl font-bold tracking-tight text-slate-900">
             Admin Management
           </h1>

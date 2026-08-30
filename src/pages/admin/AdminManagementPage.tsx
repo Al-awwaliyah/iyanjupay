@@ -25,7 +25,7 @@ import {
   X,
 } from "lucide-react";
 
-import AdminLayout from "@/components/admin/AdminLayout";
+import AdminLayout from "@/pages/admin/AdminLayout";
 import { supabase } from "@/integrations/supabase/client";
 
 import { Button } from "@/components/ui/button";

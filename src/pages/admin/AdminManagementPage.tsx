@@ -135,10 +135,20 @@ const ROLE_OPTIONS: Array<{
     label: "Operations Admin",
     description: "Operational and transaction management",
   },
+   {
+    value: "support_admin",
+    label: "Support Admin",
+    description: "Manage customer support activities",
+  },
   {
     value: "finance_admin",
     label: "Finance Admin",
     description: "Finance and financial operations",
+  },
+    {
+    value: "compliance_admin",
+    label: "Compliance Admin",
+    description: "Manage compliance and KYC activities",
   },
   {
     value: "read_only_admin",

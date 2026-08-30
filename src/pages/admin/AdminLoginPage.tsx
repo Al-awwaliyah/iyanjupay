@@ -16,7 +16,6 @@ import {
 
 import { useNavigate } from "react-router-dom";
 
-import AdminLayout from "@/pages/admin/AdminLayout";
 import { supabase } from "@/integrations/supabase/client";
 
 import { Button } from "@/components/ui/button";
@@ -81,12 +80,14 @@ function extractError(error: unknown): string {
       message?: string;
       error_description?: string;
       details?: string;
+      hint?: string;
     };
 
     return (
       value.message ??
       value.error_description ??
       value.details ??
+      value.hint ??
       "Unable to sign in."
     );
   }
@@ -96,7 +97,7 @@ function extractError(error: unknown): string {
 
 function getRoleLabel(
   role: AdminRole | string | null | undefined,
-) {
+): string {
   switch (role) {
     case "super_admin":
       return "Super Admin";
@@ -121,6 +122,31 @@ function getRoleLabel(
   }
 }
 
+function getSafeAdminRedirect(
+  redirect: unknown,
+  mustChangePassword: boolean,
+): string {
+  /*
+   * Never trust an arbitrary redirect returned by the
+   * authentication service.
+   *
+   * Only allow internal administrator routes.
+   */
+  if (
+    typeof redirect === "string" &&
+    redirect.startsWith("/admin/") &&
+    !redirect.startsWith("//")
+  ) {
+    return redirect;
+  }
+
+  if (mustChangePassword) {
+    return "/admin/change-password";
+  }
+
+  return "/admin/dashboard";
+}
+
 const AdminLoginPage: React.FC = () => {
   const navigate = useNavigate();
 
@@ -131,24 +157,26 @@ const AdminLoginPage: React.FC = () => {
     useState(false);
 
   const [loading, setLoading] = useState(false);
+
   const [checkingSession, setCheckingSession] =
     useState(true);
 
-  const [error, setError] = useState<string | null>(
-    null,
-  );
+  const [error, setError] =
+    useState<string | null>(null);
 
-  const [success, setSuccess] = useState<string | null>(
-    null,
-  );
+  const [success, setSuccess] =
+    useState<string | null>(null);
 
   /*
-   * If an administrator already has a valid session,
-   * do not unnecessarily display the login form.
+   * Check whether the browser already contains a valid
+   * administrator session.
    *
-   * We verify the session against the admin state RPC
-   * instead of trusting the existence of a Supabase
-   * session alone.
+   * IMPORTANT:
+   *
+   * This page intentionally does NOT use AdminLayout.
+   *
+   * Admin login must remain outside the protected
+   * administrator layout/guard.
    */
   useEffect(() => {
     let mounted = true;
@@ -156,19 +184,34 @@ const AdminLoginPage: React.FC = () => {
     const checkExistingAdminSession =
       async () => {
         try {
+          setCheckingSession(true);
+
           const {
-            data: { session },
+            data: {
+              session,
+            },
           } = await supabase.auth.getSession();
 
           if (!mounted) {
             return;
           }
 
+          /*
+           * No existing Supabase session.
+           *
+           * Keep the login form visible.
+           */
           if (!session) {
             setCheckingSession(false);
             return;
           }
 
+          /*
+           * A session alone does NOT make somebody an
+           * administrator.
+           *
+           * Verify the admin state through the database RPC.
+           */
           const {
             data,
             error: stateError,
@@ -176,8 +219,28 @@ const AdminLoginPage: React.FC = () => {
             "admin_auth_get_state",
           );
 
+          if (!mounted) {
+            return;
+          }
+
           if (stateError) {
-            await supabase.auth.signOut();
+            console.error(
+              "Failed to verify existing administrator session:",
+              stateError,
+            );
+
+            /*
+             * Do not allow an unverified session to remain
+             * active on the login page.
+             */
+            try {
+              await supabase.auth.signOut();
+            } catch (signOutError) {
+              console.error(
+                "Failed to clear invalid administrator session:",
+                signOutError,
+              );
+            }
 
             if (mounted) {
               setCheckingSession(false);
@@ -190,7 +253,14 @@ const AdminLoginPage: React.FC = () => {
             !data ||
             typeof data !== "object"
           ) {
-            await supabase.auth.signOut();
+            try {
+              await supabase.auth.signOut();
+            } catch (signOutError) {
+              console.error(
+                "Failed to clear invalid administrator session:",
+                signOutError,
+              );
+            }
 
             if (mounted) {
               setCheckingSession(false);
@@ -202,11 +272,29 @@ const AdminLoginPage: React.FC = () => {
           const state =
             data as Record<string, unknown>;
 
-          if (
-            state.is_admin !== true ||
-            state.is_active !== true
-          ) {
-            await supabase.auth.signOut();
+          const isAdmin =
+            state.is_admin === true;
+
+          const isActive =
+            state.is_active === true;
+
+          const mustChangePassword =
+            state.must_change_password === true;
+
+          /*
+           * A normal IyanjuPay user must never be allowed
+           * to keep an ordinary user session and then enter
+           * the administrator portal.
+           */
+          if (!isAdmin || !isActive) {
+            try {
+              await supabase.auth.signOut();
+            } catch (signOutError) {
+              console.error(
+                "Failed to clear non-admin session:",
+                signOutError,
+              );
+            }
 
             if (mounted) {
               setCheckingSession(false);
@@ -215,13 +303,13 @@ const AdminLoginPage: React.FC = () => {
             return;
           }
 
-          if (!mounted) {
-            return;
-          }
-
-          if (
-            state.must_change_password === true
-          ) {
+          /*
+           * Existing administrator session is valid.
+           *
+           * Redirect directly to the appropriate protected
+           * admin page.
+           */
+          if (mustChangePassword) {
             navigate(
               "/admin/change-password",
               {
@@ -238,7 +326,7 @@ const AdminLoginPage: React.FC = () => {
           }
         } catch (existingSessionError) {
           console.error(
-            "Failed to check existing admin session:",
+            "Failed to check existing administrator session:",
             existingSessionError,
           );
 
@@ -260,6 +348,10 @@ const AdminLoginPage: React.FC = () => {
   ) => {
     event.preventDefault();
 
+    if (loading) {
+      return;
+    }
+
     setError(null);
     setSuccess(null);
 
@@ -267,12 +359,16 @@ const AdminLoginPage: React.FC = () => {
       email.trim().toLowerCase();
 
     if (!normalizedEmail) {
-      setError("Email address is required.");
+      setError(
+        "Administrator email address is required.",
+      );
       return;
     }
 
     if (!password) {
-      setError("Password is required.");
+      setError(
+        "Administrator password is required.",
+      );
       return;
     }
 
@@ -280,13 +376,24 @@ const AdminLoginPage: React.FC = () => {
       setLoading(true);
 
       /*
-       * IMPORTANT:
+       * Always clear any stale browser session before
+       * attempting administrator authentication.
        *
-       * Admin authentication goes through the dedicated
-       * admin-login Edge Function.
-       *
-       * This keeps the administrator portal separate
-       * from the normal user authentication flow.
+       * This prevents an existing normal-user session
+       * from interfering with the admin-login function.
+       */
+      try {
+        await supabase.auth.signOut();
+      } catch (signOutError) {
+        console.warn(
+          "Unable to clear previous session before administrator login:",
+          signOutError,
+        );
+      }
+
+      /*
+       * Authenticate through the dedicated admin-login
+       * Edge Function.
        */
       const {
         data,
@@ -315,7 +422,7 @@ const AdminLoginPage: React.FC = () => {
       const response =
         data as AdminLoginResponse;
 
-      if (!response.success) {
+      if (response.success !== true) {
         throw new Error(
           response.error ??
             response.message ??
@@ -324,8 +431,8 @@ const AdminLoginPage: React.FC = () => {
       }
 
       /*
-       * Make sure the Edge Function actually returned
-       * a usable session.
+       * The admin-login Edge Function must return a real
+       * Supabase session.
        */
       const accessToken =
         response.session?.access_token;
@@ -333,30 +440,41 @@ const AdminLoginPage: React.FC = () => {
       const refreshToken =
         response.session?.refresh_token;
 
-      if (!accessToken || !refreshToken) {
+      if (
+        !accessToken ||
+        !refreshToken
+      ) {
         throw new Error(
           "Administrator authentication succeeded, but no valid session was returned.",
         );
       }
 
       /*
-       * Store the authenticated Supabase session in the
-       * browser so all subsequent admin RPC calls are
-       * authenticated as this administrator.
+       * Establish the returned Supabase session in the
+       * browser.
        */
       const {
+        data: sessionData,
         error: sessionError,
-      } = await supabase.auth.setSession({
-        access_token: accessToken,
-        refresh_token: refreshToken,
-      });
+      } =
+        await supabase.auth.setSession({
+          access_token: accessToken,
+          refresh_token: refreshToken,
+        });
 
       if (sessionError) {
         throw sessionError;
       }
 
+      if (!sessionData.session) {
+        throw new Error(
+          "Administrator session could not be established.",
+        );
+      }
+
       /*
-       * Validate the returned admin state before redirecting.
+       * Validate the administrator object returned by the
+       * authentication function.
        */
       const admin =
         response.admin;
@@ -365,7 +483,15 @@ const AdminLoginPage: React.FC = () => {
         await supabase.auth.signOut();
 
         throw new Error(
-          "Administrator information was not returned.",
+          "Administrator information was not returned by the authentication service.",
+        );
+      }
+
+      if (!admin.user_id) {
+        await supabase.auth.signOut();
+
+        throw new Error(
+          "Administrator user identity was not returned.",
         );
       }
 
@@ -384,15 +510,65 @@ const AdminLoginPage: React.FC = () => {
         admin.must_change_password === true;
 
       /*
-       * First-time administrators created by the
-       * Super Admin receive a temporary password such as:
+       * Final server-side verification after the Supabase
+       * session has been established.
        *
-       * Lastname@123
-       *
-       * They must change that password before entering
-       * the administrator dashboard.
+       * This is important because the frontend should not
+       * rely solely on the JSON response from admin-login.
        */
-      if (mustChangePassword) {
+      const {
+        data: verifiedState,
+        error: verifiedStateError,
+      } =
+        await supabase.rpc(
+          "admin_auth_get_state",
+        );
+
+      if (verifiedStateError) {
+        await supabase.auth.signOut();
+
+        throw verifiedStateError;
+      }
+
+      if (
+        !verifiedState ||
+        typeof verifiedState !== "object"
+      ) {
+        await supabase.auth.signOut();
+
+        throw new Error(
+          "The administrator session could not be verified.",
+        );
+      }
+
+      const verified =
+        verifiedState as Record<
+          string,
+          unknown
+        >;
+
+      if (
+        verified.is_admin !== true ||
+        verified.is_active !== true
+      ) {
+        await supabase.auth.signOut();
+
+        throw new Error(
+          "Administrator privileges could not be verified.",
+        );
+      }
+
+      const verifiedMustChangePassword =
+        verified.must_change_password === true;
+
+      /*
+       * Password-change requirement takes priority over
+       * every normal administrator destination.
+       */
+      if (
+        mustChangePassword ||
+        verifiedMustChangePassword
+      ) {
         setSuccess(
           "Administrator login successful. Redirecting you to change your temporary password...",
         );
@@ -404,10 +580,16 @@ const AdminLoginPage: React.FC = () => {
               replace: true,
             },
           );
-        }, 500);
+        }, 400);
 
         return;
       }
+
+      const destination =
+        getSafeAdminRedirect(
+          response.redirect,
+          false,
+        );
 
       setSuccess(
         `Welcome back. Signing you in as ${getRoleLabel(
@@ -415,14 +597,19 @@ const AdminLoginPage: React.FC = () => {
         )}...`,
       );
 
+      /*
+       * Use React Router navigation rather than
+       * window.location so the SPA remains inside the
+       * administrator route tree.
+       */
       window.setTimeout(() => {
         navigate(
-          "/admin/dashboard",
+          destination,
           {
             replace: true,
           },
         );
-      }, 500);
+      }, 400);
     } catch (submitError) {
       console.error(
         "Administrator login failed:",
@@ -430,14 +617,14 @@ const AdminLoginPage: React.FC = () => {
       );
 
       /*
-       * Always clear any partially-created session
-       * when the administrator verification fails.
+       * Never leave a partially-created session behind
+       * after authentication/verification failure.
        */
       try {
         await supabase.auth.signOut();
       } catch (signOutError) {
         console.error(
-          "Failed to clear failed admin session:",
+          "Failed to clear failed administrator session:",
           signOutError,
         );
       }
@@ -450,27 +637,38 @@ const AdminLoginPage: React.FC = () => {
     }
   };
 
+  /*
+   * IMPORTANT:
+   *
+   * Do NOT wrap this page with AdminLayout.
+   *
+   * AdminLayout should be used only after the user has
+   * successfully authenticated and passed AdminRouteGuard.
+   */
   if (checkingSession) {
     return (
-      <AdminLayout>
-        <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center bg-slate-50 px-4">
-          <div className="flex flex-col items-center text-center">
-            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-900">
-              <Loader2 className="h-7 w-7 animate-spin text-white" />
-            </div>
-
-            <p className="mt-4 text-sm font-medium text-slate-700">
-              Checking administrator session...
-            </p>
+      <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4">
+        <div className="flex w-full max-w-sm flex-col items-center rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-sm">
+          <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-900">
+            <Loader2 className="h-7 w-7 animate-spin text-white" />
           </div>
+
+          <h1 className="mt-5 text-lg font-semibold text-slate-900">
+            Checking Administrator Session
+          </h1>
+
+          <p className="mt-2 text-sm leading-6 text-slate-500">
+            Please wait while we verify your
+            administrator session.
+          </p>
         </div>
-      </AdminLayout>
+      </div>
     );
   }
 
   return (
-    <AdminLayout>
-      <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center bg-slate-50 px-4 py-10">
+    <div className="min-h-screen bg-slate-50">
+      <div className="flex min-h-screen items-center justify-center px-4 py-10">
         <div className="w-full max-w-md">
           <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
             <div className="bg-slate-900 px-6 py-8 text-white sm:px-8">
@@ -655,7 +853,7 @@ const AdminLoginPage: React.FC = () => {
           </p>
         </div>
       </div>
-    </AdminLayout>
+    </div>
   );
 };
 

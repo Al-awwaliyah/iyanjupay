@@ -226,7 +226,6 @@ const Navigation = ({
       path: "/admin/settings",
       icon: Settings,
       roles: ["super_admin"],
-      badge: "Soon",
     },
   ];
 

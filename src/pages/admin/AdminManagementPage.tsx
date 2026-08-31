@@ -2517,7 +2517,7 @@ function AdminSettingsPage() {
 
             <CardContent>
               <span className="text-xs text-muted-foreground">
-                Collection + payout accounts
+                Pending collection + payout wallet
               </span>
             </CardContent>
           </Card>
@@ -2764,7 +2764,7 @@ function AdminSettingsPage() {
               </CardTitle>
 
               <CardDescription>
-                Live collection balance from the Flutterwave merchant account.
+                Funds collected by Flutterwave that are currently pending settlement.
               </CardDescription>
             </div>
 
@@ -2810,7 +2810,7 @@ function AdminSettingsPage() {
               <Card className="bg-muted/30">
                 <CardHeader>
                   <CardDescription>
-                    Available Collection Balance
+                    Pending Collection Balance
                   </CardDescription>
 
                   <CardTitle className="text-3xl">
@@ -2887,7 +2887,7 @@ function AdminSettingsPage() {
               </span>
 
               <span className="text-sm font-medium">
-                Merchant Collection Balance
+                Pending Settlement Balance
               </span>
             </div>
 
@@ -3940,7 +3940,7 @@ function AdminSettingsPage() {
                 </p>
 
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Flutterwave merchant wallet
+                  Pending Flutterwave settlements
                 </p>
               </div>
 

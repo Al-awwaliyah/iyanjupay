@@ -3315,57 +3315,221 @@ async function processVerifiedFunding(
    * ==========================================================
    */
 
+  /*
+   * ==========================================================
+   * CANONICAL FUNDING REFERENCE
+   * ==========================================================
+   *
+   * ONE Flutterwave transaction ID must map to ONE IyanjuPay
+   * wallet-funding transaction.
+   *
+   * This reference is intentionally identical to the historical
+   * webhook format already present in the database:
+   *
+   *   FLW_<flutterwave_transaction_id>
+   *
+   * The sync function must use this same reference.
+   */
+
   const fundingReference =
-    `IYJ-FUND-${transactionId}`;
+    `FLW_${transactionId}`;
+
+  const fundingSelect = `
+    id,
+    wallet_id,
+    amount,
+    status,
+    reference_number,
+    provider_reference,
+    metadata
+  `;
 
   /*
    * ==========================================================
-   * IDEMPOTENCY CHECK
-   *
-   * Use Flutterwave transaction ID consistently.
+   * IDEMPOTENCY / LEGACY COMPATIBILITY
    * ==========================================================
+   *
+   * Older versions of the funding flow used:
+   *
+   *   IYJ-FUND-<transaction_id>
+   *
+   * and some older records stored the Flutterwave reference
+   * instead of the Flutterwave transaction ID.
+   *
+   * We check all known forms BEFORE calling credit_wallet.
+   * This is deliberately read-only and prevents a historical
+   * record from being credited again after deployment.
    */
 
-  const {
-    data: existingFunding,
-    error:
-      existingFundingError,
-  } = await supabase
-    .from("transactions")
-    .select(`
-      id,
-      wallet_id,
-      amount,
-      status,
-      reference_number,
-      provider_reference,
-      metadata
-    `)
-    .eq(
-      "provider_reference",
+  const existingFundingCandidates: any[] = [];
+
+  const lookupByReference = async (
+    reference: string,
+  ) => {
+    if (!reference) return null;
+
+    const {
+      data,
+      error,
+    } = await supabase
+      .from("transactions")
+      .select(fundingSelect)
+      .eq(
+        "reference_number",
+        reference,
+      )
+      .maybeSingle();
+
+    if (error) throw error;
+    return data ?? null;
+  };
+
+  const lookupByProviderReference = async (
+    providerReference: string | null,
+  ) => {
+    if (!providerReference) return null;
+
+    const {
+      data,
+      error,
+    } = await supabase
+      .from("transactions")
+      .select(fundingSelect)
+      .eq(
+        "provider",
+        "flutterwave",
+      )
+      .eq(
+        "transaction_type",
+        "wallet_funding",
+      )
+      .eq(
+        "provider_reference",
+        providerReference,
+      )
+      .limit(1)
+      .maybeSingle();
+
+    if (error) throw error;
+    return data ?? null;
+  };
+
+  /*
+   * 1. Canonical reference: FLW_<id>
+   */
+  const canonicalByReference =
+    await lookupByReference(
+      fundingReference,
+    );
+
+  if (canonicalByReference) {
+    existingFundingCandidates.push(
+      canonicalByReference,
+    );
+  }
+
+  /*
+   * 2. Legacy reference: IYJ-FUND-<id>
+   */
+  const legacyFundingReference =
+    `IYJ-FUND-${transactionId}`;
+
+  const legacyByReference =
+    await lookupByReference(
+      legacyFundingReference,
+    );
+
+  if (legacyByReference) {
+    existingFundingCandidates.push(
+      legacyByReference,
+    );
+  }
+
+  /*
+   * 3. Canonical provider reference: Flutterwave transaction ID
+   */
+  const byTransactionId =
+    await lookupByProviderReference(
       transactionId,
-    )
-    .eq(
-      "provider",
-      "flutterwave",
-    )
-    .maybeSingle();
+    );
+
+  if (byTransactionId) {
+    existingFundingCandidates.push(
+      byTransactionId,
+    );
+  }
+
+  /*
+   * 4. Flutterwave provider reference, when available.
+   */
+  const normalizedFlwReference =
+    verifiedFlwRef
+      ? String(verifiedFlwRef).trim()
+      : null;
 
   if (
-    existingFundingError
+    normalizedFlwReference &&
+    normalizedFlwReference !==
+      transactionId
   ) {
-    throw existingFundingError;
+    const byFlutterwaveReference =
+      await lookupByProviderReference(
+        normalizedFlwReference,
+      );
+
+    if (byFlutterwaveReference) {
+      existingFundingCandidates.push(
+        byFlutterwaveReference,
+      );
+    }
   }
+
+  /*
+   * 5. The original virtual-account tx_ref is also checked as a
+   * provider reference for compatibility with the old webhook.
+   */
+  const normalizedTxRef =
+    finalTxRef || null;
+
+  if (
+    normalizedTxRef &&
+    normalizedTxRef !== transactionId &&
+    normalizedTxRef !== normalizedFlwReference
+  ) {
+    const byVirtualAccountReference =
+      await lookupByProviderReference(
+        normalizedTxRef,
+      );
+
+    if (byVirtualAccountReference) {
+      existingFundingCandidates.push(
+        byVirtualAccountReference,
+      );
+    }
+  }
+
+  /*
+   * De-duplicate candidate rows by transaction ID.
+   */
+  const existingFunding =
+    existingFundingCandidates.find(
+      (candidate, index, array) =>
+        candidate?.id &&
+        array.findIndex(
+          (item) =>
+            item?.id === candidate.id,
+        ) === index,
+    ) ?? null;
 
   /*
    * IMPORTANT:
    *
-   * A chargeback may already have been processed against
-   * this transaction.
+   * If ANY known record already represents this Flutterwave
+   * transaction, STOP here. Do not call credit_wallet again.
    *
-   * Never recreate the wallet credit.
+   * This protects deposits created by older versions of the
+   * webhook/sync functions.
    */
-
   if (existingFunding) {
     const existingMetadata =
       existingFunding.metadata &&
@@ -3374,110 +3538,38 @@ async function processVerifiedFunding(
         ? existingFunding.metadata
         : {};
 
+    console.log(
+      "Flutterwave funding already processed:",
+      JSON.stringify({
+        flutterwave_transaction_id:
+          transactionId,
+        existing_transaction_id:
+          existingFunding.id,
+        existing_reference:
+          existingFunding.reference_number,
+        existing_provider_reference:
+          existingFunding.provider_reference,
+      }),
+    );
+
     return {
       success: true,
-
-      already_processed:
-        true,
-
+      already_processed: true,
       reference:
         existingFunding.reference_number ??
         fundingReference,
-
       transaction_id:
         existingFunding.id,
-
       amount:
         existingFunding.amount,
-
       wallet_id:
         existingFunding.wallet_id,
-
       chargeback_processed:
         existingMetadata?.chargeback_processed ===
         true,
-
       chargeback_id:
         existingMetadata?.chargeback_id ??
         null,
-
-      chargeback_amount:
-        existingMetadata?.chargeback_amount ??
-        null,
-    };
-  }
-
-  /*
-   * ==========================================================
-   * SECOND IDEMPOTENCY CHECK
-   *
-   * This protects against transactions created
-   * with the deterministic reference.
-   * ==========================================================
-   */
-
-  const {
-    data:
-      existingByReference,
-    error:
-      existingReferenceError,
-  } = await supabase
-    .from("transactions")
-    .select(`
-      id,
-      wallet_id,
-      amount,
-      status,
-      reference_number,
-      provider_reference,
-      metadata
-    `)
-    .eq(
-      "reference_number",
-      fundingReference,
-    )
-    .maybeSingle();
-
-  if (
-    existingReferenceError
-  ) {
-    throw existingReferenceError;
-  }
-
-  if (existingByReference) {
-    const existingMetadata =
-      existingByReference.metadata &&
-      typeof existingByReference.metadata ===
-        "object"
-        ? existingByReference.metadata
-        : {};
-
-    return {
-      success: true,
-
-      already_processed:
-        true,
-
-      reference:
-        fundingReference,
-
-      transaction_id:
-        existingByReference.id,
-
-      amount:
-        existingByReference.amount,
-
-      wallet_id:
-        existingByReference.wallet_id,
-
-      chargeback_processed:
-        existingMetadata?.chargeback_processed ===
-        true,
-
-      chargeback_id:
-        existingMetadata?.chargeback_id ??
-        null,
-
       chargeback_amount:
         existingMetadata?.chargeback_amount ??
         null,

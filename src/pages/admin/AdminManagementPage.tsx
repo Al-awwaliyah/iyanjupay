@@ -59,6 +59,7 @@ import {
 } from "lucide-react";
 
 import { supabase } from "@/integrations/supabase/client";
+import AdminLayout from "@/pages/admin/AdminLayout";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -228,7 +229,6 @@ interface HistoryResponse {
     transactions: HistoryTransaction[];
     next?: string | null;
     previous?: string | null;
-    configured?: boolean;
   } | null;
   settlements?: {
     pageInfo: HistoryPageInfo | null;
@@ -1088,10 +1088,10 @@ function AdminSettingsPage() {
     );
 
   const [collectionBalance, setCollectionBalance] =
-    useState<BalanceData | null>(null);
+    useState<CollectionBalanceData | null>(null);
 
   const [payoutBalance, setPayoutBalance] =
-    useState<BalanceData | null>(null);
+    useState<PayoutBalanceData | null>(null);
 
   const [balanceLoading, setBalanceLoading] =
     useState(false);
@@ -2111,17 +2111,13 @@ function AdminSettingsPage() {
     collectionBalance?.balance ??
     0;
 
-  const collectionGross =
-    collectionBalance?.grossBalance ??
-    0;
+  const totalFlutterwaveAvailable =
+    collectionAvailable +
+    (payoutBalance?.availableBalance ?? 0);
 
   const payoutAvailable =
     payoutBalance?.availableBalance ??
     0;
-
-  const totalFlutterwaveAvailable =
-    collectionAvailable +
-    payoutAvailable;
 
 
   // ==========================================================
@@ -2517,7 +2513,7 @@ function AdminSettingsPage() {
 
             <CardContent>
               <span className="text-xs text-muted-foreground">
-                Pending collection + payout wallet
+                Collection + payout accounts
               </span>
             </CardContent>
           </Card>
@@ -2816,11 +2812,9 @@ function AdminSettingsPage() {
                   <CardTitle className="text-3xl">
                     {balanceLoading
                       ? "Loading..."
-                      : collectionBalance?.balance == null
-                        ? "Unavailable"
-                        : formatCurrency(
-                            collectionBalance.balance
-                          )}
+                      : formatCurrency(
+                          collectionBalance?.balance
+                        )}
                   </CardTitle>
                 </CardHeader>
               </Card>
@@ -2828,17 +2822,15 @@ function AdminSettingsPage() {
               <Card className="bg-muted/30">
                 <CardHeader>
                   <CardDescription>
-                    Gross Collection Balance
+                    Gross Pending Settlement
                   </CardDescription>
 
                   <CardTitle className="text-3xl">
                     {balanceLoading
                       ? "Loading..."
-                      : collectionBalance?.grossBalance == null
-                        ? "Unavailable"
-                        : formatCurrency(
-                            collectionGross
-                          )}
+                      : formatCurrency(
+                          collectionBalance?.grossBalance
+                        )}
                   </CardTitle>
                 </CardHeader>
               </Card>
@@ -2846,12 +2838,15 @@ function AdminSettingsPage() {
               <Card className="bg-muted/30">
                 <CardHeader>
                   <CardDescription>
-                    Currency
+                    Pending Settlements
                   </CardDescription>
 
                   <CardTitle className="text-3xl">
-                    {collectionBalance?.currency ??
-                      CURRENCY}
+                    {balanceLoading
+                      ? "Loading..."
+                      : formatNumber(
+                          collectionBalance?.pendingSettlementCount ?? 0
+                        )}
                   </CardTitle>
                 </CardHeader>
               </Card>
@@ -2887,7 +2882,7 @@ function AdminSettingsPage() {
               </span>
 
               <span className="text-sm font-medium">
-                Pending Settlement Balance
+                Pending Collection / Settlement Funds
               </span>
             </div>
 
@@ -2924,7 +2919,7 @@ function AdminSettingsPage() {
           </AlertTitle>
 
           <AlertDescription>
-            This collection balance is retrieved from Flutterwave settlement data and represents funds collected but not yet settled. It is not calculated from the IyanjuPay internal ledger.
+            This balance is calculated from Flutterwave settlement records and represents funds collected but not yet settled. It is not calculated from the IyanjuPay internal ledger.
           </AlertDescription>
         </Alert>
       </div>
@@ -2971,9 +2966,8 @@ function AdminSettingsPage() {
           </CardHeader>
 
           <CardContent>
-            {payoutBalance &&
-              payoutBalance.configured ===
-                false && (
+            {payoutBalance?.configured ===
+              false && (
               <Alert className="mb-6">
                 <AlertCircle className="h-4 w-4" />
 
@@ -3940,7 +3934,7 @@ function AdminSettingsPage() {
                 </p>
 
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Pending Flutterwave settlements
+                  Flutterwave merchant wallet
                 </p>
               </div>
 
@@ -5804,11 +5798,12 @@ function AdminSettingsPage() {
   // ==========================================================
 
   return (
-    <TooltipProvider>
-      <div className="flex min-h-screen bg-muted/20">
-        <aside className="fixed inset-y-0 left-0 z-40 hidden w-[280px] border-r bg-background lg:block">
-          {renderNavigation()}
-        </aside>
+    <AdminLayout>
+      <TooltipProvider>
+        <div className="flex min-h-screen bg-muted/20">
+          <aside className="sticky top-0 z-30 hidden h-screen w-[280px] shrink-0 border-r bg-background lg:block">
+            {renderNavigation()}
+          </aside>
 
         {mobileNavigationOpen && (
           <>
@@ -5829,7 +5824,7 @@ function AdminSettingsPage() {
           </>
         )}
 
-        <main className="min-w-0 flex-1 lg:pl-[280px]">
+          <main className="min-w-0 flex-1">
           {renderHeader()}
 
           <div className="mx-auto w-full max-w-[1600px] p-4 sm:p-6">
@@ -5877,8 +5872,9 @@ function AdminSettingsPage() {
             {renderActiveSection()}
           </div>
         </main>
-      </div>
-    </TooltipProvider>
+        </div>
+      </TooltipProvider>
+    </AdminLayout>
   );
 }
 

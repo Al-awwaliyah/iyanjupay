@@ -5864,7 +5864,4 @@ function AdminSettingsPage() {
   );
 }
 
-  );
-}
-
-export default AdminSettingsPage;
+export { AdminSettingsPage };

@@ -276,6 +276,237 @@ interface AuditItem {
 }
 
 
+interface AdminSettingRow {
+  id: string;
+  setting_key: string;
+  section: string;
+  data_type: string;
+  value: unknown;
+  description: string | null;
+  requires_restart: boolean;
+  updated_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+interface AdminSettingsHistoryRow {
+  id: string;
+  setting_id: string;
+  setting_key: string;
+  section: string;
+  old_value: unknown;
+  new_value: unknown;
+  changed_by: string | null;
+  changed_at: string;
+  change_type: string;
+  metadata: Record<string, unknown> | null;
+}
+
+type PersistedSettingKey =
+  | keyof SettingsState
+  | "maintenanceReason"
+  | "defaultTransferFee"
+  | "electronicTransferFee"
+  | "walletTransferFee"
+  | "level1Limit"
+  | "level2Limit"
+  | "level3Limit"
+  | "retentionDays"
+  | "sessionTimeout"
+  | "maxAdminSessions"
+  | "webhookAlertThreshold"
+  | "dailyExportLimit";
+
+const PERSISTED_SETTING_KEYS: PersistedSettingKey[] = [
+  "maintenanceMode",
+  "allowNewRegistrations",
+  "allowTransfers",
+  "allowWalletFunding",
+  "allowBillPayments",
+  "allowVirtualAccounts",
+  "requireAdminMfa",
+  "notifyAdminLogin",
+  "notifyLargeTransfer",
+  "notifyFailedTransfer",
+  "notifyProviderFailure",
+  "notifyWebhookFailure",
+  "fraudVelocityChecks",
+  "blockSuspiciousTransactions",
+  "requireKycForTransfers",
+  "requireBvnForHighValue",
+  "customerEmailNotifications",
+  "customerPushNotifications",
+  "showMaintenanceBanner",
+  "enableFeatureFlags",
+  "automaticReconciliation",
+  "automaticBackups",
+  "maintenanceReason",
+  "defaultTransferFee",
+  "electronicTransferFee",
+  "walletTransferFee",
+  "level1Limit",
+  "level2Limit",
+  "level3Limit",
+  "retentionDays",
+  "sessionTimeout",
+  "maxAdminSessions",
+  "webhookAlertThreshold",
+  "dailyExportLimit",
+];
+
+const SETTING_DESCRIPTIONS: Record<string, string> = {
+  maintenanceMode: "Enable platform maintenance mode.",
+  allowNewRegistrations: "Allow new customer registrations.",
+  allowTransfers: "Allow customer bank and wallet transfers.",
+  allowWalletFunding: "Allow customers to fund wallets.",
+  allowBillPayments: "Allow customer bill and service payments.",
+  allowVirtualAccounts: "Allow permanent virtual accounts.",
+  requireAdminMfa: "Require multi-factor authentication for administrators.",
+  notifyAdminLogin: "Notify administrators about administrator logins.",
+  notifyLargeTransfer: "Notify administrators about high-value transfers.",
+  notifyFailedTransfer: "Notify administrators about failed transfers.",
+  notifyProviderFailure: "Notify administrators about provider failures.",
+  notifyWebhookFailure: "Notify administrators about webhook failures.",
+  fraudVelocityChecks: "Enable transaction velocity checks.",
+  blockSuspiciousTransactions: "Block transactions matching configured fraud rules.",
+  requireKycForTransfers: "Require KYC before customer transfers.",
+  requireBvnForHighValue: "Require BVN verification for high-value transfers.",
+  customerEmailNotifications: "Enable supported customer email notifications.",
+  customerPushNotifications: "Enable supported customer push notifications.",
+  showMaintenanceBanner: "Show a maintenance banner to customers.",
+  enableFeatureFlags: "Enable centrally managed feature flags.",
+  automaticReconciliation: "Enable automatic reconciliation processing.",
+  automaticBackups: "Enable the configured automatic backup policy.",
+  maintenanceReason: "Customer-facing maintenance message.",
+  defaultTransferFee: "Standard IyanjuPay transfer fee in NGN.",
+  electronicTransferFee: "Electronic transfer fee in NGN.",
+  walletTransferFee: "Wallet transfer fee in NGN.",
+  level1Limit: "KYC Level 1 daily transfer limit in NGN.",
+  level2Limit: "KYC Level 2 daily transfer limit in NGN.",
+  level3Limit: "KYC Level 3 daily transfer limit in NGN.",
+  retentionDays: "Administrative data retention period in days.",
+  sessionTimeout: "Administrator session timeout in minutes.",
+  maxAdminSessions: "Maximum concurrent administrator sessions.",
+  webhookAlertThreshold: "Webhook failure alert threshold.",
+  dailyExportLimit: "Maximum administrative exports per day.",
+};
+
+function normalizeSettingValue(value: unknown): unknown {
+  if (
+    value &&
+    typeof value === "object" &&
+    !Array.isArray(value) &&
+    "value" in value
+  ) {
+    return (value as { value: unknown }).value;
+  }
+  return value;
+}
+
+function settingValueAsBoolean(
+  value: unknown,
+  fallback: boolean
+): boolean {
+  const normalized = normalizeSettingValue(value);
+
+  if (typeof normalized === "boolean") {
+    return normalized;
+  }
+
+  if (typeof normalized === "string") {
+    if (normalized.toLowerCase() === "true") return true;
+    if (normalized.toLowerCase() === "false") return false;
+  }
+
+  return fallback;
+}
+
+function settingValueAsString(
+  value: unknown,
+  fallback: string
+): string {
+  const normalized = normalizeSettingValue(value);
+
+  if (
+    normalized === null ||
+    normalized === undefined
+  ) {
+    return fallback;
+  }
+
+  if (
+    typeof normalized === "string" ||
+    typeof normalized === "number" ||
+    typeof normalized === "boolean"
+  ) {
+    return String(normalized);
+  }
+
+  return fallback;
+}
+
+function valuesEqual(a: unknown, b: unknown): boolean {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
+function camelToSnake(value: string): string {
+  return value
+    .replace(/([A-Z])/g, "_$1")
+    .toLowerCase();
+}
+
+function settingStorageKey(
+  key: PersistedSettingKey,
+  existingKeys: Record<string, string>
+): string {
+  return (
+    existingKeys[key] ??
+    camelToSnake(key)
+  );
+}
+
+function getFriendlyAdminError(
+  error: unknown,
+  fallback: string
+): string {
+  const message =
+    error instanceof Error
+      ? error.message
+      : "";
+
+  const normalized = message.toLowerCase();
+
+  if (
+    normalized.includes("jwt") ||
+    normalized.includes("token") ||
+    normalized.includes("session") ||
+    normalized.includes("authentication")
+  ) {
+    return "Your administrator session has expired. Please sign in again.";
+  }
+
+  if (
+    normalized.includes("permission") ||
+    normalized.includes("forbidden") ||
+    normalized.includes("not authorized") ||
+    normalized.includes("unauthorized")
+  ) {
+    return "You are not authorized to perform this administrator action.";
+  }
+
+  if (
+    normalized.includes("network") ||
+    normalized.includes("fetch") ||
+    normalized.includes("failed to fetch") ||
+    normalized.includes("offline")
+  ) {
+    return "The service is temporarily unavailable. Please check your connection and try again.";
+  }
+
+  return fallback;
+}
+
+
 // ============================================================
 // CONSTANTS
 // ============================================================
@@ -900,6 +1131,25 @@ function AdminSettingsPage() {
   const [auditItems, setAuditItems] =
     useState<AuditItem[]>([]);
 
+
+  const [settingsLoading, setSettingsLoading] =
+    useState(false);
+
+  const [settingsError, setSettingsError] =
+    useState<string | null>(null);
+
+  const [settingsLoaded, setSettingsLoaded] =
+    useState(false);
+
+  const [savedSettingsSnapshot, setSavedSettingsSnapshot] =
+    useState<Record<string, unknown>>({});
+
+  const [settingsHistoryLoading, setSettingsHistoryLoading] =
+    useState(false);
+
+  const [settingKeyMap, setSettingKeyMap] =
+    useState<Record<string, string>>({});
+
   const [maintenanceReason, setMaintenanceReason] =
     useState("");
 
@@ -995,6 +1245,345 @@ function AdminSettingsPage() {
     }
   }, []);
 
+
+  // ==========================================================
+  // PERSISTENT ADMIN SETTINGS
+  // ==========================================================
+
+  const currentPersistedValues =
+    useMemo<Record<string, unknown>>(
+      () => ({
+        maintenanceMode: settings.maintenanceMode,
+        allowNewRegistrations:
+          settings.allowNewRegistrations,
+        allowTransfers:
+          settings.allowTransfers,
+        allowWalletFunding:
+          settings.allowWalletFunding,
+        allowBillPayments:
+          settings.allowBillPayments,
+        allowVirtualAccounts:
+          settings.allowVirtualAccounts,
+        requireAdminMfa:
+          settings.requireAdminMfa,
+        notifyAdminLogin:
+          settings.notifyAdminLogin,
+        notifyLargeTransfer:
+          settings.notifyLargeTransfer,
+        notifyFailedTransfer:
+          settings.notifyFailedTransfer,
+        notifyProviderFailure:
+          settings.notifyProviderFailure,
+        notifyWebhookFailure:
+          settings.notifyWebhookFailure,
+        fraudVelocityChecks:
+          settings.fraudVelocityChecks,
+        blockSuspiciousTransactions:
+          settings.blockSuspiciousTransactions,
+        requireKycForTransfers:
+          settings.requireKycForTransfers,
+        requireBvnForHighValue:
+          settings.requireBvnForHighValue,
+        customerEmailNotifications:
+          settings.customerEmailNotifications,
+        customerPushNotifications:
+          settings.customerPushNotifications,
+        showMaintenanceBanner:
+          settings.showMaintenanceBanner,
+        enableFeatureFlags:
+          settings.enableFeatureFlags,
+        automaticReconciliation:
+          settings.automaticReconciliation,
+        automaticBackups:
+          settings.automaticBackups,
+        maintenanceReason,
+        defaultTransferFee,
+        electronicTransferFee,
+        walletTransferFee,
+        level1Limit,
+        level2Limit,
+        level3Limit,
+        retentionDays,
+        sessionTimeout,
+        maxAdminSessions,
+        webhookAlertThreshold,
+        dailyExportLimit,
+      }),
+      [
+        settings,
+        maintenanceReason,
+        defaultTransferFee,
+        electronicTransferFee,
+        walletTransferFee,
+        level1Limit,
+        level2Limit,
+        level3Limit,
+        retentionDays,
+        sessionTimeout,
+        maxAdminSessions,
+        webhookAlertThreshold,
+        dailyExportLimit,
+      ]
+    );
+
+  const settingsDirty =
+    settingsLoaded &&
+    !valuesEqual(
+      currentPersistedValues,
+      savedSettingsSnapshot
+    );
+
+  const loadSettings =
+    useCallback(async () => {
+      setSettingsLoading(true);
+      setSettingsError(null);
+
+      try {
+        const {
+          data: sessionData,
+          error: sessionError,
+        } = await supabase.auth.getSession();
+
+        if (
+          sessionError ||
+          !sessionData.session
+        ) {
+          throw new Error(
+            "Your administrator session has expired."
+          );
+        }
+
+        const {
+          data,
+          error,
+        } = await supabase.rpc(
+          "admin_settings_list",
+          {
+            p_section: null,
+            p_search: null,
+          }
+        );
+
+        if (error) {
+          throw error;
+        }
+
+        const rows =
+          (data ?? []) as AdminSettingRow[];
+
+        const initial =
+          getInitialSettings();
+
+        const nextSettings: SettingsState = {
+          ...initial,
+        };
+
+        const nextScalars = {
+          maintenanceReason: "",
+          defaultTransferFee: "10",
+          electronicTransferFee: "50",
+          walletTransferFee: "50",
+          level1Limit: "300000",
+          level2Limit: "1000000",
+          level3Limit: "5000000",
+          retentionDays: "365",
+          sessionTimeout: "30",
+          maxAdminSessions: "3",
+          webhookAlertThreshold: "5",
+          dailyExportLimit: "10",
+        };
+
+        const nextKeyMap: Record<string, string> = {};
+
+        for (const row of rows) {
+          const normalizedKey =
+            PERSISTED_SETTING_KEYS.find(
+              (key) =>
+                key === row.setting_key ||
+                camelToSnake(key) ===
+                  row.setting_key
+            );
+
+          if (!normalizedKey) {
+            continue;
+          }
+
+          nextKeyMap[normalizedKey] =
+            row.setting_key;
+
+          if (
+            normalizedKey in
+            nextSettings
+          ) {
+            const current =
+              nextSettings[
+                normalizedKey as keyof SettingsState
+              ];
+
+            (
+              nextSettings as Record<
+                string,
+                unknown
+              >
+            )[normalizedKey] =
+              typeof current === "boolean"
+                ? settingValueAsBoolean(
+                    row.value,
+                    current
+                  )
+                : row.value;
+          } else if (
+            normalizedKey in
+            nextScalars
+          ) {
+            (
+              nextScalars as Record<
+                string,
+                string
+              >
+            )[normalizedKey] =
+              settingValueAsString(
+                row.value,
+                (
+                  nextScalars as Record<
+                    string,
+                    string
+                  >
+                )[normalizedKey]
+              );
+          }
+        }
+
+        setSettings(nextSettings);
+        setMaintenanceReason(
+          nextScalars.maintenanceReason
+        );
+        setDefaultTransferFee(
+          nextScalars.defaultTransferFee
+        );
+        setElectronicTransferFee(
+          nextScalars.electronicTransferFee
+        );
+        setWalletTransferFee(
+          nextScalars.walletTransferFee
+        );
+        setLevel1Limit(
+          nextScalars.level1Limit
+        );
+        setLevel2Limit(
+          nextScalars.level2Limit
+        );
+        setLevel3Limit(
+          nextScalars.level3Limit
+        );
+        setRetentionDays(
+          nextScalars.retentionDays
+        );
+        setSessionTimeout(
+          nextScalars.sessionTimeout
+        );
+        setMaxAdminSessions(
+          nextScalars.maxAdminSessions
+        );
+        setWebhookAlertThreshold(
+          nextScalars.webhookAlertThreshold
+        );
+        setDailyExportLimit(
+          nextScalars.dailyExportLimit
+        );
+        setSettingKeyMap(nextKeyMap);
+
+        const snapshot = {
+          ...nextSettings,
+          ...nextScalars,
+        };
+
+        setSavedSettingsSnapshot(
+          snapshot
+        );
+        setSettingsLoaded(true);
+      } catch (error) {
+        setSettingsLoaded(false);
+        setSettingsError(
+          getFriendlyAdminError(
+            error,
+            "Unable to load administrator settings."
+          )
+        );
+      } finally {
+        setSettingsLoading(false);
+      }
+    }, []);
+
+  const loadSettingsHistory =
+    useCallback(async () => {
+      setSettingsHistoryLoading(true);
+
+      try {
+        const {
+          data,
+          error,
+        } = await supabase.rpc(
+          "admin_settings_history",
+          {
+            p_key: null,
+            p_limit: 100,
+            p_offset: 0,
+          }
+        );
+
+        if (error) {
+          throw error;
+        }
+
+        const rows =
+          (data ??
+            []) as AdminSettingsHistoryRow[];
+
+        setAuditItems(
+          rows.map((row) => ({
+            id: row.id,
+            action:
+              row.setting_key,
+            description:
+              row.change_type ===
+              "create"
+                ? "Setting created."
+                : row.change_type ===
+                    "delete"
+                  ? "Setting deleted."
+                  : "Setting value updated.",
+            createdAt:
+              row.changed_at,
+          }))
+        );
+      } catch (error) {
+        setSettingsError(
+          getFriendlyAdminError(
+            error,
+            "Unable to load settings change history."
+          )
+        );
+      } finally {
+        setSettingsHistoryLoading(false);
+      }
+    }, []);
+
+  useEffect(() => {
+    void loadSettings();
+  }, [loadSettings]);
+
+  useEffect(() => {
+    if (
+      activeSection ===
+      "audit-history"
+    ) {
+      void loadSettingsHistory();
+    }
+  }, [
+    activeSection,
+    loadSettingsHistory,
+  ]);
 
   // ==========================================================
   // FLUTTERWAVE REQUEST
@@ -1152,14 +1741,15 @@ function AdminSettingsPage() {
 
           if (errors.length > 0) {
             setBalanceError(
-              errors.join(" | ")
+              "One or more Flutterwave balances could not be synchronized."
             );
           }
         } catch (error) {
           setBalanceError(
-            error instanceof Error
-              ? error.message
-              : "Unable to load Flutterwave balances."
+            getFriendlyAdminError(
+              error,
+              "Unable to load Flutterwave balances."
+            )
           );
         } finally {
           if (showLoading) {
@@ -1208,14 +1798,15 @@ function AdminSettingsPage() {
 
           if (errors.length > 0) {
             setBalanceError(
-              errors.join(" | ")
+              "One or more Flutterwave balances could not be synchronized."
             );
           }
         } catch (error) {
           setBalanceError(
-            error instanceof Error
-              ? error.message
-              : "Unable to synchronize Flutterwave balances."
+            getFriendlyAdminError(
+              error,
+              "Unable to synchronize Flutterwave balances."
+            )
           );
         } finally {
           setBalanceLoading(false);
@@ -1254,9 +1845,10 @@ function AdminSettingsPage() {
           setHistory(result);
         } catch (error) {
           setHistoryError(
-            error instanceof Error
-              ? error.message
-              : "Unable to load Flutterwave balance history."
+            getFriendlyAdminError(
+              error,
+              "Unable to load Flutterwave balance history."
+            )
           );
         } finally {
           setHistoryLoading(false);
@@ -1293,9 +1885,10 @@ function AdminSettingsPage() {
           );
         } catch (error) {
           setHealthError(
-            error instanceof Error
-              ? error.message
-              : "Unable to check provider health."
+            getFriendlyAdminError(
+              error,
+              "Unable to check provider health."
+            )
           );
         } finally {
           setHealthLoading(false);
@@ -1365,57 +1958,96 @@ function AdminSettingsPage() {
   const saveSettings =
     useCallback(
       async () => {
+        if (!settingsLoaded) {
+          setSaveMessage(null);
+          setSettingsError(
+            "Administrator settings are still loading. Please try again."
+          );
+          return;
+        }
+
+        if (!settingsDirty) {
+          setSaveMessage(
+            "There are no unsaved settings changes."
+          );
+          return;
+        }
+
         setSaving(true);
         setSaveMessage(null);
+        setSettingsError(null);
 
-        /*
-         * The financial/provider data is intentionally NOT
-         * written from this page to Flutterwave.
-         *
-         * Flutterwave credentials remain server-side.
-         *
-         * These settings are kept in page state until the
-         * admin_settings persistence RPC/table is connected.
-         *
-         * This keeps the page safe even if the settings RPC
-         * has not yet been deployed.
-         */
+        try {
+          const entries =
+            PERSISTED_SETTING_KEYS
+              .filter(
+                (key) =>
+                  !valuesEqual(
+                    currentPersistedValues[key],
+                    savedSettingsSnapshot[key]
+                  )
+              )
+              .map((key) => ({
+                key,
+                value:
+                  currentPersistedValues[
+                    key
+                  ],
+              }));
 
-        await new Promise(
-          (resolve) =>
-            setTimeout(
-              resolve,
-              450
+          for (const entry of entries) {
+            const storageKey =
+              settingStorageKey(
+                entry.key,
+                settingKeyMap
+              );
+
+            const {
+              error,
+            } = await supabase.rpc(
+              "admin_settings_upsert",
+              {
+                p_key: storageKey,
+                p_value:
+                  entry.value,
+                p_description:
+                  SETTING_DESCRIPTIONS[
+                    entry.key
+                  ] ?? null,
+              }
+            );
+
+            if (error) {
+              throw error;
+            }
+          }
+
+          setSaveMessage(
+            "Settings were saved successfully."
+          );
+
+          await loadSettings();
+          await loadSettingsHistory();
+        } catch (error) {
+          setSettingsError(
+            getFriendlyAdminError(
+              error,
+              "Unable to save administrator settings. No successful save should be assumed."
             )
-        );
-
-        const auditEntry: AuditItem = {
-          id:
-            crypto.randomUUID(),
-          action:
-            "settings.updated",
-          description:
-            "Administrator settings were updated.",
-          createdAt:
-            new Date().toISOString(),
-        };
-
-        setAuditItems(
-          (current) => [
-            auditEntry,
-            ...current,
-          ]
-        );
-
-        setSaveMessage(
-          "Settings have been prepared successfully."
-        );
-
-        setSaving(false);
+          );
+        } finally {
+          setSaving(false);
+        }
       },
-      []
+      [
+        settingsLoaded,
+        settingsDirty,
+        currentPersistedValues,
+        settingKeyMap,
+        loadSettings,
+        loadSettingsHistory,
+      ]
     );
-
 
   // ==========================================================
   // SEARCH NAVIGATION
@@ -1699,6 +2331,33 @@ function AdminSettingsPage() {
           </div>
 
           <div className="flex items-center gap-2">
+            {settingsDirty && (
+              <Badge
+                variant="outline"
+                className="hidden border-amber-200 bg-amber-50 text-amber-700 md:inline-flex"
+              >
+                Unsaved changes
+              </Badge>
+            )}
+
+            {settingsDirty && (
+              <Button
+                size="sm"
+                onClick={() =>
+                  void saveSettings()
+                }
+                disabled={
+                  saving ||
+                  settingsLoading
+                }
+              >
+                <Save className="mr-2 h-4 w-4" />
+                {saving
+                  ? "Saving..."
+                  : "Save Changes"}
+              </Button>
+            )}
+
             {lastBalanceSync && (
               <span className="hidden text-xs text-muted-foreground xl:block">
                 Synced{" "}
@@ -4937,7 +5596,7 @@ function AdminSettingsPage() {
             </CardTitle>
 
             <CardDescription>
-              Administrative settings changes recorded during this session.
+              Administrative settings changes recorded by the persistent PostgreSQL audit history.
             </CardDescription>
           </CardHeader>
 
@@ -4947,7 +5606,7 @@ function AdminSettingsPage() {
               <EmptyState
                 icon={History}
                 title="No settings changes yet"
-                description="Settings changes made during the current page session will appear here."
+                description="Persisted settings changes are loaded from the administrator settings audit history."
               />
             ) : (
               <div className="space-y-3">
@@ -5156,6 +5815,33 @@ function AdminSettingsPage() {
           {renderHeader()}
 
           <div className="mx-auto w-full max-w-[1600px] p-4 sm:p-6">
+            {settingsLoading && (
+              <Alert className="mb-6">
+                <RefreshCw className="h-4 w-4 animate-spin" />
+                <AlertTitle>
+                  Loading administrator settings
+                </AlertTitle>
+                <AlertDescription>
+                  Reading the current settings from the secure administration backend.
+                </AlertDescription>
+              </Alert>
+            )}
+
+            {settingsError && (
+              <Alert
+                variant="destructive"
+                className="mb-6"
+              >
+                <AlertCircle className="h-4 w-4" />
+                <AlertTitle>
+                  Settings service unavailable
+                </AlertTitle>
+                <AlertDescription>
+                  {settingsError}
+                </AlertDescription>
+              </Alert>
+            )}
+
             {saveMessage && (
               <Alert className="mb-6 border-emerald-200 bg-emerald-50 text-emerald-900">
                 <CheckCircle2 className="h-4 w-4 text-emerald-600" />
@@ -5178,4 +5864,7 @@ function AdminSettingsPage() {
   );
 }
 
-export { AdminSettingsPage };
+  );
+}
+
+export default AdminSettingsPage;

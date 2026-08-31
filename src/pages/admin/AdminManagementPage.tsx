@@ -1,5 +1,4 @@
 import React, {
-  FormEvent,
   useCallback,
   useEffect,
   useMemo,
@@ -9,20 +8,53 @@ import React, {
 import {
   Activity,
   AlertCircle,
+  Archive,
+  ArrowDownLeft,
+  ArrowLeft,
+  ArrowRight,
+  Bell,
+  Check,
   CheckCircle2,
-  ChevronLeft,
+  ChevronDown,
   ChevronRight,
-  Edit3,
-  Loader2,
-  Mail,
+  Clock3,
+  Database,
+  Download,
+  FileArchive,
+  FileClock,
+  FileDown,
+  FileText,
+  Fingerprint,
+  Flag,
+  Globe,
+  History,
+  KeyRound,
+  LayoutDashboard,
+  Lock,
+  LogOut,
+  Moon,
+  Network,
+  Palette,
+  PauseCircle,
   RefreshCw,
+  Save,
   Search,
+  Server,
+  Settings,
   Shield,
   ShieldCheck,
+  SlidersHorizontal,
+  Smartphone,
+  Sparkles,
+  ToggleLeft,
+  ToggleRight,
+  Trash2,
   UserCheck,
-  UserPlus,
-  UserX,
+  Users,
+  Wallet,
+  Webhook,
   X,
+  Zap,
 } from "lucide-react";
 
 import AdminLayout from "@/pages/admin/AdminLayout";
@@ -31,7 +63,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-
+import { Switch } from "@/components/ui/switch";
 import {
   Select,
   SelectContent,
@@ -41,13 +73,20 @@ import {
 } from "@/components/ui/select";
 
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+
+import {
+  Badge,
+} from "@/components/ui/badge";
+
+import {
+  Separator,
+} from "@/components/ui/separator";
 
 import {
   Alert,
@@ -56,143 +95,718 @@ import {
 } from "@/components/ui/alert";
 
 import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 
-/* ============================================================
-   TYPES
-   ============================================================ */
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
-type AdminRole =
-  | "super_admin"
-  | "operations_admin"
-  | "support_admin"
-  | "finance_admin"
-  | "compliance_admin"
-  | "read_only_admin";
+import {
+  cn,
+} from "@/lib/utils";
 
-type AdminRecord = {
-  user_id: string;
-  email: string | null;
-  full_name: string | null;
-  display_name?: string | null;
-  role: AdminRole | string;
-  is_active: boolean;
-  created_at: string;
-  last_sign_in_at?: string | null;
-  must_change_password?: boolean;
-  notes?: string | null;
-  last_activity_at?: string | null;
-  created_by: string | null;
-};
 
-type AdminSummary = {
-  total: number;
-  active: number;
-  inactive: number;
-  super_admin: number;
-  operations_admin: number;
-  support_admin: number;
-  finance_admin: number;
-  compliance_admin: number;
-  read_only_admin: number;
-};
+// ============================================================
+// TYPES
+// ============================================================
 
-type ToastState = {
-  type: "success" | "error";
-  message: string;
-} | null;
+type SettingsSection =
+  | "overview"
+  | "collection-balance"
+  | "payout-balance"
+  | "balance-history"
+  | "fees"
+  | "transaction-limits"
+  | "flutterwave"
+  | "provider-health"
+  | "webhooks"
+  | "service-controls"
+  | "maintenance"
+  | "reconciliation"
+  | "notifications"
+  | "admin-authentication"
+  | "session-policy"
+  | "sensitive-actions"
+  | "fraud-controls"
+  | "kyc-policies"
+  | "compliance"
+  | "general"
+  | "customer-experience"
+  | "feature-flags"
+  | "retention"
+  | "backups"
+  | "exports"
+  | "audit-history";
 
-const PAGE_SIZE = 10;
+interface NavigationItem {
+  id: SettingsSection;
+  label: string;
+  description?: string;
+  icon: React.ElementType;
+}
 
-/* ============================================================
-   ROLE CONFIGURATION
-   ============================================================ */
+interface NavigationGroup {
+  id: string;
+  label: string;
+  icon: React.ElementType;
+  items: NavigationItem[];
+}
 
-const ROLE_OPTIONS: Array<{
-  value: AdminRole;
+interface BalanceData {
+  currency: string;
+  availableBalance: number | null;
+  ledgerBalance: number | null;
+  source: string | null;
+  configured?: boolean;
+  accountReference?: string | null;
+}
+
+interface BalanceResponse {
+  success: boolean;
+  status?: string;
+  synchronizedAt?: string;
+  collection: BalanceData | null;
+  payout: BalanceData | null;
+  errors?: {
+    collection?: string | null;
+    payout?: string | null;
+  };
+}
+
+interface HistoryTransaction {
+  type?: string;
+  amount?: number | string;
+  currency?: string;
+  balance_before?: number | string;
+  balance_after?: number | string;
+  reference?: string;
+  date?: string;
+  created_at?: string;
+  date_created?: string;
+  remarks?: string;
+  narration?: string;
+  status?: string;
+  id?: string | number;
+  [key: string]: unknown;
+}
+
+interface HistoryPageInfo {
+  total?: number;
+  current_page?: number;
+  total_pages?: number;
+}
+
+interface HistoryResponse {
+  success: boolean;
+  currency: string;
+  from: string;
+  to: string;
+  collection: {
+    pageInfo: HistoryPageInfo | null;
+    transactions: HistoryTransaction[];
+  } | null;
+  payout: {
+    pageInfo: HistoryPageInfo | null;
+    transactions: HistoryTransaction[];
+    configured?: boolean;
+  } | null;
+}
+
+interface HealthResponse {
+  success: boolean;
+  provider: string;
+  environment: string;
+  collection: {
+    available: boolean;
+    error: string | null;
+  };
+  payout: {
+    configured: boolean;
+    available: boolean;
+    error: string | null;
+  };
+  checkedAt: string;
+}
+
+interface SettingToggle {
+  enabled: boolean;
   label: string;
   description: string;
-}> = [
+}
+
+interface SettingsState {
+  maintenanceMode: boolean;
+  allowNewRegistrations: boolean;
+  allowTransfers: boolean;
+  allowWalletFunding: boolean;
+  allowBillPayments: boolean;
+  allowVirtualAccounts: boolean;
+  requireAdminMfa: boolean;
+  notifyAdminLogin: boolean;
+  notifyLargeTransfer: boolean;
+  notifyFailedTransfer: boolean;
+  notifyProviderFailure: boolean;
+  notifyWebhookFailure: boolean;
+  fraudVelocityChecks: boolean;
+  blockSuspiciousTransactions: boolean;
+  requireKycForTransfers: boolean;
+  requireBvnForHighValue: boolean;
+  customerEmailNotifications: boolean;
+  customerPushNotifications: boolean;
+  showMaintenanceBanner: boolean;
+  enableFeatureFlags: boolean;
+  automaticReconciliation: boolean;
+  automaticBackups: boolean;
+}
+
+interface AuditItem {
+  id: string;
+  action: string;
+  description: string;
+  createdAt: string;
+}
+
+
+interface AdminSettingRow {
+  id: string;
+  setting_key: string;
+  section: string;
+  data_type: string;
+  value: unknown;
+  description: string | null;
+  requires_restart: boolean;
+  updated_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+interface AdminSettingsHistoryRow {
+  id: string;
+  setting_id: string;
+  setting_key: string;
+  section: string;
+  old_value: unknown;
+  new_value: unknown;
+  changed_by: string | null;
+  changed_at: string;
+  change_type: string;
+  metadata: Record<string, unknown> | null;
+}
+
+type PersistedSettingKey =
+  | keyof SettingsState
+  | "maintenanceReason"
+  | "defaultTransferFee"
+  | "electronicTransferFee"
+  | "walletTransferFee"
+  | "level1Limit"
+  | "level2Limit"
+  | "level3Limit"
+  | "retentionDays"
+  | "sessionTimeout"
+  | "maxAdminSessions"
+  | "webhookAlertThreshold"
+  | "dailyExportLimit";
+
+const PERSISTED_SETTING_KEYS: PersistedSettingKey[] = [
+  "maintenanceMode",
+  "allowNewRegistrations",
+  "allowTransfers",
+  "allowWalletFunding",
+  "allowBillPayments",
+  "allowVirtualAccounts",
+  "requireAdminMfa",
+  "notifyAdminLogin",
+  "notifyLargeTransfer",
+  "notifyFailedTransfer",
+  "notifyProviderFailure",
+  "notifyWebhookFailure",
+  "fraudVelocityChecks",
+  "blockSuspiciousTransactions",
+  "requireKycForTransfers",
+  "requireBvnForHighValue",
+  "customerEmailNotifications",
+  "customerPushNotifications",
+  "showMaintenanceBanner",
+  "enableFeatureFlags",
+  "automaticReconciliation",
+  "automaticBackups",
+  "maintenanceReason",
+  "defaultTransferFee",
+  "electronicTransferFee",
+  "walletTransferFee",
+  "level1Limit",
+  "level2Limit",
+  "level3Limit",
+  "retentionDays",
+  "sessionTimeout",
+  "maxAdminSessions",
+  "webhookAlertThreshold",
+  "dailyExportLimit",
+];
+
+const SETTING_DESCRIPTIONS: Record<string, string> = {
+  maintenanceMode: "Enable platform maintenance mode.",
+  allowNewRegistrations: "Allow new customer registrations.",
+  allowTransfers: "Allow customer bank and wallet transfers.",
+  allowWalletFunding: "Allow customers to fund wallets.",
+  allowBillPayments: "Allow customer bill and service payments.",
+  allowVirtualAccounts: "Allow permanent virtual accounts.",
+  requireAdminMfa: "Require multi-factor authentication for administrators.",
+  notifyAdminLogin: "Notify administrators about administrator logins.",
+  notifyLargeTransfer: "Notify administrators about high-value transfers.",
+  notifyFailedTransfer: "Notify administrators about failed transfers.",
+  notifyProviderFailure: "Notify administrators about provider failures.",
+  notifyWebhookFailure: "Notify administrators about webhook failures.",
+  fraudVelocityChecks: "Enable transaction velocity checks.",
+  blockSuspiciousTransactions: "Block transactions matching configured fraud rules.",
+  requireKycForTransfers: "Require KYC before customer transfers.",
+  requireBvnForHighValue: "Require BVN verification for high-value transfers.",
+  customerEmailNotifications: "Enable supported customer email notifications.",
+  customerPushNotifications: "Enable supported customer push notifications.",
+  showMaintenanceBanner: "Show a maintenance banner to customers.",
+  enableFeatureFlags: "Enable centrally managed feature flags.",
+  automaticReconciliation: "Enable automatic reconciliation processing.",
+  automaticBackups: "Enable the configured automatic backup policy.",
+  maintenanceReason: "Customer-facing maintenance message.",
+  defaultTransferFee: "Standard IyanjuPay transfer fee in NGN.",
+  electronicTransferFee: "Electronic transfer fee in NGN.",
+  walletTransferFee: "Wallet transfer fee in NGN.",
+  level1Limit: "KYC Level 1 daily transfer limit in NGN.",
+  level2Limit: "KYC Level 2 daily transfer limit in NGN.",
+  level3Limit: "KYC Level 3 daily transfer limit in NGN.",
+  retentionDays: "Administrative data retention period in days.",
+  sessionTimeout: "Administrator session timeout in minutes.",
+  maxAdminSessions: "Maximum concurrent administrator sessions.",
+  webhookAlertThreshold: "Webhook failure alert threshold.",
+  dailyExportLimit: "Maximum administrative exports per day.",
+};
+
+function normalizeSettingValue(value: unknown): unknown {
+  if (
+    value &&
+    typeof value === "object" &&
+    !Array.isArray(value) &&
+    "value" in value
+  ) {
+    return (value as { value: unknown }).value;
+  }
+  return value;
+}
+
+function settingValueAsBoolean(
+  value: unknown,
+  fallback: boolean
+): boolean {
+  const normalized = normalizeSettingValue(value);
+
+  if (typeof normalized === "boolean") {
+    return normalized;
+  }
+
+  if (typeof normalized === "string") {
+    if (normalized.toLowerCase() === "true") return true;
+    if (normalized.toLowerCase() === "false") return false;
+  }
+
+  return fallback;
+}
+
+function settingValueAsString(
+  value: unknown,
+  fallback: string
+): string {
+  const normalized = normalizeSettingValue(value);
+
+  if (
+    normalized === null ||
+    normalized === undefined
+  ) {
+    return fallback;
+  }
+
+  if (
+    typeof normalized === "string" ||
+    typeof normalized === "number" ||
+    typeof normalized === "boolean"
+  ) {
+    return String(normalized);
+  }
+
+  return fallback;
+}
+
+function valuesEqual(a: unknown, b: unknown): boolean {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
+function camelToSnake(value: string): string {
+  return value
+    .replace(/([A-Z])/g, "_$1")
+    .toLowerCase();
+}
+
+function settingStorageKey(
+  key: PersistedSettingKey,
+  existingKeys: Record<string, string>
+): string {
+  return (
+    existingKeys[key] ??
+    camelToSnake(key)
+  );
+}
+
+function getFriendlyAdminError(
+  error: unknown,
+  fallback: string
+): string {
+  const message =
+    error instanceof Error
+      ? error.message
+      : "";
+
+  const normalized = message.toLowerCase();
+
+  if (
+    normalized.includes("jwt") ||
+    normalized.includes("token") ||
+    normalized.includes("session") ||
+    normalized.includes("authentication")
+  ) {
+    return "Your administrator session has expired. Please sign in again.";
+  }
+
+  if (
+    normalized.includes("permission") ||
+    normalized.includes("forbidden") ||
+    normalized.includes("not authorized") ||
+    normalized.includes("unauthorized")
+  ) {
+    return "You are not authorized to perform this administrator action.";
+  }
+
+  if (
+    normalized.includes("network") ||
+    normalized.includes("fetch") ||
+    normalized.includes("failed to fetch") ||
+    normalized.includes("offline")
+  ) {
+    return "The service is temporarily unavailable. Please check your connection and try again.";
+  }
+
+  return fallback;
+}
+
+
+// ============================================================
+// CONSTANTS
+// ============================================================
+
+const EDGE_FUNCTION_NAME =
+  "admin-flutterwave-balance";
+
+const CURRENCY = "NGN";
+
+const navigationGroups: NavigationGroup[] = [
   {
-    value: "super_admin",
-    label: "Super Admin",
-    description: "Full administrative access",
+    id: "overview",
+    label: "Overview",
+    icon: LayoutDashboard,
+    items: [
+      {
+        id: "overview",
+        label: "Overview",
+        description: "Platform settings summary",
+        icon: LayoutDashboard,
+      },
+    ],
   },
+
   {
-    value: "operations_admin",
-    label: "Operations Admin",
-    description: "Operational and transaction management",
+    id: "financial",
+    label: "Financial",
+    icon: Wallet,
+    items: [
+      {
+        id: "collection-balance",
+        label: "Collection Balance",
+        description: "Flutterwave merchant collection balance",
+        icon: ArrowDownLeft,
+      },
+      {
+        id: "payout-balance",
+        label: "Payout Balance",
+        description: "Flutterwave payout balance",
+        icon: Wallet,
+      },
+      {
+        id: "balance-history",
+        label: "Balance History",
+        description: "Flutterwave balance movements",
+        icon: History,
+      },
+      {
+        id: "fees",
+        label: "Fees",
+        description: "Platform transaction fees",
+        icon: FileText,
+      },
+      {
+        id: "transaction-limits",
+        label: "Transaction Limits",
+        description: "Customer transaction limits",
+        icon: SlidersHorizontal,
+      },
+    ],
   },
+
   {
-    value: "support_admin",
-    label: "Support Admin",
-    description: "Manage customer support activities",
+    id: "providers",
+    label: "Providers",
+    icon: Network,
+    items: [
+      {
+        id: "flutterwave",
+        label: "Flutterwave",
+        description: "Flutterwave provider configuration",
+        icon: Zap,
+      },
+      {
+        id: "provider-health",
+        label: "Provider Health",
+        description: "Provider connectivity and status",
+        icon: Activity,
+      },
+      {
+        id: "webhooks",
+        label: "Webhooks",
+        description: "Provider webhook monitoring",
+        icon: Webhook,
+      },
+    ],
   },
+
   {
-    value: "finance_admin",
-    label: "Finance Admin",
-    description: "Finance and financial operations",
+    id: "operations",
+    label: "Operations",
+    icon: Settings,
+    items: [
+      {
+        id: "service-controls",
+        label: "Service Controls",
+        description: "Enable or disable platform services",
+        icon: SlidersHorizontal,
+      },
+      {
+        id: "maintenance",
+        label: "Maintenance Mode",
+        description: "Platform maintenance controls",
+        icon: PauseCircle,
+      },
+      {
+        id: "reconciliation",
+        label: "Reconciliation",
+        description: "Transaction reconciliation controls",
+        icon: FileClock,
+      },
+    ],
   },
+
   {
-    value: "compliance_admin",
-    label: "Compliance Admin",
-    description: "Manage compliance and KYC activities",
+    id: "notifications",
+    label: "Notifications",
+    icon: Bell,
+    items: [
+      {
+        id: "notifications",
+        label: "Notifications",
+        description: "Admin and customer notifications",
+        icon: Bell,
+      },
+    ],
   },
+
   {
-    value: "read_only_admin",
-    label: "Read Only Admin",
-    description: "View-only administrative access",
+    id: "security",
+    label: "Security",
+    icon: Shield,
+    items: [
+      {
+        id: "admin-authentication",
+        label: "Admin Authentication",
+        description: "Administrator authentication policy",
+        icon: UserCheck,
+      },
+      {
+        id: "session-policy",
+        label: "Session Policy",
+        description: "Admin session controls",
+        icon: Smartphone,
+      },
+      {
+        id: "sensitive-actions",
+        label: "Sensitive Actions",
+        description: "Protection for high-risk actions",
+        icon: Lock,
+      },
+    ],
+  },
+
+  {
+    id: "risk",
+    label: "Risk & Compliance",
+    icon: ShieldCheck,
+    items: [
+      {
+        id: "fraud-controls",
+        label: "Fraud Controls",
+        description: "Fraud prevention controls",
+        icon: Fingerprint,
+      },
+      {
+        id: "kyc-policies",
+        label: "KYC Policies",
+        description: "Identity verification requirements",
+        icon: UserCheck,
+      },
+      {
+        id: "compliance",
+        label: "Compliance",
+        description: "Compliance configuration",
+        icon: ShieldCheck,
+      },
+    ],
+  },
+
+  {
+    id: "platform",
+    label: "Platform",
+    icon: Globe,
+    items: [
+      {
+        id: "general",
+        label: "General",
+        description: "General platform configuration",
+        icon: Settings,
+      },
+      {
+        id: "customer-experience",
+        label: "Customer Experience",
+        description: "Customer-facing behavior",
+        icon: Users,
+      },
+      {
+        id: "feature-flags",
+        label: "Feature Flags",
+        description: "Platform feature availability",
+        icon: Flag,
+      },
+    ],
+  },
+
+  {
+    id: "data",
+    label: "Data",
+    icon: Database,
+    items: [
+      {
+        id: "retention",
+        label: "Retention",
+        description: "Data retention policies",
+        icon: Archive,
+      },
+      {
+        id: "backups",
+        label: "Backups",
+        description: "Database backup configuration",
+        icon: Database,
+      },
+      {
+        id: "exports",
+        label: "Exports",
+        description: "Data export tools",
+        icon: FileDown,
+      },
+    ],
+  },
+
+  {
+    id: "audit",
+    label: "Audit",
+    icon: History,
+    items: [
+      {
+        id: "audit-history",
+        label: "Settings Change History",
+        description: "Settings modification audit trail",
+        icon: History,
+      },
+    ],
   },
 ];
 
-const ROLE_LABELS: Record<string, string> = {
-  super_admin: "Super Admin",
-  operations_admin: "Operations Admin",
-  support_admin: "Support Admin",
-  finance_admin: "Finance Admin",
-  compliance_admin: "Compliance Admin",
-  read_only_admin: "Read Only Admin",
-};
 
-const ROLE_DESCRIPTIONS: Record<string, string> = {
-  super_admin: "Full administrative access",
-  operations_admin: "Operational and transaction management",
-  support_admin: "Manage customer support activities",
-  finance_admin: "Finance and financial operations",
-  compliance_admin: "Manage compliance and KYC activities",
-  read_only_admin: "View-only administrative access",
-};
+// ============================================================
+// HELPERS
+// ============================================================
 
-/* ============================================================
-   HELPERS
-   ============================================================ */
-
-function getRoleLabel(
-  role: string | null | undefined,
+function formatCurrency(
+  amount: number | string | null | undefined,
+  currency = CURRENCY
 ): string {
-  if (!role) {
-    return "Unknown";
+  if (
+    amount === null ||
+    amount === undefined ||
+    amount === ""
+  ) {
+    return "—";
   }
 
-  return ROLE_LABELS[role] ?? role;
+  const value = Number(amount);
+
+  if (!Number.isFinite(value)) {
+    return "—";
+  }
+
+  return new Intl.NumberFormat("en-NG", {
+    style: "currency",
+    currency,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(value);
 }
 
-function getRoleDescription(
-  role: string | null | undefined,
+function formatNumber(
+  amount: number | string | null | undefined
 ): string {
-  if (!role) {
-    return "";
+  if (
+    amount === null ||
+    amount === undefined ||
+    amount === ""
+  ) {
+    return "—";
   }
 
-  return ROLE_DESCRIPTIONS[role] ?? "";
+  const value = Number(amount);
+
+  if (!Number.isFinite(value)) {
+    return "—";
+  }
+
+  return new Intl.NumberFormat("en-NG").format(value);
 }
 
 function formatDate(
-  value: string | null | undefined,
+  value: string | null | undefined
 ): string {
   if (!value) {
     return "—";
@@ -204,2532 +818,4892 @@ function formatDate(
     return "—";
   }
 
-  return date.toLocaleString("en-NG", {
+  return new Intl.DateTimeFormat("en-NG", {
     dateStyle: "medium",
     timeStyle: "short",
-  });
+  }).format(date);
 }
 
-function getInitials(
-  fullName: string | null | undefined,
-  email: string | null | undefined,
+function formatDateOnly(
+  value: Date
 ): string {
-  const source =
-    fullName?.trim() ||
-    email?.trim() ||
-    "Admin";
-
-  const parts = source
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2);
-
-  if (parts.length === 1) {
-    return parts[0]
-      .slice(0, 2)
-      .toUpperCase();
-  }
-
-  return parts
-    .map((part) => part[0])
-    .join("")
-    .toUpperCase();
+  return value
+    .toISOString()
+    .slice(0, 10);
 }
 
-/**
- * admin_management_list() is RETURNS TABLE.
- *
- * Supabase therefore normally returns:
- *
- * [
- *   {
- *     user_id: "...",
- *     email: "...",
- *     ...
- *   }
- * ]
- *
- * It does not normally return:
- *
- * {
- *   admins: [...]
- * }
- */
-function normalizeAdminList(
-  response: unknown,
-): AdminRecord[] {
-  if (!response) {
-    return [];
-  }
+function getDefaultFromDate(): string {
+  const date = new Date();
 
-  if (Array.isArray(response)) {
-    return response as AdminRecord[];
-  }
+  date.setDate(
+    date.getDate() - 30
+  );
 
-  if (
-    typeof response === "object" &&
-    response !== null
+  return formatDateOnly(date);
+}
+
+function getToday(): string {
+  return formatDateOnly(
+    new Date()
+  );
+}
+
+function getSectionTitle(
+  section: SettingsSection
+): string {
+  for (
+    const group of navigationGroups
   ) {
-    const value =
-      response as {
-        admins?: unknown;
-        data?: unknown;
-      };
+    const item =
+      group.items.find(
+        (entry) =>
+          entry.id === section
+      );
 
-    if (Array.isArray(value.admins)) {
-      return value.admins as AdminRecord[];
-    }
-
-    if (Array.isArray(value.data)) {
-      return value.data as AdminRecord[];
+    if (item) {
+      return item.label;
     }
   }
 
-  return [];
+  return "Settings";
 }
 
-/* ============================================================
-   SAFE ERROR HANDLING
-   ============================================================ */
-
-/**
- * Extracts technical information only for internal classification.
- *
- * IMPORTANT:
- * Never display the return value of this function directly
- * to the administrator.
- */
-function extractTechnicalErrorMessage(
-  error: unknown,
+function getSectionDescription(
+  section: SettingsSection
 ): string {
-  if (!error) {
-    return "";
-  }
-
-  if (typeof error === "string") {
-    return error;
-  }
-
-  if (error instanceof Error) {
-    return error.message || "";
-  }
-
-  if (
-    typeof error === "object" &&
-    error !== null
+  for (
+    const group of navigationGroups
   ) {
-    const value =
-      error as {
-        message?: unknown;
-        details?: unknown;
-        hint?: unknown;
-        error?: unknown;
-        code?: unknown;
-      };
+    const item =
+      group.items.find(
+        (entry) =>
+          entry.id === section
+      );
 
-    return [
-      typeof value.message === "string"
-        ? value.message
-        : "",
-      typeof value.details === "string"
-        ? value.details
-        : "",
-      typeof value.hint === "string"
-        ? value.hint
-        : "",
-      typeof value.error === "string"
-        ? value.error
-        : "",
-      typeof value.code === "string"
-        ? value.code
-        : "",
-    ]
-      .filter(Boolean)
-      .join(" ");
+    if (item) {
+      return (
+        item.description ??
+        ""
+      );
+    }
   }
 
   return "";
 }
 
-/**
- * Converts backend/database/Supabase/Edge Function errors
- * into safe user-facing messages.
- *
- * Raw PostgreSQL errors must NEVER be displayed directly.
- */
-function getSafeErrorMessage(
-  error: unknown,
-  fallback = "Something went wrong. Please try again.",
-): string {
-  /*
-   * Keep technical details in the browser console for debugging.
-   * They are intentionally NOT returned to the UI.
-   */
-  console.error("Technical error:", error);
-
-  const rawMessage =
-    extractTechnicalErrorMessage(error).toLowerCase();
-
-  /*
-   * Authentication/session errors.
-   */
-  if (
-    rawMessage.includes("authentication required") ||
-    rawMessage.includes("not authenticated") ||
-    rawMessage.includes("unauthenticated") ||
-    rawMessage.includes("invalid jwt") ||
-    rawMessage.includes("jwt expired") ||
-    rawMessage.includes("jwt") ||
-    rawMessage.includes("session expired") ||
-    rawMessage.includes("401")
-  ) {
-    return "Your session has expired. Please sign in again.";
-  }
-
-  /*
-   * Permission/authorization errors.
-   */
-  if (
-    rawMessage.includes("permission denied") ||
-    rawMessage.includes("not authorized") ||
-    rawMessage.includes("unauthorized") ||
-    rawMessage.includes("forbidden") ||
-    rawMessage.includes("access denied") ||
-    rawMessage.includes("insufficient privilege") ||
-    rawMessage.includes("403")
-  ) {
-    return "You do not have permission to perform this action.";
-  }
-
-  /*
-   * Network/connection errors.
-   */
-  if (
-    rawMessage.includes("network") ||
-    rawMessage.includes("failed to fetch") ||
-    rawMessage.includes("fetch failed") ||
-    rawMessage.includes("connection") ||
-    rawMessage.includes("timeout") ||
-    rawMessage.includes("timed out")
-  ) {
-    return "Unable to connect to the server. Please check your connection and try again.";
-  }
-
-  /*
-   * PostgreSQL/PostgREST/RPC errors.
-   *
-   * These must never be exposed to the frontend.
-   */
-  if (
-    rawMessage.includes("postgres") ||
-    rawMessage.includes("postgrest") ||
-    rawMessage.includes("plpgsql") ||
-    rawMessage.includes("failed to run sql") ||
-    rawMessage.includes("sql query") ||
-    rawMessage.includes("database") ||
-    rawMessage.includes("relation") ||
-    rawMessage.includes("column") ||
-    rawMessage.includes("constraint") ||
-    rawMessage.includes("violates") ||
-    rawMessage.includes("duplicate key") ||
-    rawMessage.includes("function") ||
-    rawMessage.includes("rpc") ||
-    rawMessage.includes("23505") ||
-    rawMessage.includes("42501") ||
-    rawMessage.includes("42883") ||
-    rawMessage.includes("42p01") ||
-    rawMessage.includes("42p13") ||
-    rawMessage.includes("p0001")
-  ) {
-    return fallback;
-  }
-
-  /*
-   * Edge Function invocation/server errors.
-   */
-  if (
-    rawMessage.includes("edge function") ||
-    rawMessage.includes("functions.invoke") ||
-    rawMessage.includes("function invocation") ||
-    rawMessage.includes("non-2xx") ||
-    rawMessage.includes("http error")
-  ) {
-    return fallback;
-  }
-
-  /*
-   * Do not expose arbitrary server-generated messages.
-   */
-  return fallback;
+function flattenNavigation(): NavigationItem[] {
+  return navigationGroups.flatMap(
+    (group) => group.items
+  );
 }
 
-function isSuccessfulResponse(
-  value: unknown,
-): boolean {
-  if (
-    value &&
-    typeof value === "object"
-  ) {
-    return Boolean(
-      (value as {
-        success?: unknown;
-      }).success,
-    );
-  }
-
-  return false;
+function getInitialSettings(): SettingsState {
+  return {
+    maintenanceMode: false,
+    allowNewRegistrations: true,
+    allowTransfers: true,
+    allowWalletFunding: true,
+    allowBillPayments: true,
+    allowVirtualAccounts: true,
+    requireAdminMfa: true,
+    notifyAdminLogin: true,
+    notifyLargeTransfer: true,
+    notifyFailedTransfer: true,
+    notifyProviderFailure: true,
+    notifyWebhookFailure: true,
+    fraudVelocityChecks: true,
+    blockSuspiciousTransactions: true,
+    requireKycForTransfers: true,
+    requireBvnForHighValue: true,
+    customerEmailNotifications: true,
+    customerPushNotifications: true,
+    showMaintenanceBanner: true,
+    enableFeatureFlags: true,
+    automaticReconciliation: true,
+    automaticBackups: true,
+  };
 }
 
-/* ============================================================
-   BADGES
-   ============================================================ */
 
-function RoleBadge({
-  role,
+// ============================================================
+// SMALL UI COMPONENTS
+// ============================================================
+
+function SettingRow({
+  label,
+  description,
+  enabled,
+  onChange,
+  disabled = false,
 }: {
-  role: string;
+  label: string;
+  description: string;
+  enabled: boolean;
+  onChange: (value: boolean) => void;
+  disabled?: boolean;
 }) {
-  const isSuperAdmin =
-    role === "super_admin";
-
-  const isOperationsAdmin =
-    role === "operations_admin";
-
-  const isSupportAdmin =
-    role === "support_admin";
-
-  const isFinanceAdmin =
-    role === "finance_admin";
-
-  const isComplianceAdmin =
-    role === "compliance_admin";
-
-  const classes = [
-    "inline-flex items-center gap-1.5",
-    "rounded-full px-2.5 py-1",
-    "text-xs font-medium",
-    isSuperAdmin
-      ? "bg-amber-100 text-amber-800"
-      : isOperationsAdmin
-        ? "bg-blue-100 text-blue-800"
-        : isSupportAdmin
-          ? "bg-violet-100 text-violet-800"
-          : isFinanceAdmin
-            ? "bg-emerald-100 text-emerald-800"
-            : isComplianceAdmin
-              ? "bg-orange-100 text-orange-800"
-              : "bg-slate-100 text-slate-700",
-  ].join(" ");
-
   return (
-    <span className={classes}>
-      {isSuperAdmin ? (
-        <ShieldCheck className="h-3.5 w-3.5" />
-      ) : (
-        <Shield className="h-3.5 w-3.5" />
-      )}
+    <div className="flex items-center justify-between gap-6 py-4">
+      <div className="min-w-0">
+        <p className="text-sm font-medium">
+          {label}
+        </p>
 
-      {getRoleLabel(role)}
-    </span>
+        <p className="mt-1 text-sm text-muted-foreground">
+          {description}
+        </p>
+      </div>
+
+      <Switch
+        checked={enabled}
+        onCheckedChange={onChange}
+        disabled={disabled}
+      />
+    </div>
   );
 }
 
 function StatusBadge({
-  active,
+  status,
 }: {
-  active: boolean;
+  status:
+    | "healthy"
+    | "warning"
+    | "offline"
+    | "active"
+    | "inactive";
 }) {
-  return (
-    <span
-      className={[
-        "inline-flex items-center gap-1.5",
-        "rounded-full px-2.5 py-1",
-        "text-xs font-medium",
-        active
-          ? "bg-emerald-100 text-emerald-800"
-          : "bg-red-100 text-red-800",
-      ].join(" ")}
-    >
-      {active ? (
-        <CheckCircle2 className="h-3.5 w-3.5" />
-      ) : (
-        <UserX className="h-3.5 w-3.5" />
-      )}
+  const config = {
+    healthy: {
+      label: "Healthy",
+      className:
+        "border-emerald-200 bg-emerald-50 text-emerald-700",
+    },
+    warning: {
+      label: "Warning",
+      className:
+        "border-amber-200 bg-amber-50 text-amber-700",
+    },
+    offline: {
+      label: "Offline",
+      className:
+        "border-red-200 bg-red-50 text-red-700",
+    },
+    active: {
+      label: "Active",
+      className:
+        "border-emerald-200 bg-emerald-50 text-emerald-700",
+    },
+    inactive: {
+      label: "Inactive",
+      className:
+        "border-slate-200 bg-slate-50 text-slate-600",
+    },
+  };
 
-      {active ? "Active" : "Inactive"}
-    </span>
+  const item =
+    config[status];
+
+  return (
+    <Badge
+      variant="outline"
+      className={cn(
+        "font-medium",
+        item.className
+      )}
+    >
+      {item.label}
+    </Badge>
   );
 }
 
-/* ============================================================
-   PAGE
-   ============================================================ */
+function EmptyState({
+  icon: Icon,
+  title,
+  description,
+}: {
+  icon: React.ElementType;
+  title: string;
+  description: string;
+}) {
+  return (
+    <div className="flex min-h-[260px] flex-col items-center justify-center rounded-xl border border-dashed p-8 text-center">
+      <div className="mb-4 rounded-full bg-muted p-4">
+        <Icon className="h-7 w-7 text-muted-foreground" />
+      </div>
 
-const AdminManagementPage: React.FC =
-  () => {
-    const [admins, setAdmins] =
-      useState<AdminRecord[]>([]);
+      <h3 className="text-base font-semibold">
+        {title}
+      </h3>
 
-    const [total, setTotal] =
-      useState(0);
+      <p className="mt-2 max-w-md text-sm text-muted-foreground">
+        {description}
+      </p>
+    </div>
+  );
+}
 
-    const [summary, setSummary] =
-      useState<AdminSummary>({
-        total: 0,
-        active: 0,
-        inactive: 0,
-        super_admin: 0,
-        operations_admin: 0,
-        support_admin: 0,
-        finance_admin: 0,
-        compliance_admin: 0,
-        read_only_admin: 0,
-      });
 
-    const [search, setSearch] =
-      useState("");
+// ============================================================
+// BALANCE RESPONSE NORMALIZATION
+// ============================================================
 
-    const [roleFilter, setRoleFilter] =
-      useState<string>("all");
+function normalizeBalanceData(value: any): BalanceData | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
 
-    const [activeFilter, setActiveFilter] =
-      useState<string>("all");
+  const raw = value.data && typeof value.data === "object"
+    ? value.data
+    : value;
 
-    const [page, setPage] =
-      useState(1);
+  const availableRaw =
+    raw.availableBalance ??
+    raw.available_balance ??
+    raw.available ??
+    raw.balance ??
+    null;
 
-    const [loading, setLoading] =
-      useState(true);
+  const ledgerRaw =
+    raw.ledgerBalance ??
+    raw.ledger_balance ??
+    raw.ledger ??
+    availableRaw;
 
-    const [refreshing, setRefreshing] =
-      useState(false);
+  const available =
+    availableRaw === null || availableRaw === undefined || availableRaw === ""
+      ? null
+      : Number(availableRaw);
 
-    const [toast, setToast] =
-      useState<ToastState>(null);
+  const ledger =
+    ledgerRaw === null || ledgerRaw === undefined || ledgerRaw === ""
+      ? null
+      : Number(ledgerRaw);
 
-    const [addDialogOpen, setAddDialogOpen] =
-      useState(false);
+  return {
+    currency: String(raw.currency ?? CURRENCY),
+    availableBalance: Number.isFinite(available as number) ? available : null,
+    ledgerBalance: Number.isFinite(ledger as number) ? ledger : null,
+    source: raw.source ? String(raw.source) : null,
+    configured: raw.configured === undefined ? undefined : Boolean(raw.configured),
+    accountReference:
+      raw.accountReference ?? raw.account_reference ?? raw.reference ?? null,
+  };
+}
 
-    const [roleDialogOpen, setRoleDialogOpen] =
-      useState(false);
+function normalizeBalanceResponse(value: any): BalanceResponse {
+  const root = value && typeof value === "object" ? value : {};
+  const payload =
+    root.data && typeof root.data === "object" && !Array.isArray(root.data)
+      ? root.data
+      : root;
 
-    const [statusDialogOpen, setStatusDialogOpen] =
-      useState(false);
+  let collectionSource =
+    payload.collection ??
+    payload.collectionBalance ??
+    payload.collection_balance ??
+    null;
 
-    const [selectedAdmin, setSelectedAdmin] =
-      useState<AdminRecord | null>(null);
+  let payoutSource =
+    payload.payout ??
+    payload.payoutBalance ??
+    payload.payout_balance ??
+    null;
 
-    const [statusTarget, setStatusTarget] =
-      useState<AdminRecord | null>(null);
+  // Flutterwave's balance endpoint can expose balances as an array.
+  // Prefer NGN, while retaining a sensible first-balance fallback.
+  const balances = Array.isArray(payload.balances)
+    ? payload.balances
+    : Array.isArray(payload.data)
+      ? payload.data
+      : null;
 
-    const [addFullName, setAddFullName] =
-      useState("");
+  if (!collectionSource && balances?.length) {
+    const ngn = balances.find(
+      (item: any) => String(item?.currency ?? "").toUpperCase() === CURRENCY
+    );
+    collectionSource = ngn ?? balances[0];
+  }
 
-    const [addEmail, setAddEmail] =
-      useState("");
+  return {
+    success: Boolean(payload.success ?? root.success ?? true),
+    status: payload.status ?? root.status,
+    synchronizedAt:
+      payload.synchronizedAt ??
+      payload.synchronized_at ??
+      root.synchronizedAt ??
+      new Date().toISOString(),
+    collection: normalizeBalanceData(collectionSource),
+    payout: normalizeBalanceData(payoutSource),
+    errors: {
+      collection:
+        payload.errors?.collection ?? root.errors?.collection ?? null,
+      payout:
+        payload.errors?.payout ?? root.errors?.payout ?? null,
+    },
+  };
+}
 
-    const [addRole, setAddRole] =
-      useState<AdminRole>(
-        "operations_admin",
-      );
 
-    const [addNotes, setAddNotes] =
-      useState("");
+// ============================================================
+// MAIN COMPONENT
+// ============================================================
 
-    const [newRole, setNewRole] =
-      useState<AdminRole>(
-        "operations_admin",
-      );
+function AdminSettingsPage() {
+  const [activeSection, setActiveSection] =
+    useState<SettingsSection>("overview");
 
-    const [actionLoading, setActionLoading] =
-      useState(false);
-
-    const [currentAdminId, setCurrentAdminId] =
-      useState<string | null>(null);
-
-    const totalPages = useMemo(() => {
-      return Math.max(
-        1,
-        Math.ceil(total / PAGE_SIZE),
-      );
-    }, [total]);
-
-    /* ========================================================
-       TOAST
-       ======================================================== */
-
-    const showToast = useCallback(
-      (
-        type: "success" | "error",
-        message: string,
-      ) => {
-        setToast({
-          type,
-          message,
-        });
-
-        window.setTimeout(() => {
-          setToast(null);
-        }, 5000);
-      },
-      [],
+  const [settings, setSettings] =
+    useState<SettingsState>(
+      getInitialSettings()
     );
 
-    /* ========================================================
-       CURRENT ADMIN
-       ======================================================== */
+  const [collectionBalance, setCollectionBalance] =
+    useState<BalanceData | null>(null);
 
-    const loadCurrentUser =
-      useCallback(async () => {
+  const [payoutBalance, setPayoutBalance] =
+    useState<BalanceData | null>(null);
+
+  const [balanceLoading, setBalanceLoading] =
+    useState(false);
+
+  const [balanceError, setBalanceError] =
+    useState<string | null>(null);
+
+  const [lastBalanceSync, setLastBalanceSync] =
+    useState<string | null>(null);
+
+  const [historyLoading, setHistoryLoading] =
+    useState(false);
+
+  const [historyError, setHistoryError] =
+    useState<string | null>(null);
+
+  const [history, setHistory] =
+    useState<HistoryResponse | null>(null);
+
+  const [historyType, setHistoryType] =
+    useState<
+      "all" | "collection" | "payout"
+    >("all");
+
+  const [historyFrom, setHistoryFrom] =
+    useState(getDefaultFromDate());
+
+  const [historyTo, setHistoryTo] =
+    useState(getToday());
+
+  const [historyPage, setHistoryPage] =
+    useState(1);
+
+  const [providerHealth, setProviderHealth] =
+    useState<HealthResponse | null>(null);
+
+  const [healthLoading, setHealthLoading] =
+    useState(false);
+
+  const [healthError, setHealthError] =
+    useState<string | null>(null);
+
+  const [saving, setSaving] =
+    useState(false);
+
+  const [saveMessage, setSaveMessage] =
+    useState<string | null>(null);
+
+  const [auditItems, setAuditItems] =
+    useState<AuditItem[]>([]);
+
+
+  const [settingsLoading, setSettingsLoading] =
+    useState(false);
+
+  const [settingsError, setSettingsError] =
+    useState<string | null>(null);
+
+  const [settingsLoaded, setSettingsLoaded] =
+    useState(false);
+
+  const [savedSettingsSnapshot, setSavedSettingsSnapshot] =
+    useState<Record<string, unknown>>({});
+
+  const [settingsHistoryLoading, setSettingsHistoryLoading] =
+    useState(false);
+
+  const [settingKeyMap, setSettingKeyMap] =
+    useState<Record<string, string>>({});
+
+  const [maintenanceReason, setMaintenanceReason] =
+    useState("");
+
+  const [defaultTransferFee, setDefaultTransferFee] =
+    useState("10");
+
+  const [electronicTransferFee, setElectronicTransferFee] =
+    useState("50");
+
+  const [walletTransferFee, setWalletTransferFee] =
+    useState("50");
+
+  const [level1Limit, setLevel1Limit] =
+    useState("300000");
+
+  const [level2Limit, setLevel2Limit] =
+    useState("1000000");
+
+  const [level3Limit, setLevel3Limit] =
+    useState("5000000");
+
+  const [retentionDays, setRetentionDays] =
+    useState("365");
+
+  const [sessionTimeout, setSessionTimeout] =
+    useState("30");
+
+  const [maxAdminSessions, setMaxAdminSessions] =
+    useState("3");
+
+  const [webhookAlertThreshold, setWebhookAlertThreshold] =
+    useState("5");
+
+  const [dailyExportLimit, setDailyExportLimit] =
+    useState("10");
+
+
+  // ==========================================================
+  // NAVIGATION
+  // ==========================================================
+
+  const navigateTo = useCallback(
+    (section: SettingsSection) => {
+      setActiveSection(section);
+
+      window.history.replaceState(
+        null,
+        "",
+        `/admin/settings?section=${section}`
+      );
+    },
+    []
+  );
+
+
+  // ==========================================================
+  // INITIAL URL SECTION
+  // ==========================================================
+
+  useEffect(() => {
+    const params =
+      new URLSearchParams(
+        window.location.search
+      );
+
+    const requested =
+      params.get(
+        "section"
+      ) as SettingsSection | null;
+
+    if (
+      requested &&
+      flattenNavigation().some(
+        (item) =>
+          item.id === requested
+      )
+    ) {
+      setActiveSection(requested);
+    }
+  }, []);
+
+
+  // ==========================================================
+  // PERSISTENT ADMIN SETTINGS
+  // ==========================================================
+
+  const currentPersistedValues =
+    useMemo<Record<string, unknown>>(
+      () => ({
+        maintenanceMode: settings.maintenanceMode,
+        allowNewRegistrations:
+          settings.allowNewRegistrations,
+        allowTransfers:
+          settings.allowTransfers,
+        allowWalletFunding:
+          settings.allowWalletFunding,
+        allowBillPayments:
+          settings.allowBillPayments,
+        allowVirtualAccounts:
+          settings.allowVirtualAccounts,
+        requireAdminMfa:
+          settings.requireAdminMfa,
+        notifyAdminLogin:
+          settings.notifyAdminLogin,
+        notifyLargeTransfer:
+          settings.notifyLargeTransfer,
+        notifyFailedTransfer:
+          settings.notifyFailedTransfer,
+        notifyProviderFailure:
+          settings.notifyProviderFailure,
+        notifyWebhookFailure:
+          settings.notifyWebhookFailure,
+        fraudVelocityChecks:
+          settings.fraudVelocityChecks,
+        blockSuspiciousTransactions:
+          settings.blockSuspiciousTransactions,
+        requireKycForTransfers:
+          settings.requireKycForTransfers,
+        requireBvnForHighValue:
+          settings.requireBvnForHighValue,
+        customerEmailNotifications:
+          settings.customerEmailNotifications,
+        customerPushNotifications:
+          settings.customerPushNotifications,
+        showMaintenanceBanner:
+          settings.showMaintenanceBanner,
+        enableFeatureFlags:
+          settings.enableFeatureFlags,
+        automaticReconciliation:
+          settings.automaticReconciliation,
+        automaticBackups:
+          settings.automaticBackups,
+        maintenanceReason,
+        defaultTransferFee,
+        electronicTransferFee,
+        walletTransferFee,
+        level1Limit,
+        level2Limit,
+        level3Limit,
+        retentionDays,
+        sessionTimeout,
+        maxAdminSessions,
+        webhookAlertThreshold,
+        dailyExportLimit,
+      }),
+      [
+        settings,
+        maintenanceReason,
+        defaultTransferFee,
+        electronicTransferFee,
+        walletTransferFee,
+        level1Limit,
+        level2Limit,
+        level3Limit,
+        retentionDays,
+        sessionTimeout,
+        maxAdminSessions,
+        webhookAlertThreshold,
+        dailyExportLimit,
+      ]
+    );
+
+  const settingsDirty =
+    settingsLoaded &&
+    !valuesEqual(
+      currentPersistedValues,
+      savedSettingsSnapshot
+    );
+
+  const loadSettings =
+    useCallback(async () => {
+      setSettingsLoading(true);
+      setSettingsError(null);
+
+      try {
         const {
-          data,
-          error,
-        } = await supabase.auth.getUser();
+          data: sessionData,
+          error: sessionError,
+        } = await supabase.auth.getSession();
 
-        if (error) {
-          console.error(
-            "Unable to load current administrator:",
-            error,
+        if (
+          sessionError ||
+          !sessionData.session
+        ) {
+          throw new Error(
+            "Your administrator session has expired."
           );
-
-          /*
-           * Do not show the raw authentication error.
-           *
-           * The page can still render. Other operations will
-           * enforce their own authorization.
-           */
-          return;
         }
 
-        setCurrentAdminId(
-          data.user?.id ?? null,
-        );
-      }, []);
-
-    /* ========================================================
-       SUMMARY
-       ======================================================== */
-
-    const loadSummary =
-      useCallback(async (): Promise<number> => {
         const {
           data,
           error,
         } = await supabase.rpc(
-          "admin_management_summary",
+          "admin_settings_list",
+          {
+            p_section: null,
+            p_search: null,
+          }
         );
 
         if (error) {
           throw error;
         }
 
-        if (!data) {
-          return 0;
+        const rows =
+          (data ?? []) as AdminSettingRow[];
+
+        const initial =
+          getInitialSettings();
+
+        const nextSettings: SettingsState = {
+          ...initial,
+        };
+
+        const nextScalars = {
+          maintenanceReason: "",
+          defaultTransferFee: "10",
+          electronicTransferFee: "50",
+          walletTransferFee: "50",
+          level1Limit: "300000",
+          level2Limit: "1000000",
+          level3Limit: "5000000",
+          retentionDays: "365",
+          sessionTimeout: "30",
+          maxAdminSessions: "3",
+          webhookAlertThreshold: "5",
+          dailyExportLimit: "10",
+        };
+
+        const nextKeyMap: Record<string, string> = {};
+
+        for (const row of rows) {
+          const normalizedKey =
+            PERSISTED_SETTING_KEYS.find(
+              (key) =>
+                key === row.setting_key ||
+                camelToSnake(key) ===
+                  row.setting_key
+            );
+
+          if (!normalizedKey) {
+            continue;
+          }
+
+          nextKeyMap[normalizedKey] =
+            row.setting_key;
+
+          if (
+            normalizedKey in
+            nextSettings
+          ) {
+            const current =
+              nextSettings[
+                normalizedKey as keyof SettingsState
+              ];
+
+            (
+              nextSettings as Record<
+                string,
+                unknown
+              >
+            )[normalizedKey] =
+              typeof current === "boolean"
+                ? settingValueAsBoolean(
+                    row.value,
+                    current
+                  )
+                : row.value;
+          } else if (
+            normalizedKey in
+            nextScalars
+          ) {
+            (
+              nextScalars as Record<
+                string,
+                string
+              >
+            )[normalizedKey] =
+              settingValueAsString(
+                row.value,
+                (
+                  nextScalars as Record<
+                    string,
+                    string
+                  >
+                )[normalizedKey]
+              );
+          }
         }
 
-        const raw =
-          Array.isArray(data)
-            ? data[0]
-            : data;
+        setSettings(nextSettings);
+        setMaintenanceReason(
+          nextScalars.maintenanceReason
+        );
+        setDefaultTransferFee(
+          nextScalars.defaultTransferFee
+        );
+        setElectronicTransferFee(
+          nextScalars.electronicTransferFee
+        );
+        setWalletTransferFee(
+          nextScalars.walletTransferFee
+        );
+        setLevel1Limit(
+          nextScalars.level1Limit
+        );
+        setLevel2Limit(
+          nextScalars.level2Limit
+        );
+        setLevel3Limit(
+          nextScalars.level3Limit
+        );
+        setRetentionDays(
+          nextScalars.retentionDays
+        );
+        setSessionTimeout(
+          nextScalars.sessionTimeout
+        );
+        setMaxAdminSessions(
+          nextScalars.maxAdminSessions
+        );
+        setWebhookAlertThreshold(
+          nextScalars.webhookAlertThreshold
+        );
+        setDailyExportLimit(
+          nextScalars.dailyExportLimit
+        );
+        setSettingKeyMap(nextKeyMap);
+
+        const snapshot = {
+          ...nextSettings,
+          ...nextScalars,
+        };
+
+        setSavedSettingsSnapshot(
+          snapshot
+        );
+        setSettingsLoaded(true);
+      } catch (error) {
+        setSettingsLoaded(false);
+        setSettingsError(
+          getFriendlyAdminError(
+            error,
+            "Unable to load administrator settings."
+          )
+        );
+      } finally {
+        setSettingsLoading(false);
+      }
+    }, []);
+
+  const loadSettingsHistory =
+    useCallback(async () => {
+      setSettingsHistoryLoading(true);
+
+      try {
+        const {
+          data,
+          error,
+        } = await supabase.rpc(
+          "admin_settings_history",
+          {
+            p_key: null,
+            p_limit: 100,
+            p_offset: 0,
+          }
+        );
+
+        if (error) {
+          throw error;
+        }
+
+        const rows =
+          (data ??
+            []) as AdminSettingsHistoryRow[];
+
+        setAuditItems(
+          rows.map((row) => ({
+            id: row.id,
+            action:
+              row.setting_key,
+            description:
+              row.change_type ===
+              "create"
+                ? "Setting created."
+                : row.change_type ===
+                    "delete"
+                  ? "Setting deleted."
+                  : "Setting value updated.",
+            createdAt:
+              row.changed_at,
+          }))
+        );
+      } catch (error) {
+        setSettingsError(
+          getFriendlyAdminError(
+            error,
+            "Unable to load settings change history."
+          )
+        );
+      } finally {
+        setSettingsHistoryLoading(false);
+      }
+    }, []);
+
+  useEffect(() => {
+    void loadSettings();
+  }, [loadSettings]);
+
+  useEffect(() => {
+    if (
+      activeSection ===
+      "audit-history"
+    ) {
+      void loadSettingsHistory();
+    }
+  }, [
+    activeSection,
+    loadSettingsHistory,
+  ]);
+
+  // ==========================================================
+  // FLUTTERWAVE REQUEST
+  // ==========================================================
+
+  const callFlutterwaveFunction =
+    useCallback(
+      async <T,>(
+        action: string,
+        params: Record<
+          string,
+          string | number | undefined
+        > = {}
+      ): Promise<T> => {
+        const {
+          data: sessionData,
+          error: sessionError,
+        } =
+          await supabase.auth.getSession();
 
         if (
-          !raw ||
-          typeof raw !== "object"
+          sessionError ||
+          !sessionData.session
         ) {
-          return 0;
+          throw new Error(
+            "Your administrator session has expired. Please sign in again."
+          );
         }
 
-        const value =
-          raw as Record<
-            string,
-            unknown
-          >;
+        const functionUrl =
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/${EDGE_FUNCTION_NAME}`;
 
-        const total =
-          Number(
-            value.total ??
-              value.total_admins ??
-              value.admin_count ??
-              0,
-          ) || 0;
+        const url =
+          new URL(functionUrl);
 
-        const active =
-          Number(
-            value.active ??
-              value.active_admins ??
-              0,
-          ) || 0;
+        url.searchParams.set(
+          "action",
+          action
+        );
 
-        const inactive =
-          Number(
-            value.inactive ??
-              value.inactive_admins ??
-              0,
-          ) || 0;
-
-        const superAdmin =
-          Number(
-            value.super_admin ??
-              value.super_admins ??
-              0,
-          ) || 0;
-
-        const operationsAdmin =
-          Number(
-            value.operations_admin ??
-              value.operations_admins ??
-              0,
-          ) || 0;
-
-        const supportAdmin =
-          Number(
-            value.support_admin ??
-              value.support_admins ??
-              0,
-          ) || 0;
-
-        const financeAdmin =
-          Number(
-            value.finance_admin ??
-              value.finance_admins ??
-              0,
-          ) || 0;
-
-        const complianceAdmin =
-          Number(
-            value.compliance_admin ??
-              value.compliance_admins ??
-              0,
-          ) || 0;
-
-        const readOnlyAdmin =
-          Number(
-            value.read_only_admin ??
-              value.read_only_admins ??
-              0,
-          ) || 0;
-
-        setSummary({
-          total,
-          active,
-          inactive,
-          super_admin:
-            superAdmin,
-          operations_admin:
-            operationsAdmin,
-          support_admin:
-            supportAdmin,
-          finance_admin:
-            financeAdmin,
-          compliance_admin:
-            complianceAdmin,
-          read_only_admin:
-            readOnlyAdmin,
-        });
-
-        return total;
-      }, []);
-
-    /* ========================================================
-       LOAD ADMINISTRATORS
-       ======================================================== */
-
-    const loadAdmins =
-      useCallback(
-        async (
-          showRefresh = false,
-        ) => {
-          try {
-            if (showRefresh) {
-              setRefreshing(true);
-            } else {
-              setLoading(true);
-            }
-
-            const normalizedSearch =
-              search.trim() || null;
-
-            const role =
-              roleFilter === "all"
-                ? null
-                : roleFilter;
-
-            let isActive:
-              | boolean
-              | null = null;
-
+        Object.entries(
+          params
+        ).forEach(
+          ([key, value]) => {
             if (
-              activeFilter ===
-              "active"
+              value !== undefined &&
+              value !== null &&
+              String(value).length > 0
             ) {
-              isActive = true;
+              url.searchParams.set(
+                key,
+                String(value)
+              );
             }
+          }
+        );
 
-            if (
-              activeFilter ===
-              "inactive"
-            ) {
-              isActive = false;
+        const response =
+          await fetch(
+            url.toString(),
+            {
+              method: "GET",
+              headers: {
+                Authorization:
+                  `Bearer ${sessionData.session.access_token}`,
+                apikey:
+                  import.meta.env.VITE_SUPABASE_ANON_KEY,
+                Accept:
+                  "application/json",
+              },
             }
+          );
+
+        const text =
+          await response.text();
+
+        let payload: any;
+
+        try {
+          payload =
+            text
+              ? JSON.parse(text)
+              : null;
+        } catch {
+          payload = {
+            success: false,
+            error: text,
+          };
+        }
+
+        if (!response.ok) {
+          throw new Error(
+            payload?.error ||
+              payload?.message ||
+              `Request failed with HTTP ${response.status}.`
+          );
+        }
+
+        if (
+          payload &&
+          payload.success === false
+        ) {
+          throw new Error(
+            payload.error ||
+              payload.message ||
+              "Flutterwave request failed."
+          );
+        }
+
+        return payload as T;
+      },
+      []
+    );
+
+
+  // ==========================================================
+  // LOAD BALANCES
+  // ==========================================================
+
+  const loadBalances =
+    useCallback(
+      async (
+        showLoading = true
+      ) => {
+        if (showLoading) {
+          setBalanceLoading(true);
+        }
+
+        setBalanceError(null);
+
+        try {
+          const rawResult =
+            await callFlutterwaveFunction<any>(
+              "balances"
+            );
+
+          const result =
+            normalizeBalanceResponse(rawResult);
+
+          setCollectionBalance(
+            result.collection
+          );
+
+          setPayoutBalance(
+            result.payout
+          );
+
+          setLastBalanceSync(
+            result.synchronizedAt ??
+              new Date().toISOString()
+          );
+
+          const errors =
+            [
+              result.errors?.collection,
+              result.errors?.payout,
+            ].filter(Boolean);
+
+          if (errors.length > 0) {
+            setBalanceError(
+              "One or more Flutterwave balances could not be synchronized."
+            );
+          }
+        } catch (error) {
+          setBalanceError(
+            getFriendlyAdminError(
+              error,
+              "Unable to load Flutterwave balances."
+            )
+          );
+        } finally {
+          if (showLoading) {
+            setBalanceLoading(false);
+          }
+        }
+      },
+      [callFlutterwaveFunction]
+    );
+
+
+  // ==========================================================
+  // SYNC BALANCES
+  // ==========================================================
+
+  const syncBalances =
+    useCallback(
+      async () => {
+        setBalanceLoading(true);
+        setBalanceError(null);
+
+        try {
+          const rawResult =
+            await callFlutterwaveFunction<any>(
+              "sync"
+            );
+
+          const result =
+            normalizeBalanceResponse(rawResult);
+
+          setCollectionBalance(
+            result.collection
+          );
+
+          setPayoutBalance(
+            result.payout
+          );
+
+          setLastBalanceSync(
+            result.synchronizedAt ??
+              new Date().toISOString()
+          );
+
+          const errors =
+            [
+              result.errors?.collection,
+              result.errors?.payout,
+            ].filter(Boolean);
+
+          if (errors.length > 0) {
+            setBalanceError(
+              "One or more Flutterwave balances could not be synchronized."
+            );
+          }
+        } catch (error) {
+          setBalanceError(
+            getFriendlyAdminError(
+              error,
+              "Unable to synchronize Flutterwave balances."
+            )
+          );
+        } finally {
+          setBalanceLoading(false);
+        }
+      },
+      [callFlutterwaveFunction]
+    );
+
+
+  // ==========================================================
+  // LOAD HISTORY
+  // ==========================================================
+
+  const loadHistory =
+    useCallback(
+      async () => {
+        setHistoryLoading(true);
+        setHistoryError(null);
+
+        try {
+          const result =
+            await callFlutterwaveFunction<HistoryResponse>(
+              "history",
+              {
+                type:
+                  historyType,
+                from:
+                  historyFrom,
+                to:
+                  historyTo,
+                page:
+                  historyPage,
+              }
+            );
+
+          setHistory(result);
+        } catch (error) {
+          setHistoryError(
+            getFriendlyAdminError(
+              error,
+              "Unable to load Flutterwave balance history."
+            )
+          );
+        } finally {
+          setHistoryLoading(false);
+        }
+      },
+      [
+        callFlutterwaveFunction,
+        historyType,
+        historyFrom,
+        historyTo,
+        historyPage,
+      ]
+    );
+
+
+  // ==========================================================
+  // PROVIDER HEALTH
+  // ==========================================================
+
+  const checkProviderHealth =
+    useCallback(
+      async () => {
+        setHealthLoading(true);
+        setHealthError(null);
+
+        try {
+          const result =
+            await callFlutterwaveFunction<HealthResponse>(
+              "health"
+            );
+
+          setProviderHealth(
+            result
+          );
+        } catch (error) {
+          setHealthError(
+            getFriendlyAdminError(
+              error,
+              "Unable to check provider health."
+            )
+          );
+        } finally {
+          setHealthLoading(false);
+        }
+      },
+      [callFlutterwaveFunction]
+    );
+
+
+  // ==========================================================
+  // LOAD INITIAL FINANCIAL DATA
+  // ==========================================================
+
+  useEffect(() => {
+    void loadBalances();
+    void checkProviderHealth();
+  }, [
+    loadBalances,
+    checkProviderHealth,
+  ]);
+
+
+  // ==========================================================
+  // LOAD HISTORY WHEN OPENED
+  // ==========================================================
+
+  useEffect(() => {
+    if (
+      activeSection ===
+      "balance-history"
+    ) {
+      void loadHistory();
+    }
+  }, [
+    activeSection,
+    loadHistory,
+  ]);
+
+
+  // ==========================================================
+  // UPDATE SETTING
+  // ==========================================================
+
+  const updateSetting =
+    useCallback(
+      (
+        key: keyof SettingsState,
+        value: boolean
+      ) => {
+        setSettings(
+          (current) => ({
+            ...current,
+            [key]: value,
+          })
+        );
+
+        setSaveMessage(null);
+      },
+      []
+    );
+
+
+  // ==========================================================
+  // SAVE SETTINGS
+  // ==========================================================
+
+  const saveSettings =
+    useCallback(
+      async () => {
+        if (!settingsLoaded) {
+          setSaveMessage(null);
+          setSettingsError(
+            "Administrator settings are still loading. Please try again."
+          );
+          return;
+        }
+
+        if (!settingsDirty) {
+          setSaveMessage(
+            "There are no unsaved settings changes."
+          );
+          return;
+        }
+
+        setSaving(true);
+        setSaveMessage(null);
+        setSettingsError(null);
+
+        try {
+          const entries =
+            PERSISTED_SETTING_KEYS
+              .filter(
+                (key) =>
+                  !valuesEqual(
+                    currentPersistedValues[key],
+                    savedSettingsSnapshot[key]
+                  )
+              )
+              .map((key) => ({
+                key,
+                value:
+                  currentPersistedValues[
+                    key
+                  ],
+              }));
+
+          for (const entry of entries) {
+            const storageKey =
+              settingStorageKey(
+                entry.key,
+                settingKeyMap
+              );
 
             const {
-              data,
               error,
             } = await supabase.rpc(
-              "admin_management_list",
+              "admin_settings_upsert",
               {
-                p_search:
-                  normalizedSearch,
-
-                p_role:
-                  role,
-
-                p_is_active:
-                  isActive,
-
-                p_limit:
-                  PAGE_SIZE,
-
-                p_offset:
-                  (page - 1) *
-                  PAGE_SIZE,
-              },
+                p_key: storageKey,
+                p_value:
+                  entry.value,
+                p_description:
+                  SETTING_DESCRIPTIONS[
+                    entry.key
+                  ] ?? null,
+              }
             );
 
             if (error) {
               throw error;
             }
+          }
 
-            const rows =
-              normalizeAdminList(data);
+          setSaveMessage(
+            "Settings were saved successfully."
+          );
 
-            setAdmins(rows);
+          await loadSettings();
+          await loadSettingsHistory();
+        } catch (error) {
+          setSettingsError(
+            getFriendlyAdminError(
+              error,
+              "Unable to save administrator settings. No successful save should be assumed."
+            )
+          );
+        } finally {
+          setSaving(false);
+        }
+      },
+      [
+        settingsLoaded,
+        settingsDirty,
+        currentPersistedValues,
+        settingKeyMap,
+        loadSettings,
+        loadSettingsHistory,
+      ]
+    );
 
-            /*
-             * Always obtain a fresh summary total instead of
-             * reading summary.total immediately after setSummary().
-             *
-             * React state updates are asynchronous.
-             */
-            const summaryTotal =
-              await loadSummary();
+  // ==========================================================
+  // SUMMARY VALUES
+  // ==========================================================
 
-            /*
-             * For an unfiltered directory, the summary is the
-             * authoritative total.
-             */
-            if (
-              !search.trim() &&
-              roleFilter === "all" &&
-              activeFilter === "all"
-            ) {
-              setTotal(
-                Math.max(
-                  summaryTotal,
-                  rows.length,
-                ),
-              );
-            } else {
-              /*
-               * For a filtered result, if fewer than PAGE_SIZE
-               * rows are returned, this is the final page.
-               */
-              if (
-                rows.length <
-                PAGE_SIZE
-              ) {
-                setTotal(
-                  (page - 1) *
-                    PAGE_SIZE +
-                    rows.length,
-                );
-              } else {
-                /*
-                 * There is at least one more page.
-                 *
-                 * Use the known summary total where it provides
-                 * a stronger lower/actual bound.
-                 */
-                setTotal(
-                  Math.max(
-                    page *
-                      PAGE_SIZE +
-                      1,
-                    summaryTotal,
-                  ),
-                );
-              }
+  const totalFlutterwaveAvailable =
+    (
+      collectionBalance?.availableBalance ??
+      0
+    ) +
+    (
+      payoutBalance?.availableBalance ??
+      0
+    );
+
+  const collectionAvailable =
+    collectionBalance?.availableBalance ??
+    0;
+
+  const payoutAvailable =
+    payoutBalance?.availableBalance ??
+    0;
+
+
+  // ==========================================================
+  // PAGE HEADER
+  // ==========================================================
+
+  const renderHeader =
+    () => (
+      <div className="border-b bg-background">
+        <div className="flex min-h-16 items-center gap-3 px-4 sm:px-6">
+          <Select
+            value={activeSection}
+            onValueChange={(value) =>
+              navigateTo(value as SettingsSection)
             }
-          } catch (error) {
-            console.error(
-              "Failed to load administrator management data:",
-              error,
-            );
-
-            showToast(
-              "error",
-              getSafeErrorMessage(
-                error,
-                "Unable to load administrators. Please try again.",
-              ),
-            );
-
-            setAdmins([]);
-          } finally {
-            setLoading(false);
-            setRefreshing(false);
-          }
-        },
-        [
-          activeFilter,
-          loadSummary,
-          page,
-          roleFilter,
-          search,
-          showToast,
-        ],
-      );
-
-    /* ========================================================
-       INITIAL LOAD
-       ======================================================== */
-
-    useEffect(() => {
-      void loadCurrentUser();
-    }, [loadCurrentUser]);
-
-    useEffect(() => {
-      const timer =
-        window.setTimeout(() => {
-          void loadAdmins();
-        }, 250);
-
-      return () => {
-        window.clearTimeout(timer);
-      };
-    }, [loadAdmins]);
-
-    /* ========================================================
-       REFRESH
-       ======================================================== */
-
-    const handleRefresh =
-      async () => {
-        await Promise.all([
-          loadAdmins(true),
-          loadSummary().catch((error) => {
-            console.error(
-              "Failed to refresh administrator summary:",
-              error,
-            );
-          }),
-        ]);
-      };
-
-    /* ========================================================
-       CREATE ADMIN FORM
-       ======================================================== */
-
-    const resetAddForm = () => {
-      setAddFullName("");
-      setAddEmail("");
-      setAddRole(
-        "operations_admin",
-      );
-      setAddNotes("");
-    };
-
-    const handleAddAdmin =
-      async (
-        event: FormEvent<HTMLFormElement>,
-      ) => {
-        event.preventDefault();
-
-        const fullName =
-          addFullName
-            .trim()
-            .replace(
-              /\s+/g,
-              " ",
-            );
-
-        const email =
-          addEmail
-            .trim()
-            .toLowerCase();
-
-        const notes =
-          addNotes.trim();
-
-        if (!fullName) {
-          showToast(
-            "error",
-            "Administrator full name is required.",
-          );
-          return;
-        }
-
-        if (fullName.length < 2) {
-          showToast(
-            "error",
-            "Please enter a valid administrator name.",
-          );
-          return;
-        }
-
-        if (!email) {
-          showToast(
-            "error",
-            "Administrator email is required.",
-          );
-          return;
-        }
-
-        const emailPattern =
-          /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-        if (
-          !emailPattern.test(
-            email,
-          )
-        ) {
-          showToast(
-            "error",
-            "Please enter a valid email address.",
-          );
-          return;
-        }
-
-        if (!addRole) {
-          showToast(
-            "error",
-            "Administrator role is required.",
-          );
-          return;
-        }
-
-        try {
-          setActionLoading(true);
-
-          const {
-            data,
-            error,
-          } =
-            await supabase.functions.invoke(
-              "admin-create-account",
-              {
-                body: {
-                  full_name:
-                    fullName,
-
-                  email,
-
-                  role:
-                    addRole,
-
-                  notes:
-                    notes || null,
-
-                  display_name:
-                    fullName,
-                },
-              },
-            );
-
-          if (error) {
-            throw error;
-          }
-
-          if (
-            !isSuccessfulResponse(
-              data,
-            )
-          ) {
-            const response =
-              data as
-                | {
-                    error?: string;
-                    message?: string;
-                  }
-                | null;
-
-            /*
-             * This error is intentionally generic.
-             *
-             * Do not pass response.error or response.message
-             * directly to the frontend because they may contain
-             * backend/database implementation details.
-             */
-            console.error(
-              "Administrator account creation returned an unsuccessful response:",
-              response,
-            );
-
-            throw new Error(
-              "Administrator account creation failed.",
-            );
-          }
-
-          setAddDialogOpen(false);
-
-          resetAddForm();
-
-          showToast(
-            "success",
-            "Administrator account created successfully. Login credentials have been sent by email.",
-          );
-
-          setPage(1);
-
-          /*
-           * Refresh after changing the page state.
-           *
-           * loadAdmins(true) still uses the current page closure,
-           * so explicitly refresh the directory again after the
-           * page state settles.
-           */
-          await loadSummary();
-
-          await loadAdmins(true);
-        } catch (error) {
-          console.error(
-            "Failed to create administrator account:",
-            error,
-          );
-
-          showToast(
-            "error",
-            getSafeErrorMessage(
-              error,
-              "Unable to create the administrator account. Please try again.",
-            ),
-          );
-        } finally {
-          setActionLoading(false);
-        }
-      };
-
-    /* ========================================================
-       CHANGE ROLE
-       ======================================================== */
-
-    const openRoleDialog = (
-      admin: AdminRecord,
-    ) => {
-      if (
-        admin.user_id ===
-        currentAdminId
-      ) {
-        showToast(
-          "error",
-          "You cannot change your own administrator role.",
-        );
-
-        return;
-      }
-
-      setSelectedAdmin(admin);
-
-      const existingRole =
-        ROLE_OPTIONS.some(
-          (option) =>
-            option.value ===
-            admin.role,
-        )
-          ? (admin.role as AdminRole)
-          : "read_only_admin";
-
-      setNewRole(
-        existingRole,
-      );
-
-      setRoleDialogOpen(true);
-    };
-
-    const handleChangeRole =
-      async () => {
-        if (!selectedAdmin) {
-          return;
-        }
-
-        if (
-          selectedAdmin.user_id ===
-          currentAdminId
-        ) {
-          showToast(
-            "error",
-            "You cannot change your own administrator role.",
-          );
-
-          return;
-        }
-
-        if (
-          selectedAdmin.role ===
-          newRole
-        ) {
-          setRoleDialogOpen(false);
-          return;
-        }
-
-        try {
-          setActionLoading(true);
-
-          const {
-            data,
-            error,
-          } =
-            await supabase.rpc(
-              "admin_management_change_role",
-              {
-                p_admin_user_id:
-                  selectedAdmin.user_id,
-
-                p_new_role:
-                  newRole,
-              },
-            );
-
-          if (error) {
-            throw error;
-          }
-
-          if (
-            !isSuccessfulResponse(
-              data,
-            )
-          ) {
-            console.error(
-              "Administrator role change returned an unsuccessful response:",
-              data,
-            );
-
-            throw new Error(
-              "Administrator role change failed.",
-            );
-          }
-
-          setRoleDialogOpen(false);
-          setSelectedAdmin(null);
-
-          showToast(
-            "success",
-            "Administrator role updated successfully.",
-          );
-
-          await loadSummary();
-          await loadAdmins(true);
-        } catch (error) {
-          console.error(
-            "Failed to change administrator role:",
-            error,
-          );
-
-          showToast(
-            "error",
-            getSafeErrorMessage(
-              error,
-              "Unable to update the administrator role. Please try again.",
-            ),
-          );
-        } finally {
-          setActionLoading(false);
-        }
-      };
-
-    /* ========================================================
-       CHANGE STATUS
-       ======================================================== */
-
-    const openStatusDialog = (
-      admin: AdminRecord,
-    ) => {
-      if (
-        admin.user_id ===
-        currentAdminId
-      ) {
-        showToast(
-          "error",
-          "You cannot disable or deactivate your own administrator account.",
-        );
-
-        return;
-      }
-
-      setStatusTarget(admin);
-      setStatusDialogOpen(true);
-    };
-
-    const handleChangeStatus =
-      async () => {
-        if (!statusTarget) {
-          return;
-        }
-
-        if (
-          statusTarget.user_id ===
-          currentAdminId
-        ) {
-          showToast(
-            "error",
-            "You cannot disable or deactivate your own administrator account.",
-          );
-
-          return;
-        }
-
-        const nextStatus =
-          !statusTarget.is_active;
-
-        try {
-          setActionLoading(true);
-
-          const {
-            data,
-            error,
-          } =
-            await supabase.rpc(
-              "admin_management_set_status",
-              {
-                p_admin_user_id:
-                  statusTarget.user_id,
-
-                p_is_active:
-                  nextStatus,
-              },
-            );
-
-          if (error) {
-            throw error;
-          }
-
-          if (
-            !isSuccessfulResponse(
-              data,
-            )
-          ) {
-            console.error(
-              "Administrator status update returned an unsuccessful response:",
-              data,
-            );
-
-            throw new Error(
-              "Administrator status update failed.",
-            );
-          }
-
-          setStatusDialogOpen(
-            false,
-          );
-
-          setStatusTarget(null);
-
-          showToast(
-            "success",
-            nextStatus
-              ? "Administrator reactivated successfully."
-              : "Administrator disabled successfully.",
-          );
-
-          await loadSummary();
-          await loadAdmins(true);
-        } catch (error) {
-          console.error(
-            "Failed to change administrator status:",
-            error,
-          );
-
-          showToast(
-            "error",
-            getSafeErrorMessage(
-              error,
-              "Unable to update the administrator status. Please try again.",
-            ),
-          );
-        } finally {
-          setActionLoading(false);
-        }
-      };
-
-    /* ========================================================
-       FILTERS
-       ======================================================== */
-
-    const clearFilters = () => {
-      setSearch("");
-      setRoleFilter("all");
-      setActiveFilter("all");
-      setPage(1);
-    };
-
-    const hasFilters =
-      search.trim() !== "" ||
-      roleFilter !== "all" ||
-      activeFilter !== "all";
-
-    /* ========================================================
-       RENDER
-       ======================================================== */
-
-    return (
-      <AdminLayout>
-        <div className="min-h-screen bg-slate-50">
-          <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-
-            {/* ==================================================
-                TOAST
-                ================================================== */}
-
-            {toast && (
-              <div className="fixed right-4 top-4 z-[100] w-[min(420px,calc(100vw-2rem))]">
-                <Alert
-                  variant={
-                    toast.type ===
-                    "error"
-                      ? "destructive"
-                      : "default"
-                  }
-                >
-                  {toast.type ===
-                  "success" ? (
-                    <CheckCircle2 className="h-4 w-4" />
-                  ) : (
-                    <AlertCircle className="h-4 w-4" />
-                  )}
-
-                  <AlertTitle>
-                    {toast.type ===
-                    "success"
-                      ? "Success"
-                      : "Error"}
-                  </AlertTitle>
-
-                  <AlertDescription>
-                    {toast.message}
-                  </AlertDescription>
-                </Alert>
-              </div>
+          >
+            <SelectTrigger className="w-[220px] sm:w-[280px]">
+              <SelectValue placeholder="Select settings" />
+            </SelectTrigger>
+            <SelectContent>
+              {navigationGroups.flatMap((group) =>
+                group.items.map((item) => (
+                  <SelectItem key={item.id} value={item.id}>
+                    {item.label}
+                  </SelectItem>
+                ))
+              )}
+            </SelectContent>
+          </Select>
+
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2">
+              <Settings className="hidden h-5 w-5 text-muted-foreground sm:block" />
+
+              <h1 className="truncate text-lg font-semibold">
+                {getSectionTitle(
+                  activeSection
+                )}
+              </h1>
+            </div>
+
+            <p className="hidden truncate text-xs text-muted-foreground sm:block">
+              {getSectionDescription(
+                activeSection
+              )}
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {settingsDirty && (
+              <Badge
+                variant="outline"
+                className="hidden border-amber-200 bg-amber-50 text-amber-700 md:inline-flex"
+              >
+                Unsaved changes
+              </Badge>
             )}
 
-            {/* ==================================================
-                HEADER
-                ================================================== */}
+            {settingsDirty && (
+              <Button
+                size="sm"
+                onClick={() =>
+                  void saveSettings()
+                }
+                disabled={
+                  saving ||
+                  settingsLoading
+                }
+              >
+                <Save className="mr-2 h-4 w-4" />
+                {saving
+                  ? "Saving..."
+                  : "Save Changes"}
+              </Button>
+            )}
 
-            <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-              <div>
-                <div className="mb-2 flex items-center gap-2 text-sm text-slate-500">
-                  <Shield className="h-4 w-4" />
-                  Administration
+            {lastBalanceSync && (
+              <span className="hidden text-xs text-muted-foreground xl:block">
+                Synced{" "}
+                {formatDate(
+                  lastBalanceSync
+                )}
+              </span>
+            )}
+
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() =>
+                void loadBalances()
+              }
+              disabled={
+                balanceLoading
+              }
+            >
+              <RefreshCw
+                className={cn(
+                  "mr-2 h-4 w-4",
+                  balanceLoading &&
+                    "animate-spin"
+                )}
+              />
+
+              Refresh
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+
+
+  // ==========================================================
+  // OVERVIEW
+  // ==========================================================
+
+  const renderOverview =
+    () => (
+      <div className="space-y-6">
+        <div>
+          <h2 className="text-xl font-semibold">
+            Settings Overview
+          </h2>
+
+          <p className="mt-1 text-sm text-muted-foreground">
+            Centralized control center for the IyanjuPay fintech platform.
+          </p>
+        </div>
+
+        {balanceError && (
+          <Alert variant="destructive">
+            <AlertCircle className="h-4 w-4" />
+
+            <AlertTitle>
+              Flutterwave balance warning
+            </AlertTitle>
+
+            <AlertDescription>
+              {balanceError}
+            </AlertDescription>
+          </Alert>
+        )}
+
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <Card>
+            <CardHeader className="pb-2">
+              <CardDescription>
+                Collection Balance
+              </CardDescription>
+
+              <CardTitle className="text-2xl">
+                {balanceLoading
+                  ? "Loading..."
+                  : formatCurrency(
+                      collectionAvailable
+                    )}
+              </CardTitle>
+            </CardHeader>
+
+            <CardContent>
+              <button
+                type="button"
+                onClick={() =>
+                  navigateTo(
+                    "collection-balance"
+                  )
+                }
+                className="text-xs font-medium text-primary hover:underline"
+              >
+                View collection balance
+              </button>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-2">
+              <CardDescription>
+                Payout Balance
+              </CardDescription>
+
+              <CardTitle className="text-2xl">
+                {balanceLoading
+                  ? "Loading..."
+                  : payoutBalance
+                      ?.availableBalance ===
+                    null
+                    ? "Unavailable"
+                    : formatCurrency(
+                        payoutAvailable
+                      )}
+              </CardTitle>
+            </CardHeader>
+
+            <CardContent>
+              <button
+                type="button"
+                onClick={() =>
+                  navigateTo(
+                    "payout-balance"
+                  )
+                }
+                className="text-xs font-medium text-primary hover:underline"
+              >
+                View payout balance
+              </button>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-2">
+              <CardDescription>
+                Combined Available
+              </CardDescription>
+
+              <CardTitle className="text-2xl">
+                {formatCurrency(
+                  totalFlutterwaveAvailable
+                )}
+              </CardTitle>
+            </CardHeader>
+
+            <CardContent>
+              <span className="text-xs text-muted-foreground">
+                Collection + payout accounts
+              </span>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-2">
+              <CardDescription>
+                Flutterwave
+              </CardDescription>
+
+              <CardTitle className="flex items-center gap-2 text-xl">
+                {providerHealth?.success ? (
+                  <>
+                    <CheckCircle2 className="h-5 w-5 text-emerald-600" />
+                    Healthy
+                  </>
+                ) : (
+                  <>
+                    <AlertCircle className="h-5 w-5 text-amber-600" />
+                    Check status
+                  </>
+                )}
+              </CardTitle>
+            </CardHeader>
+
+            <CardContent>
+              <button
+                type="button"
+                onClick={() =>
+                  navigateTo(
+                    "provider-health"
+                  )
+                }
+                className="text-xs font-medium text-primary hover:underline"
+              >
+                Provider health
+              </button>
+            </CardContent>
+          </Card>
+        </div>
+
+        <div className="grid gap-6 lg:grid-cols-2">
+          <Card>
+            <CardHeader>
+              <CardTitle>
+                Platform Operations
+              </CardTitle>
+
+              <CardDescription>
+                Current operational controls.
+              </CardDescription>
+            </CardHeader>
+
+            <CardContent className="divide-y">
+              <SettingRow
+                label="Transfers"
+                description="Allow customers to initiate transfers."
+                enabled={
+                  settings.allowTransfers
+                }
+                onChange={(value) =>
+                  updateSetting(
+                    "allowTransfers",
+                    value
+                  )
+                }
+              />
+
+              <SettingRow
+                label="Wallet Funding"
+                description="Allow customers to fund wallets."
+                enabled={
+                  settings.allowWalletFunding
+                }
+                onChange={(value) =>
+                  updateSetting(
+                    "allowWalletFunding",
+                    value
+                  )
+                }
+              />
+
+              <SettingRow
+                label="Bill Payments"
+                description="Allow customers to purchase services."
+                enabled={
+                  settings.allowBillPayments
+                }
+                onChange={(value) =>
+                  updateSetting(
+                    "allowBillPayments",
+                    value
+                  )
+                }
+              />
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>
+                Security
+              </CardTitle>
+
+              <CardDescription>
+                Administrator security posture.
+              </CardDescription>
+            </CardHeader>
+
+            <CardContent className="divide-y">
+              <SettingRow
+                label="Administrator MFA"
+                description="Require stronger authentication for administrators."
+                enabled={
+                  settings.requireAdminMfa
+                }
+                onChange={(value) =>
+                  updateSetting(
+                    "requireAdminMfa",
+                    value
+                  )
+                }
+              />
+
+              <SettingRow
+                label="Sensitive Action Protection"
+                description="Require additional protection for high-risk operations."
+                enabled={
+                  true
+                }
+                onChange={() => undefined}
+                disabled
+              />
+
+              <SettingRow
+                label="Fraud Velocity Checks"
+                description="Monitor transaction velocity for suspicious activity."
+                enabled={
+                  settings.fraudVelocityChecks
+                }
+                onChange={(value) =>
+                  updateSetting(
+                    "fraudVelocityChecks",
+                    value
+                  )
+                }
+              />
+            </CardContent>
+          </Card>
+        </div>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>
+              Quick Navigation
+            </CardTitle>
+
+            <CardDescription>
+              Jump directly to an administrative settings area.
+            </CardDescription>
+          </CardHeader>
+
+          <CardContent>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              {[
+                {
+                  section:
+                    "balance-history" as SettingsSection,
+                  icon: History,
+                  label:
+                    "Balance History",
+                },
+                {
+                  section:
+                    "provider-health" as SettingsSection,
+                  icon: Activity,
+                  label:
+                    "Provider Health",
+                },
+                {
+                  section:
+                    "service-controls" as SettingsSection,
+                  icon: SlidersHorizontal,
+                  label:
+                    "Service Controls",
+                },
+                {
+                  section:
+                    "audit-history" as SettingsSection,
+                  icon: History,
+                  label:
+                    "Audit History",
+                },
+              ].map(
+                (item) => {
+                  const Icon =
+                    item.icon;
+
+                  return (
+                    <button
+                      key={
+                        item.section
+                      }
+                      type="button"
+                      onClick={() =>
+                        navigateTo(
+                          item.section
+                        )
+                      }
+                      className="flex items-center gap-3 rounded-xl border p-4 text-left transition-colors hover:bg-muted"
+                    >
+                      <Icon className="h-5 w-5 text-muted-foreground" />
+
+                      <span className="text-sm font-medium">
+                        {
+                          item.label
+                        }
+                      </span>
+
+                      <ChevronRight className="ml-auto h-4 w-4 text-muted-foreground" />
+                    </button>
+                  );
+                }
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+
+
+  // ==========================================================
+  // COLLECTION BALANCE
+  // ==========================================================
+
+  const renderCollectionBalance =
+    () => (
+      <div className="space-y-6">
+        <Card>
+          <CardHeader className="flex flex-row items-start justify-between gap-4">
+            <div>
+              <CardTitle>
+                Collection Balance
+              </CardTitle>
+
+              <CardDescription>
+                Live collection balance from the Flutterwave merchant account.
+              </CardDescription>
+            </div>
+
+            <Button
+              onClick={() =>
+                void syncBalances()
+              }
+              disabled={
+                balanceLoading
+              }
+            >
+              <RefreshCw
+                className={cn(
+                  "mr-2 h-4 w-4",
+                  balanceLoading &&
+                    "animate-spin"
+                )}
+              />
+
+              Synchronize
+            </Button>
+          </CardHeader>
+
+          <CardContent>
+            {balanceError && (
+              <Alert
+                variant="destructive"
+                className="mb-6"
+              >
+                <AlertCircle className="h-4 w-4" />
+
+                <AlertTitle>
+                  Unable to fully synchronize
+                </AlertTitle>
+
+                <AlertDescription>
+                  {balanceError}
+                </AlertDescription>
+              </Alert>
+            )}
+
+            <div className="grid gap-4 md:grid-cols-3">
+              <Card className="bg-muted/30">
+                <CardHeader>
+                  <CardDescription>
+                    Available Balance
+                  </CardDescription>
+
+                  <CardTitle className="text-3xl">
+                    {balanceLoading
+                      ? "Loading..."
+                      : formatCurrency(
+                          collectionBalance?.availableBalance
+                        )}
+                  </CardTitle>
+                </CardHeader>
+              </Card>
+
+              <Card className="bg-muted/30">
+                <CardHeader>
+                  <CardDescription>
+                    Ledger Balance
+                  </CardDescription>
+
+                  <CardTitle className="text-3xl">
+                    {balanceLoading
+                      ? "Loading..."
+                      : formatCurrency(
+                          collectionBalance?.ledgerBalance
+                        )}
+                  </CardTitle>
+                </CardHeader>
+              </Card>
+
+              <Card className="bg-muted/30">
+                <CardHeader>
+                  <CardDescription>
+                    Currency
+                  </CardDescription>
+
+                  <CardTitle className="text-3xl">
+                    {collectionBalance?.currency ??
+                      CURRENCY}
+                  </CardTitle>
+                </CardHeader>
+              </Card>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>
+              Collection Account
+            </CardTitle>
+
+            <CardDescription>
+              Source information for this balance.
+            </CardDescription>
+          </CardHeader>
+
+          <CardContent className="space-y-4">
+            <div className="flex items-center justify-between border-b py-3">
+              <span className="text-sm text-muted-foreground">
+                Provider
+              </span>
+
+              <span className="text-sm font-medium">
+                Flutterwave
+              </span>
+            </div>
+
+            <div className="flex items-center justify-between border-b py-3">
+              <span className="text-sm text-muted-foreground">
+                Account Type
+              </span>
+
+              <span className="text-sm font-medium">
+                Merchant Collection Wallet
+              </span>
+            </div>
+
+            <div className="flex items-center justify-between border-b py-3">
+              <span className="text-sm text-muted-foreground">
+                Currency
+              </span>
+
+              <span className="text-sm font-medium">
+                {collectionBalance?.currency ??
+                  CURRENCY}
+              </span>
+            </div>
+
+            <div className="flex items-center justify-between py-3">
+              <span className="text-sm text-muted-foreground">
+                Last Synchronization
+              </span>
+
+              <span className="text-sm font-medium">
+                {formatDate(
+                  lastBalanceSync
+                )}
+              </span>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Alert>
+          <Wallet className="h-4 w-4" />
+
+          <AlertTitle>
+            Flutterwave source
+          </AlertTitle>
+
+          <AlertDescription>
+            This balance is retrieved directly from the Flutterwave merchant wallet. It is not calculated from the IyanjuPay internal ledger.
+          </AlertDescription>
+        </Alert>
+      </div>
+    );
+
+
+  // ==========================================================
+  // PAYOUT BALANCE
+  // ==========================================================
+
+  const renderPayoutBalance =
+    () => (
+      <div className="space-y-6">
+        <Card>
+          <CardHeader className="flex flex-row items-start justify-between gap-4">
+            <div>
+              <CardTitle>
+                Payout Balance
+              </CardTitle>
+
+              <CardDescription>
+                Dedicated Flutterwave payout account balance.
+              </CardDescription>
+            </div>
+
+            <Button
+              onClick={() =>
+                void syncBalances()
+              }
+              disabled={
+                balanceLoading
+              }
+            >
+              <RefreshCw
+                className={cn(
+                  "mr-2 h-4 w-4",
+                  balanceLoading &&
+                    "animate-spin"
+                )}
+              />
+
+              Synchronize
+            </Button>
+          </CardHeader>
+
+          <CardContent>
+            {payoutBalance?.configured ===
+              false && (
+              <Alert className="mb-6">
+                <AlertCircle className="h-4 w-4" />
+
+                <AlertTitle>
+                  Payout account not configured
+                </AlertTitle>
+
+                <AlertDescription>
+                  The dedicated Flutterwave payout account has not been configured for this environment. The collection balance is intentionally not used as a payout balance.
+                </AlertDescription>
+              </Alert>
+            )}
+
+            {balanceError && (
+              <Alert
+                variant="destructive"
+                className="mb-6"
+              >
+                <AlertCircle className="h-4 w-4" />
+
+                <AlertTitle>
+                  Payout balance warning
+                </AlertTitle>
+
+                <AlertDescription>
+                  {balanceError}
+                </AlertDescription>
+              </Alert>
+            )}
+
+            <div className="grid gap-4 md:grid-cols-3">
+              <Card className="bg-muted/30">
+                <CardHeader>
+                  <CardDescription>
+                    Available Balance
+                  </CardDescription>
+
+                  <CardTitle className="text-3xl">
+                    {balanceLoading
+                      ? "Loading..."
+                      : payoutBalance?.availableBalance ===
+                        null
+                        ? "Unavailable"
+                        : formatCurrency(
+                            payoutBalance?.availableBalance
+                          )}
+                  </CardTitle>
+                </CardHeader>
+              </Card>
+
+              <Card className="bg-muted/30">
+                <CardHeader>
+                  <CardDescription>
+                    Ledger Balance
+                  </CardDescription>
+
+                  <CardTitle className="text-3xl">
+                    {balanceLoading
+                      ? "Loading..."
+                      : payoutBalance?.ledgerBalance ===
+                        null
+                        ? "Unavailable"
+                        : formatCurrency(
+                            payoutBalance?.ledgerBalance
+                          )}
+                  </CardTitle>
+                </CardHeader>
+              </Card>
+
+              <Card className="bg-muted/30">
+                <CardHeader>
+                  <CardDescription>
+                    Currency
+                  </CardDescription>
+
+                  <CardTitle className="text-3xl">
+                    {payoutBalance?.currency ??
+                      CURRENCY}
+                  </CardTitle>
+                </CardHeader>
+              </Card>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>
+              Payout Account
+            </CardTitle>
+
+            <CardDescription>
+              Dedicated payout account information.
+            </CardDescription>
+          </CardHeader>
+
+          <CardContent className="space-y-4">
+            <div className="flex items-center justify-between border-b py-3">
+              <span className="text-sm text-muted-foreground">
+                Provider
+              </span>
+
+              <span className="text-sm font-medium">
+                Flutterwave
+              </span>
+            </div>
+
+            <div className="flex items-center justify-between border-b py-3">
+              <span className="text-sm text-muted-foreground">
+                Account Type
+              </span>
+
+              <span className="text-sm font-medium">
+                Dedicated Payout Account
+              </span>
+            </div>
+
+            <div className="flex items-center justify-between border-b py-3">
+              <span className="text-sm text-muted-foreground">
+                Reference
+              </span>
+
+              <span className="max-w-[60%] truncate text-sm font-medium">
+                {payoutBalance?.accountReference ??
+                  "Not configured"}
+              </span>
+            </div>
+
+            <div className="flex items-center justify-between py-3">
+              <span className="text-sm text-muted-foreground">
+                Source
+              </span>
+
+              <span className="text-sm font-medium">
+                Flutterwave Payout Subaccount
+              </span>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Alert>
+          <ShieldCheck className="h-4 w-4" />
+
+          <AlertTitle>
+            Separate financial account
+          </AlertTitle>
+
+          <AlertDescription>
+            IyanjuPay treats the payout balance as a separate Flutterwave balance. A missing payout configuration never falls back to the collection wallet.
+          </AlertDescription>
+        </Alert>
+      </div>
+    );
+
+
+  // ==========================================================
+  // BALANCE HISTORY
+  // ==========================================================
+
+  const renderBalanceHistory =
+    () => {
+      const collectionTransactions =
+        history?.collection
+          ?.transactions ??
+        [];
+
+      const payoutTransactions =
+        history?.payout
+          ?.transactions ??
+        [];
+
+      const rows =
+        historyType ===
+        "collection"
+          ? collectionTransactions.map(
+              (item) => ({
+                ...item,
+                accountType:
+                  "Collection",
+              })
+            )
+          : historyType ===
+              "payout"
+            ? payoutTransactions.map(
+                (item) => ({
+                  ...item,
+                  accountType:
+                    "Payout",
+                })
+              )
+            : [
+                ...collectionTransactions.map(
+                  (item) => ({
+                    ...item,
+                    accountType:
+                      "Collection",
+                  })
+                ),
+                ...payoutTransactions.map(
+                  (item) => ({
+                    ...item,
+                    accountType:
+                      "Payout",
+                  })
+                ),
+              ].sort(
+                (
+                  a,
+                  b
+                ) => {
+                  const aDate =
+                    new Date(
+                      String(
+                        a.date ??
+                          a.created_at ??
+                          a.date_created ??
+                          ""
+                      )
+                    ).getTime();
+
+                  const bDate =
+                    new Date(
+                      String(
+                        b.date ??
+                          b.created_at ??
+                          b.date_created ??
+                          ""
+                      )
+                    ).getTime();
+
+                  return (
+                    bDate -
+                    aDate
+                  );
+                }
+              );
+
+      return (
+        <div className="space-y-6">
+          <Card>
+            <CardHeader>
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                <div>
+                  <CardTitle>
+                    Balance History
+                  </CardTitle>
+
+                  <CardDescription>
+                    Balance movements retrieved directly from Flutterwave.
+                  </CardDescription>
                 </div>
 
-                <h1 className="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
-                  Admin Management
-                </h1>
-
-                <p className="mt-1 max-w-2xl text-sm text-slate-600">
-                  Create and manage administrator
-                  accounts, roles, access status,
-                  and administrative permissions.
-                </p>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-2">
                 <Button
                   variant="outline"
-                  onClick={
-                    handleRefresh
+                  onClick={() =>
+                    void loadHistory()
                   }
                   disabled={
-                    refreshing ||
-                    loading
+                    historyLoading
                   }
                 >
-                  {refreshing ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  ) : (
-                    <RefreshCw className="mr-2 h-4 w-4" />
-                  )}
+                  <RefreshCw
+                    className={cn(
+                      "mr-2 h-4 w-4",
+                      historyLoading &&
+                        "animate-spin"
+                    )}
+                  />
 
-                  Refresh
-                </Button>
-
-                <Button
-                  onClick={() => {
-                    resetAddForm();
-                    setAddDialogOpen(
-                      true,
-                    );
-                  }}
-                >
-                  <UserPlus className="mr-2 h-4 w-4" />
-                  Add Admin
+                  Refresh History
                 </Button>
               </div>
-            </div>
+            </CardHeader>
 
-            {/* ==================================================
-                SUMMARY
-                ================================================== */}
-
-            <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
-
-              <Card>
-                <CardContent className="p-5">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm text-slate-500">
-                        Total Admins
-                      </p>
-
-                      <p className="mt-1 text-2xl font-bold text-slate-900">
-                        {summary.total}
-                      </p>
-                    </div>
-
-                    <div className="rounded-xl bg-slate-100 p-3">
-                      <Shield className="h-5 w-5 text-slate-700" />
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardContent className="p-5">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm text-slate-500">
-                        Active
-                      </p>
-
-                      <p className="mt-1 text-2xl font-bold text-emerald-700">
-                        {summary.active}
-                      </p>
-                    </div>
-
-                    <div className="rounded-xl bg-emerald-50 p-3">
-                      <UserCheck className="h-5 w-5 text-emerald-700" />
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardContent className="p-5">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm text-slate-500">
-                        Inactive
-                      </p>
-
-                      <p className="mt-1 text-2xl font-bold text-red-700">
-                        {summary.inactive}
-                      </p>
-                    </div>
-
-                    <div className="rounded-xl bg-red-50 p-3">
-                      <UserX className="h-5 w-5 text-red-700" />
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardContent className="p-5">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm text-slate-500">
-                        Super Admins
-                      </p>
-
-                      <p className="mt-1 text-2xl font-bold text-amber-700">
-                        {summary.super_admin}
-                      </p>
-                    </div>
-
-                    <div className="rounded-xl bg-amber-50 p-3">
-                      <ShieldCheck className="h-5 w-5 text-amber-700" />
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardContent className="p-5">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm text-slate-500">
-                        Other Admins
-                      </p>
-
-                      <p className="mt-1 text-2xl font-bold text-blue-700">
-                        {Math.max(
-                          0,
-                          summary.operations_admin +
-                            summary.support_admin +
-                            summary.finance_admin +
-                            summary.compliance_admin +
-                            summary.read_only_admin,
-                        )}
-                      </p>
-                    </div>
-
-                    <div className="rounded-xl bg-blue-50 p-3">
-                      <Activity className="h-5 w-5 text-blue-700" />
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-
-            {/* ==================================================
-                DIRECTORY FILTERS
-                ================================================== */}
-
-            <Card className="mb-6">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base">
-                  Administrator Directory
-                </CardTitle>
-              </CardHeader>
-
-              <CardContent>
-                <div className="grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,1fr)_220px_180px_auto]">
-
-                  <div className="relative">
-                    <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-
-                    <Input
-                      value={search}
-                      onChange={(event) => {
-                        setSearch(
-                          event.target
-                            .value,
-                        );
-
-                        setPage(1);
-                      }}
-                      placeholder="Search by name, email, or user ID..."
-                      className="pl-9"
-                    />
-                  </div>
-
-                  <Select
-                    value={roleFilter}
-                    onValueChange={(
-                      value,
-                    ) => {
-                      setRoleFilter(
-                        value,
-                      );
-
-                      setPage(1);
-                    }}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="All roles" />
-                    </SelectTrigger>
-
-                    <SelectContent>
-                      <SelectItem value="all">
-                        All roles
-                      </SelectItem>
-
-                      {ROLE_OPTIONS.map(
-                        (role) => (
-                          <SelectItem
-                            key={
-                              role.value
-                            }
-                            value={
-                              role.value
-                            }
-                          >
-                            {role.label}
-                          </SelectItem>
-                        ),
-                      )}
-                    </SelectContent>
-                  </Select>
+            <CardContent>
+              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+                <div>
+                  <Label>
+                    Account
+                  </Label>
 
                   <Select
                     value={
-                      activeFilter
+                      historyType
                     }
                     onValueChange={(
-                      value,
+                      value
                     ) => {
-                      setActiveFilter(
-                        value,
+                      setHistoryType(
+                        value as
+                          | "all"
+                          | "collection"
+                          | "payout"
                       );
 
-                      setPage(1);
+                      setHistoryPage(
+                        1
+                      );
                     }}
                   >
-                    <SelectTrigger>
-                      <SelectValue placeholder="All statuses" />
+                    <SelectTrigger className="mt-2">
+                      <SelectValue />
                     </SelectTrigger>
 
                     <SelectContent>
                       <SelectItem value="all">
-                        All statuses
+                        All Accounts
                       </SelectItem>
 
-                      <SelectItem value="active">
-                        Active
+                      <SelectItem value="collection">
+                        Collection
                       </SelectItem>
 
-                      <SelectItem value="inactive">
-                        Inactive
+                      <SelectItem value="payout">
+                        Payout
                       </SelectItem>
                     </SelectContent>
                   </Select>
-
-                  <Button
-                    variant="outline"
-                    onClick={
-                      clearFilters
-                    }
-                    disabled={
-                      !hasFilters
-                    }
-                  >
-                    <X className="mr-2 h-4 w-4" />
-                    Clear
-                  </Button>
                 </div>
-              </CardContent>
-            </Card>
 
-            {/* ==================================================
-                ADMINISTRATOR TABLE
-                ================================================== */}
+                <div>
+                  <Label>
+                    From
+                  </Label>
 
-            <Card className="overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[1100px]">
-                  <thead>
-                    <tr className="border-b bg-slate-50">
-                      <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                        Administrator
-                      </th>
+                  <Input
+                    type="date"
+                    value={
+                      historyFrom
+                    }
+                    onChange={(
+                      event
+                    ) => {
+                      setHistoryFrom(
+                        event.target.value
+                      );
 
-                      <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                        Role
-                      </th>
-
-                      <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                        Status
-                      </th>
-
-                      <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                        Created
-                      </th>
-
-                      <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                        Last Sign In
-                      </th>
-
-                      <th className="px-5 py-3 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">
-                        Actions
-                      </th>
-                    </tr>
-                  </thead>
-
-                  <tbody className="divide-y">
-                    {loading ? (
-                      <tr>
-                        <td
-                          colSpan={6}
-                          className="px-5 py-16 text-center"
-                        >
-                          <Loader2 className="mx-auto h-7 w-7 animate-spin text-slate-400" />
-
-                          <p className="mt-3 text-sm text-slate-500">
-                            Loading administrators...
-                          </p>
-                        </td>
-                      </tr>
-                    ) : admins.length ===
-                      0 ? (
-                      <tr>
-                        <td
-                          colSpan={6}
-                          className="px-5 py-16 text-center"
-                        >
-                          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-slate-100">
-                            <Shield className="h-6 w-6 text-slate-400" />
-                          </div>
-
-                          <p className="mt-4 text-sm font-medium text-slate-900">
-                            No administrators found
-                          </p>
-
-                          <p className="mt-1 text-sm text-slate-500">
-                            {hasFilters
-                              ? "Try changing your search or filters."
-                              : "No administrator accounts are available."}
-                          </p>
-                        </td>
-                      </tr>
-                    ) : (
-                      admins.map(
-                        (
-                          admin,
-                        ) => {
-                          const isCurrentAdmin =
-                            admin.user_id ===
-                            currentAdminId;
-
-                          const displayName =
-                            admin.full_name ||
-                            admin.display_name ||
-                            "Unnamed Administrator";
-
-                          return (
-                            <tr
-                              key={
-                                admin.user_id
-                              }
-                              className="transition-colors hover:bg-slate-50/80"
-                            >
-                              <td className="px-5 py-4">
-                                <div className="flex items-center gap-3">
-                                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-100 text-sm font-semibold text-slate-700">
-                                    {getInitials(
-                                      displayName,
-                                      admin.email,
-                                    )}
-                                  </div>
-
-                                  <div className="min-w-0">
-                                    <div className="flex items-center gap-2">
-                                      <p className="truncate font-medium text-slate-900">
-                                        {
-                                          displayName
-                                        }
-                                      </p>
-
-                                      {isCurrentAdmin && (
-                                        <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-semibold text-blue-700">
-                                          YOU
-                                        </span>
-                                      )}
-                                    </div>
-
-                                    <p className="truncate text-sm text-slate-500">
-                                      {admin.email ||
-                                        "No email"}
-                                    </p>
-
-                                    <p className="mt-0.5 font-mono text-[11px] text-slate-400">
-                                      {
-                                        admin.user_id
-                                      }
-                                    </p>
-                                  </div>
-                                </div>
-                              </td>
-
-                              <td className="px-5 py-4 align-middle">
-                                <div>
-                                  <RoleBadge
-                                    role={
-                                      admin.role
-                                    }
-                                  />
-
-                                  <p className="mt-1 text-xs text-slate-500">
-                                    {getRoleDescription(
-                                      admin.role,
-                                    )}
-                                  </p>
-                                </div>
-                              </td>
-
-                              <td className="px-5 py-4 align-middle">
-                                <StatusBadge
-                                  active={
-                                    admin.is_active
-                                  }
-                                />
-                              </td>
-
-                              <td className="px-5 py-4 align-middle text-sm text-slate-600">
-                                {formatDate(
-                                  admin.created_at,
-                                )}
-                              </td>
-
-                              <td className="px-5 py-4 align-middle text-sm text-slate-600">
-                                {formatDate(
-                                  admin.last_sign_in_at,
-                                )}
-                              </td>
-
-                              <td className="px-5 py-4 align-middle">
-                                <div className="flex justify-end gap-2">
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    disabled={
-                                      isCurrentAdmin
-                                    }
-                                    onClick={() =>
-                                      openRoleDialog(
-                                        admin,
-                                      )
-                                    }
-                                    title={
-                                      isCurrentAdmin
-                                        ? "You cannot change your own role"
-                                        : "Change role"
-                                    }
-                                  >
-                                    <Edit3 className="mr-1.5 h-3.5 w-3.5" />
-                                    Role
-                                  </Button>
-
-                                  <Button
-                                    variant={
-                                      admin.is_active
-                                        ? "outline"
-                                        : "default"
-                                    }
-                                    size="sm"
-                                    disabled={
-                                      isCurrentAdmin
-                                    }
-                                    onClick={() =>
-                                      openStatusDialog(
-                                        admin,
-                                      )
-                                    }
-                                    title={
-                                      isCurrentAdmin
-                                        ? "You cannot change your own status"
-                                        : admin.is_active
-                                          ? "Disable administrator"
-                                          : "Reactivate administrator"
-                                    }
-                                  >
-                                    {admin.is_active ? (
-                                      <>
-                                        <UserX className="mr-1.5 h-3.5 w-3.5" />
-                                        Disable
-                                      </>
-                                    ) : (
-                                      <>
-                                        <UserCheck className="mr-1.5 h-3.5 w-3.5" />
-                                        Activate
-                                      </>
-                                    )}
-                                  </Button>
-                                </div>
-                              </td>
-                            </tr>
-                          );
-                        },
-                      )
-                    )}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* ==================================================
-                  PAGINATION
-                  ================================================== */}
-
-              <div className="flex flex-col gap-3 border-t bg-slate-50/70 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-                <p className="text-sm text-slate-500">
-                  {total === 0
-                    ? "No administrators"
-                    : `Showing ${
-                        (page - 1) *
-                          PAGE_SIZE +
+                      setHistoryPage(
                         1
-                      }–${Math.min(
-                        page *
-                          PAGE_SIZE,
-                        total,
-                      )} of ${total}`}
-                </p>
+                      );
+                    }}
+                    className="mt-2"
+                  />
+                </div>
 
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={
-                      page <= 1 ||
-                      loading
+                <div>
+                  <Label>
+                    To
+                  </Label>
+
+                  <Input
+                    type="date"
+                    value={
+                      historyTo
                     }
+                    onChange={(
+                      event
+                    ) => {
+                      setHistoryTo(
+                        event.target.value
+                      );
+
+                      setHistoryPage(
+                        1
+                      );
+                    }}
+                    className="mt-2"
+                  />
+                </div>
+
+                <div className="flex items-end">
+                  <Button
+                    className="w-full"
                     onClick={() =>
-                      setPage(
-                        (
-                          current,
-                        ) =>
-                          Math.max(
-                            1,
-                            current - 1,
-                          ),
-                      )
+                      void loadHistory()
+                    }
+                    disabled={
+                      historyLoading
                     }
                   >
-                    <ChevronLeft className="mr-1 h-4 w-4" />
-                    Previous
-                  </Button>
+                    <Search className="mr-2 h-4 w-4" />
 
-                  <span className="min-w-[100px] text-center text-sm text-slate-600">
-                    Page {page} of{" "}
-                    {totalPages}
-                  </span>
-
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={
-                      page >=
-                        totalPages ||
-                      loading
-                    }
-                    onClick={() =>
-                      setPage(
-                        (
-                          current,
-                        ) =>
-                          Math.min(
-                            totalPages,
-                            current + 1,
-                          ),
-                      )
-                    }
-                  >
-                    Next
-                    <ChevronRight className="ml-1 h-4 w-4" />
+                    Search
                   </Button>
                 </div>
               </div>
-            </Card>
+            </CardContent>
+          </Card>
 
-            {/* ==================================================
-                CREATE ADMIN DIALOG
-                ================================================== */}
+          {historyError && (
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
 
-            <Dialog
-              open={
-                addDialogOpen
-              }
-              onOpenChange={(
-                open,
-              ) => {
-                if (
-                  !actionLoading
-                ) {
-                  setAddDialogOpen(
-                    open,
-                  );
-                }
-              }}
-            >
-              <DialogContent
-                className="
-                  flex
-                  max-h-[90vh]
-                  w-[calc(100%-2rem)]
-                  max-w-lg
-                  flex-col
-                  overflow-hidden
-                  p-0
-                "
-              >
-                <DialogHeader className="shrink-0 border-b px-6 py-5">
-                  <DialogTitle className="flex items-center gap-2">
-                    <UserPlus className="h-5 w-5" />
-                    Create Administrator
-                  </DialogTitle>
+              <AlertTitle>
+                History unavailable
+              </AlertTitle>
 
-                  <DialogDescription>
-                    Create a new IyanjuPay
-                    administrator account
-                    and assign the
-                    administrator's role.
-                  </DialogDescription>
-                </DialogHeader>
+              <AlertDescription>
+                {historyError}
+              </AlertDescription>
+            </Alert>
+          )}
 
-                <div className="min-h-0 flex-1 overflow-y-auto">
-                  <form
-                    id="create-admin-form"
-                    onSubmit={
-                      handleAddAdmin
-                    }
-                    className="space-y-5 px-6 py-5"
-                  >
-                    <div className="space-y-2">
-                      <Label htmlFor="admin-full-name">
-                        Full Name
-                      </Label>
+          <Card>
+            <CardHeader>
+              <CardTitle>
+                Transactions
+              </CardTitle>
 
-                      <Input
-                        id="admin-full-name"
-                        value={
-                          addFullName
-                        }
-                        onChange={(
-                          event,
-                        ) =>
-                          setAddFullName(
-                            event
-                              .target
-                              .value,
-                          )
-                        }
-                        placeholder="e.g. John Adewale"
-                        disabled={
-                          actionLoading
-                        }
-                        autoComplete="name"
-                        autoFocus
-                      />
+              <CardDescription>
+                {history
+                  ? `${formatNumber(
+                      rows.length
+                    )} transactions loaded`
+                  : "Run a search to load balance movements."}
+              </CardDescription>
+            </CardHeader>
 
-                      <p className="text-xs text-slate-500">
-                        The administrator's
-                        last name will be
-                        used to generate
-                        the temporary
-                        password.
-                      </p>
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="admin-email">
-                        Email Address
-                      </Label>
-
-                      <Input
-                        id="admin-email"
-                        type="email"
-                        value={
-                          addEmail
-                        }
-                        onChange={(
-                          event,
-                        ) =>
-                          setAddEmail(
-                            event
-                              .target
-                              .value,
-                          )
-                        }
-                        placeholder="admin@example.com"
-                        disabled={
-                          actionLoading
-                        }
-                        autoComplete="email"
-                      />
-
-                      <p className="text-xs text-slate-500">
-                        Login credentials
-                        will be sent to
-                        this email address.
-                      </p>
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="admin-role">
-                        Administrator Role
-                      </Label>
-
-                      <Select
-                        value={
-                          addRole
-                        }
-                        onValueChange={(
-                          value,
-                        ) =>
-                          setAddRole(
-                            value as AdminRole,
-                          )
-                        }
-                        disabled={
-                          actionLoading
-                        }
-                      >
-                        <SelectTrigger id="admin-role">
-                          <SelectValue />
-                        </SelectTrigger>
-
-                        <SelectContent>
-                          {ROLE_OPTIONS.map(
-                            (
-                              role,
-                            ) => (
-                              <SelectItem
-                                key={
-                                  role.value
-                                }
-                                value={
-                                  role.value
-                                }
-                              >
-                                <div className="flex flex-col">
-                                  <span className="font-medium">
-                                    {
-                                      role.label
-                                    }
-                                  </span>
-                                </div>
-                              </SelectItem>
-                            ),
-                          )}
-                        </SelectContent>
-                      </Select>
-
-                      <p className="text-xs text-slate-500">
-                        {getRoleDescription(
-                          addRole,
-                        )}
-                      </p>
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="admin-notes">
-                        Notes
-                        <span className="ml-1 font-normal text-slate-400">
-                          (optional)
-                        </span>
-                      </Label>
-
-                      <textarea
-                        id="admin-notes"
-                        value={
-                          addNotes
-                        }
-                        onChange={(
-                          event,
-                        ) =>
-                          setAddNotes(
-                            event
-                              .target
-                              .value,
-                          )
-                        }
-                        placeholder="Administrative notes..."
-                        disabled={
-                          actionLoading
-                        }
-                        rows={4}
-                        className="
-                          flex
-                          min-h-[100px]
-                          w-full
-                          resize-y
-                          rounded-md
-                          border
-                          border-input
-                          bg-background
-                          px-3
-                          py-2
-                          text-sm
-                          ring-offset-background
-                          placeholder:text-muted-foreground
-                          focus-visible:outline-none
-                          focus-visible:ring-2
-                          focus-visible:ring-ring
-                          focus-visible:ring-offset-2
-                          disabled:cursor-not-allowed
-                          disabled:opacity-50
-                        "
-                      />
-                    </div>
-
-                    <Alert>
-                      <Mail className="h-4 w-4" />
-
-                      <AlertTitle>
-                        Login credentials
-                      </AlertTitle>
-
-                      <AlertDescription>
-                        The new administrator
-                        will receive their
-                        login email and
-                        temporary password
-                        automatically after
-                        the account is created.
-                        The temporary password
-                        is based on their last
-                        name and ends with{" "}
-                        <strong>
-                          @123
-                        </strong>
-                        .
-                      </AlertDescription>
-                    </Alert>
-
-                    {addRole ===
-                      "super_admin" && (
-                      <Alert>
-                        <ShieldCheck className="h-4 w-4" />
-
-                        <AlertTitle>
-                          High-privilege role
-                        </AlertTitle>
-
-                        <AlertDescription>
-                          Super Admin has full
-                          administrative access.
-                          Only assign this role
-                          to a trusted administrator.
-                        </AlertDescription>
-                      </Alert>
-                    )}
-
-                    <div className="h-1" />
-                  </form>
+            <CardContent className="p-0">
+              {historyLoading ? (
+                <div className="flex min-h-[260px] items-center justify-center">
+                  <div className="flex items-center gap-3 text-sm text-muted-foreground">
+                    <RefreshCw className="h-5 w-5 animate-spin" />
+                    Loading Flutterwave history...
+                  </div>
                 </div>
+              ) : rows.length ===
+                0 ? (
+                <div className="p-6">
+                  <EmptyState
+                    icon={History}
+                    title="No balance movements"
+                    description="No Flutterwave balance transactions were returned for the selected account and date range."
+                  />
+                </div>
+              ) : (
+                <>
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>
+                            Account
+                          </TableHead>
 
-                <DialogFooter className="shrink-0 border-t bg-white px-6 py-4">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    disabled={
-                      actionLoading
-                    }
-                    onClick={() =>
-                      setAddDialogOpen(
-                        false,
-                      )
-                    }
-                  >
-                    Cancel
-                  </Button>
+                          <TableHead>
+                            Date
+                          </TableHead>
 
-                  <Button
-                    type="submit"
-                    form="create-admin-form"
-                    disabled={
-                      actionLoading
-                    }
-                  >
-                    {actionLoading ? (
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    ) : (
-                      <UserPlus className="mr-2 h-4 w-4" />
-                    )}
+                          <TableHead>
+                            Type
+                          </TableHead>
 
-                    Create Administrator
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
+                          <TableHead>
+                            Reference
+                          </TableHead>
 
-            {/* ==================================================
-                CHANGE ROLE DIALOG
-                ================================================== */}
+                          <TableHead className="text-right">
+                            Amount
+                          </TableHead>
 
-            <Dialog
-              open={
-                roleDialogOpen
-              }
-              onOpenChange={(
-                open,
-              ) => {
-                if (
-                  !actionLoading
-                ) {
-                  setRoleDialogOpen(
-                    open,
-                  );
-                }
-              }}
-            >
-              <DialogContent className="sm:max-w-md">
-                <DialogHeader>
-                  <DialogTitle>
-                    Change Administrator
-                    Role
-                  </DialogTitle>
+                          <TableHead className="text-right">
+                            Balance Before
+                          </TableHead>
 
-                  <DialogDescription>
-                    Update the administrative
-                    role for{" "}
-                    <strong>
-                      {selectedAdmin?.full_name ||
-                        selectedAdmin?.display_name ||
-                        selectedAdmin?.email ||
-                        "this administrator"}
-                    </strong>
-                    .
-                  </DialogDescription>
-                </DialogHeader>
+                          <TableHead className="text-right">
+                            Balance After
+                          </TableHead>
+                        </TableRow>
+                      </TableHeader>
 
-                <div className="space-y-4">
-                  <div className="rounded-lg border bg-slate-50 p-4">
-                    <div className="flex items-center gap-3">
-                      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-sm font-semibold text-slate-700 shadow-sm">
-                        {getInitials(
-                          selectedAdmin?.full_name ||
-                            selectedAdmin?.display_name,
-                          selectedAdmin?.email,
+                      <TableBody>
+                        {rows.map(
+                          (
+                            transaction,
+                            index
+                          ) => {
+                            const amount =
+                              Number(
+                                transaction.amount ??
+                                  0
+                              );
+
+                            const before =
+                              Number(
+                                transaction.balance_before ??
+                                  0
+                              );
+
+                            const after =
+                              Number(
+                                transaction.balance_after ??
+                                  0
+                              );
+
+                            const transactionDate =
+                              transaction.date ??
+                              transaction.created_at ??
+                              transaction.date_created;
+
+                            return (
+                              <TableRow
+                                key={`${String(
+                                  transaction.id ??
+                                    transaction.reference ??
+                                    index
+                                )}-${index}`}
+                              >
+                                <TableCell>
+                                  <Badge variant="outline">
+                                    {
+                                      transaction.accountType
+                                    }
+                                  </Badge>
+                                </TableCell>
+
+                                <TableCell className="whitespace-nowrap text-sm">
+                                  {formatDate(
+                                    transactionDate
+                                  )}
+                                </TableCell>
+
+                                <TableCell>
+                                  <span className="capitalize">
+                                    {transaction.type ??
+                                      "—"}
+                                  </span>
+                                </TableCell>
+
+                                <TableCell className="max-w-[180px] truncate font-mono text-xs">
+                                  {transaction.reference ??
+                                    "—"}
+                                </TableCell>
+
+                                <TableCell
+                                  className={cn(
+                                    "text-right font-medium",
+                                    amount >=
+                                      0
+                                      ? "text-emerald-600"
+                                      : "text-red-600"
+                                  )}
+                                >
+                                  {formatCurrency(
+                                    amount,
+                                    transaction.currency ??
+                                      CURRENCY
+                                  )}
+                                </TableCell>
+
+                                <TableCell className="text-right">
+                                  {formatCurrency(
+                                    before,
+                                    transaction.currency ??
+                                      CURRENCY
+                                  )}
+                                </TableCell>
+
+                                <TableCell className="text-right font-medium">
+                                  {formatCurrency(
+                                    after,
+                                    transaction.currency ??
+                                      CURRENCY
+                                  )}
+                                </TableCell>
+                              </TableRow>
+                            );
+                          }
                         )}
-                      </div>
-
-                      <div className="min-w-0">
-                        <p className="truncate font-medium text-slate-900">
-                          {selectedAdmin?.full_name ||
-                            selectedAdmin?.display_name ||
-                            "Unnamed Administrator"}
-                        </p>
-
-                        <p className="truncate text-sm text-slate-500">
-                          {selectedAdmin?.email ||
-                            "No email"}
-                        </p>
-                      </div>
-                    </div>
+                      </TableBody>
+                    </Table>
                   </div>
 
-                  <div className="space-y-2">
-                    <Label>
-                      New Role
-                    </Label>
+                  <div className="flex items-center justify-between border-t p-4">
+                    <span className="text-sm text-muted-foreground">
+                      Page{" "}
+                      {
+                        historyPage
+                      }
+                    </span>
 
-                    <Select
-                      value={
-                        newRole
-                      }
-                      onValueChange={(
-                        value,
-                      ) =>
-                        setNewRole(
-                          value as AdminRole,
-                        )
-                      }
-                      disabled={
-                        actionLoading
-                      }
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={
+                          historyPage <=
+                            1 ||
+                          historyLoading
+                        }
+                        onClick={() => {
+                          setHistoryPage(
+                            (
+                              current
+                            ) =>
+                              Math.max(
+                                current -
+                                  1,
+                                1
+                              )
+                          );
+                        }}
+                      >
+                        <ArrowLeft className="mr-2 h-4 w-4" />
+                        Previous
+                      </Button>
 
-                      <SelectContent>
-                        {ROLE_OPTIONS.map(
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={
+                          historyLoading ||
                           (
-                            role,
-                          ) => (
-                            <SelectItem
-                              key={
-                                role.value
-                              }
-                              value={
-                                role.value
-                              }
-                            >
-                              {role.label}
-                            </SelectItem>
-                          ),
-                        )}
-                      </SelectContent>
-                    </Select>
+                            history?.collection
+                              ?.pageInfo
+                              ?.total_pages ??
+                            history?.payout
+                              ?.pageInfo
+                              ?.total_pages ??
+                            historyPage
+                          ) <=
+                            historyPage
+                        }
+                        onClick={() =>
+                          setHistoryPage(
+                            (
+                              current
+                            ) =>
+                              current +
+                              1
+                          )
+                        }
+                      >
+                        Next
+                        <ArrowRight className="ml-2 h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                </>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      );
+    };
 
-                    <p className="text-xs text-slate-500">
-                      {getRoleDescription(
-                        newRole,
+
+  // ==========================================================
+  // FEES
+  // ==========================================================
+
+  const renderFees =
+    () => (
+      <div className="space-y-6">
+        <Card>
+          <CardHeader>
+            <CardTitle>
+              Transaction Fees
+            </CardTitle>
+
+            <CardDescription>
+              Configure the platform-side transaction fee policy.
+            </CardDescription>
+          </CardHeader>
+
+          <CardContent className="space-y-6">
+            <div className="grid gap-5 md:grid-cols-3">
+              <div>
+                <Label>
+                  Standard Transfer Fee
+                </Label>
+
+                <div className="relative mt-2">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
+                    ₦
+                  </span>
+
+                  <Input
+                    value={
+                      defaultTransferFee
+                    }
+                    onChange={(event) =>
+                      setDefaultTransferFee(
+                        event.target.value
+                      )
+                    }
+                    className="pl-8"
+                    inputMode="decimal"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <Label>
+                  Electronic Transfer Fee
+                </Label>
+
+                <div className="relative mt-2">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
+                    ₦
+                  </span>
+
+                  <Input
+                    value={
+                      electronicTransferFee
+                    }
+                    onChange={(event) =>
+                      setElectronicTransferFee(
+                        event.target.value
+                      )
+                    }
+                    className="pl-8"
+                    inputMode="decimal"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <Label>
+                  Wallet Transfer Fee
+                </Label>
+
+                <div className="relative mt-2">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
+                    ₦
+                  </span>
+
+                  <Input
+                    value={
+                      walletTransferFee
+                    }
+                    onChange={(event) =>
+                      setWalletTransferFee(
+                        event.target.value
+                      )
+                    }
+                    className="pl-8"
+                    inputMode="decimal"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <Separator />
+
+            <Alert>
+              <FileText className="h-4 w-4" />
+
+              <AlertTitle>
+                Fee policy
+              </AlertTitle>
+
+              <AlertDescription>
+                Fee configuration should be persisted through the secured admin settings backend before affecting production transactions.
+              </AlertDescription>
+            </Alert>
+
+            <div className="flex justify-end">
+              <Button
+                onClick={() =>
+                  void saveSettings()
+                }
+                disabled={saving}
+              >
+                <Save className="mr-2 h-4 w-4" />
+
+                Save Fee Settings
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+
+
+  // ==========================================================
+  // TRANSACTION LIMITS
+  // ==========================================================
+
+  const renderTransactionLimits =
+    () => (
+      <div className="space-y-6">
+        <Card>
+          <CardHeader>
+            <CardTitle>
+              Transaction Limits
+            </CardTitle>
+
+            <CardDescription>
+              Administrative view of the platform KYC transfer limits.
+            </CardDescription>
+          </CardHeader>
+
+          <CardContent>
+            <div className="grid gap-5 md:grid-cols-3">
+              <div>
+                <Label>
+                  Level 1 Daily Limit
+                </Label>
+
+                <div className="relative mt-2">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
+                    ₦
+                  </span>
+
+                  <Input
+                    value={
+                      level1Limit
+                    }
+                    onChange={(event) =>
+                      setLevel1Limit(
+                        event.target.value
+                      )
+                    }
+                    className="pl-8"
+                    inputMode="numeric"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <Label>
+                  Level 2 Daily Limit
+                </Label>
+
+                <div className="relative mt-2">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
+                    ₦
+                  </span>
+
+                  <Input
+                    value={
+                      level2Limit
+                    }
+                    onChange={(event) =>
+                      setLevel2Limit(
+                        event.target.value
+                      )
+                    }
+                    className="pl-8"
+                    inputMode="numeric"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <Label>
+                  Level 3 Daily Limit
+                </Label>
+
+                <div className="relative mt-2">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
+                    ₦
+                  </span>
+
+                  <Input
+                    value={
+                      level3Limit
+                    }
+                    onChange={(event) =>
+                      setLevel3Limit(
+                        event.target.value
+                      )
+                    }
+                    className="pl-8"
+                    inputMode="numeric"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <Separator className="my-6" />
+
+            <div className="divide-y">
+              <SettingRow
+                label="Require KYC for transfers"
+                description="Customers must satisfy the configured KYC requirements before transferring funds."
+                enabled={
+                  settings.requireKycForTransfers
+                }
+                onChange={(value) =>
+                  updateSetting(
+                    "requireKycForTransfers",
+                    value
+                  )
+                }
+              />
+
+              <SettingRow
+                label="Require BVN for high-value transactions"
+                description="Apply additional identity requirements to higher-value transactions."
+                enabled={
+                  settings.requireBvnForHighValue
+                }
+                onChange={(value) =>
+                  updateSetting(
+                    "requireBvnForHighValue",
+                    value
+                  )
+                }
+              />
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+
+
+  // ==========================================================
+  // FLUTTERWAVE
+  // ==========================================================
+
+  const renderFlutterwave =
+    () => (
+      <div className="space-y-6">
+        <Card>
+          <CardHeader>
+            <CardTitle>
+              Flutterwave
+            </CardTitle>
+
+            <CardDescription>
+              Provider configuration and financial integration status.
+            </CardDescription>
+          </CardHeader>
+
+          <CardContent className="space-y-5">
+            <div className="flex items-center justify-between rounded-xl border p-4">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-muted">
+                  <Zap className="h-5 w-5" />
+                </div>
+
+                <div>
+                  <p className="font-medium">
+                    Flutterwave Provider
+                  </p>
+
+                  <p className="text-sm text-muted-foreground">
+                    Primary payment and transfer provider
+                  </p>
+                </div>
+              </div>
+
+              <StatusBadge
+                status={
+                  providerHealth?.success
+                    ? "healthy"
+                    : "warning"
+                }
+              />
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="rounded-xl border p-4">
+                <p className="text-xs text-muted-foreground">
+                  Collection Balance
+                </p>
+
+                <p className="mt-2 text-2xl font-semibold">
+                  {formatCurrency(
+                    collectionAvailable
+                  )}
+                </p>
+
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Flutterwave merchant wallet
+                </p>
+              </div>
+
+              <div className="rounded-xl border p-4">
+                <p className="text-xs text-muted-foreground">
+                  Payout Balance
+                </p>
+
+                <p className="mt-2 text-2xl font-semibold">
+                  {payoutBalance?.availableBalance ===
+                  null
+                    ? "Unavailable"
+                    : formatCurrency(
+                        payoutAvailable
                       )}
+                </p>
+
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Dedicated payout account
+                </p>
+              </div>
+            </div>
+
+            <Alert>
+              <Lock className="h-4 w-4" />
+
+              <AlertTitle>
+                Credentials are server-side
+              </AlertTitle>
+
+              <AlertDescription>
+                Flutterwave secret credentials must remain in Supabase Edge Function secrets. They are never displayed or stored in this frontend page.
+              </AlertDescription>
+            </Alert>
+
+            <div className="flex justify-end">
+              <Button
+                variant="outline"
+                onClick={() =>
+                  void checkProviderHealth()
+                }
+                disabled={
+                  healthLoading
+                }
+              >
+                <Activity
+                  className={cn(
+                    "mr-2 h-4 w-4",
+                    healthLoading &&
+                      "animate-pulse"
+                  )}
+                />
+
+                Check Provider
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+
+
+  // ==========================================================
+  // PROVIDER HEALTH
+  // ==========================================================
+
+  const renderProviderHealth =
+    () => (
+      <div className="space-y-6">
+        <Card>
+          <CardHeader className="flex flex-row items-start justify-between gap-4">
+            <div>
+              <CardTitle>
+                Provider Health
+              </CardTitle>
+
+              <CardDescription>
+                Real-time connectivity check against Flutterwave.
+              </CardDescription>
+            </div>
+
+            <Button
+              onClick={() =>
+                void checkProviderHealth()
+              }
+              disabled={
+                healthLoading
+              }
+            >
+              <RefreshCw
+                className={cn(
+                  "mr-2 h-4 w-4",
+                  healthLoading &&
+                    "animate-spin"
+                )}
+              />
+
+              Run Health Check
+            </Button>
+          </CardHeader>
+
+          <CardContent>
+            {healthError && (
+              <Alert
+                variant="destructive"
+                className="mb-6"
+              >
+                <AlertCircle className="h-4 w-4" />
+
+                <AlertTitle>
+                  Health check failed
+                </AlertTitle>
+
+                <AlertDescription>
+                  {healthError}
+                </AlertDescription>
+              </Alert>
+            )}
+
+            <div className="grid gap-4 md:grid-cols-3">
+              <Card>
+                <CardHeader>
+                  <CardDescription>
+                    Provider
+                  </CardDescription>
+
+                  <CardTitle>
+                    Flutterwave
+                  </CardTitle>
+                </CardHeader>
+
+                <CardContent>
+                  <StatusBadge
+                    status={
+                      providerHealth?.success
+                        ? "healthy"
+                        : "warning"
+                    }
+                  />
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardDescription>
+                    Collection
+                  </CardDescription>
+
+                  <CardTitle>
+                    {providerHealth
+                      ?.collection
+                      .available
+                      ? "Available"
+                      : "Unavailable"}
+                  </CardTitle>
+                </CardHeader>
+
+                <CardContent>
+                  <StatusBadge
+                    status={
+                      providerHealth
+                        ?.collection
+                        .available
+                        ? "healthy"
+                        : "offline"
+                    }
+                  />
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardDescription>
+                    Payout
+                  </CardDescription>
+
+                  <CardTitle>
+                    {providerHealth
+                      ?.payout
+                      .configured
+                      ? providerHealth.payout
+                          .available
+                        ? "Available"
+                        : "Unavailable"
+                      : "Not Configured"}
+                  </CardTitle>
+                </CardHeader>
+
+                <CardContent>
+                  <StatusBadge
+                    status={
+                      !providerHealth
+                        ?.payout
+                        .configured
+                        ? "inactive"
+                        : providerHealth
+                            .payout
+                            .available
+                          ? "healthy"
+                          : "offline"
+                    }
+                  />
+                </CardContent>
+              </Card>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>
+              Health Details
+            </CardTitle>
+          </CardHeader>
+
+          <CardContent className="space-y-4">
+            <div className="flex items-center justify-between border-b py-3">
+              <span className="text-sm text-muted-foreground">
+                Environment
+              </span>
+
+              <Badge variant="outline">
+                {providerHealth?.environment ??
+                  "Unknown"}
+              </Badge>
+            </div>
+
+            <div className="flex items-center justify-between border-b py-3">
+              <span className="text-sm text-muted-foreground">
+                Collection endpoint
+              </span>
+
+              <StatusBadge
+                status={
+                  providerHealth
+                    ?.collection
+                    .available
+                    ? "healthy"
+                    : "offline"
+                }
+              />
+            </div>
+
+            <div className="flex items-center justify-between border-b py-3">
+              <span className="text-sm text-muted-foreground">
+                Payout endpoint
+              </span>
+
+              <StatusBadge
+                status={
+                  !providerHealth
+                    ?.payout
+                    .configured
+                    ? "inactive"
+                    : providerHealth
+                        ?.payout
+                        .available
+                      ? "healthy"
+                      : "offline"
+                }
+              />
+            </div>
+
+            <div className="flex items-center justify-between py-3">
+              <span className="text-sm text-muted-foreground">
+                Last checked
+              </span>
+
+              <span className="text-sm font-medium">
+                {formatDate(
+                  providerHealth?.checkedAt
+                )}
+              </span>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+
+
+  // ==========================================================
+  // WEBHOOKS
+  // ==========================================================
+
+  const renderWebhooks =
+    () => (
+      <div className="space-y-6">
+        <Card>
+          <CardHeader>
+            <CardTitle>
+              Webhooks
+            </CardTitle>
+
+            <CardDescription>
+              Monitor provider webhook operations and failures.
+            </CardDescription>
+          </CardHeader>
+
+          <CardContent className="divide-y">
+            <SettingRow
+              label="Webhook failure alerts"
+              description="Notify administrators when provider webhook processing fails."
+              enabled={
+                settings.notifyWebhookFailure
+              }
+              onChange={(value) =>
+                updateSetting(
+                  "notifyWebhookFailure",
+                  value
+                )
+              }
+            />
+
+            <div className="py-5">
+              <Label>
+                Alert threshold
+              </Label>
+
+              <p className="mb-2 mt-1 text-sm text-muted-foreground">
+                Number of failures before an operational alert is triggered.
+              </p>
+
+              <Input
+                value={
+                  webhookAlertThreshold
+                }
+                onChange={(event) =>
+                  setWebhookAlertThreshold(
+                    event.target.value
+                  )
+                }
+                className="max-w-xs"
+                inputMode="numeric"
+              />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>
+              Webhook Security
+            </CardTitle>
+
+            <CardDescription>
+              Provider webhook requests must be validated server-side.
+            </CardDescription>
+          </CardHeader>
+
+          <CardContent>
+            <Alert>
+              <ShieldCheck className="h-4 w-4" />
+
+              <AlertTitle>
+                Signature verification
+              </AlertTitle>
+
+              <AlertDescription>
+                Flutterwave webhook signatures should be verified inside the webhook Edge Function before processing events.
+              </AlertDescription>
+            </Alert>
+          </CardContent>
+        </Card>
+      </div>
+    );
+
+
+  // ==========================================================
+  // SERVICE CONTROLS
+  // ==========================================================
+
+  const renderServiceControls =
+    () => (
+      <div className="space-y-6">
+        <Card>
+          <CardHeader>
+            <CardTitle>
+              Service Controls
+            </CardTitle>
+
+            <CardDescription>
+              Control availability of customer-facing financial services.
+            </CardDescription>
+          </CardHeader>
+
+          <CardContent className="divide-y">
+            <SettingRow
+              label="Customer registrations"
+              description="Allow new customers to create accounts."
+              enabled={
+                settings.allowNewRegistrations
+              }
+              onChange={(value) =>
+                updateSetting(
+                  "allowNewRegistrations",
+                  value
+                )
+              }
+            />
+
+            <SettingRow
+              label="Wallet funding"
+              description="Allow customers to fund their IyanjuPay wallet."
+              enabled={
+                settings.allowWalletFunding
+              }
+              onChange={(value) =>
+                updateSetting(
+                  "allowWalletFunding",
+                  value
+                )
+              }
+            />
+
+            <SettingRow
+              label="Bank transfers"
+              description="Allow customers to initiate Flutterwave-powered transfers."
+              enabled={
+                settings.allowTransfers
+              }
+              onChange={(value) =>
+                updateSetting(
+                  "allowTransfers",
+                  value
+                )
+              }
+            />
+
+            <SettingRow
+              label="Wallet transfers"
+              description="Allow customers to transfer funds internally."
+              enabled={
+                settings.allowTransfers
+              }
+              onChange={(value) =>
+                updateSetting(
+                  "allowTransfers",
+                  value
+                )
+              }
+            />
+
+            <SettingRow
+              label="Bill payments"
+              description="Allow customers to purchase supported services."
+              enabled={
+                settings.allowBillPayments
+              }
+              onChange={(value) =>
+                updateSetting(
+                  "allowBillPayments",
+                  value
+                )
+              }
+            />
+
+            <SettingRow
+              label="Virtual accounts"
+              description="Allow permanent Flutterwave virtual accounts to be created."
+              enabled={
+                settings.allowVirtualAccounts
+              }
+              onChange={(value) =>
+                updateSetting(
+                  "allowVirtualAccounts",
+                  value
+                )
+              }
+            />
+          </CardContent>
+        </Card>
+
+        <div className="flex justify-end">
+          <Button
+            onClick={() =>
+              void saveSettings()
+            }
+            disabled={saving}
+          >
+            <Save className="mr-2 h-4 w-4" />
+
+            Save Service Controls
+          </Button>
+        </div>
+      </div>
+    );
+
+
+  // ==========================================================
+  // MAINTENANCE
+  // ==========================================================
+
+  const renderMaintenance =
+    () => (
+      <div className="space-y-6">
+        <Card>
+          <CardHeader>
+            <CardTitle>
+              Maintenance Mode
+            </CardTitle>
+
+            <CardDescription>
+              Temporarily restrict platform operations during maintenance.
+            </CardDescription>
+          </CardHeader>
+
+          <CardContent className="space-y-6">
+            <div className="flex items-center justify-between rounded-xl border p-5">
+              <div className="flex items-start gap-4">
+                <div className="rounded-xl bg-muted p-3">
+                  <PauseCircle className="h-5 w-5" />
+                </div>
+
+                <div>
+                  <p className="font-medium">
+                    Platform Maintenance Mode
+                  </p>
+
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Prevent customer transactions while maintenance is in progress.
+                  </p>
+                </div>
+              </div>
+
+              <Switch
+                checked={
+                  settings.maintenanceMode
+                }
+                onCheckedChange={(value) =>
+                  updateSetting(
+                    "maintenanceMode",
+                    value
+                  )
+                }
+              />
+            </div>
+
+            <div>
+              <Label>
+                Maintenance message
+              </Label>
+
+              <Input
+                value={
+                  maintenanceReason
+                }
+                onChange={(event) =>
+                  setMaintenanceReason(
+                    event.target.value
+                  )
+                }
+                placeholder="Scheduled maintenance is currently in progress."
+                className="mt-2"
+              />
+            </div>
+
+            {settings.maintenanceMode && (
+              <Alert>
+                <AlertCircle className="h-4 w-4" />
+
+                <AlertTitle>
+                  Maintenance mode enabled
+                </AlertTitle>
+
+                <AlertDescription>
+                  Customer-facing services should respect this state once it is persisted to the platform settings backend.
+                </AlertDescription>
+              </Alert>
+            )}
+
+            <div className="flex justify-end">
+              <Button
+                onClick={() =>
+                  void saveSettings()
+                }
+                disabled={saving}
+              >
+                <Save className="mr-2 h-4 w-4" />
+
+                Save Maintenance Settings
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+
+
+  // ==========================================================
+  // RECONCILIATION
+  // ==========================================================
+
+  const renderReconciliation =
+    () => (
+      <div className="space-y-6">
+        <Card>
+          <CardHeader>
+            <CardTitle>
+              Reconciliation
+            </CardTitle>
+
+            <CardDescription>
+              Configure operational reconciliation behavior.
+            </CardDescription>
+          </CardHeader>
+
+          <CardContent className="divide-y">
+            <SettingRow
+              label="Automatic reconciliation"
+              description="Automatically process provider and internal transaction matching."
+              enabled={
+                settings.automaticReconciliation
+              }
+              onChange={(value) =>
+                updateSetting(
+                  "automaticReconciliation",
+                  value
+                )
+              }
+            />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>
+              Reconciliation workflow
+            </CardTitle>
+          </CardHeader>
+
+          <CardContent>
+            <div className="grid gap-3 md:grid-cols-4">
+              {[
+                "Provider transaction",
+                "Internal transaction",
+                "Amount comparison",
+                "Matched / discrepancy",
+              ].map(
+                (
+                  step,
+                  index
+                ) => (
+                  <div
+                    key={step}
+                    className="rounded-xl border p-4"
+                  >
+                    <div className="mb-3 flex h-8 w-8 items-center justify-center rounded-full bg-muted text-sm font-semibold">
+                      {index +
+                        1}
+                    </div>
+
+                    <p className="text-sm font-medium">
+                      {step}
+                    </p>
+                  </div>
+                )
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+
+
+  // ==========================================================
+  // NOTIFICATIONS
+  // ==========================================================
+
+  const renderNotifications =
+    () => (
+      <div className="space-y-6">
+        <Card>
+          <CardHeader>
+            <CardTitle>
+              Notification Controls
+            </CardTitle>
+
+            <CardDescription>
+              Configure operational alerts and customer notifications.
+            </CardDescription>
+          </CardHeader>
+
+          <CardContent className="divide-y">
+            <SettingRow
+              label="Administrator login alerts"
+              description="Notify administrators when an administrator signs in."
+              enabled={
+                settings.notifyAdminLogin
+              }
+              onChange={(value) =>
+                updateSetting(
+                  "notifyAdminLogin",
+                  value
+                )
+              }
+            />
+
+            <SettingRow
+              label="Large transfer alerts"
+              description="Notify administrators about high-value transactions."
+              enabled={
+                settings.notifyLargeTransfer
+              }
+              onChange={(value) =>
+                updateSetting(
+                  "notifyLargeTransfer",
+                  value
+                )
+              }
+            />
+
+            <SettingRow
+              label="Failed transfer alerts"
+              description="Notify administrators when transfers fail."
+              enabled={
+                settings.notifyFailedTransfer
+              }
+              onChange={(value) =>
+                updateSetting(
+                  "notifyFailedTransfer",
+                  value
+                )
+              }
+            />
+
+            <SettingRow
+              label="Provider failure alerts"
+              description="Notify administrators when Flutterwave operations fail."
+              enabled={
+                settings.notifyProviderFailure
+              }
+              onChange={(value) =>
+                updateSetting(
+                  "notifyProviderFailure",
+                  value
+                )
+              }
+            />
+
+            <SettingRow
+              label="Customer email notifications"
+              description="Send supported transaction notifications by email."
+              enabled={
+                settings.customerEmailNotifications
+              }
+              onChange={(value) =>
+                updateSetting(
+                  "customerEmailNotifications",
+                  value
+                )
+              }
+            />
+
+            <SettingRow
+              label="Customer push notifications"
+              description="Send supported transaction notifications through push."
+              enabled={
+                settings.customerPushNotifications
+              }
+              onChange={(value) =>
+                updateSetting(
+                  "customerPushNotifications",
+                  value
+                )
+              }
+            />
+          </CardContent>
+        </Card>
+
+        <div className="flex justify-end">
+          <Button
+            onClick={() =>
+              void saveSettings()
+            }
+            disabled={saving}
+          >
+            <Save className="mr-2 h-4 w-4" />
+
+            Save Notification Settings
+          </Button>
+        </div>
+      </div>
+    );
+
+
+  // ==========================================================
+  // ADMIN AUTHENTICATION
+  // ==========================================================
+
+  const renderAdminAuthentication =
+    () => (
+      <div className="space-y-6">
+        <Card>
+          <CardHeader>
+            <CardTitle>
+              Admin Authentication
+            </CardTitle>
+
+            <CardDescription>
+              Protect access to the administrative platform.
+            </CardDescription>
+          </CardHeader>
+
+          <CardContent className="divide-y">
+            <SettingRow
+              label="Require administrator MFA"
+              description="Require multi-factor authentication for administrator accounts."
+              enabled={
+                settings.requireAdminMfa
+              }
+              onChange={(value) =>
+                updateSetting(
+                  "requireAdminMfa",
+                  value
+                )
+              }
+            />
+
+            <SettingRow
+              label="Administrator login notifications"
+              description="Record and notify on administrator login activity."
+              enabled={
+                settings.notifyAdminLogin
+              }
+              onChange={(value) =>
+                updateSetting(
+                  "notifyAdminLogin",
+                  value
+                )
+              }
+            />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>
+              Authentication principles
+            </CardTitle>
+          </CardHeader>
+
+          <CardContent className="grid gap-4 md:grid-cols-3">
+            <div className="rounded-xl border p-4">
+              <KeyRound className="mb-3 h-5 w-5" />
+
+              <p className="font-medium">
+                Strong Authentication
+              </p>
+
+              <p className="mt-1 text-sm text-muted-foreground">
+                Administrators should use strong authentication methods.
+              </p>
+            </div>
+
+            <div className="rounded-xl border p-4">
+              <Lock className="mb-3 h-5 w-5" />
+
+              <p className="font-medium">
+                Least Privilege
+              </p>
+
+              <p className="mt-1 text-sm text-muted-foreground">
+                Administrative access should follow assigned roles.
+              </p>
+            </div>
+
+            <div className="rounded-xl border p-4">
+              <History className="mb-3 h-5 w-5" />
+
+              <p className="font-medium">
+                Auditability
+              </p>
+
+              <p className="mt-1 text-sm text-muted-foreground">
+                Sensitive administrative activity should be auditable.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+
+
+  // ==========================================================
+  // SESSION POLICY
+  // ==========================================================
+
+  const renderSessionPolicy =
+    () => (
+      <div className="space-y-6">
+        <Card>
+          <CardHeader>
+            <CardTitle>
+              Session Policy
+            </CardTitle>
+
+            <CardDescription>
+              Configure administrator session behavior.
+            </CardDescription>
+          </CardHeader>
+
+          <CardContent className="space-y-6">
+            <div className="grid gap-5 md:grid-cols-2">
+              <div>
+                <Label>
+                  Session timeout
+                </Label>
+
+                <div className="relative mt-2">
+                  <Input
+                    value={
+                      sessionTimeout
+                    }
+                    onChange={(event) =>
+                      setSessionTimeout(
+                        event.target.value
+                      )
+                    }
+                    inputMode="numeric"
+                  />
+
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
+                    minutes
+                  </span>
+                </div>
+              </div>
+
+              <div>
+                <Label>
+                  Maximum concurrent sessions
+                </Label>
+
+                <Input
+                  value={
+                    maxAdminSessions
+                  }
+                  onChange={(event) =>
+                    setMaxAdminSessions(
+                      event.target.value
+                    )
+                  }
+                  className="mt-2"
+                  inputMode="numeric"
+                />
+              </div>
+            </div>
+
+            <Separator />
+
+            <SettingRow
+              label="Notify on new administrator login"
+              description="Create an operational notification whenever an administrator signs in."
+              enabled={
+                settings.notifyAdminLogin
+              }
+              onChange={(value) =>
+                updateSetting(
+                  "notifyAdminLogin",
+                  value
+                )
+              }
+            />
+
+            <div className="flex justify-end">
+              <Button
+                onClick={() =>
+                  void saveSettings()
+                }
+                disabled={saving}
+              >
+                <Save className="mr-2 h-4 w-4" />
+
+                Save Session Policy
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+
+
+  // ==========================================================
+  // SENSITIVE ACTIONS
+  // ==========================================================
+
+  const renderSensitiveActions =
+    () => (
+      <div className="space-y-6">
+        <Card>
+          <CardHeader>
+            <CardTitle>
+              Sensitive Actions
+            </CardTitle>
+
+            <CardDescription>
+              High-risk administrative operations should require additional controls.
+            </CardDescription>
+          </CardHeader>
+
+          <CardContent className="space-y-4">
+            {[
+              {
+                title:
+                  "Require confirmation for financial changes",
+                description:
+                  "Require explicit confirmation before modifying fees, limits, or financial settings.",
+              },
+              {
+                title:
+                  "Require elevated authentication",
+                description:
+                  "Require recent authentication for highly sensitive operations.",
+              },
+              {
+                title:
+                  "Audit sensitive operations",
+                description:
+                  "Record who performed sensitive administrative actions.",
+              },
+            ].map(
+              (item) => (
+                <div
+                  key={
+                    item.title
+                  }
+                  className="flex items-start justify-between gap-4 rounded-xl border p-4"
+                >
+                  <div>
+                    <p className="font-medium">
+                      {
+                        item.title
+                      }
+                    </p>
+
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      {
+                        item.description
+                      }
                     </p>
                   </div>
 
-                  {newRole ===
-                    "super_admin" && (
-                    <Alert>
-                      <ShieldCheck className="h-4 w-4" />
-
-                      <AlertTitle>
-                        Full administrative
-                        access
-                      </AlertTitle>
-
-                      <AlertDescription>
-                        This role grants the
-                        administrator full
-                        access to privileged
-                        management operations.
-                      </AlertDescription>
-                    </Alert>
-                  )}
+                  <Switch
+                    checked={
+                      true
+                    }
+                    disabled
+                  />
                 </div>
+              )
+            )}
+          </CardContent>
+        </Card>
+      </div>
+    );
 
-                <DialogFooter>
-                  <Button
-                    variant="outline"
-                    disabled={
-                      actionLoading
-                    }
-                    onClick={() =>
-                      setRoleDialogOpen(
-                        false,
-                      )
-                    }
-                  >
-                    Cancel
-                  </Button>
 
-                  <Button
-                    disabled={
-                      actionLoading ||
-                      !selectedAdmin ||
-                      selectedAdmin.role ===
-                        newRole
-                    }
-                    onClick={
-                      handleChangeRole
-                    }
-                  >
-                    {actionLoading && (
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    )}
+  // ==========================================================
+  // FRAUD CONTROLS
+  // ==========================================================
 
-                    Update Role
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
+  const renderFraudControls =
+    () => (
+      <div className="space-y-6">
+        <Card>
+          <CardHeader>
+            <CardTitle>
+              Fraud Controls
+            </CardTitle>
 
-            {/* ==================================================
-                STATUS DIALOG
-                ================================================== */}
+            <CardDescription>
+              Controls for suspicious transaction activity.
+            </CardDescription>
+          </CardHeader>
 
-            <Dialog
-              open={
-                statusDialogOpen
+          <CardContent className="divide-y">
+            <SettingRow
+              label="Velocity checks"
+              description="Monitor rapid or unusually frequent transactions."
+              enabled={
+                settings.fraudVelocityChecks
               }
-              onOpenChange={(
-                open,
-              ) => {
-                if (
-                  !actionLoading
-                ) {
-                  setStatusDialogOpen(
-                    open,
-                  );
+              onChange={(value) =>
+                updateSetting(
+                  "fraudVelocityChecks",
+                  value
+                )
+              }
+            />
+
+            <SettingRow
+              label="Block suspicious transactions"
+              description="Temporarily block transactions that meet configured fraud rules."
+              enabled={
+                settings.blockSuspiciousTransactions
+              }
+              onChange={(value) =>
+                updateSetting(
+                  "blockSuspiciousTransactions",
+                  value
+                )
+              }
+            />
+          </CardContent>
+        </Card>
+      </div>
+    );
+
+
+  // ==========================================================
+  // KYC POLICIES
+  // ==========================================================
+
+  const renderKycPolicies =
+    () => (
+      <div className="space-y-6">
+        <Card>
+          <CardHeader>
+            <CardTitle>
+              KYC Policies
+            </CardTitle>
+
+            <CardDescription>
+              Customer identity and transaction verification policies.
+            </CardDescription>
+          </CardHeader>
+
+          <CardContent className="divide-y">
+            <SettingRow
+              label="Require KYC for transfers"
+              description="Require customers to satisfy their KYC level before transferring funds."
+              enabled={
+                settings.requireKycForTransfers
+              }
+              onChange={(value) =>
+                updateSetting(
+                  "requireKycForTransfers",
+                  value
+                )
+              }
+            />
+
+            <SettingRow
+              label="Require BVN for high-value transfers"
+              description="Apply additional BVN verification requirements to higher limits."
+              enabled={
+                settings.requireBvnForHighValue
+              }
+              onChange={(value) =>
+                updateSetting(
+                  "requireBvnForHighValue",
+                  value
+                )
+              }
+            />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>
+              Current Transfer Tiers
+            </CardTitle>
+          </CardHeader>
+
+          <CardContent>
+            <div className="grid gap-4 md:grid-cols-3">
+              <div className="rounded-xl border p-5">
+                <p className="text-sm font-medium">
+                  Level 1
+                </p>
+
+                <p className="mt-2 text-2xl font-semibold">
+                  {formatCurrency(
+                    level1Limit
+                  )}
+                </p>
+
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Daily transfer limit
+                </p>
+              </div>
+
+              <div className="rounded-xl border p-5">
+                <p className="text-sm font-medium">
+                  Level 2
+                </p>
+
+                <p className="mt-2 text-2xl font-semibold">
+                  {formatCurrency(
+                    level2Limit
+                  )}
+                </p>
+
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Daily transfer limit
+                </p>
+              </div>
+
+              <div className="rounded-xl border p-5">
+                <p className="text-sm font-medium">
+                  Level 3
+                </p>
+
+                <p className="mt-2 text-2xl font-semibold">
+                  {formatCurrency(
+                    level3Limit
+                  )}
+                </p>
+
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Daily transfer limit
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+
+
+  // ==========================================================
+  // COMPLIANCE
+  // ==========================================================
+
+  const renderCompliance =
+    () => (
+      <div className="space-y-6">
+        <Card>
+          <CardHeader>
+            <CardTitle>
+              Compliance
+            </CardTitle>
+
+            <CardDescription>
+              Central compliance controls for the platform.
+            </CardDescription>
+          </CardHeader>
+
+          <CardContent className="space-y-4">
+            {[
+              "Customer identity verification",
+              "Transaction monitoring",
+              "Suspicious activity review",
+              "Financial audit trail",
+              "Provider reconciliation",
+              "Administrator activity logging",
+            ].map(
+              (item) => (
+                <div
+                  key={item}
+                  className="flex items-center gap-3 rounded-xl border p-4"
+                >
+                  <CheckCircle2 className="h-5 w-5 text-emerald-600" />
+
+                  <span className="text-sm font-medium">
+                    {item}
+                  </span>
+                </div>
+              )
+            )}
+          </CardContent>
+        </Card>
+      </div>
+    );
+
+
+  // ==========================================================
+  // GENERAL
+  // ==========================================================
+
+  const renderGeneral =
+    () => (
+      <div className="space-y-6">
+        <Card>
+          <CardHeader>
+            <CardTitle>
+              General Platform Settings
+            </CardTitle>
+
+            <CardDescription>
+              Basic platform configuration.
+            </CardDescription>
+          </CardHeader>
+
+          <CardContent className="space-y-5">
+            <div>
+              <Label>
+                Platform Name
+              </Label>
+
+              <Input
+                value="IyanjuPay"
+                readOnly
+                className="mt-2"
+              />
+            </div>
+
+            <div>
+              <Label>
+                Default Currency
+              </Label>
+
+              <Select
+                value="NGN"
+                disabled
+              >
+                <SelectTrigger className="mt-2">
+                  <SelectValue />
+                </SelectTrigger>
+
+                <SelectContent>
+                  <SelectItem value="NGN">
+                    Nigerian Naira (NGN)
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <Label>
+                Country
+              </Label>
+
+              <Input
+                value="Nigeria"
+                readOnly
+                className="mt-2"
+              />
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+
+
+  // ==========================================================
+  // CUSTOMER EXPERIENCE
+  // ==========================================================
+
+  const renderCustomerExperience =
+    () => (
+      <div className="space-y-6">
+        <Card>
+          <CardHeader>
+            <CardTitle>
+              Customer Experience
+            </CardTitle>
+
+            <CardDescription>
+              Customer-facing platform behavior.
+            </CardDescription>
+          </CardHeader>
+
+          <CardContent className="divide-y">
+            <SettingRow
+              label="Show maintenance banner"
+              description="Display an operational banner when maintenance is active."
+              enabled={
+                settings.showMaintenanceBanner
+              }
+              onChange={(value) =>
+                updateSetting(
+                  "showMaintenanceBanner",
+                  value
+                )
+              }
+            />
+
+            <SettingRow
+              label="Customer email notifications"
+              description="Send transactional emails where supported."
+              enabled={
+                settings.customerEmailNotifications
+              }
+              onChange={(value) =>
+                updateSetting(
+                  "customerEmailNotifications",
+                  value
+                )
+              }
+            />
+
+            <SettingRow
+              label="Customer push notifications"
+              description="Send supported customer transaction alerts."
+              enabled={
+                settings.customerPushNotifications
+              }
+              onChange={(value) =>
+                updateSetting(
+                  "customerPushNotifications",
+                  value
+                )
+              }
+            />
+          </CardContent>
+        </Card>
+      </div>
+    );
+
+
+  // ==========================================================
+  // FEATURE FLAGS
+  // ==========================================================
+
+  const renderFeatureFlags =
+    () => (
+      <div className="space-y-6">
+        <Card>
+          <CardHeader>
+            <CardTitle>
+              Feature Flags
+            </CardTitle>
+
+            <CardDescription>
+              Control feature availability across the platform.
+            </CardDescription>
+          </CardHeader>
+
+          <CardContent className="divide-y">
+            <SettingRow
+              label="Feature flag system"
+              description="Enable centrally managed platform feature flags."
+              enabled={
+                settings.enableFeatureFlags
+              }
+              onChange={(value) =>
+                updateSetting(
+                  "enableFeatureFlags",
+                  value
+                )
+              }
+            />
+
+            <SettingRow
+              label="Virtual accounts"
+              description="Enable permanent Flutterwave virtual account functionality."
+              enabled={
+                settings.allowVirtualAccounts
+              }
+              onChange={(value) =>
+                updateSetting(
+                  "allowVirtualAccounts",
+                  value
+                )
+              }
+            />
+
+            <SettingRow
+              label="Bill payments"
+              description="Enable the service payment feature."
+              enabled={
+                settings.allowBillPayments
+              }
+              onChange={(value) =>
+                updateSetting(
+                  "allowBillPayments",
+                  value
+                )
+              }
+            />
+          </CardContent>
+        </Card>
+      </div>
+    );
+
+
+  // ==========================================================
+  // RETENTION
+  // ==========================================================
+
+  const renderRetention =
+    () => (
+      <div className="space-y-6">
+        <Card>
+          <CardHeader>
+            <CardTitle>
+              Data Retention
+            </CardTitle>
+
+            <CardDescription>
+              Configure administrative data retention policies.
+            </CardDescription>
+          </CardHeader>
+
+          <CardContent className="space-y-6">
+            <div>
+              <Label>
+                Retention period
+              </Label>
+
+              <div className="relative mt-2 max-w-sm">
+                <Input
+                  value={
+                    retentionDays
+                  }
+                  onChange={(event) =>
+                    setRetentionDays(
+                      event.target.value
+                    )
+                  }
+                  inputMode="numeric"
+                />
+
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
+                  days
+                </span>
+              </div>
+            </div>
+
+            <Alert>
+              <Archive className="h-4 w-4" />
+
+              <AlertTitle>
+                Preserve financial records
+              </AlertTitle>
+
+              <AlertDescription>
+                Financial transaction, ledger, reconciliation, and audit records should not be deleted merely because a general retention period expires.
+              </AlertDescription>
+            </Alert>
+          </CardContent>
+        </Card>
+      </div>
+    );
+
+
+  // ==========================================================
+  // BACKUPS
+  // ==========================================================
+
+  const renderBackups =
+    () => (
+      <div className="space-y-6">
+        <Card>
+          <CardHeader>
+            <CardTitle>
+              Backups
+            </CardTitle>
+
+            <CardDescription>
+              Database backup and recovery controls.
+            </CardDescription>
+          </CardHeader>
+
+          <CardContent className="divide-y">
+            <SettingRow
+              label="Automatic backups"
+              description="Keep automated database backups enabled."
+              enabled={
+                settings.automaticBackups
+              }
+              onChange={(value) =>
+                updateSetting(
+                  "automaticBackups",
+                  value
+                )
+              }
+            />
+
+            <div className="py-5">
+              <p className="text-sm font-medium">
+                Backup strategy
+              </p>
+
+              <p className="mt-1 text-sm text-muted-foreground">
+                Production backups should be handled by the infrastructure/database provider with recovery testing performed periodically.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+
+
+  // ==========================================================
+  // EXPORTS
+  // ==========================================================
+
+  const renderExports =
+    () => (
+      <div className="space-y-6">
+        <Card>
+          <CardHeader>
+            <CardTitle>
+              Data Exports
+            </CardTitle>
+
+            <CardDescription>
+              Administrative data export controls.
+            </CardDescription>
+          </CardHeader>
+
+          <CardContent className="space-y-6">
+            <div>
+              <Label>
+                Daily export limit
+              </Label>
+
+              <Input
+                value={
+                  dailyExportLimit
                 }
-              }}
-            >
-              <DialogContent className="sm:max-w-md">
-                <DialogHeader>
-                  <DialogTitle>
-                    {statusTarget?.is_active
-                      ? "Disable Administrator"
-                      : "Reactivate Administrator"}
-                  </DialogTitle>
+                onChange={(event) =>
+                  setDailyExportLimit(
+                    event.target.value
+                  )
+                }
+                className="mt-2 max-w-sm"
+                inputMode="numeric"
+              />
+            </div>
 
-                  <DialogDescription>
-                    {statusTarget?.is_active
-                      ? "This administrator will no longer be able to use administrative functionality until reactivated."
-                      : "This administrator will regain access to administrative functionality."}
-                  </DialogDescription>
-                </DialogHeader>
+            <div className="grid gap-3 md:grid-cols-3">
+              <Button
+                variant="outline"
+                className="justify-start"
+              >
+                <FileText className="mr-2 h-4 w-4" />
 
-                <div className="rounded-lg border bg-slate-50 p-4">
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-sm font-semibold text-slate-700 shadow-sm">
-                      {getInitials(
-                        statusTarget?.full_name ||
-                          statusTarget?.display_name,
-                        statusTarget?.email,
-                      )}
-                    </div>
+                Transactions
+              </Button>
 
-                    <div className="min-w-0">
-                      <p className="truncate font-medium text-slate-900">
-                        {statusTarget?.full_name ||
-                          statusTarget?.display_name ||
-                          "Unnamed Administrator"}
-                      </p>
+              <Button
+                variant="outline"
+                className="justify-start"
+              >
+                <Wallet className="mr-2 h-4 w-4" />
 
-                      <p className="truncate text-sm text-slate-500">
-                        {statusTarget?.email ||
-                          "No email"}
-                      </p>
+                Balance History
+              </Button>
 
-                      <div className="mt-2">
-                        {statusTarget && (
-                          <RoleBadge
-                            role={
-                              statusTarget.role
+              <Button
+                variant="outline"
+                className="justify-start"
+              >
+                <FileArchive className="mr-2 h-4 w-4" />
+
+                Audit Logs
+              </Button>
+            </div>
+
+            <Alert>
+              <Lock className="h-4 w-4" />
+
+              <AlertTitle>
+                Export protection
+              </AlertTitle>
+
+              <AlertDescription>
+                Financial exports should require administrator authorization and should be audited.
+              </AlertDescription>
+            </Alert>
+          </CardContent>
+        </Card>
+      </div>
+    );
+
+
+  // ==========================================================
+  // AUDIT HISTORY
+  // ==========================================================
+
+  const renderAuditHistory =
+    () => (
+      <div className="space-y-6">
+        <Card>
+          <CardHeader>
+            <CardTitle>
+              Settings Change History
+            </CardTitle>
+
+            <CardDescription>
+              Administrative settings changes recorded by the persistent PostgreSQL audit history.
+            </CardDescription>
+          </CardHeader>
+
+          <CardContent>
+            {auditItems.length ===
+            0 ? (
+              <EmptyState
+                icon={History}
+                title="No settings changes yet"
+                description="Persisted settings changes are loaded from the administrator settings audit history."
+              />
+            ) : (
+              <div className="space-y-3">
+                {auditItems.map(
+                  (item) => (
+                    <div
+                      key={
+                        item.id
+                      }
+                      className="flex gap-4 rounded-xl border p-4"
+                    >
+                      <div className="mt-0.5 rounded-full bg-emerald-50 p-2">
+                        <Check className="h-4 w-4 text-emerald-600" />
+                      </div>
+
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <p className="text-sm font-medium">
+                            {
+                              item.action
                             }
-                          />
-                        )}
+                          </p>
+
+                          <span className="text-xs text-muted-foreground">
+                            {formatDate(
+                              item.createdAt
+                            )}
+                          </span>
+                        </div>
+
+                        <p className="mt-1 text-sm text-muted-foreground">
+                          {
+                            item.description
+                          }
+                        </p>
                       </div>
                     </div>
-                  </div>
-                </div>
-
-                {statusTarget?.is_active && (
-                  <Alert variant="destructive">
-                    <AlertCircle className="h-4 w-4" />
-
-                    <AlertTitle>
-                      Access will be disabled
-                    </AlertTitle>
-
-                    <AlertDescription>
-                      The administrator will
-                      remain in the administrator
-                      directory but will be marked
-                      inactive.
-                    </AlertDescription>
-                  </Alert>
+                  )
                 )}
-
-                <DialogFooter>
-                  <Button
-                    variant="outline"
-                    disabled={
-                      actionLoading
-                    }
-                    onClick={() =>
-                      setStatusDialogOpen(
-                        false,
-                      )
-                    }
-                  >
-                    Cancel
-                  </Button>
-
-                  <Button
-                    variant={
-                      statusTarget?.is_active
-                        ? "destructive"
-                        : "default"
-                    }
-                    disabled={
-                      actionLoading
-                    }
-                    onClick={
-                      handleChangeStatus
-                    }
-                  >
-                    {actionLoading ? (
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    ) : statusTarget?.is_active ? (
-                      <UserX className="mr-2 h-4 w-4" />
-                    ) : (
-                      <UserCheck className="mr-2 h-4 w-4" />
-                    )}
-
-                    {statusTarget?.is_active
-                      ? "Disable Administrator"
-                      : "Reactivate Administrator"}
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
-
-          </div>
-        </div>
-      </AdminLayout>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
     );
-  };
 
-export default AdminManagementPage;
+
+  // ==========================================================
+  // GENERIC SECTION FALLBACK
+  // ==========================================================
+
+  const renderGenericSection =
+    () => (
+      <div className="space-y-6">
+        <Card>
+          <CardHeader>
+            <CardTitle>
+              {getSectionTitle(
+                activeSection
+              )}
+            </CardTitle>
+
+            <CardDescription>
+              {getSectionDescription(
+                activeSection
+              )}
+            </CardDescription>
+          </CardHeader>
+
+          <CardContent>
+            <EmptyState
+              icon={Settings}
+              title="Configuration area"
+              description="This section is included in the admin settings infrastructure and is ready to be connected to its secured persistence and operational controls."
+            />
+          </CardContent>
+        </Card>
+      </div>
+    );
+
+
+  // ==========================================================
+  // SECTION RENDERER
+  // ==========================================================
+
+  const renderActiveSection =
+    () => {
+      switch (
+        activeSection
+      ) {
+        case "overview":
+          return renderOverview();
+
+        case "collection-balance":
+          return renderCollectionBalance();
+
+        case "payout-balance":
+          return renderPayoutBalance();
+
+        case "balance-history":
+          return renderBalanceHistory();
+
+        case "fees":
+          return renderFees();
+
+        case "transaction-limits":
+          return renderTransactionLimits();
+
+        case "flutterwave":
+          return renderFlutterwave();
+
+        case "provider-health":
+          return renderProviderHealth();
+
+        case "webhooks":
+          return renderWebhooks();
+
+        case "service-controls":
+          return renderServiceControls();
+
+        case "maintenance":
+          return renderMaintenance();
+
+        case "reconciliation":
+          return renderReconciliation();
+
+        case "notifications":
+          return renderNotifications();
+
+        case "admin-authentication":
+          return renderAdminAuthentication();
+
+        case "session-policy":
+          return renderSessionPolicy();
+
+        case "sensitive-actions":
+          return renderSensitiveActions();
+
+        case "fraud-controls":
+          return renderFraudControls();
+
+        case "kyc-policies":
+          return renderKycPolicies();
+
+        case "compliance":
+          return renderCompliance();
+
+        case "general":
+          return renderGeneral();
+
+        case "customer-experience":
+          return renderCustomerExperience();
+
+        case "feature-flags":
+          return renderFeatureFlags();
+
+        case "retention":
+          return renderRetention();
+
+        case "backups":
+          return renderBackups();
+
+        case "exports":
+          return renderExports();
+
+        case "audit-history":
+          return renderAuditHistory();
+
+        default:
+          return renderGenericSection();
+      }
+    };
+
+
+  // ==========================================================
+  // PAGE
+  // ==========================================================
+
+  return (
+    <AdminLayout>
+      <TooltipProvider>
+        <div className="min-h-screen bg-muted/20">
+          <main className="min-w-0">
+          {renderHeader()}
+
+          <div className="mx-auto w-full max-w-[1600px] p-4 sm:p-6">
+            {settingsLoading && (
+              <Alert className="mb-6">
+                <RefreshCw className="h-4 w-4 animate-spin" />
+                <AlertTitle>
+                  Loading administrator settings
+                </AlertTitle>
+                <AlertDescription>
+                  Reading the current settings from the secure administration backend.
+                </AlertDescription>
+              </Alert>
+            )}
+
+            {settingsError && (
+              <Alert
+                variant="destructive"
+                className="mb-6"
+              >
+                <AlertCircle className="h-4 w-4" />
+                <AlertTitle>
+                  Settings service unavailable
+                </AlertTitle>
+                <AlertDescription>
+                  {settingsError}
+                </AlertDescription>
+              </Alert>
+            )}
+
+            {saveMessage && (
+              <Alert className="mb-6 border-emerald-200 bg-emerald-50 text-emerald-900">
+                <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+
+                <AlertTitle>
+                  Settings updated
+                </AlertTitle>
+
+                <AlertDescription>
+                  {saveMessage}
+                </AlertDescription>
+              </Alert>
+            )}
+
+            {renderActiveSection()}
+          </div>
+          </main>
+        </div>
+      </TooltipProvider>
+    </AdminLayout>
+  );
+}
+
+export default AdminSettingsPage;

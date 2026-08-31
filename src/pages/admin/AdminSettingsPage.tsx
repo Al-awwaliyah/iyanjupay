@@ -59,6 +59,7 @@ import {
 } from "lucide-react";
 
 import { supabase } from "@/integrations/supabase/client";
+import AdminLayout from "@/pages/admin/AdminLayout";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -161,7 +162,16 @@ interface NavigationGroup {
   items: NavigationItem[];
 }
 
-interface BalanceData {
+interface CollectionBalanceData {
+  currency: string;
+  balance: number | null;
+  grossBalance: number | null;
+  pendingSettlementCount: number;
+  source: string | null;
+  sourceDescription?: string | null;
+}
+
+interface PayoutBalanceData {
   currency: string;
   availableBalance: number | null;
   ledgerBalance: number | null;
@@ -174,8 +184,8 @@ interface BalanceResponse {
   success: boolean;
   status?: string;
   synchronizedAt?: string;
-  collection: BalanceData | null;
-  payout: BalanceData | null;
+  collection: CollectionBalanceData | null;
+  payout: PayoutBalanceData | null;
   errors?: {
     collection?: string | null;
     payout?: string | null;
@@ -217,7 +227,12 @@ interface HistoryResponse {
   payout: {
     pageInfo: HistoryPageInfo | null;
     transactions: HistoryTransaction[];
-    configured?: boolean;
+    next?: string | null;
+    previous?: string | null;
+  } | null;
+  settlements?: {
+    pageInfo: HistoryPageInfo | null;
+    transactions: HistoryTransaction[];
   } | null;
 }
 
@@ -266,9 +281,6 @@ interface SettingsState {
   enableFeatureFlags: boolean;
   automaticReconciliation: boolean;
   automaticBackups: boolean;
-  requireFinancialChangeConfirmation: boolean;
-  requireElevatedAuthentication: boolean;
-  auditSensitiveOperations: boolean;
 }
 
 interface AuditItem {
@@ -343,9 +355,6 @@ const PERSISTED_SETTING_KEYS: PersistedSettingKey[] = [
   "enableFeatureFlags",
   "automaticReconciliation",
   "automaticBackups",
-  "requireFinancialChangeConfirmation",
-  "requireElevatedAuthentication",
-  "auditSensitiveOperations",
   "maintenanceReason",
   "defaultTransferFee",
   "electronicTransferFee",
@@ -383,9 +392,6 @@ const SETTING_DESCRIPTIONS: Record<string, string> = {
   enableFeatureFlags: "Enable centrally managed feature flags.",
   automaticReconciliation: "Enable automatic reconciliation processing.",
   automaticBackups: "Enable the configured automatic backup policy.",
-  requireFinancialChangeConfirmation: "Require confirmation for sensitive financial changes.",
-  requireElevatedAuthentication: "Require recent authentication for sensitive administrative actions.",
-  auditSensitiveOperations: "Record sensitive administrative operations in the audit trail.",
   maintenanceReason: "Customer-facing maintenance message.",
   defaultTransferFee: "Standard IyanjuPay transfer fee in NGN.",
   electronicTransferFee: "Electronic transfer fee in NGN.",
@@ -930,9 +936,6 @@ function getInitialSettings(): SettingsState {
     enableFeatureFlags: true,
     automaticReconciliation: true,
     automaticBackups: true,
-    requireFinancialChangeConfirmation: true,
-    requireElevatedAuthentication: true,
-    auditSensitiveOperations: true,
   };
 }
 
@@ -1085,10 +1088,10 @@ function AdminSettingsPage() {
     );
 
   const [collectionBalance, setCollectionBalance] =
-    useState<BalanceData | null>(null);
+    useState<CollectionBalanceData | null>(null);
 
   const [payoutBalance, setPayoutBalance] =
-    useState<BalanceData | null>(null);
+    useState<PayoutBalanceData | null>(null);
 
   const [balanceLoading, setBalanceLoading] =
     useState(false);
@@ -1946,76 +1949,22 @@ function AdminSettingsPage() {
 
   const updateSetting =
     useCallback(
-      async (
+      (
         key: keyof SettingsState,
         value: boolean
       ) => {
-        const previousValue =
-          settings[key];
-
-        setSettings((current) => ({
-          ...current,
-          [key]: value,
-        }));
+        setSettings(
+          (current) => ({
+            ...current,
+            [key]: value,
+          })
+        );
 
         setSaveMessage(null);
-        setSettingsError(null);
-
-        try {
-          const storageKey =
-            settingStorageKey(
-              key as PersistedSettingKey,
-              settingKeyMap
-            );
-
-          const { error } =
-            await supabase.rpc(
-              "admin_settings_upsert",
-              {
-                p_key: storageKey,
-                p_value: value,
-                p_description:
-                  SETTING_DESCRIPTIONS[key] ??
-                  null,
-              }
-            );
-
-          if (error) {
-            throw error;
-          }
-
-          setSavedSettingsSnapshot(
-            (current) => ({
-              ...current,
-              [key]: value,
-            })
-          );
-
-          setSaveMessage(
-            "Setting updated successfully."
-          );
-
-          void loadSettingsHistory();
-        } catch (error) {
-          setSettings((current) => ({
-            ...current,
-            [key]: previousValue,
-          }));
-
-          setSettingsError(
-            getFriendlyAdminError(
-              error,
-              "Unable to update this setting. The change was not saved."
-            )
-          );
-        }
       },
-      [
-        settings,
-        settingKeyMap,
-        loadSettingsHistory,
-      ]
+      []
     );
+
 
   // ==========================================================
   // SAVE SETTINGS
@@ -2158,19 +2107,13 @@ function AdminSettingsPage() {
   // SUMMARY VALUES
   // ==========================================================
 
-  const totalFlutterwaveAvailable =
-    (
-      collectionBalance?.availableBalance ??
-      0
-    ) +
-    (
-      payoutBalance?.availableBalance ??
-      0
-    );
-
   const collectionAvailable =
-    collectionBalance?.availableBalance ??
+    collectionBalance?.balance ??
     0;
+
+  const totalFlutterwaveAvailable =
+    collectionAvailable +
+    (payoutBalance?.availableBalance ?? 0);
 
   const payoutAvailable =
     payoutBalance?.availableBalance ??
@@ -2699,14 +2642,10 @@ function AdminSettingsPage() {
                 label="Sensitive Action Protection"
                 description="Require additional protection for high-risk operations."
                 enabled={
-                  settings.requireFinancialChangeConfirmation
+                  true
                 }
-                onChange={(value) =>
-                  updateSetting(
-                    "requireFinancialChangeConfirmation",
-                    value
-                  )
-                }
+                onChange={() => undefined}
+                disabled
               />
 
               <SettingRow
@@ -2821,7 +2760,7 @@ function AdminSettingsPage() {
               </CardTitle>
 
               <CardDescription>
-                Live collection balance from the Flutterwave merchant account.
+                Funds collected by Flutterwave that are currently pending settlement.
               </CardDescription>
             </div>
 
@@ -2867,14 +2806,14 @@ function AdminSettingsPage() {
               <Card className="bg-muted/30">
                 <CardHeader>
                   <CardDescription>
-                    Available Balance
+                    Pending Collection Balance
                   </CardDescription>
 
                   <CardTitle className="text-3xl">
                     {balanceLoading
                       ? "Loading..."
                       : formatCurrency(
-                          collectionBalance?.availableBalance
+                          collectionBalance?.balance
                         )}
                   </CardTitle>
                 </CardHeader>
@@ -2883,14 +2822,14 @@ function AdminSettingsPage() {
               <Card className="bg-muted/30">
                 <CardHeader>
                   <CardDescription>
-                    Ledger Balance
+                    Gross Pending Settlement
                   </CardDescription>
 
                   <CardTitle className="text-3xl">
                     {balanceLoading
                       ? "Loading..."
                       : formatCurrency(
-                          collectionBalance?.ledgerBalance
+                          collectionBalance?.grossBalance
                         )}
                   </CardTitle>
                 </CardHeader>
@@ -2899,12 +2838,15 @@ function AdminSettingsPage() {
               <Card className="bg-muted/30">
                 <CardHeader>
                   <CardDescription>
-                    Currency
+                    Pending Settlements
                   </CardDescription>
 
                   <CardTitle className="text-3xl">
-                    {collectionBalance?.currency ??
-                      CURRENCY}
+                    {balanceLoading
+                      ? "Loading..."
+                      : formatNumber(
+                          collectionBalance?.pendingSettlementCount ?? 0
+                        )}
                   </CardTitle>
                 </CardHeader>
               </Card>
@@ -2940,7 +2882,7 @@ function AdminSettingsPage() {
               </span>
 
               <span className="text-sm font-medium">
-                Merchant Collection Wallet
+                Pending Collection / Settlement Funds
               </span>
             </div>
 
@@ -2977,7 +2919,7 @@ function AdminSettingsPage() {
           </AlertTitle>
 
           <AlertDescription>
-            This balance is retrieved directly from the Flutterwave merchant wallet. It is not calculated from the IyanjuPay internal ledger.
+            This balance is calculated from Flutterwave settlement records and represents funds collected but not yet settled. It is not calculated from the IyanjuPay internal ledger.
           </AlertDescription>
         </Alert>
       </div>
@@ -4992,64 +4934,62 @@ function AdminSettingsPage() {
             </CardDescription>
           </CardHeader>
 
-          <CardContent className="divide-y">
-            <SettingRow
-              label="Require confirmation for financial changes"
-              description="Require explicit confirmation before modifying fees, limits, or financial settings."
-              enabled={
-                settings.requireFinancialChangeConfirmation
-              }
-              onChange={(value) =>
-                updateSetting(
-                  "requireFinancialChangeConfirmation",
-                  value
-                )
-              }
-            />
+          <CardContent className="space-y-4">
+            {[
+              {
+                title:
+                  "Require confirmation for financial changes",
+                description:
+                  "Require explicit confirmation before modifying fees, limits, or financial settings.",
+              },
+              {
+                title:
+                  "Require elevated authentication",
+                description:
+                  "Require recent authentication for highly sensitive operations.",
+              },
+              {
+                title:
+                  "Audit sensitive operations",
+                description:
+                  "Record who performed sensitive administrative actions.",
+              },
+            ].map(
+              (item) => (
+                <div
+                  key={
+                    item.title
+                  }
+                  className="flex items-start justify-between gap-4 rounded-xl border p-4"
+                >
+                  <div>
+                    <p className="font-medium">
+                      {
+                        item.title
+                      }
+                    </p>
 
-            <SettingRow
-              label="Require elevated authentication"
-              description="Require recent authentication for highly sensitive operations."
-              enabled={
-                settings.requireElevatedAuthentication
-              }
-              onChange={(value) =>
-                updateSetting(
-                  "requireElevatedAuthentication",
-                  value
-                )
-              }
-            />
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      {
+                        item.description
+                      }
+                    </p>
+                  </div>
 
-            <SettingRow
-              label="Audit sensitive operations"
-              description="Record who performed sensitive administrative actions."
-              enabled={
-                settings.auditSensitiveOperations
-              }
-              onChange={(value) =>
-                updateSetting(
-                  "auditSensitiveOperations",
-                  value
-                )
-              }
-            />
-
-            <div className="flex justify-end pt-4">
-              <Button
-                onClick={() =>
-                  void saveSettings()
-                }
-                disabled={saving}
-              >
-                <Save className="mr-2 h-4 w-4" />
-                Save Sensitive Action Settings
-              </Button>
-            </div>
+                  <Switch
+                    checked={
+                      true
+                    }
+                    disabled
+                  />
+                </div>
+              )
+            )}
           </CardContent>
         </Card>
       </div>
     );
+
 
   // ==========================================================
   // FRAUD CONTROLS
@@ -5858,11 +5798,12 @@ function AdminSettingsPage() {
   // ==========================================================
 
   return (
-    <TooltipProvider>
-      <div className="flex min-h-screen bg-muted/20">
-        <aside className="fixed inset-y-0 left-0 z-40 hidden w-[280px] border-r bg-background lg:block">
-          {renderNavigation()}
-        </aside>
+    <AdminLayout>
+      <TooltipProvider>
+        <div className="flex min-h-screen bg-muted/20">
+          <aside className="sticky top-0 z-30 hidden h-screen w-[280px] shrink-0 border-r bg-background lg:block">
+            {renderNavigation()}
+          </aside>
 
         {mobileNavigationOpen && (
           <>
@@ -5883,7 +5824,7 @@ function AdminSettingsPage() {
           </>
         )}
 
-        <main className="min-w-0 flex-1 lg:pl-[280px]">
+          <main className="min-w-0 flex-1">
           {renderHeader()}
 
           <div className="mx-auto w-full max-w-[1600px] p-4 sm:p-6">
@@ -5931,8 +5872,9 @@ function AdminSettingsPage() {
             {renderActiveSection()}
           </div>
         </main>
-      </div>
-    </TooltipProvider>
+        </div>
+      </TooltipProvider>
+    </AdminLayout>
   );
 }
 

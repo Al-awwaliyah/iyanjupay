@@ -32,7 +32,6 @@ import {
   LayoutDashboard,
   Lock,
   LogOut,
-  Menu,
   Moon,
   Network,
   Palette,
@@ -58,6 +57,7 @@ import {
   Zap,
 } from "lucide-react";
 
+import AdminLayout from "@/pages/admin/AdminLayout";
 import { supabase } from "@/integrations/supabase/client";
 
 import { Button } from "@/components/ui/button";
@@ -1045,27 +1045,113 @@ function EmptyState({
 
 
 // ============================================================
+// BALANCE RESPONSE NORMALIZATION
+// ============================================================
+
+function normalizeBalanceData(value: any): BalanceData | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+
+  const raw = value.data && typeof value.data === "object"
+    ? value.data
+    : value;
+
+  const availableRaw =
+    raw.availableBalance ??
+    raw.available_balance ??
+    raw.available ??
+    raw.balance ??
+    null;
+
+  const ledgerRaw =
+    raw.ledgerBalance ??
+    raw.ledger_balance ??
+    raw.ledger ??
+    availableRaw;
+
+  const available =
+    availableRaw === null || availableRaw === undefined || availableRaw === ""
+      ? null
+      : Number(availableRaw);
+
+  const ledger =
+    ledgerRaw === null || ledgerRaw === undefined || ledgerRaw === ""
+      ? null
+      : Number(ledgerRaw);
+
+  return {
+    currency: String(raw.currency ?? CURRENCY),
+    availableBalance: Number.isFinite(available as number) ? available : null,
+    ledgerBalance: Number.isFinite(ledger as number) ? ledger : null,
+    source: raw.source ? String(raw.source) : null,
+    configured: raw.configured === undefined ? undefined : Boolean(raw.configured),
+    accountReference:
+      raw.accountReference ?? raw.account_reference ?? raw.reference ?? null,
+  };
+}
+
+function normalizeBalanceResponse(value: any): BalanceResponse {
+  const root = value && typeof value === "object" ? value : {};
+  const payload =
+    root.data && typeof root.data === "object" && !Array.isArray(root.data)
+      ? root.data
+      : root;
+
+  let collectionSource =
+    payload.collection ??
+    payload.collectionBalance ??
+    payload.collection_balance ??
+    null;
+
+  let payoutSource =
+    payload.payout ??
+    payload.payoutBalance ??
+    payload.payout_balance ??
+    null;
+
+  // Flutterwave's balance endpoint can expose balances as an array.
+  // Prefer NGN, while retaining a sensible first-balance fallback.
+  const balances = Array.isArray(payload.balances)
+    ? payload.balances
+    : Array.isArray(payload.data)
+      ? payload.data
+      : null;
+
+  if (!collectionSource && balances?.length) {
+    const ngn = balances.find(
+      (item: any) => String(item?.currency ?? "").toUpperCase() === CURRENCY
+    );
+    collectionSource = ngn ?? balances[0];
+  }
+
+  return {
+    success: Boolean(payload.success ?? root.success ?? true),
+    status: payload.status ?? root.status,
+    synchronizedAt:
+      payload.synchronizedAt ??
+      payload.synchronized_at ??
+      root.synchronizedAt ??
+      new Date().toISOString(),
+    collection: normalizeBalanceData(collectionSource),
+    payout: normalizeBalanceData(payoutSource),
+    errors: {
+      collection:
+        payload.errors?.collection ?? root.errors?.collection ?? null,
+      payout:
+        payload.errors?.payout ?? root.errors?.payout ?? null,
+    },
+  };
+}
+
+
+// ============================================================
 // MAIN COMPONENT
 // ============================================================
 
 function AdminSettingsPage() {
   const [activeSection, setActiveSection] =
     useState<SettingsSection>("overview");
-
-  const [mobileNavigationOpen, setMobileNavigationOpen] =
-    useState(false);
-
-  const [expandedGroups, setExpandedGroups] =
-    useState<Record<string, boolean>>(
-      Object.fromEntries(
-        navigationGroups.map(
-          (group) => [
-            group.id,
-            true,
-          ]
-        )
-      )
-    );
 
   const [settings, setSettings] =
     useState<SettingsState>(
@@ -1124,9 +1210,6 @@ function AdminSettingsPage() {
 
   const [saveMessage, setSaveMessage] =
     useState<string | null>(null);
-
-  const [search, setSearch] =
-    useState("");
 
   const [auditItems, setAuditItems] =
     useState<AuditItem[]>([]);
@@ -1191,23 +1274,9 @@ function AdminSettingsPage() {
   // NAVIGATION
   // ==========================================================
 
-  const toggleGroup = useCallback(
-    (groupId: string) => {
-      setExpandedGroups(
-        (current) => ({
-          ...current,
-          [groupId]:
-            !current[groupId],
-        })
-      );
-    },
-    []
-  );
-
   const navigateTo = useCallback(
     (section: SettingsSection) => {
       setActiveSection(section);
-      setMobileNavigationOpen(false);
 
       window.history.replaceState(
         null,
@@ -1715,10 +1784,13 @@ function AdminSettingsPage() {
         setBalanceError(null);
 
         try {
-          const result =
-            await callFlutterwaveFunction<BalanceResponse>(
+          const rawResult =
+            await callFlutterwaveFunction<any>(
               "balances"
             );
+
+          const result =
+            normalizeBalanceResponse(rawResult);
 
           setCollectionBalance(
             result.collection
@@ -1772,10 +1844,13 @@ function AdminSettingsPage() {
         setBalanceError(null);
 
         try {
-          const result =
-            await callFlutterwaveFunction<BalanceResponse>(
+          const rawResult =
+            await callFlutterwaveFunction<any>(
               "sync"
             );
+
+          const result =
+            normalizeBalanceResponse(rawResult);
 
           setCollectionBalance(
             result.collection
@@ -2050,45 +2125,6 @@ function AdminSettingsPage() {
     );
 
   // ==========================================================
-  // SEARCH NAVIGATION
-  // ==========================================================
-
-  const filteredGroups =
-    useMemo(() => {
-      const term =
-        search
-          .trim()
-          .toLowerCase();
-
-      if (!term) {
-        return navigationGroups;
-      }
-
-      return navigationGroups
-        .map((group) => ({
-          ...group,
-          items:
-            group.items.filter(
-              (item) =>
-                item.label
-                  .toLowerCase()
-                  .includes(term) ||
-                item.description
-                  ?.toLowerCase()
-                  .includes(term) ||
-                group.label
-                  .toLowerCase()
-                  .includes(term)
-            ),
-        }))
-        .filter(
-          (group) =>
-            group.items.length > 0
-        );
-    }, [search]);
-
-
-  // ==========================================================
   // SUMMARY VALUES
   // ==========================================================
 
@@ -2112,186 +2148,6 @@ function AdminSettingsPage() {
 
 
   // ==========================================================
-  // NAVIGATION SIDEBAR
-  // ==========================================================
-
-  const renderNavigation =
-    (
-      mobile = false
-    ) => (
-      <div
-        className={cn(
-          "flex h-full flex-col",
-          mobile
-            ? "bg-background"
-            : ""
-        )}
-      >
-        <div className="flex h-16 items-center gap-3 border-b px-5">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-primary-foreground">
-            <Settings className="h-5 w-5" />
-          </div>
-
-          <div className="min-w-0">
-            <p className="truncate text-sm font-semibold">
-              Admin Settings
-            </p>
-
-            <p className="truncate text-xs text-muted-foreground">
-              IyanjuPay
-            </p>
-          </div>
-
-          {mobile && (
-            <Button
-              variant="ghost"
-              size="icon"
-              className="ml-auto"
-              onClick={() =>
-                setMobileNavigationOpen(
-                  false
-                )
-              }
-            >
-              <X className="h-5 w-5" />
-            </Button>
-          )}
-        </div>
-
-        <div className="border-b p-3">
-          <div className="relative">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-
-            <Input
-              value={search}
-              onChange={(event) =>
-                setSearch(
-                  event.target.value
-                )
-              }
-              placeholder="Search settings..."
-              className="pl-9"
-            />
-          </div>
-        </div>
-
-        <div className="flex-1 overflow-y-auto p-3">
-          <div className="space-y-4">
-            {filteredGroups.map(
-              (group) => {
-                const Icon =
-                  group.icon;
-
-                const expanded =
-                  expandedGroups[
-                    group.id
-                  ] ?? true;
-
-                return (
-                  <div
-                    key={
-                      group.id
-                    }
-                  >
-                    <button
-                      type="button"
-                      className="mb-1 flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground hover:bg-muted"
-                      onClick={() =>
-                        toggleGroup(
-                          group.id
-                        )
-                      }
-                    >
-                      <Icon className="h-3.5 w-3.5" />
-
-                      <span className="flex-1">
-                        {group.label}
-                      </span>
-
-                      <ChevronDown
-                        className={cn(
-                          "h-3.5 w-3.5 transition-transform",
-                          !expanded &&
-                            "-rotate-90"
-                        )}
-                      />
-                    </button>
-
-                    {expanded && (
-                      <div className="space-y-0.5">
-                        {group.items.map(
-                          (
-                            item
-                          ) => {
-                            const ItemIcon =
-                              item.icon;
-
-                            const active =
-                              activeSection ===
-                              item.id;
-
-                            return (
-                              <button
-                                key={
-                                  item.id
-                                }
-                                type="button"
-                                onClick={() =>
-                                  navigateTo(
-                                    item.id
-                                  )
-                                }
-                                className={cn(
-                                  "flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm transition-colors",
-                                  active
-                                    ? "bg-primary text-primary-foreground"
-                                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                                )}
-                              >
-                                <ItemIcon className="h-4 w-4 shrink-0" />
-
-                                <span className="min-w-0 flex-1 truncate">
-                                  {
-                                    item.label
-                                  }
-                                </span>
-
-                                {active && (
-                                  <ChevronRight className="h-4 w-4 shrink-0" />
-                                )}
-                              </button>
-                            );
-                          }
-                        )}
-                      </div>
-                    )}
-                  </div>
-                );
-              }
-            )}
-          </div>
-        </div>
-
-        <div className="border-t p-3">
-          <div className="rounded-xl bg-muted/50 p-3">
-            <div className="flex items-center gap-2">
-              <ShieldCheck className="h-4 w-4 text-emerald-600" />
-
-              <span className="text-xs font-medium">
-                Administrator Area
-              </span>
-            </div>
-
-            <p className="mt-1 text-[11px] text-muted-foreground">
-              Protected settings and operational controls.
-            </p>
-          </div>
-        </div>
-      </div>
-    );
-
-
-  // ==========================================================
   // PAGE HEADER
   // ==========================================================
 
@@ -2299,18 +2155,25 @@ function AdminSettingsPage() {
     () => (
       <div className="border-b bg-background">
         <div className="flex min-h-16 items-center gap-3 px-4 sm:px-6">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="lg:hidden"
-            onClick={() =>
-              setMobileNavigationOpen(
-                true
-              )
+          <Select
+            value={activeSection}
+            onValueChange={(value) =>
+              navigateTo(value as SettingsSection)
             }
           >
-            <Menu className="h-5 w-5" />
-          </Button>
+            <SelectTrigger className="w-[220px] sm:w-[280px]">
+              <SelectValue placeholder="Select settings" />
+            </SelectTrigger>
+            <SelectContent>
+              {navigationGroups.flatMap((group) =>
+                group.items.map((item) => (
+                  <SelectItem key={item.id} value={item.id}>
+                    {item.label}
+                  </SelectItem>
+                ))
+              )}
+            </SelectContent>
+          </Select>
 
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
@@ -5786,32 +5649,10 @@ function AdminSettingsPage() {
   // ==========================================================
 
   return (
-    <TooltipProvider>
-      <div className="flex min-h-screen bg-muted/20">
-        <aside className="fixed inset-y-0 left-0 z-40 hidden w-[280px] border-r bg-background lg:block">
-          {renderNavigation()}
-        </aside>
-
-        {mobileNavigationOpen && (
-          <>
-            <div
-              className="fixed inset-0 z-40 bg-black/40 lg:hidden"
-              onClick={() =>
-                setMobileNavigationOpen(
-                  false
-                )
-              }
-            />
-
-            <aside className="fixed inset-y-0 left-0 z-50 w-[300px] border-r bg-background lg:hidden">
-              {renderNavigation(
-                true
-              )}
-            </aside>
-          </>
-        )}
-
-        <main className="min-w-0 flex-1 lg:pl-[280px]">
+    <AdminLayout>
+      <TooltipProvider>
+        <div className="min-h-screen bg-muted/20">
+          <main className="min-w-0">
           {renderHeader()}
 
           <div className="mx-auto w-full max-w-[1600px] p-4 sm:p-6">
@@ -5858,9 +5699,10 @@ function AdminSettingsPage() {
 
             {renderActiveSection()}
           </div>
-        </main>
-      </div>
-    </TooltipProvider>
+          </main>
+        </div>
+      </TooltipProvider>
+    </AdminLayout>
   );
 }
 

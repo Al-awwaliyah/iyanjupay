@@ -1,10 +1,62 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
+/**
+ * ============================================================
+ * IYANJUPAY — CLUBKONNECT SERVICE
+ * ============================================================
+ *
+ * Supported:
+ *
+ *   airtime
+ *   data
+ *   cable_tv
+ *   electricity
+ *   airtime_epin
+ *   data_epin
+ *   smile
+ *   waec
+ *   jamb
+ *
+ * NOT SUPPORTED:
+ *
+ *   betting
+ *
+ * Pricing:
+ *
+ *   Regular:
+ *     airtime       15%
+ *     data          15%
+ *     cable_tv      15%
+ *     electricity  15%
+ *
+ *   Premium:
+ *     airtime_epin 20%
+ *     data_epin    20%
+ *     smile        20%
+ *     waec         20%
+ *     jamb         20%
+ *
+ * Security:
+ *
+ *   - User authentication required.
+ *   - Provider credentials never exposed.
+ *   - Wallet is HOLDed before provider purchase.
+ *   - Provider is called only after successful HOLD.
+ *   - Successful provider order is finalized by RPC.
+ *   - Failed provider order releases the HOLD.
+ *   - Queued provider orders remain held.
+ *   - Provider OrderID / RequestID stored in transaction metadata.
+ *   - Betting is permanently rejected.
+ *
+ * ============================================================
+ */
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
     "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
+  "Access-Control-Allow-Methods":
+    "POST, GET, OPTIONS",
 };
 
 const CLUBKONNECT_BASE_URL =
@@ -29,7 +81,6 @@ type Action =
   | "health"
   | "balance"
   | "catalog"
-  | "sync_catalog"
   | "verify"
   | "query"
   | "purchase";
@@ -45,6 +96,70 @@ const PREMIUM_SERVICES =
     "waec",
     "jamb",
   ]);
+
+const PURCHASE_SERVICES =
+  new Set<SupportedService>(
+    SUPPORTED_SERVICES,
+  );
+
+const ACTIVE_ORDER_STATUSES = new Set([
+  "ORDER_RECEIVED",
+  "ORDER_PROCESSING",
+  "ORDER_PROCESSED",
+  "ORDER_ONHOLD",
+  "PROCESSING",
+  "PENDING",
+  "QUEUED",
+]);
+
+const SUCCESS_ORDER_STATUSES = new Set([
+  "ORDER_COMPLETED",
+  "COMPLETED",
+  "SUCCESS",
+  "SUCCESSFUL",
+]);
+
+const FAILURE_ORDER_STATUSES = new Set([
+  "ORDER_FAILED",
+  "FAILED",
+  "ORDER_CANCELLED",
+  "CANCELLED",
+  "CANCELED",
+  "DECLINED",
+  "REJECTED",
+]);
+
+/**
+ * ============================================================
+ * SUPABASE CLIENTS
+ * ============================================================
+ */
+
+const SUPABASE_URL =
+  Deno.env.get("SUPABASE_URL") ?? "";
+
+const SUPABASE_ANON_KEY =
+  Deno.env.get("SUPABASE_ANON_KEY") ?? "";
+
+const SUPABASE_SERVICE_ROLE_KEY =
+  Deno.env.get(
+    "SUPABASE_SERVICE_ROLE_KEY",
+  ) ?? "";
+
+const supabaseAdmin =
+  SUPABASE_URL &&
+  SUPABASE_SERVICE_ROLE_KEY
+    ? createClient(
+        SUPABASE_URL,
+        SUPABASE_SERVICE_ROLE_KEY,
+        {
+          auth: {
+            persistSession: false,
+            autoRefreshToken: false,
+          },
+        },
+      )
+    : null;
 
 /**
  * ============================================================
@@ -69,123 +184,180 @@ function jsonResponse(
   );
 }
 
-/**
- * Never expose provider credentials, raw URLs containing
- * credentials, stack traces, database errors, or technical
- * implementation details to users.
- */
 function safeErrorMessage(
-  status?: string,
+  code?: string,
   fallback =
     "Unable to process the request.",
 ): string {
   const value =
-    String(status ?? "").toUpperCase();
+    String(code ?? "")
+      .toUpperCase()
+      .trim();
 
-  const knownMessages: Record<
+  const known: Record<
     string,
     string
   > = {
-    INVALID_CREDENTIALS:
-      "The ClubKonnect service credentials are invalid.",
-    MISSING_CREDENTIALS:
-      "The ClubKonnect service credentials are incomplete.",
-    MISSING_USERID:
-      "The ClubKonnect service credentials are incomplete.",
-    MISSING_APIKEY:
-      "The ClubKonnect service credentials are incomplete.",
+    AUTHENTICATION_REQUIRED:
+      "Authentication is required.",
+
+    SUPABASE_CONFIGURATION_ERROR:
+      "The service is temporarily unavailable.",
+
+    CLUBKONNECT_CONFIGURATION_ERROR:
+      "The ClubKonnect service is temporarily unavailable.",
+
+    CLUBKONNECT_NETWORK_ERROR:
+      "The ClubKonnect service could not be reached.",
+
+    CLUBKONNECT_INVALID_RESPONSE:
+      "The ClubKonnect service returned an invalid response.",
+
+    INSUFFICIENT_FUNDS:
+      "Insufficient wallet balance.",
+
+    WALLET_NOT_ACTIVE:
+      "Your wallet is not currently active.",
+
+    CATALOG_NOT_FOUND:
+      "The selected service plan is unavailable.",
+
+    INVALID_CATALOG:
+      "The selected service plan is invalid.",
+
+    UNSUPPORTED_SERVICE:
+      "This service is not supported.",
+
+    BETTING_DISABLED:
+      "This service is not supported by IyanjuPay.",
+
+    PURCHASE_NOT_ALLOWED:
+      "This purchase cannot be processed.",
+
+    MISSING_SERVICE:
+      "A service is required.",
+
+    MISSING_CATALOG_ID:
+      "A service plan is required.",
 
     MISSING_MOBILENETWORK:
       "A mobile network is required.",
+
     MISSING_AMOUNT:
       "An amount is required.",
+
     INVALID_AMOUNT:
       "The amount provided is invalid.",
+
     MINIMUM_50:
       "The minimum airtime amount is ₦50.",
+
     MINIMUM_200000:
       "The maximum airtime amount is ₦200,000.",
+
     INVALID_RECIPIENT:
       "The recipient phone number is invalid.",
 
     MISSING_DATAPLAN:
       "A data plan is required.",
+
     INVALID_DATAPLAN:
       "The selected data plan is invalid.",
+
     DATAPLAN_NOT_AVAILABLE:
       "The selected data plan is currently unavailable.",
 
     MISSING_CABLETV:
       "A cable TV provider is required.",
+
     MISSING_PACKAGE:
       "A cable TV package is required.",
+
     INVALID_SMARTCARDNO:
       "The smartcard/IUC number is invalid.",
+
     PACKAGE_NOT_AVAILABLE:
       "The selected cable TV package is currently unavailable.",
 
-    MISSING_Electricity:
+    MISSING_ELECTRICITY:
       "An electricity provider is required.",
-    MISSING_MeterType:
+
+    MISSING_METERTYPE:
       "A meter type is required.",
-    INVALID_MeterNo:
+
+    INVALID_METERNO:
       "The meter number is invalid.",
-    MeterType_NOT_AVAILABLE:
+
+    METER_NOT_AVAILABLE:
       "The selected meter type is currently unavailable.",
 
     MISSING_VALUE:
       "An e-PIN value is required.",
+
     INVALID_VALUE:
       "The selected e-PIN value is invalid.",
+
     INVALID_QUANTITY:
       "The requested quantity is invalid.",
-    VALUE_ALLOWED_100_200_500:
-      "The selected e-PIN value is not available.",
+
     MINIMUM_QUANTITY_1:
       "The minimum quantity is 1.",
+
     MAXIMUM_QUANTITY_100:
       "The maximum quantity is 100.",
+
     QUANTITY_NOT_AVAILABLE:
-      "The requested e-PIN quantity is unavailable.",
+      "The requested quantity is unavailable.",
+
     PIN_NOT_AVAILABLE:
       "The requested e-PIN is currently unavailable.",
 
     MISSING_EXAMTYPE:
       "An examination package is required.",
+
     INVALID_PHONENO:
       "The phone number is invalid.",
 
     INVALID_ACCOUNTNO:
-      "The Smile account number is invalid.",
-    INVALID_ACCOUNT:
       "The account number is invalid.",
 
     ORDER_RECEIVED:
       "Your order has been received and is being processed.",
+
+    ORDER_ONHOLD:
+      "Your order is currently on hold.",
+
+    ORDER_PROCESSING:
+      "Your order is being processed.",
+
     ORDER_COMPLETED:
-      "The order was completed successfully.",
+      "Your order was completed successfully.",
+
     ORDER_FAILED:
       "The provider could not complete the order.",
+
     ORDER_CANCELLED:
       "The order was cancelled.",
-    ORDER_ONHOLD:
-      "The order is currently on hold.",
-    REQUEST_QUEUED:
-      "The request has been queued for processing.",
-    REQUEST_PROCESSING:
-      "The request is currently being processed.",
-    INSUFFICIENT_WALLET_BALANCE:
-      "The ClubKonnect provider balance is insufficient.",
 
-    PURCHASE_NOT_ENABLED_YET:
-      "ClubKonnect purchases are not enabled yet.",
+    INSUFFICIENT_WALLET_BALANCE:
+      "The ClubKonnect provider could not complete the order because of insufficient provider balance.",
   };
 
   return (
-    knownMessages[value] ??
+    known[value] ??
     fallback
   );
 }
+
+/**
+ * Provider payloads may contain sensitive operational
+ * information. Credentials are always removed.
+ *
+ * Card PINs are intentionally preserved because they are
+ * the actual product returned to the customer.
+ *
+ * Provider wallet balance is removed.
+ */
 
 function sanitizeProviderResponse(
   value: unknown,
@@ -221,12 +393,10 @@ function sanitizeProviderResponse(
   > = {};
 
   for (
-    const [
-      key,
-      rawValue,
-    ] of Object.entries(source)
+    const [key, rawValue]
+    of Object.entries(source)
   ) {
-    const normalizedKey =
+    const normalized =
       key
         .toLowerCase()
         .replace(
@@ -235,18 +405,20 @@ function sanitizeProviderResponse(
         );
 
     if (
-      normalizedKey.includes(
+      normalized.includes(
         "apikey",
       ) ||
-      normalizedKey.includes(
+      normalized.includes(
         "userid",
       ) ||
-      normalizedKey.includes(
+      normalized.includes(
         "password",
       ) ||
-      normalizedKey.includes(
+      normalized.includes(
         "secret",
-      )
+      ) ||
+      normalized ===
+        "walletbalance"
     ) {
       continue;
     }
@@ -295,7 +467,8 @@ function asPositiveNumber(
   value: unknown,
 ): number {
   const number =
-    typeof value === "number"
+    typeof value ===
+    "number"
       ? value
       : Number(value);
 
@@ -313,7 +486,10 @@ function normalizePhone(
   value: unknown,
 ): string {
   return asString(value)
-    .replace(/\s+/g, "")
+    .replace(
+      /\s+/g,
+      "",
+    )
     .replace(
       /^\+234/,
       "0",
@@ -336,7 +512,8 @@ function isSupportedService(
   value: unknown,
 ): value is SupportedService {
   return (
-    typeof value === "string" &&
+    typeof value ===
+      "string" &&
     SUPPORTED_SERVICES.includes(
       value as SupportedService,
     )
@@ -357,99 +534,36 @@ function calculateSellingPrice(
   providerCost: number,
   service: SupportedService,
 ): number {
-  const markup =
-    getMarkup(service);
-
   return Number(
     (
       providerCost *
-      (1 + markup)
+      (1 + getMarkup(service))
     ).toFixed(2),
   );
 }
 
-/**
- * ============================================================
- * GENERIC VALUE HELPERS
- * ============================================================
- */
-
-function objectValue(
-  value: unknown,
-): Record<string, unknown> | null {
-  return value &&
-    typeof value ===
-      "object" &&
-    !Array.isArray(value)
-    ? (value as Record<
-        string,
-        unknown
-      >)
-    : null;
-}
-
-function firstValue(
-  object: Record<
-    string,
-    unknown
-  >,
-  keys: string[],
-): unknown {
-  for (const key of keys) {
-    if (
-      object[key] !==
-        undefined &&
-      object[key] !== null &&
-      String(object[key])
-        .trim() !== ""
-    ) {
-      return object[key];
-    }
-  }
-
-  return undefined;
-}
-
-function firstString(
-  object: Record<
-    string,
-    unknown
-  >,
-  keys: string[],
-): string {
-  return asString(
-    firstValue(
-      object,
-      keys,
-    ),
-  );
-}
-
-function firstNumber(
-  object: Record<
-    string,
-    unknown
-  >,
-  keys: string[],
-): number {
-  const value =
-    firstValue(
-      object,
-      keys,
-    );
-
-  return asPositiveNumber(
-    value,
+function generateRequestId(): string {
+  return (
+    "IY_" +
+    Date.now().toString(36) +
+    "_" +
+    crypto
+      .randomUUID()
+      .replace(
+        /-/g,
+        "",
+      )
+      .slice(0, 16)
   );
 }
 
 /**
  * ============================================================
- * CLUBKONNECT HTTP CLIENT
+ * CLUBKONNECT HTTP
  * ============================================================
  */
 
-function buildUrl(
+function buildProviderUrl(
   endpoint: string,
   params: Record<
     string,
@@ -462,18 +576,13 @@ function buildUrl(
     );
 
   for (
-    const [
-      key,
-      value,
-    ] of Object.entries(
-      params,
-    )
+    const [key, value]
+    of Object.entries(params)
   ) {
     if (
       value !== undefined &&
       value !== null &&
-      String(value).length >
-        0
+      String(value).length > 0
     ) {
       url.searchParams.set(
         key,
@@ -494,23 +603,20 @@ async function clubKonnectGet(
 ): Promise<{
   ok: boolean;
   httpStatus: number;
-  data:
-    | Record<string, unknown>
-    | unknown[];
+  data: Record<
+    string,
+    unknown
+  >;
 }> {
   const userId =
-    Deno.env
-      .get(
-        "CLUBKONNECT_USER_ID",
-      )
-      ?.trim();
+    Deno.env.get(
+      "CLUBKONNECT_USER_ID",
+    )?.trim();
 
   const apiKey =
-    Deno.env
-      .get(
-        "CLUBKONNECT_API_KEY",
-      )
-      ?.trim();
+    Deno.env.get(
+      "CLUBKONNECT_API_KEY",
+    )?.trim();
 
   if (
     !userId ||
@@ -521,18 +627,16 @@ async function clubKonnectGet(
     );
 
     throw new Error(
-      "MISSING_CREDENTIALS",
+      "CLUBKONNECT_CONFIGURATION_ERROR",
     );
   }
 
   const url =
-    buildUrl(
+    buildProviderUrl(
       endpoint,
       {
-        UserID:
-          userId,
-        APIKey:
-          apiKey,
+        UserID: userId,
+        APIKey: apiKey,
         ...params,
       },
     );
@@ -544,8 +648,7 @@ async function clubKonnectGet(
       await fetch(
         url.toString(),
         {
-          method:
-            "GET",
+          method: "GET",
           headers: {
             Accept:
               "application/json",
@@ -565,30 +668,25 @@ async function clubKonnectGet(
     );
   }
 
-  const rawText =
+  const raw =
     await response.text();
 
-  let data: unknown;
+  let parsed: unknown;
 
   try {
-    data = rawText
-      ? JSON.parse(
-          rawText,
-        )
+    parsed = raw
+      ? JSON.parse(raw)
       : {};
   } catch (error) {
     console.error(
-      "ClubKonnect returned invalid JSON:",
+      "ClubKonnect invalid JSON:",
       {
-        http_status:
+        status:
           response.status,
-        parse_error:
-          error instanceof
-          Error
+        error:
+          error instanceof Error
             ? error.message
-            : String(
-                error,
-              ),
+            : String(error),
       },
     );
 
@@ -598,29 +696,30 @@ async function clubKonnectGet(
   }
 
   if (
-    !data ||
-    typeof data !==
-      "object"
+    !parsed ||
+    typeof parsed !==
+      "object" ||
+    Array.isArray(parsed)
   ) {
     throw new Error(
       "CLUBKONNECT_INVALID_RESPONSE",
     );
   }
 
-  const objectData =
-    data as Record<
+  const data =
+    parsed as Record<
       string,
       unknown
     >;
 
   const providerStatus =
     asString(
-      objectData.status ??
-        objectData.Status ??
-        objectData.orderstatus ??
-        objectData.OrderStatus ??
-        objectData.statuscode ??
-        objectData.StatusCode,
+      data.status ??
+        data.Status ??
+        data.orderstatus ??
+        data.OrderStatus ??
+        data.statuscode ??
+        data.StatusCode,
     );
 
   if (!response.ok) {
@@ -636,92 +735,1276 @@ async function clubKonnectGet(
   }
 
   return {
-    ok:
-      response.ok,
+    ok: response.ok,
     httpStatus:
       response.status,
-    data:
-      data as
-        | Record<
-            string,
-            unknown
-          >
-        | unknown[],
+    data,
   };
 }
 
 /**
  * ============================================================
- * CLUBKONNECT CATALOGUE ENDPOINTS
+ * AUTHENTICATION
  * ============================================================
  */
 
-async function getAirtimeNetworks() {
-  return clubKonnectGet(
-    "APIAirtimeNetworkV2.asp",
-    {},
+async function authenticateUser(
+  request: Request,
+): Promise<{
+  id: string;
+}> {
+  if (
+    !SUPABASE_URL ||
+    !SUPABASE_ANON_KEY
+  ) {
+    throw new Error(
+      "SUPABASE_CONFIGURATION_ERROR",
+    );
+  }
+
+  const authorization =
+    request.headers.get(
+      "Authorization",
+    );
+
+  if (!authorization) {
+    throw new Error(
+      "AUTHENTICATION_REQUIRED",
+    );
+  }
+
+  const supabase =
+    createClient(
+      SUPABASE_URL,
+      SUPABASE_ANON_KEY,
+      {
+        global: {
+          headers: {
+            Authorization:
+              authorization,
+          },
+        },
+        auth: {
+          persistSession: false,
+        },
+      },
+    );
+
+  const {
+    data,
+    error,
+  } =
+    await supabase.auth.getUser();
+
+  if (
+    error ||
+    !data.user
+  ) {
+    console.error(
+      "ClubKonnect authentication failed:",
+      error,
+    );
+
+    throw new Error(
+      "AUTHENTICATION_REQUIRED",
+    );
+  }
+
+  return {
+    id: data.user.id,
+  };
+}
+
+/**
+ * ============================================================
+ * CATALOGUE DATABASE
+ * ============================================================
+ *
+ * Default table:
+ *
+ *   service_catalog
+ *
+ * Can be overridden by:
+ *
+ *   CLUBKONNECT_CATALOG_TABLE
+ *
+ * The table contains the columns supplied during setup:
+ *
+ * id
+ * service
+ * provider
+ * provider_id
+ * product_id
+ * product_code
+ * product_sno
+ * product_name
+ * product_description
+ * package_id
+ * package_name
+ * provider_amount
+ * provider_discount_percent
+ * provider_discount_amount
+ * provider_cost
+ * markup_percent
+ * selling_price
+ * currency
+ * active
+ * provider_service
+ * metadata
+ * last_synced_at
+ * created_at
+ * updated_at
+ */
+
+const CATALOG_TABLE =
+  Deno.env.get(
+    "CLUBKONNECT_CATALOG_TABLE",
+  )?.trim() ||
+  "service_catalog";
+
+async function getCatalogRow(
+  catalogId: string,
+  service: SupportedService,
+) {
+  if (!supabaseAdmin) {
+    console.error(
+      "Supabase service role configuration is missing.",
+    );
+
+    throw new Error(
+      "SUPABASE_CONFIGURATION_ERROR",
+    );
+  }
+
+  const {
+    data,
+    error,
+  } =
+    await supabaseAdmin
+      .from(
+        CATALOG_TABLE,
+      )
+      .select(
+        [
+          "id",
+          "service",
+          "provider",
+          "provider_id",
+          "product_id",
+          "product_code",
+          "product_sno",
+          "product_name",
+          "product_description",
+          "package_id",
+          "package_name",
+          "provider_amount",
+          "provider_discount_percent",
+          "provider_discount_amount",
+          "provider_cost",
+          "markup_percent",
+          "selling_price",
+          "currency",
+          "active",
+          "provider_service",
+          "metadata",
+        ].join(","),
+      )
+      .eq(
+        "id",
+        catalogId,
+      )
+      .eq(
+        "service",
+        service,
+      )
+      .eq(
+        "provider",
+        "clubkonnect",
+      )
+      .eq(
+        "active",
+        true,
+      )
+      .maybeSingle();
+
+  if (error) {
+    console.error(
+      "ClubKonnect catalogue lookup failed:",
+      error,
+    );
+
+    throw new Error(
+      "CATALOG_NOT_FOUND",
+    );
+  }
+
+  if (!data) {
+    throw new Error(
+      "CATALOG_NOT_FOUND",
+    );
+  }
+
+  return data as Record<
+    string,
+    unknown
+  >;
+}
+
+/**
+ * ============================================================
+ * PROVIDER STATUS HELPERS
+ * ============================================================
+ */
+
+function extractOrderId(
+  data: Record<
+    string,
+    unknown
+  >,
+): string {
+  return asString(
+    data.orderid ??
+      data.OrderID ??
+      data.order_id,
   );
 }
 
-async function getDataNetworks() {
-  return clubKonnectGet(
-    "APIDatabundleNetworkV2.asp",
-    {},
+function extractRequestId(
+  data: Record<
+    string,
+    unknown
+  >,
+): string {
+  return asString(
+    data.requestid ??
+      data.RequestID ??
+      data.request_id,
   );
 }
 
-async function getDataPlans() {
-  return clubKonnectGet(
-    "APIDatabundlePlansV2.asp",
-    {},
+function extractStatus(
+  data: Record<
+    string,
+    unknown
+  >,
+): string {
+  return asString(
+    data.orderstatus ??
+      data.OrderStatus ??
+      data.status ??
+      data.Status,
+  ).toUpperCase();
+}
+
+function extractRemark(
+  data: Record<
+    string,
+    unknown
+  >,
+): string {
+  return asString(
+    data.orderremark ??
+      data.OrderRemark ??
+      data.remark ??
+      data.Remark,
   );
 }
 
-async function getCableTypes() {
-  return clubKonnectGet(
-    "APICableTVTypeV2.asp",
-    {},
+function isSuccessStatus(
+  status: string,
+): boolean {
+  return SUCCESS_ORDER_STATUSES.has(
+    status,
   );
 }
 
-async function getCablePackages() {
-  return clubKonnectGet(
-    "APICableTVPackagesV2.asp",
-    {},
+function isFailureStatus(
+  status: string,
+): boolean {
+  return FAILURE_ORDER_STATUSES.has(
+    status,
   );
 }
 
-async function getSmilePackages() {
-  return clubKonnectGet(
-    "APISmilePackagesV2.asp",
-    {},
-  );
-}
-
-async function getEpinServices() {
-  return clubKonnectGet(
-    "APIEPINDiscountV2.asp",
-    {},
-  );
-}
-
-async function getWaecPackages() {
-  return clubKonnectGet(
-    "APIWAECPackagesV2.asp",
-    {},
-  );
-}
-
-async function getJambPackages() {
-  return clubKonnectGet(
-    "APIJAMBPackagesV2.asp",
-    {},
+function isActiveStatus(
+  status: string,
+): boolean {
+  return ACTIVE_ORDER_STATUSES.has(
+    status,
   );
 }
 
 /**
  * ============================================================
- * PROVIDER BALANCE
+ * WALLET PURCHASE RPC HELPERS
+ * ============================================================
+ */
+
+async function createPurchaseHold(
+  userId: string,
+  amount: number,
+  service: SupportedService,
+  requestId: string,
+  description: string,
+  metadata: Record<
+    string,
+    unknown
+  >,
+) {
+  if (!supabaseAdmin) {
+    throw new Error(
+      "SUPABASE_CONFIGURATION_ERROR",
+    );
+  }
+
+  const {
+    data,
+    error,
+  } =
+    await supabaseAdmin.rpc(
+      "clubkonnect_create_purchase",
+      {
+        _user_id:
+          userId,
+        _amount:
+          amount,
+        _description:
+          description,
+        _provider_reference:
+          requestId,
+        _service:
+          service,
+        _metadata:
+          metadata,
+      },
+    );
+
+  if (error) {
+    console.error(
+      "ClubKonnect purchase HOLD failed:",
+      error,
+    );
+
+    const message =
+      String(
+        error.message ??
+          "",
+      ).toLowerCase();
+
+    if (
+      message.includes(
+        "insufficient",
+      )
+    ) {
+      throw new Error(
+        "INSUFFICIENT_FUNDS",
+      );
+    }
+
+    if (
+      message.includes(
+        "not active",
+      )
+    ) {
+      throw new Error(
+        "WALLET_NOT_ACTIVE",
+      );
+    }
+
+    throw new Error(
+      "PURCHASE_NOT_ALLOWED",
+    );
+  }
+
+  if (!data) {
+    throw new Error(
+      "PURCHASE_NOT_ALLOWED",
+    );
+  }
+
+  return data;
+}
+
+async function finalizePurchase(
+  transactionId: string,
+  success: boolean,
+  providerStatus: string,
+  providerReference: string,
+  providerRemark: string,
+  providerPayload: Record<
+    string,
+    unknown
+  >,
+) {
+  if (!supabaseAdmin) {
+    throw new Error(
+      "SUPABASE_CONFIGURATION_ERROR",
+    );
+  }
+
+  const {
+    data,
+    error,
+  } =
+    await supabaseAdmin.rpc(
+      "clubkonnect_finalize_purchase",
+      {
+        _transaction_id:
+          transactionId,
+        _success:
+          success,
+        _provider_status:
+          providerStatus ||
+          null,
+        _provider_reference:
+          providerReference ||
+          null,
+        _provider_remark:
+          providerRemark ||
+          null,
+        _provider_payload:
+          providerPayload ??
+          {},
+      },
+    );
+
+  if (error) {
+    console.error(
+      "ClubKonnect purchase finalization failed:",
+      error,
+    );
+
+    throw new Error(
+      "PURCHASE_SETTLEMENT_FAILED",
+    );
+  }
+
+  return data;
+}
+
+/**
+ * ============================================================
+ * PURCHASE DESCRIPTION
+ * ============================================================
+ */
+
+function getPurchaseDescription(
+  service: SupportedService,
+  catalog: Record<
+    string,
+    unknown
+  >,
+  body: Record<
+    string,
+    unknown
+  >,
+): string {
+  const productName =
+    asString(
+      catalog.product_name,
+    ) ||
+    asString(
+      catalog.package_name,
+    ) ||
+    asString(
+      catalog.product_description,
+    );
+
+  const recipient =
+    normalizePhone(
+      body.mobile_number ??
+        body.mobileNumber ??
+        body.phone_number ??
+        body.phoneNo ??
+        body.phone,
+    );
+
+  if (
+    service ===
+      "airtime" ||
+    service ===
+      "data"
+  ) {
+    return (
+      `ClubKonnect ${service} purchase` +
+      (
+        productName
+          ? ` - ${productName}`
+          : ""
+      ) +
+      (
+        recipient
+          ? ` - ${recipient}`
+          : ""
+      )
+    );
+  }
+
+  return (
+    `ClubKonnect ${service} purchase` +
+    (
+      productName
+        ? ` - ${productName}`
+        : ""
+    )
+  );
+}
+
+/**
+ * ============================================================
+ * PROVIDER PURCHASE BUILDERS
+ * ============================================================
+ */
+
+function buildPurchaseRequest(
+  service: SupportedService,
+  body: Record<
+    string,
+    unknown
+  >,
+  catalog: Record<
+    string,
+    unknown
+  >,
+  requestId: string,
+  callbackUrl: string,
+): {
+  endpoint: string;
+  params: Record<
+    string,
+    string | number | undefined
+  >;
+} {
+  switch (service) {
+    /**
+     * --------------------------------------------------------
+     * AIRTIME
+     * --------------------------------------------------------
+     */
+
+    case "airtime": {
+      const mobileNetwork =
+        requireString(
+          body.mobile_network ??
+            body.mobileNetwork ??
+            catalog.provider_id ??
+            catalog.product_id,
+          "mobile_network",
+        );
+
+      const amount =
+        asPositiveNumber(
+          body.amount,
+        );
+
+      if (!amount) {
+        throw new Error(
+          "INVALID_AMOUNT",
+        );
+      }
+
+      if (
+        amount <
+        50
+      ) {
+        throw new Error(
+          "MINIMUM_50",
+        );
+      }
+
+      if (
+        amount >
+        200000
+      ) {
+        throw new Error(
+          "MINIMUM_200000",
+        );
+      }
+
+      const mobileNumber =
+        normalizePhone(
+          body.mobile_number ??
+            body.mobileNumber ??
+            body.phone_number ??
+            body.phone,
+        );
+
+      if (
+        !isValidNigerianPhone(
+          mobileNumber,
+        )
+      ) {
+        throw new Error(
+          "INVALID_RECIPIENT",
+        );
+      }
+
+      return {
+        endpoint:
+          "APIAirtimeV1.asp",
+        params: {
+          MobileNetwork:
+            mobileNetwork,
+          Amount:
+            amount,
+          MobileNumber:
+            mobileNumber,
+          RequestID:
+            requestId,
+          CallBackURL:
+            callbackUrl,
+        },
+      };
+    }
+
+    /**
+     * --------------------------------------------------------
+     * DATA
+     * --------------------------------------------------------
+     */
+
+    case "data": {
+      const mobileNetwork =
+        requireString(
+          body.mobile_network ??
+            body.mobileNetwork ??
+            catalog.provider_id,
+          "mobile_network",
+        );
+
+      const dataPlan =
+        requireString(
+          body.data_plan ??
+            body.dataPlan ??
+            catalog.product_id ??
+            catalog.product_code,
+          "data_plan",
+        );
+
+      const mobileNumber =
+        normalizePhone(
+          body.mobile_number ??
+            body.mobileNumber ??
+            body.phone_number ??
+            body.phone,
+        );
+
+      if (
+        !isValidNigerianPhone(
+          mobileNumber,
+        )
+      ) {
+        throw new Error(
+          "INVALID_RECIPIENT",
+        );
+      }
+
+      return {
+        endpoint:
+          "APIDatabundleV1.asp",
+        params: {
+          MobileNetwork:
+            mobileNetwork,
+          DataPlan:
+            dataPlan,
+          MobileNumber:
+            mobileNumber,
+          RequestID:
+            requestId,
+          CallBackURL:
+            callbackUrl,
+        },
+      };
+    }
+
+    /**
+     * --------------------------------------------------------
+     * CABLE TV
+     * --------------------------------------------------------
+     */
+
+    case "cable_tv": {
+      const cableTv =
+        requireString(
+          body.cable_tv ??
+            body.cableTV ??
+            body.provider_id ??
+            catalog.provider_id,
+          "cable_tv",
+        );
+
+      const packageCode =
+        requireString(
+          body.package ??
+            body.package_code ??
+            body.packageCode ??
+            catalog.package_id ??
+            catalog.product_code ??
+            catalog.product_id,
+          "package",
+        );
+
+      const smartCardNo =
+        requireString(
+          body.smartcard_number ??
+            body.smartCardNo ??
+            body.smartcard ??
+            body.iuc,
+          "smartcard_number",
+        );
+
+      const phone =
+        normalizePhone(
+          body.phone_number ??
+            body.phoneNo ??
+            body.phone,
+        );
+
+      if (
+        !isValidNigerianPhone(
+          phone,
+        )
+      ) {
+        throw new Error(
+          "INVALID_PHONENO",
+        );
+      }
+
+      return {
+        endpoint:
+          "APICableTVV1.asp",
+        params: {
+          CableTV:
+            cableTv,
+          Package:
+            packageCode,
+          SmartCardNo:
+            smartCardNo,
+          PhoneNo:
+            phone,
+          RequestID:
+            requestId,
+          CallBackURL:
+            callbackUrl,
+        },
+      };
+    }
+
+    /**
+     * --------------------------------------------------------
+     * ELECTRICITY
+     * --------------------------------------------------------
+     */
+
+    case "electricity": {
+      const company =
+        requireString(
+          body.electric_company ??
+            body.electricCompany ??
+            body.electricity_company ??
+            catalog.provider_id,
+          "electricity",
+        );
+
+      const meterType =
+        requireString(
+          body.meter_type ??
+            body.meterType,
+          "meter_type",
+        );
+
+      const meterNo =
+        requireString(
+          body.meter_number ??
+            body.meterNo,
+          "meter_number",
+        );
+
+      const amount =
+        asPositiveNumber(
+          body.amount,
+        );
+
+      if (!amount) {
+        throw new Error(
+          "INVALID_AMOUNT",
+        );
+      }
+
+      const phone =
+        normalizePhone(
+          body.phone_number ??
+            body.phoneNo ??
+            body.phone,
+        );
+
+      if (
+        !isValidNigerianPhone(
+          phone,
+        )
+      ) {
+        throw new Error(
+          "INVALID_PHONENO",
+        );
+      }
+
+      return {
+        endpoint:
+          "APIElectricityV1.asp",
+        params: {
+          ElectricCompany:
+            company,
+          MeterType:
+            meterType,
+          MeterNo:
+            meterNo,
+          Amount:
+            amount,
+          PhoneNo:
+            phone,
+          RequestID:
+            requestId,
+          CallBackURL:
+            callbackUrl,
+        },
+      };
+    }
+
+    /**
+     * --------------------------------------------------------
+     * AIRTIME EPIN
+     * --------------------------------------------------------
+     */
+
+    case "airtime_epin": {
+      const mobileNetwork =
+        requireString(
+          body.mobile_network ??
+            body.mobileNetwork ??
+            catalog.provider_id,
+          "mobile_network",
+        );
+
+      const value =
+        asPositiveNumber(
+          body.value ??
+            body.amount ??
+            catalog.provider_amount,
+        );
+
+      if (
+        ![
+          100,
+          200,
+          500,
+        ].includes(
+          value,
+        )
+      ) {
+        throw new Error(
+          "INVALID_VALUE",
+        );
+      }
+
+      const quantity =
+        Math.floor(
+          asPositiveNumber(
+            body.quantity ??
+              1,
+          ),
+        );
+
+      if (
+        quantity <
+        1
+      ) {
+        throw new Error(
+          "MINIMUM_QUANTITY_1",
+        );
+      }
+
+      if (
+        quantity >
+        100
+      ) {
+        throw new Error(
+          "MAXIMUM_QUANTITY_100",
+        );
+      }
+
+      return {
+        endpoint:
+          "APIEPINV1.asp",
+        params: {
+          MobileNetwork:
+            mobileNetwork,
+          Value:
+            value,
+          Quantity:
+            quantity,
+          RequestID:
+            requestId,
+          CallBackURL:
+            callbackUrl,
+        },
+      };
+    }
+
+    /**
+     * --------------------------------------------------------
+     * DATA EPIN
+     * --------------------------------------------------------
+     */
+
+    case "data_epin": {
+      const mobileNetwork =
+        requireString(
+          body.mobile_network ??
+            body.mobileNetwork ??
+            catalog.provider_id,
+          "mobile_network",
+        );
+
+      const dataPlan =
+        requireString(
+          body.data_plan ??
+            body.dataPlan ??
+            catalog.product_id ??
+            catalog.product_code,
+          "data_plan",
+        );
+
+      const quantity =
+        Math.floor(
+          asPositiveNumber(
+            body.quantity ??
+              1,
+          ),
+        );
+
+      if (
+        quantity <
+        1
+      ) {
+        throw new Error(
+          "MINIMUM_QUANTITY_1",
+        );
+      }
+
+      if (
+        quantity >
+        100
+      ) {
+        throw new Error(
+          "MAXIMUM_QUANTITY_100",
+        );
+      }
+
+      return {
+        endpoint:
+          "APIDatabundleEPINV1.asp",
+        params: {
+          MobileNetwork:
+            mobileNetwork,
+          DataPlan:
+            dataPlan,
+          Quantity:
+            quantity,
+          RequestID:
+            requestId,
+          CallBackURL:
+            callbackUrl,
+        },
+      };
+    }
+
+    /**
+     * --------------------------------------------------------
+     * SMILE
+     * --------------------------------------------------------
+     */
+
+    case "smile": {
+      const dataPlan =
+        requireString(
+          body.data_plan ??
+            body.dataPlan ??
+            catalog.product_id ??
+            catalog.product_code,
+          "data_plan",
+        );
+
+      const mobileNumber =
+        requireString(
+          body.mobile_number ??
+            body.mobileNumber ??
+            body.account_number ??
+            body.accountNumber,
+          "account_number",
+        );
+
+      return {
+        endpoint:
+          "APISmileV1.asp",
+        params: {
+          MobileNetwork:
+            "smile-direct",
+          DataPlan:
+            dataPlan,
+          MobileNumber:
+            mobileNumber,
+          RequestID:
+            requestId,
+          CallBackURL:
+            callbackUrl,
+        },
+      };
+    }
+
+    /**
+     * --------------------------------------------------------
+     * WAEC
+     * --------------------------------------------------------
+     */
+
+    case "waec": {
+      const examType =
+        requireString(
+          body.exam_type ??
+            body.examType ??
+            catalog.product_code ??
+            catalog.product_id,
+          "exam_type",
+        );
+
+      const phone =
+        normalizePhone(
+          body.phone_number ??
+            body.phoneNo ??
+            body.phone,
+        );
+
+      if (
+        !isValidNigerianPhone(
+          phone,
+        )
+      ) {
+        throw new Error(
+          "INVALID_PHONENO",
+        );
+      }
+
+      return {
+        endpoint:
+          "APIWAECV1.asp",
+        params: {
+          ExamType:
+            examType,
+          PhoneNo:
+            phone,
+          RequestID:
+            requestId,
+          CallBackURL:
+            callbackUrl,
+        },
+      };
+    }
+
+    /**
+     * --------------------------------------------------------
+     * JAMB
+     * --------------------------------------------------------
+     */
+
+    case "jamb": {
+      const examType =
+        requireString(
+          body.exam_type ??
+            body.examType ??
+            catalog.product_code ??
+            catalog.product_id,
+          "exam_type",
+        );
+
+      const phone =
+        normalizePhone(
+          body.phone_number ??
+            body.phoneNo ??
+            body.phone,
+        );
+
+      if (
+        !isValidNigerianPhone(
+          phone,
+        )
+      ) {
+        throw new Error(
+          "INVALID_PHONENO",
+        );
+      }
+
+      return {
+        endpoint:
+          "APIJAMBV1.asp",
+        params: {
+          ExamType:
+            examType,
+          PhoneNo:
+            phone,
+          RequestID:
+            requestId,
+          CallBackURL:
+            callbackUrl,
+        },
+      };
+    }
+
+    default:
+      throw new Error(
+        "UNSUPPORTED_SERVICE",
+      );
+  }
+}
+
+/**
+ * ============================================================
+ * CALLBACK URL
+ * ============================================================
+ */
+
+function getCallbackUrl(): string {
+  const configured =
+    Deno.env.get(
+      "CLUBKONNECT_CALLBACK_URL",
+    )?.trim();
+
+  if (configured) {
+    return configured;
+  }
+
+  if (
+    SUPABASE_URL
+  ) {
+    return (
+      `${SUPABASE_URL}` +
+      `/functions/v1/clubkonnect-callback`
+    );
+  }
+
+  throw new Error(
+    "SUPABASE_CONFIGURATION_ERROR",
+  );
+}
+
+/**
+ * ============================================================
+ * CATALOGUE
+ * ============================================================
+ */
+
+async function getCatalog(
+  service?: SupportedService,
+) {
+  if (!supabaseAdmin) {
+    throw new Error(
+      "SUPABASE_CONFIGURATION_ERROR",
+    );
+  }
+
+  let query =
+    supabaseAdmin
+      .from(
+        CATALOG_TABLE,
+      )
+      .select("*")
+      .eq(
+        "provider",
+        "clubkonnect",
+      )
+      .eq(
+        "active",
+        true,
+      )
+      .order(
+        "product_name",
+        {
+          ascending:
+            true,
+          nullsFirst:
+            false,
+        },
+      );
+
+  if (service) {
+    query =
+      query.eq(
+        "service",
+        service,
+      );
+  }
+
+  const {
+    data,
+    error,
+  } =
+    await query;
+
+  if (error) {
+    console.error(
+      "Catalogue query failed:",
+      error,
+    );
+
+    throw new Error(
+      "CATALOG_NOT_FOUND",
+    );
+  }
+
+  const rows =
+    Array.isArray(data)
+      ? data
+      : [];
+
+  return {
+    service:
+      service ??
+      null,
+    markup_rules: {
+      regular_services: {
+        airtime:
+          15,
+        data:
+          15,
+        cable_tv:
+          15,
+        electricity:
+          15,
+      },
+      premium_services: {
+        airtime_epin:
+          20,
+        data_epin:
+          20,
+        smile:
+          20,
+        waec:
+          20,
+        jamb:
+          20,
+      },
+      betting:
+        "disabled",
+    },
+    count:
+      rows.length,
+    data:
+      rows,
+  };
+}
+
+/**
+ * ============================================================
+ * PROVIDER BALANCE / HEALTH
  * ============================================================
  */
 
@@ -733,11 +2016,11 @@ async function checkProviderBalance() {
     );
 
   const data =
-    Array.isArray(
-      result.data,
-    )
-      ? {}
-      : result.data;
+    result.data;
+
+  const hasBalance =
+    "balance" in data ||
+    "Balance" in data;
 
   const providerStatus =
     asString(
@@ -746,10 +2029,6 @@ async function checkProviderBalance() {
         data.statuscode ??
         data.StatusCode,
     );
-
-  const hasBalance =
-    "balance" in data ||
-    "Balance" in data;
 
   return {
     connected:
@@ -763,7 +2042,7 @@ async function checkProviderBalance() {
 
 /**
  * ============================================================
- * TRANSACTION QUERY
+ * QUERY
  * ============================================================
  */
 
@@ -841,7 +2120,7 @@ async function verifyCustomer(
           body.electric_company ??
             body.electricCompany ??
             body.provider,
-          "electric_company",
+          "electricity",
         );
 
       const meterNo =
@@ -926,1870 +2205,647 @@ async function verifyCustomer(
 
 /**
  * ============================================================
- * LIVE CATALOG
+ * PURCHASE
  * ============================================================
  */
 
-async function getCatalog(
-  service?: SupportedService,
-) {
-  if (!service) {
-    const [
-      airtimeNetworks,
-      dataNetworks,
-      dataPlans,
-      cableTypes,
-      cablePackages,
-      smilePackages,
-      epinServices,
-      waecPackages,
-      jambPackages,
-    ] =
-      await Promise.all([
-        getAirtimeNetworks(),
-        getDataNetworks(),
-        getDataPlans(),
-        getCableTypes(),
-        getCablePackages(),
-        getSmilePackages(),
-        getEpinServices(),
-        getWaecPackages(),
-        getJambPackages(),
-      ]);
-
-    return {
-      airtime_networks:
-        sanitizeProviderResponse(
-          airtimeNetworks.data,
-        ),
-      data_networks:
-        sanitizeProviderResponse(
-          dataNetworks.data,
-        ),
-      data_plans:
-        sanitizeProviderResponse(
-          dataPlans.data,
-        ),
-      cable_types:
-        sanitizeProviderResponse(
-          cableTypes.data,
-        ),
-      cable_packages:
-        sanitizeProviderResponse(
-          cablePackages.data,
-        ),
-      smile_packages:
-        sanitizeProviderResponse(
-          smilePackages.data,
-        ),
-      epin_services:
-        sanitizeProviderResponse(
-          epinServices.data,
-        ),
-      waec_packages:
-        sanitizeProviderResponse(
-          waecPackages.data,
-        ),
-      jamb_packages:
-        sanitizeProviderResponse(
-          jambPackages.data,
-        ),
-      markup_rules: {
-        regular_services: {
-          airtime: 15,
-          data: 15,
-          cable_tv: 15,
-          electricity: 15,
-        },
-        premium_services: {
-          airtime_epin: 20,
-          data_epin: 20,
-          smile: 20,
-          waec: 20,
-          jamb: 20,
-        },
-        betting:
-          "disabled",
-        neco:
-          "disabled",
-      },
-    };
-  }
-
-  switch (service) {
-    case "airtime":
-      return {
-        service,
-        markup_percent:
-          getMarkup(service) *
-          100,
-        data:
-          sanitizeProviderResponse(
-            (
-              await getAirtimeNetworks()
-            ).data,
-          ),
-      };
-
-    case "data":
-      return {
-        service,
-        markup_percent:
-          getMarkup(service) *
-          100,
-        data:
-          sanitizeProviderResponse(
-            (
-              await getDataPlans()
-            ).data,
-          ),
-      };
-
-    case "cable_tv":
-      return {
-        service,
-        markup_percent:
-          getMarkup(service) *
-          100,
-        types:
-          sanitizeProviderResponse(
-            (
-              await getCableTypes()
-            ).data,
-          ),
-        packages:
-          sanitizeProviderResponse(
-            (
-              await getCablePackages()
-            ).data,
-          ),
-      };
-
-    case "smile":
-      return {
-        service,
-        markup_percent:
-          getMarkup(service) *
-          100,
-        data:
-          sanitizeProviderResponse(
-            (
-              await getSmilePackages()
-            ).data,
-          ),
-      };
-
-    case "airtime_epin":
-    case "data_epin":
-      return {
-        service,
-        markup_percent:
-          getMarkup(service) *
-          100,
-        data:
-          sanitizeProviderResponse(
-            (
-              await getEpinServices()
-            ).data,
-          ),
-      };
-
-    case "waec":
-      return {
-        service,
-        markup_percent:
-          getMarkup(service) *
-          100,
-        data:
-          sanitizeProviderResponse(
-            (
-              await getWaecPackages()
-            ).data,
-          ),
-      };
-
-    case "jamb":
-      return {
-        service,
-        markup_percent:
-          getMarkup(service) *
-          100,
-        data:
-          sanitizeProviderResponse(
-            (
-              await getJambPackages()
-            ).data,
-          ),
-      };
-
-    case "electricity":
-      return {
-        service,
-        markup_percent:
-          getMarkup(service) *
-          100,
-        catalogue_available:
-          false,
-        message:
-          "Electricity purchase and meter verification are supported. The live electricity-company catalogue will be synchronized when the provider endpoint returns the live catalogue.",
-      };
-
-    default:
-      throw new Error(
-        "UNSUPPORTED_SERVICE",
-      );
-  }
-}
-
-/**
- * ============================================================
- * CATALOGUE NORMALIZATION
- * ============================================================
- *
- * ClubKonnect returns different JSON structures for the
- * different services.
- *
- * We therefore normalize the provider response into the
- * common clubkonnect_products table.
- */
-
-interface NormalizedProduct {
-  service: SupportedService;
-  provider: string | null;
-  provider_id: string | null;
-  product_id: string | null;
-  product_code: string | null;
-  product_sno: string | null;
-  product_name: string | null;
-  product_description: string | null;
-  package_id: string | null;
-  package_name: string | null;
-  provider_amount: number | null;
-  provider_discount_percent:
-    number | null;
-  provider_discount_amount:
-    number | null;
-  provider_cost: number | null;
-  markup_percent: number;
-  selling_price: number | null;
-  metadata: Record<
-    string,
-    unknown
-  >;
-}
-
-/**
- * Convert a possible percentage such as "3%" or "3.00"
- * into a number.
- */
-function parsePercent(
-  value: unknown,
-): number | null {
-  if (
-    value ===
-      undefined ||
-    value === null
-  ) {
-    return null;
-  }
-
-  const text =
-    String(value)
-      .replace(
-        "%",
-        "",
-      )
-      .trim();
-
-  const number =
-    Number(text);
-
-  return Number.isFinite(
-    number,
-  )
-    ? number
-    : null;
-}
-
-/**
- * ClubKonnect discount amount can be represented as:
- *
- * 0.970
- * 0.990
- * 97%
- *
- * We preserve the original value and only derive cost when
- * we have enough information.
- */
-function deriveProviderCost(
-  object: Record<
+async function purchaseService(
+  userId: string,
+  service: SupportedService,
+  body: Record<
     string,
     unknown
   >,
-): {
-  amount: number | null;
-  discountPercent:
-    number | null;
-  discountAmount:
-    number | null;
-  cost: number | null;
-} {
-  const amount =
-    firstNumber(
-      object,
-      [
-        "PRODUCT_AMOUNT",
-        "PRODUCT_PRICE",
-        "PRICE",
-        "AMOUNT",
-        "PACKAGE_AMOUNT",
-        "PACKAGE_PRICE",
-        "VALUE",
-        "DENOMINATION",
-      ],
-    );
-
-  const directCost =
-    firstNumber(
-      object,
-      [
-        "PRODUCT_COST",
-        "COST",
-        "SELLING_PRICE",
-        "DISCOUNTED_AMOUNT",
-      ],
-    );
-
-  const discountPercent =
-    parsePercent(
-      firstValue(
-        object,
-        [
-          "PRODUCT_DISCOUNT",
-          "DISCOUNT",
-          "DISCOUNT_PERCENT",
-          "DISCOUNT_PERCENTAGE",
-        ],
-      ),
-    );
-
-  const discountAmountRaw =
-    firstValue(
-      object,
-      [
-        "PRODUCT_DISCOUNT_AMOUNT",
-        "DISCOUNT_AMOUNT",
-      ],
-    );
-
-  const discountAmount =
-    asPositiveNumber(
-      discountAmountRaw,
-    ) || null;
-
-  /*
-   * If the provider explicitly gives a cost,
-   * use it.
-   */
+) {
   if (
-    directCost > 0
+    !PURCHASE_SERVICES.has(
+      service,
+    )
   ) {
-    return {
-      amount:
-        amount > 0
-          ? amount
-          : null,
-      discountPercent,
-      discountAmount,
-      cost: directCost,
-    };
+    throw new Error(
+      "UNSUPPORTED_SERVICE",
+    );
   }
 
-  /*
-   * Discount amount fields such as 0.990 mean
-   * the customer/provider pays 99% of face value.
-   */
   if (
-    amount > 0 &&
-    discountAmount !== null &&
-    discountAmount > 0 &&
-    discountAmount <= 1
+    service ===
+      ("betting" as SupportedService)
   ) {
-    return {
-      amount,
-      discountPercent,
-      discountAmount,
-      cost: Number(
-        (
-          amount *
-          discountAmount
-        ).toFixed(2),
-      ),
-    };
+    throw new Error(
+      "BETTING_DISABLED",
+    );
   }
 
-  /*
-   * Percentage discount such as 3%.
+  const catalogId =
+    requireString(
+      body.catalog_id ??
+        body.catalogId,
+      "catalog_id",
+    );
+
+  /**
+   * ----------------------------------------------------------
+   * LOAD AUTHORITATIVE PRICE
+   * ----------------------------------------------------------
+   *
+   * The browser does NOT determine the price.
    */
+
+  const catalog =
+    await getCatalogRow(
+      catalogId,
+      service,
+    );
+
+  const providerCost =
+    Number(
+      catalog.provider_cost ??
+        0,
+    );
+
+  const storedSellingPrice =
+    Number(
+      catalog.selling_price ??
+        0,
+    );
+
   if (
-    amount > 0 &&
-    discountPercent !== null
+    !Number.isFinite(
+      providerCost,
+    ) ||
+    providerCost <= 0
   ) {
-    return {
-      amount,
-      discountPercent,
-      discountAmount,
-      cost: Number(
-        (
-          amount *
-          (1 -
-            discountPercent /
-              100)
-        ).toFixed(2),
-      ),
-    };
+    throw new Error(
+      "INVALID_CATALOG",
+    );
   }
 
-  /*
-   * If no discount is supplied, the face amount
-   * becomes the provider cost.
+  /**
+   * The catalogue price is authoritative.
+   *
+   * Recalculate the expected selling price from the
+   * provider cost to prevent an incorrect markup from
+   * being supplied by the frontend.
    */
+
+  const calculatedSellingPrice =
+    calculateSellingPrice(
+      providerCost,
+      service,
+    );
+
+  /**
+   * Use the calculated price.
+   *
+   * The stored price is retained only as catalogue metadata.
+   */
+  const sellingPrice =
+    calculatedSellingPrice;
+
   if (
-    amount > 0
+    !Number.isFinite(
+      sellingPrice,
+    ) ||
+    sellingPrice <= 0
   ) {
-    return {
-      amount,
-      discountPercent,
-      discountAmount,
-      cost: amount,
-    };
+    throw new Error(
+      "INVALID_CATALOG",
+    );
   }
 
-  return {
-    amount:
-      amount > 0
-        ? amount
-        : null,
-    discountPercent,
-    discountAmount,
-    cost: null,
-  };
-}
+  /**
+   * ----------------------------------------------------------
+   * REQUEST ID
+   * ----------------------------------------------------------
+   */
 
-/**
- * Recursively find objects that look like actual
- * ClubKonnect products.
- */
-function collectProductObjects(
-  value: unknown,
-  output: Record<
+  const requestId =
+    generateRequestId();
+
+  const callbackUrl =
+    getCallbackUrl();
+
+  /**
+   * ----------------------------------------------------------
+   * BUILD PROVIDER REQUEST BEFORE HOLD
+   * ----------------------------------------------------------
+   *
+   * This validates all required customer fields before
+   * touching the wallet.
+   */
+
+  const providerRequest =
+    buildPurchaseRequest(
+      service,
+      body,
+      catalog,
+      requestId,
+      callbackUrl,
+    );
+
+  /**
+   * ----------------------------------------------------------
+   * DESCRIPTION
+   * ----------------------------------------------------------
+   */
+
+  const description =
+    getPurchaseDescription(
+      service,
+      catalog,
+      body,
+    );
+
+  /**
+   * ----------------------------------------------------------
+   * WALLET HOLD
+   * ----------------------------------------------------------
+   */
+
+  const holdMetadata: Record<
     string,
     unknown
-  >[] = [],
-): Record<
-  string,
-  unknown
->[] {
-  if (
-    !value ||
-    typeof value !==
-      "object"
-  ) {
-    return output;
-  }
+  > = {
+    provider:
+      "clubkonnect",
 
-  if (
-    Array.isArray(value)
-  ) {
-    for (
-      const item of value
-    ) {
-      collectProductObjects(
-        item,
-        output,
-      );
-    }
+    provider_service:
+      service,
 
-    return output;
-  }
+    catalog_id:
+      catalog.id,
 
-  const object =
-    value as Record<
+    product_id:
+      catalog.product_id ??
+      null,
+
+    product_code:
+      catalog.product_code ??
+      null,
+
+    product_name:
+      catalog.product_name ??
+      null,
+
+    package_id:
+      catalog.package_id ??
+      null,
+
+    package_name:
+      catalog.package_name ??
+      null,
+
+    provider_cost:
+      providerCost,
+
+    markup_percent:
+      getMarkup(service) *
+      100,
+
+    selling_price:
+      sellingPrice,
+
+    request_id:
+      requestId,
+
+    provider_endpoint:
+      providerRequest.endpoint,
+
+    purchase_state:
+      "wallet_held",
+
+    stored_catalog_selling_price:
+      storedSellingPrice,
+  };
+
+  let holdTxn:
+    Record<
       string,
       unknown
     >;
 
-  const normalizedKeys =
-    Object.keys(
-      object,
-    ).map((key) =>
-      key
-        .toUpperCase()
-        .replace(
-          /[_\s-]/g,
-          "",
-        ),
-    );
-
-  const looksLikeProduct =
-    normalizedKeys.some(
-      (key) =>
-        key.includes(
-          "PRODUCTID",
-        ) ||
-        key.includes(
-          "PRODUCTCODE",
-        ) ||
-        key.includes(
-          "PRODUCTSNO",
-        ) ||
-        key.includes(
-          "PACKAGEID",
-        ) ||
-        key.includes(
-          "PACKAGECODE",
-        ) ||
-        key.includes(
-          "PRODUCTDESCRIPTION",
-        ) ||
-        key.includes(
-          "PACKAGENAME",
-        ),
-    );
-
-  if (
-    looksLikeProduct
-  ) {
-    output.push(
-      object,
-    );
-  }
-
-  for (
-    const child of Object.values(
-      object,
-    )
-  ) {
-    if (
-      child &&
-      typeof child ===
-        "object"
-    ) {
-      collectProductObjects(
-        child,
-        output,
+  try {
+    holdTxn =
+      await createPurchaseHold(
+        userId,
+        sellingPrice,
+        service,
+        requestId,
+        description,
+        holdMetadata,
       );
-    }
+  } catch (error) {
+    throw error;
   }
 
-  return output;
-}
-
-function normalizeProduct(
-  service: SupportedService,
-  object: Record<
-    string,
-    unknown
-  >,
-): NormalizedProduct {
-  const pricing =
-    deriveProviderCost(
-      object,
+  const holdTransactionId =
+    asString(
+      holdTxn.id,
     );
 
-  const provider =
-    firstString(
-      object,
-      [
-        "NETWORK_NAME",
-        "MOBILE_NETWORK",
-        "NETWORK",
-        "TV_NAME",
-        "CABLETV_NAME",
-        "PROVIDER",
-        "COMPANY_NAME",
-        "ELECTRICITY_COMPANY",
-      ],
-    ) ||
-    firstString(
-      object,
-      [
-        "NETWORK_ID",
-        "TV_ID",
-        "CABLETV_ID",
-        "PROVIDER_ID",
-        "ELECTRIC_COMPANY",
-      ],
-    ) ||
+  if (!holdTransactionId) {
+    console.error(
+      "Purchase HOLD returned no transaction ID.",
+    );
+
+    throw new Error(
+      "PURCHASE_NOT_ALLOWED",
+    );
+  }
+
+  /**
+   * ----------------------------------------------------------
+   * PROVIDER PURCHASE
+   * ----------------------------------------------------------
+   */
+
+  let providerResult:
+    | Awaited<
+        ReturnType<
+          typeof clubKonnectGet
+        >
+      >
+    | null =
     null;
 
-  const providerId =
-    firstString(
-      object,
-      [
-        "NETWORK_ID",
-        "TV_ID",
-        "CABLETV_ID",
-        "PROVIDER_ID",
-        "ELECTRIC_COMPANY",
-      ],
-    ) || null;
+  try {
+    providerResult =
+      await clubKonnectGet(
+        providerRequest.endpoint,
+        providerRequest.params,
+      );
+  } catch (error) {
+    /**
+     * The provider call failed before a provider order
+     * could be confirmed.
+     *
+     * Release the wallet hold.
+     */
 
-  const productId =
-    firstString(
-      object,
-      [
-        "PRODUCT_ID",
-        "PRODUCTID",
-        "ID",
-      ],
-    ) || null;
+    try {
+      await finalizePurchase(
+        holdTransactionId,
+        false,
+        "PROVIDER_NETWORK_ERROR",
+        requestId,
+        "Provider connection failed before order confirmation.",
+        {},
+      );
+    } catch (releaseError) {
+      console.error(
+        "Failed to release HOLD after provider network error:",
+        releaseError,
+      );
+    }
 
-  const productCode =
-    firstString(
-      object,
-      [
-        "PRODUCT_CODE",
-        "PRODUCTCODE",
-        "PACKAGE_CODE",
-        "PACKAGECODE",
-        "EXAM_TYPE",
-        "EXAMTYPE",
-      ],
-    ) || null;
+    throw error;
+  }
 
-  const productSno =
-    firstString(
-      object,
-      [
-        "PRODUCT_SNO",
-        "PRODUCTSNO",
-        "SNO",
-      ],
-    ) || null;
+  const providerData =
+    providerResult.data;
 
-  const productName =
-    firstString(
-      object,
-      [
-        "PRODUCT_NAME",
-        "PRODUCTNAME",
-        "PACKAGE_NAME",
-        "PACKAGENAME",
-        "PRODUCT_DESCRIPTION",
-        "PRODUCTDESCRIPTION",
-        "EXAM_DESCRIPTION",
-        "EXAMTYPE_DESCRIPTION",
-      ],
-    ) || null;
+  const orderId =
+    extractOrderId(
+      providerData,
+    );
 
-  const description =
-    firstString(
-      object,
-      [
-        "PRODUCT_DESCRIPTION",
-        "PRODUCTDESCRIPTION",
-        "DESCRIPTION",
-        "PACKAGE_DESCRIPTION",
-        "PACKAGEDESCRIPTION",
-      ],
-    ) || null;
+  const returnedRequestId =
+    extractRequestId(
+      providerData,
+    );
 
-  const packageId =
-    firstString(
-      object,
-      [
-        "PACKAGE_ID",
-        "PACKAGEID",
-      ],
-    ) || null;
+  const status =
+    extractStatus(
+      providerData,
+    );
 
-  const packageName =
-    firstString(
-      object,
-      [
-        "PACKAGE_NAME",
-        "PACKAGENAME",
-      ],
-    ) || null;
+  const remark =
+    extractRemark(
+      providerData,
+    );
 
-  const providerCost =
-    pricing.cost;
+  /**
+   * ----------------------------------------------------------
+   * IMPORTANT:
+   *
+   * Provider credentials and full provider payload are NOT
+   * logged.
+   * ----------------------------------------------------------
+   */
 
-  const markupPercent =
-    getMarkup(service) *
-    100;
+  /**
+   * ----------------------------------------------------------
+   * IMMEDIATE SUCCESS
+   *
+   * Some ClubKonnect APIs may return completed products
+   * immediately, especially e-PIN services.
+   * ----------------------------------------------------------
+   */
 
-  const sellingPrice =
-    providerCost !==
-      null &&
-    providerCost > 0
-      ? calculateSellingPrice(
+  const immediateEpinSuccess =
+    service ===
+      "airtime_epin" &&
+    Array.isArray(
+      providerData.TXN_EPIN,
+    );
+
+  const immediateSuccess =
+    isSuccessStatus(
+      status,
+    ) ||
+    immediateEpinSuccess;
+
+  if (
+    immediateSuccess
+  ) {
+    try {
+      const finalTxn =
+        await finalizePurchase(
+          holdTransactionId,
+          true,
+          status ||
+            "ORDER_COMPLETED",
+          orderId ||
+            returnedRequestId ||
+            requestId,
+          remark ||
+            "TRANSACTION SUCCESSFUL",
+          providerData,
+        );
+
+      return {
+        success:
+          true,
+
+        status:
+          "completed",
+
+        provider:
+          "clubkonnect",
+
+        service,
+
+        transaction:
+          finalTxn,
+
+        request_id:
+          requestId,
+
+        order_id:
+          orderId ||
+          null,
+
+        provider_status:
+          status ||
+          "ORDER_COMPLETED",
+
+        amount:
+          sellingPrice,
+
+        provider_cost:
           providerCost,
-          service,
-        )
-      : null;
 
-  return {
-    service,
-    provider,
-    provider_id:
-      providerId,
-    product_id:
-      productId,
-    product_code:
-      productCode,
-    product_sno:
-      productSno,
-    product_name:
-      productName,
-    product_description:
-      description,
-    package_id:
-      packageId,
-    package_name:
-      packageName,
-    provider_amount:
-      pricing.amount,
-    provider_discount_percent:
-      pricing.discountPercent,
-    provider_discount_amount:
-      pricing.discountAmount,
-    provider_cost:
-      providerCost,
-    markup_percent:
-      markupPercent,
-    selling_price:
-      sellingPrice,
-    metadata:
-      sanitizeProviderResponse(
-        object,
-      ) as Record<
-        string,
-        unknown
-      >,
-  };
-}
+        markup_percent:
+          getMarkup(service) *
+          100,
 
-/**
- * ============================================================
- * SERVICE-SPECIFIC NORMALIZATION
- * ============================================================
- */
-
-function normalizeCatalogData(
-  service: SupportedService,
-  data: unknown,
-): NormalizedProduct[] {
-  const objects =
-    collectProductObjects(
-      data,
-    );
-
-  const products =
-    objects.map(
-      (object) =>
-        normalizeProduct(
-          service,
-          object,
-        ),
-    );
-
-  /*
-   * Remove completely empty records.
-   */
-  return products.filter(
-    (product) =>
-      Boolean(
-        product.product_id ||
-          product.product_code ||
-          product.product_sno ||
-          product.package_id ||
-          product.package_name ||
-          product.product_name,
-      ),
-  );
-}
-
-/**
- * ============================================================
- * DATABASE / SUPABASE
- * ============================================================
- */
-
-function getServiceRoleClient() {
-  const url =
-    Deno.env.get(
-      "SUPABASE_URL",
-    );
-
-  const serviceRoleKey =
-    Deno.env.get(
-      "SUPABASE_SERVICE_ROLE_KEY",
-    );
-
-  if (
-    !url ||
-    !serviceRoleKey
-  ) {
-    console.error(
-      "Supabase service-role configuration is missing.",
-    );
-
-    throw new Error(
-      "SUPABASE_CONFIGURATION_ERROR",
-    );
-  }
-
-  return createClient(
-    url,
-    serviceRoleKey,
-    {
-      auth: {
-        persistSession:
-          false,
-        autoRefreshToken:
-          false,
-      },
-    },
-  );
-}
-
-/**
- * ============================================================
- * ADMIN CHECK FOR CATALOGUE SYNC
- * ============================================================
- *
- * Catalogue synchronization modifies provider data and is
- * therefore restricted to an active administrator.
- *
- * The service-role client is used only on the server.
- */
-
-async function requireAdmin(
-  userId: string,
-): Promise<void> {
-  const supabase =
-    getServiceRoleClient();
-
-  const {
-    data,
-    error,
-  } =
-    await supabase
-      .from(
-        "support_admins",
-      )
-      .select(
-        "user_id, is_active",
-      )
-      .eq(
-        "user_id",
-        userId,
-      )
-      .eq(
-        "is_active",
-        true,
-      )
-      .maybeSingle();
-
-  if (error) {
-    console.error(
-      "Admin authorization lookup failed:",
-      error,
-    );
-
-    throw new Error(
-      "ADMIN_AUTHORIZATION_FAILED",
-    );
-  }
-
-  if (!data) {
-    throw new Error(
-      "ADMIN_REQUIRED",
-    );
-  }
-}
-
-/**
- =============================================================
- * UPSERT ONE PRODUCT
- * =============================================================
- */
-
-async function upsertProduct(
-  product: NormalizedProduct,
-  syncedAt: string,
-) {
-  const supabase =
-    getServiceRoleClient();
-
-  const payload = {
-    service:
-      product.service,
-    provider:
-      product.provider,
-    provider_id:
-      product.provider_id,
-    product_id:
-      product.product_id,
-    product_code:
-      product.product_code,
-    product_sno:
-      product.product_sno,
-    product_name:
-      product.product_name,
-    product_description:
-      product.product_description,
-    package_id:
-      product.package_id,
-    package_name:
-      product.package_name,
-    provider_amount:
-      product.provider_amount,
-    provider_discount_percent:
-      product.provider_discount_percent,
-    provider_discount_amount:
-      product.provider_discount_amount,
-    provider_cost:
-      product.provider_cost,
-    markup_percent:
-      product.markup_percent,
-    selling_price:
-      product.selling_price,
-    currency:
-      "NGN",
-    active:
-      true,
-    provider_service:
-      "clubkonnect",
-    metadata:
-      product.metadata,
-    last_synced_at:
-      syncedAt,
-  };
-
-  /*
-   * Use the same identity logic as the unique index.
-   *
-   * Since Postgres ON CONFLICT cannot directly reference
-   * the expression index by name in a portable way, first
-   * try to locate the existing record.
-   */
-  let query =
-    supabase
-      .from(
-        "clubkonnect_products",
-      )
-      .select("id")
-      .eq(
-        "service",
-        product.service,
-      );
-
-  if (
-    product.provider
-  ) {
-    query =
-      query.eq(
-        "provider",
-        product.provider,
-      );
-  } else {
-    query =
-      query.is(
-        "provider",
-        null,
-      );
-  }
-
-  if (
-    product.provider_id
-  ) {
-    query =
-      query.eq(
-        "provider_id",
-        product.provider_id,
-      );
-  } else {
-    query =
-      query.is(
-        "provider_id",
-        null,
-      );
-  }
-
-  if (
-    product.product_id
-  ) {
-    query =
-      query.eq(
-        "product_id",
-        product.product_id,
-      );
-  } else {
-    query =
-      query.is(
-        "product_id",
-        null,
-      );
-  }
-
-  if (
-    product.product_code
-  ) {
-    query =
-      query.eq(
-        "product_code",
-        product.product_code,
-      );
-  } else {
-    query =
-      query.is(
-        "product_code",
-        null,
-      );
-  }
-
-  if (
-    product.product_sno
-  ) {
-    query =
-      query.eq(
-        "product_sno",
-        product.product_sno,
-      );
-  } else {
-    query =
-      query.is(
-        "product_sno",
-        null,
-      );
-  }
-
-  const {
-    data: existing,
-    error: lookupError,
-  } =
-    await query
-      .limit(1)
-      .maybeSingle();
-
-  if (lookupError) {
-    console.error(
-      "ClubKonnect product lookup failed:",
-      lookupError,
-    );
-
-    throw new Error(
-      "CATALOG_LOOKUP_FAILED",
-    );
-  }
-
-  if (existing?.id) {
-    const {
-      error: updateError,
-    } =
-      await supabase
-        .from(
-          "clubkonnect_products",
-        )
-        .update(
-          payload,
-        )
-        .eq(
-          "id",
-          existing.id,
-        );
-
-    if (updateError) {
-      console.error(
-        "ClubKonnect product update failed:",
-        updateError,
-      );
-
-      throw new Error(
-        "CATALOG_UPDATE_FAILED",
-      );
-    }
-
-    return "updated";
-  }
-
-  const {
-    error: insertError,
-  } =
-    await supabase
-      .from(
-        "clubkonnect_products",
-      )
-      .insert(
-        payload,
-      );
-
-  if (insertError) {
-    console.error(
-      "ClubKonnect product insert failed:",
-      insertError,
-    );
-
-    throw new Error(
-      "CATALOG_INSERT_FAILED",
-    );
-  }
-
-  return "inserted";
-}
-
-/**
- * ============================================================
- * DEACTIVATE STALE PRODUCTS
- * ============================================================
- */
-
-async function deactivateStaleProducts(
-  service: SupportedService,
-  syncedAt: string,
-) {
-  const supabase =
-    getServiceRoleClient();
-
-  const {
-    error,
-  } =
-    await supabase
-      .from(
-        "clubkonnect_products",
-      )
-      .update({
-        active:
-          false,
-        updated_at:
-          syncedAt,
-      })
-      .eq(
-        "service",
-        service,
-      )
-      .neq(
-        "last_synced_at",
-        syncedAt,
-      );
-
-  if (error) {
-    console.error(
-      "Failed to deactivate stale ClubKonnect products:",
-      {
-        service,
-        error,
-      },
-    );
-
-    throw new Error(
-      "CATALOG_DEACTIVATION_FAILED",
-    );
-  }
-}
-
-/**
- * ============================================================
- * SYNCHRONIZE CATALOG
- * ============================================================
- */
-
-async function syncCatalog() {
-  const syncedAt =
-    new Date().toISOString();
-
-  const summary:
-    Record<
-      string,
-      {
-        fetched: number;
-        inserted: number;
-        updated: number;
-        errors: number;
-      }
-    > = {};
-
-  const results =
-    await Promise.all([
-      getAirtimeNetworks(),
-      getDataPlans(),
-      getCableTypes(),
-      getCablePackages(),
-      getSmilePackages(),
-      getEpinServices(),
-      getWaecPackages(),
-      getJambPackages(),
-    ]);
-
-  /**
-   * ----------------------------------------------------------
-   * AIRTIME
-   * ----------------------------------------------------------
-   */
-
-  const airtime =
-    normalizeCatalogData(
-      "airtime",
-      results[0].data,
-    );
-
-  summary.airtime = {
-    fetched:
-      airtime.length,
-    inserted: 0,
-    updated: 0,
-    errors: 0,
-  };
-
-  for (
-    const product of airtime
-  ) {
-    try {
-      const result =
-        await upsertProduct(
-          product,
-          syncedAt,
-        );
-
-      if (
-        result ===
-        "inserted"
-      ) {
-        summary.airtime
-          .inserted++;
-      } else {
-        summary.airtime
-          .updated++;
-      }
-    } catch (error) {
-      console.error(
-        "Airtime catalogue item failed:",
-        error,
-      );
-
-      summary.airtime
-        .errors++;
-    }
-  }
-
-  /**
-   * ----------------------------------------------------------
-   * DATA
-   * ----------------------------------------------------------
-   */
-
-  const data =
-    normalizeCatalogData(
-      "data",
-      results[1].data,
-    );
-
-  summary.data = {
-    fetched:
-      data.length,
-    inserted: 0,
-    updated: 0,
-    errors: 0,
-  };
-
-  for (
-    const product of data
-  ) {
-    try {
-      const result =
-        await upsertProduct(
-          product,
-          syncedAt,
-        );
-
-      if (
-        result ===
-        "inserted"
-      ) {
-        summary.data
-          .inserted++;
-      } else {
-        summary.data
-          .updated++;
-      }
-    } catch (error) {
-      console.error(
-        "Data catalogue item failed:",
-        error,
-      );
-
-      summary.data
-        .errors++;
-    }
-  }
-
-  /**
-   * ----------------------------------------------------------
-   * CABLE TV
-   * ----------------------------------------------------------
-   *
-   * The provider returns types and packages separately.
-   * We combine both into the same catalogue table.
-   */
-
-  const cableTypes =
-    normalizeCatalogData(
-      "cable_tv",
-      results[2].data,
-    );
-
-  const cablePackages =
-    normalizeCatalogData(
-      "cable_tv",
-      results[3].data,
-    );
-
-  const cable =
-    [
-      ...cableTypes,
-      ...cablePackages,
-    ];
-
-  summary.cable_tv = {
-    fetched:
-      cable.length,
-    inserted: 0,
-    updated: 0,
-    errors: 0,
-  };
-
-  for (
-    const product of cable
-  ) {
-    try {
-      const result =
-        await upsertProduct(
-          product,
-          syncedAt,
-        );
-
-      if (
-        result ===
-        "inserted"
-      ) {
-        summary.cable_tv
-          .inserted++;
-      } else {
-        summary.cable_tv
-          .updated++;
-      }
-    } catch (error) {
-      console.error(
-        "Cable TV catalogue item failed:",
-        error,
-      );
-
-      summary.cable_tv
-        .errors++;
-    }
-  }
-
-  /**
-   * ----------------------------------------------------------
-   * SMILE
-   * ----------------------------------------------------------
-   */
-
-  const smile =
-    normalizeCatalogData(
-      "smile",
-      results[4].data,
-    );
-
-  summary.smile = {
-    fetched:
-      smile.length,
-    inserted: 0,
-    updated: 0,
-    errors: 0,
-  };
-
-  for (
-    const product of smile
-  ) {
-    try {
-      const result =
-        await upsertProduct(
-          product,
-          syncedAt,
-        );
-
-      if (
-        result ===
-        "inserted"
-      ) {
-        summary.smile
-          .inserted++;
-      } else {
-        summary.smile
-          .updated++;
-      }
-    } catch (error) {
-      console.error(
-        "Smile catalogue item failed:",
-        error,
-      );
-
-      summary.smile
-        .errors++;
-    }
-  }
-
-  /**
-   * ----------------------------------------------------------
-   * E-PIN
-   * ----------------------------------------------------------
-   *
-   * The provider endpoint contains both airtime and data
-   * e-PIN catalogue information. We classify each product
-   * based on its surrounding metadata.
-   */
-
-  const epinObjects =
-    collectProductObjects(
-      results[5].data,
-    );
-
-  const airtimeEpin =
-    epinObjects
-      .filter(
-        (item) => {
-          const text =
-            JSON.stringify(
-              item,
-            ).toLowerCase();
-
-          return (
-            text.includes(
-              "airtime",
-            ) ||
-            text.includes(
-              "recharge",
-            )
-          );
-        },
-      )
-      .map(
-        (item) =>
-          normalizeProduct(
-            "airtime_epin",
-            item,
+        data:
+          sanitizeProviderResponse(
+            providerData,
           ),
-      );
-
-  const dataEpin =
-    epinObjects
-      .filter(
-        (item) => {
-          const text =
-            JSON.stringify(
-              item,
-            ).toLowerCase();
-
-          return (
-            text.includes(
-              "data",
-            ) &&
-            !text.includes(
-              "airtime",
-            )
-          );
-        },
-      )
-      .map(
-        (item) =>
-          normalizeProduct(
-            "data_epin",
-            item,
-          ),
-      );
-
-  summary.airtime_epin = {
-    fetched:
-      airtimeEpin.length,
-    inserted: 0,
-    updated: 0,
-    errors: 0,
-  };
-
-  summary.data_epin = {
-    fetched:
-      dataEpin.length,
-    inserted: 0,
-    updated: 0,
-    errors: 0,
-  };
-
-  for (
-    const product of airtimeEpin
-  ) {
-    try {
-      const result =
-        await upsertProduct(
-          product,
-          syncedAt,
-        );
-
-      if (
-        result ===
-        "inserted"
-      ) {
-        summary.airtime_epin
-          .inserted++;
-      } else {
-        summary.airtime_epin
-          .updated++;
-      }
+      };
     } catch (error) {
       console.error(
-        "Airtime e-PIN catalogue item failed:",
+        "Immediate ClubKonnect success could not be settled:",
         error,
       );
 
-      summary.airtime_epin
-        .errors++;
-    }
-  }
-
-  for (
-    const product of dataEpin
-  ) {
-    try {
-      const result =
-        await upsertProduct(
-          product,
-          syncedAt,
-        );
-
-      if (
-        result ===
-        "inserted"
-      ) {
-        summary.data_epin
-          .inserted++;
-      } else {
-        summary.data_epin
-          .updated++;
-      }
-    } catch (error) {
-      console.error(
-        "Data e-PIN catalogue item failed:",
-        error,
-      );
-
-      summary.data_epin
-        .errors++;
-    }
-  }
-
-  /**
-   * ----------------------------------------------------------
-   * WAEC
-   * ----------------------------------------------------------
-   */
-
-  const waec =
-    normalizeCatalogData(
-      "waec",
-      results[6].data,
-    );
-
-  summary.waec = {
-    fetched:
-      waec.length,
-    inserted: 0,
-    updated: 0,
-    errors: 0,
-  };
-
-  for (
-    const product of waec
-  ) {
-    try {
-      const result =
-        await upsertProduct(
-          product,
-          syncedAt,
-        );
-
-      if (
-        result ===
-        "inserted"
-      ) {
-        summary.waec
-          .inserted++;
-      } else {
-        summary.waec
-          .updated++;
-      }
-    } catch (error) {
-      console.error(
-        "WAEC catalogue item failed:",
-        error,
-      );
-
-      summary.waec
-        .errors++;
-    }
-  }
-
-  /**
-   * ----------------------------------------------------------
-   * JAMB
-   * ----------------------------------------------------------
-   *
-   * Your live test currently returned an empty EXAM_TYPE
-   * catalogue. We therefore do not fabricate JAMB products.
-   */
-
-  const jamb =
-    normalizeCatalogData(
-      "jamb",
-      results[7].data,
-    );
-
-  summary.jamb = {
-    fetched:
-      jamb.length,
-    inserted: 0,
-    updated: 0,
-    errors: 0,
-  };
-
-  for (
-    const product of jamb
-  ) {
-    try {
-      const result =
-        await upsertProduct(
-          product,
-          syncedAt,
-        );
-
-      if (
-        result ===
-        "inserted"
-      ) {
-        summary.jamb
-          .inserted++;
-      } else {
-        summary.jamb
-          .updated++;
-      }
-    } catch (error) {
-      console.error(
-        "JAMB catalogue item failed:",
-        error,
-      );
-
-      summary.jamb
-        .errors++;
-    }
-  }
-
-  /**
-   * ----------------------------------------------------------
-   * ELECTRICITY
-   * ----------------------------------------------------------
-   *
-   * We deliberately do not invent a catalogue endpoint.
-   * Your existing live test showed that ClubKonnect currently
-   * reports electricity catalogue availability as false.
-   *
-   * Purchase and meter verification can still be connected
-   * later using the documented electricity endpoint.
-   * ----------------------------------------------------------
-   */
-
-  summary.electricity = {
-    fetched: 0,
-    inserted: 0,
-    updated: 0,
-    errors: 0,
-  };
-
-  /**
-   * ----------------------------------------------------------
-   * DEACTIVATE STALE RECORDS
-   * ----------------------------------------------------------
-   *
-   * Only deactivate services for which we successfully
-   * received catalogue data.
-   */
-
-  const servicesWithCatalogue:
-    SupportedService[] = [
-      "airtime",
-      "data",
-      "cable_tv",
-      "smile",
-      "airtime_epin",
-      "data_epin",
-      "waec",
-      "jamb",
-    ];
-
-  for (
-    const service of
-      servicesWithCatalogue
-  ) {
-    try {
-      /*
-       * If no products were returned, do not deactivate the
-       * existing catalogue. This protects against temporary
-       * provider/API failures.
+      /**
+       * DO NOT release the wallet here.
+       *
+       * The provider has already reported success.
+       * Leaving the transaction held allows the callback/
+       * reconciliation process to settle it safely.
        */
-      if (
-        summary[service]
-          ?.fetched > 0
-      ) {
-        await deactivateStaleProducts(
-          service,
-          syncedAt,
-        );
-      }
-    } catch (error) {
-      console.error(
-        "Stale catalogue cleanup failed:",
-        {
-          service,
-          error,
-        },
-      );
+
+      return {
+        success:
+          true,
+
+        status:
+          "processing",
+
+        provider:
+          "clubkonnect",
+
+        service,
+
+        request_id:
+          requestId,
+
+        order_id:
+          orderId ||
+          null,
+
+        provider_status:
+          status ||
+          "ORDER_COMPLETED",
+
+        amount:
+          sellingPrice,
+
+        message:
+          "The provider completed the request, but final wallet settlement is being reconciled.",
+      };
     }
   }
 
-  return {
-    synced_at:
-      syncedAt,
-    markup_rules: {
-      regular: {
-        airtime: 15,
-        data: 15,
-        cable_tv: 15,
-        electricity: 15,
-      },
-      premium: {
-        smile: 20,
-        airtime_epin: 20,
-        data_epin: 20,
-        waec: 20,
-        jamb: 20,
-      },
-      excluded: [
-        "betting",
-        "neco",
-      ],
+  /**
+   * ----------------------------------------------------------
+   * IMMEDIATE FAILURE
+   * ----------------------------------------------------------
+   */
+
+  if (
+    isFailureStatus(
+      status,
+    )
+  ) {
+    try {
+      await finalizePurchase(
+        holdTransactionId,
+        false,
+        status,
+        orderId ||
+          returnedRequestId ||
+          requestId,
+        remark,
+        providerData,
+      );
+    } catch (error) {
+      console.error(
+        "Failed to release wallet after provider failure:",
+        error,
+      );
+
+      /**
+       * Do not pretend the refund/release happened.
+       * The transaction remains available for reconciliation.
+       */
+      return {
+        success:
+          false,
+
+        status:
+          "reconciliation_required",
+
+        provider:
+          "clubkonnect",
+
+        service,
+
+        request_id:
+          requestId,
+
+        order_id:
+          orderId ||
+          null,
+
+        error:
+          "The provider rejected the order and wallet reconciliation is required.",
+      };
+    }
+
+    return {
+      success:
+        false,
+
+      status:
+        "failed",
+
+      provider:
+        "clubkonnect",
+
+      service,
+
+      request_id:
+        requestId,
+
+      order_id:
+        orderId ||
+        null,
+
+      provider_status:
+        status,
+
+      error:
+        safeErrorMessage(
+          status,
+          "The provider could not complete the order.",
+        ),
+    };
+  }
+
+  /**
+   * ----------------------------------------------------------
+   * QUEUED / RECEIVED / PROCESSING
+   * ----------------------------------------------------------
+   */
+
+  if (
+    isActiveStatus(
+      status,
+    ) ||
+    orderId
+  ) {
+    return {
+      success:
+        true,
+
+      status:
+        "processing",
+
+      provider:
+        "clubkonnect",
+
+      service,
+
+      request_id:
+        requestId,
+
+      order_id:
+        orderId ||
+        null,
+
+      provider_status:
+        status ||
+        "ORDER_RECEIVED",
+
+      amount:
+        sellingPrice,
+
+      provider_cost:
+        providerCost,
+
+      markup_percent:
+        getMarkup(service) *
+        100,
+
+      message:
+        "Your order has been received and is being processed. Your wallet amount is temporarily held until ClubKonnect confirms the final result.",
+    };
+  }
+
+  /**
+   * ----------------------------------------------------------
+   * UNKNOWN PROVIDER RESPONSE
+   *
+   * Never automatically release money when we cannot tell
+   * whether the provider accepted the order.
+   * ----------------------------------------------------------
+   */
+
+  console.error(
+    "Unknown ClubKonnect purchase response:",
+    {
+      service,
+      request_id:
+        requestId,
+      provider_status:
+        status,
+      has_order_id:
+        Boolean(orderId),
     },
-    summary,
-  };
-}
-
-/**
- * ============================================================
- * PURCHASE GUARD
- * ============================================================
- *
- * Purchase remains disabled until the wallet transaction,
- * idempotency, refund and reconciliation layers are connected.
- */
-
-function rejectPurchase(): never {
-  throw new Error(
-    "PURCHASE_NOT_ENABLED_YET",
   );
-}
-
-/**
- * ============================================================
- * AUTHENTICATION
- * ============================================================
- */
-
-async function authenticateUser(
-  request: Request,
-): Promise<{
-  id: string;
-}> {
-  const supabaseUrl =
-    Deno.env.get(
-      "SUPABASE_URL",
-    );
-
-  const supabaseAnonKey =
-    Deno.env.get(
-      "SUPABASE_ANON_KEY",
-    );
-
-  if (
-    !supabaseUrl ||
-    !supabaseAnonKey
-  ) {
-    console.error(
-      "Supabase authentication configuration is missing.",
-    );
-
-    throw new Error(
-      "SUPABASE_CONFIGURATION_ERROR",
-    );
-  }
-
-  const authorization =
-    request.headers.get(
-      "Authorization",
-    );
-
-  if (!authorization) {
-    throw new Error(
-      "AUTHENTICATION_REQUIRED",
-    );
-  }
-
-  const supabase =
-    createClient(
-      supabaseUrl,
-      supabaseAnonKey,
-      {
-        global: {
-          headers: {
-            Authorization:
-              authorization,
-          },
-        },
-      },
-    );
-
-  const {
-    data,
-    error,
-  } =
-    await supabase.auth.getUser();
-
-  if (
-    error ||
-    !data.user
-  ) {
-    console.error(
-      "ClubKonnect user authentication failed:",
-      error,
-    );
-
-    throw new Error(
-      "AUTHENTICATION_REQUIRED",
-    );
-  }
 
   return {
-    id:
-      data.user.id,
+    success:
+      true,
+
+    status:
+      "processing",
+
+    provider:
+      "clubkonnect",
+
+    service,
+
+    request_id:
+      requestId,
+
+    order_id:
+      orderId ||
+      null,
+
+    provider_status:
+      status ||
+      null,
+
+    amount:
+      sellingPrice,
+
+    message:
+      "Your order is being reconciled with the provider. Your wallet amount remains temporarily held.",
   };
 }
 
@@ -2831,9 +2887,10 @@ Deno.serve(
     ) {
       return jsonResponse(
         {
-          success: false,
+          success:
+            false,
           error:
-            "Method not allowed",
+            "Method not allowed.",
         },
         405,
       );
@@ -2841,7 +2898,7 @@ Deno.serve(
 
     /**
      * --------------------------------------------------------
-     * AUTHENTICATE
+     * AUTHENTICATE USER
      * --------------------------------------------------------
      */
 
@@ -2849,7 +2906,8 @@ Deno.serve(
       | {
           id: string;
         }
-      | null = null;
+      | null =
+      null;
 
     try {
       user =
@@ -2858,13 +2916,12 @@ Deno.serve(
         );
     } catch (error) {
       const code =
-        error instanceof
-        Error
+        error instanceof Error
           ? error.message
           : "";
 
       console.error(
-        "Authentication error:",
+        "ClubKonnect authentication error:",
         error,
       );
 
@@ -2877,7 +2934,9 @@ Deno.serve(
             success:
               false,
             error:
-              "Authentication is required.",
+              safeErrorMessage(
+                code,
+              ),
           },
           401,
         );
@@ -2960,7 +3019,7 @@ Deno.serve(
       }
     } catch (error) {
       console.error(
-        "Request parsing error:",
+        "ClubKonnect request parsing error:",
         error,
       );
 
@@ -2987,7 +3046,7 @@ Deno.serve(
 
     /**
      * --------------------------------------------------------
-     * DEFAULT ACTION
+     * DEFAULT
      * --------------------------------------------------------
      */
 
@@ -2995,31 +3054,41 @@ Deno.serve(
       return jsonResponse({
         success:
           true,
+
         provider:
           "clubkonnect",
+
         service:
           "clubkonnect-service",
+
         authenticated:
           true,
+
         supported_services:
           SUPPORTED_SERVICES,
+
         actions: [
           "health",
           "balance",
           "catalog",
-          "sync_catalog",
           "verify",
           "query",
           "purchase",
         ],
-        purchase_enabled:
-          false,
+
+        markup_rules: {
+          regular: 15,
+          premium: 20,
+        },
+
+        betting:
+          "disabled",
       });
     }
 
     /**
      * --------------------------------------------------------
-     * BETTING / NECO
+     * BETTING — ALWAYS DISABLED
      * --------------------------------------------------------
      */
 
@@ -3029,7 +3098,7 @@ Deno.serve(
       requestedService ===
         "betting_wallet" ||
       requestedService ===
-        "neco" ||
+        "betting_wallet_funding" ||
       action ===
         ("betting" as Action)
     ) {
@@ -3046,7 +3115,7 @@ Deno.serve(
 
     /**
      * --------------------------------------------------------
-     * ACTION: HEALTH
+     * HEALTH
      * --------------------------------------------------------
      */
 
@@ -3061,14 +3130,24 @@ Deno.serve(
         return jsonResponse({
           success:
             true,
+
           provider:
             "clubkonnect",
+
           connected:
             result.connected,
+
           provider_status:
             result.provider_status,
+
           purchase_enabled:
-            false,
+            true,
+
+          supported_services:
+            SUPPORTED_SERVICES,
+
+          betting:
+            "disabled",
         });
       } catch (error) {
         console.error(
@@ -3092,7 +3171,7 @@ Deno.serve(
 
     /**
      * --------------------------------------------------------
-     * ACTION: BALANCE
+     * BALANCE
      * --------------------------------------------------------
      */
 
@@ -3107,14 +3186,19 @@ Deno.serve(
         return jsonResponse({
           success:
             true,
+
           provider:
             "clubkonnect",
+
           connected:
             result.connected,
+
           provider_status:
             result.provider_status,
+
           balance:
             null,
+
           message:
             "Provider balance is intentionally not exposed through this endpoint.",
         });
@@ -3138,7 +3222,7 @@ Deno.serve(
 
     /**
      * --------------------------------------------------------
-     * ACTION: LIVE CATALOG
+     * CATALOG
      * --------------------------------------------------------
      */
 
@@ -3182,8 +3266,10 @@ Deno.serve(
         return jsonResponse({
           success:
             true,
+
           provider:
             "clubkonnect",
+
           catalog,
         });
       } catch (error) {
@@ -3206,95 +3292,7 @@ Deno.serve(
 
     /**
      * --------------------------------------------------------
-     * ACTION: SYNC CATALOG
-     * --------------------------------------------------------
-     *
-     * ADMIN ONLY.
-     *
-     * This writes provider products into
-     * public.clubkonnect_products.
-     */
-
-    if (
-      action ===
-      "sync_catalog"
-    ) {
-      try {
-        await requireAdmin(
-          user.id,
-        );
-      } catch (error) {
-        const code =
-          error instanceof
-          Error
-            ? error.message
-            : "";
-
-        console.error(
-          "ClubKonnect sync authorization failed:",
-          error,
-        );
-
-        if (
-          code ===
-          "ADMIN_REQUIRED"
-        ) {
-          return jsonResponse(
-            {
-              success:
-                false,
-              error:
-                "Administrator access is required.",
-            },
-            403,
-          );
-        }
-
-        return jsonResponse(
-          {
-            success:
-              false,
-            error:
-              "Unable to authorize catalogue synchronization.",
-          },
-          500,
-        );
-      }
-
-      try {
-        const result =
-          await syncCatalog();
-
-        return jsonResponse({
-          success:
-            true,
-          provider:
-            "clubkonnect",
-          action:
-            "sync_catalog",
-          ...result,
-        });
-      } catch (error) {
-        console.error(
-          "ClubKonnect catalogue synchronization failed:",
-          error,
-        );
-
-        return jsonResponse(
-          {
-            success:
-              false,
-            error:
-              "Unable to synchronize the ClubKonnect catalogue.",
-          },
-          502,
-        );
-      }
-    }
-
-    /**
-     * --------------------------------------------------------
-     * ACTION: VERIFY
+     * VERIFY
      * --------------------------------------------------------
      */
 
@@ -3328,16 +3326,24 @@ Deno.serve(
         return jsonResponse({
           success:
             true,
+
           provider:
             "clubkonnect",
+
           service:
             requestedService,
+
           data:
             sanitizeProviderResponse(
               result.data,
             ),
         });
       } catch (error) {
+        const code =
+          error instanceof Error
+            ? error.message
+            : "";
+
         console.error(
           "ClubKonnect verification error:",
           error,
@@ -3348,16 +3354,19 @@ Deno.serve(
             success:
               false,
             error:
-              "Unable to verify the customer information.",
+              safeErrorMessage(
+                code,
+                "Unable to verify the customer information.",
+              ),
           },
-          502,
+          400,
         );
       }
     }
 
     /**
      * --------------------------------------------------------
-     * ACTION: QUERY
+     * QUERY
      * --------------------------------------------------------
      */
 
@@ -3404,8 +3413,10 @@ Deno.serve(
         return jsonResponse({
           success:
             true,
+
           provider:
             "clubkonnect",
+
           data:
             sanitizeProviderResponse(
               result.data,
@@ -3431,7 +3442,7 @@ Deno.serve(
 
     /**
      * --------------------------------------------------------
-     * ACTION: PURCHASE
+     * PURCHASE
      * --------------------------------------------------------
      */
 
@@ -3439,34 +3450,73 @@ Deno.serve(
       action ===
       "purchase"
     ) {
-      console.warn(
-        "Blocked ClubKonnect purchase attempt:",
-        {
-          user_id:
-            user.id,
-          service:
-            requestedService ||
-            null,
-        },
-      );
+      if (
+        !isSupportedService(
+          requestedService,
+        )
+      ) {
+        return jsonResponse(
+          {
+            success:
+              false,
+            error:
+              "A supported service is required.",
+          },
+          400,
+        );
+      }
 
       try {
-        rejectPurchase();
+        const result =
+          await purchaseService(
+            user.id,
+            requestedService,
+            body,
+          );
+
+        return jsonResponse(
+          result,
+        );
       } catch (error) {
+        const code =
+          error instanceof Error
+            ? error.message
+            : "";
+
+        console.error(
+          "ClubKonnect purchase error:",
+          {
+            code,
+            service:
+              requestedService,
+            user_id:
+              user.id,
+          },
+        );
+
+        const status =
+          code ===
+          "INSUFFICIENT_FUNDS"
+            ? 400
+            : code ===
+                "AUTHENTICATION_REQUIRED"
+              ? 401
+              : code ===
+                  "CATALOG_NOT_FOUND"
+                ? 404
+                : 400;
+
         return jsonResponse(
           {
             success:
               false,
             error:
               safeErrorMessage(
-                error instanceof
-                  Error
-                  ? error.message
-                  : "",
-                "ClubKonnect purchases are not enabled yet.",
+                code,
+                "Unable to process the purchase.",
               ),
           },
-          403,
+          status,
         );
       }
     }

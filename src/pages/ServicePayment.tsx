@@ -8,6 +8,7 @@ import {
   ArrowLeft,
   Loader2,
   RefreshCw,
+  Flame,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -49,6 +50,9 @@ interface Biller {
   description?: string;
   short_name?: string;
 
+  provider?: string;
+  provider_id?: string;
+
   [key: string]: any;
 }
 
@@ -77,6 +81,16 @@ interface BillItem {
   is_airtime?: boolean;
   country?: string;
 
+  provider?: string;
+  provider_id?: string;
+  provider_amount?: number | string;
+
+  data_plan?: string;
+  network_code?: string;
+
+  plan_type?: string;
+  is_hot_deal?: boolean;
+
   [key: string]: any;
 }
 
@@ -94,6 +108,8 @@ const SERVICE_CATEGORY_MAP: Record<string, string> = {
 
 const DATA_MARKUP = 50;
 
+const CLUBKONNECT_MARKUP_RATE = 0.15;
+
 const AIRTIME_AMOUNTS = [
   50,
   100,
@@ -110,9 +126,16 @@ const BILL_AMOUNTS = [
   1000,
 ];
 
+const PROVIDER_FLUTTERWAVE = "flutterwave";
+const PROVIDER_CLUBKONNECT = "clubkonnect";
+
 // ============================================================
 // HELPERS
 // ============================================================
+
+function cleanString(value: unknown): string {
+  return String(value ?? "").trim();
+}
 
 function numberValue(value: unknown): number {
   const n = Number(value);
@@ -124,24 +147,87 @@ function formatNaira(value: number): string {
   return `₦${Number(value).toLocaleString("en-NG")}`;
 }
 
+function getProviderId(
+  biller: Biller | null
+): string {
+  return cleanString(
+    biller?.provider_id ??
+      biller?.provider ??
+      PROVIDER_FLUTTERWAVE
+  ).toLowerCase();
+}
+
+function getItemProviderId(
+  item: BillItem | null
+): string {
+  return cleanString(
+    item?.provider_id ??
+      item?.provider ??
+      PROVIDER_FLUTTERWAVE
+  ).toLowerCase();
+}
+
 function getItemProviderPrice(
   item: BillItem | null
 ): number {
   return numberValue(
-    item?.amount ??
+    item?.provider_amount ??
+      item?.amount ??
       item?.price ??
       item?.cost ??
       item?.value
   );
 }
 
-function getDataSellingPrice(
-  item: BillItem
-): number {
+function isClubKonnect(
+  providerId: string
+): boolean {
   return (
-    getItemProviderPrice(item) +
-    DATA_MARKUP
+    providerId.toLowerCase() ===
+    PROVIDER_CLUBKONNECT
   );
+}
+
+function getClubKonnectSellingPrice(
+  providerAmount: number
+): number {
+  return Math.ceil(
+    providerAmount *
+      (1 + CLUBKONNECT_MARKUP_RATE)
+  );
+}
+
+function getDataSellingPrice(
+  item: BillItem,
+  providerId: string
+): number {
+  const providerPrice =
+    getItemProviderPrice(item);
+
+  if (
+    isClubKonnect(providerId)
+  ) {
+    return getClubKonnectSellingPrice(
+      providerPrice
+    );
+  }
+
+  return providerPrice + DATA_MARKUP;
+}
+
+function getNonDataSellingPrice(
+  providerAmount: number,
+  providerId: string
+): number {
+  if (
+    isClubKonnect(providerId)
+  ) {
+    return getClubKonnectSellingPrice(
+      providerAmount
+    );
+  }
+
+  return providerAmount;
 }
 
 function getDataGroup(
@@ -189,6 +275,46 @@ function getDataGroup(
   return "Other";
 }
 
+function isHotDeal(
+  item: BillItem
+): boolean {
+  if (
+    item.is_hot_deal === true
+  ) {
+    return true;
+  }
+
+  const text = [
+    item.name,
+    item.short_name,
+    item.description,
+    item.plan_type,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+
+  return /\bsme\b/.test(text);
+}
+
+function getPlanType(
+  item: BillItem
+): string {
+  if (
+    cleanString(
+      item.plan_type
+    )
+  ) {
+    return cleanString(
+      item.plan_type
+    );
+  }
+
+  return isHotDeal(item)
+    ? "SME"
+    : "REGULAR";
+}
+
 // ============================================================
 // COMPONENT
 // ============================================================
@@ -220,6 +346,18 @@ const ServicePayment = ({
 
   const [verifyingPin, setVerifyingPin] =
     useState(false);
+
+  // ==========================================================
+  // PROVIDER
+  // ==========================================================
+
+  const [selectedProviderId, setSelectedProviderId] =
+    useState(PROVIDER_FLUTTERWAVE);
+
+  const [availableProviders, setAvailableProviders] =
+    useState<string[]>([
+      PROVIDER_FLUTTERWAVE,
+    ]);
 
   // ==========================================================
   // CATALOGUE
@@ -278,6 +416,17 @@ const ServicePayment = ({
 
   const isAirtime =
     serviceType === "airtime";
+
+  const isInternet =
+    serviceType === "internet";
+
+  // ==========================================================
+  // SELECTED PROVIDER
+  // ==========================================================
+
+  const isSelectedClubKonnect =
+    selectedProviderId ===
+    PROVIDER_CLUBKONNECT;
 
   // ==========================================================
   // SELECTED BILLER
@@ -398,6 +547,15 @@ const ServicePayment = ({
   }, [serviceType]);
 
   // ==========================================================
+  // PROVIDER DISPLAY NAME
+  // ==========================================================
+
+  const providerDisplayName =
+    isSelectedClubKonnect
+      ? "ClubKonnect"
+      : "Flutterwave";
+
+  // ==========================================================
   // RESET FORM
   // ==========================================================
 
@@ -410,6 +568,16 @@ const ServicePayment = ({
 
     setSelectedBillerCode("");
     setSelectedItemCode("");
+
+    setSelectedProviderId(
+      serviceType === "internet"
+        ? PROVIDER_FLUTTERWAVE
+        : PROVIDER_FLUTTERWAVE
+    );
+
+    setAvailableProviders([
+      PROVIDER_FLUTTERWAVE,
+    ]);
 
     setError("");
 
@@ -436,9 +604,25 @@ const ServicePayment = ({
   // LOAD BILLERS
   // ==========================================================
 
-  const loadBillers = async () => {
+  const loadBillers = async (
+    providerId = selectedProviderId
+  ) => {
     if (!category) {
       setBillers([]);
+      return;
+    }
+
+    if (
+      serviceType === "internet" &&
+      providerId === PROVIDER_CLUBKONNECT
+    ) {
+      setBillers([]);
+      setItems([]);
+      setSelectedBillerCode("");
+      setSelectedItemCode("");
+      setError(
+        "ClubKonnect does not currently provide Internet service through this integration."
+      );
       return;
     }
 
@@ -464,6 +648,7 @@ const ServicePayment = ({
               action: "billers",
               category,
               country: "NG",
+              provider_id: providerId,
             },
           }
         );
@@ -475,8 +660,7 @@ const ServicePayment = ({
         );
 
         throw new Error(
-          functionError.message ||
-            "Unable to load bill providers."
+          "Unable to load bill providers."
         );
       }
 
@@ -484,6 +668,11 @@ const ServicePayment = ({
         !data ||
         data.success !== true
       ) {
+        console.error(
+          "Billers API response:",
+          data
+        );
+
         throw new Error(
           data?.error ||
             data?.message ||
@@ -496,10 +685,24 @@ const ServicePayment = ({
           ? data.billers
           : [];
 
-      setBillers(loadedBillers);
+      const normalizedBillers =
+        loadedBillers.map(
+          (biller: Biller) => ({
+            ...biller,
+            provider_id:
+              cleanString(
+                biller.provider_id ??
+                  providerId
+              ).toLowerCase(),
+          })
+        );
+
+      setBillers(
+        normalizedBillers
+      );
 
       if (
-        loadedBillers.length === 0
+        normalizedBillers.length === 0
       ) {
         setError(
           "No providers are currently available for this service."
@@ -512,8 +715,10 @@ const ServicePayment = ({
       );
 
       const message =
-        err?.message ||
-        "Unable to load bill providers.";
+        err?.message ===
+          "No providers are currently available for this service."
+          ? err.message
+          : "Unable to load bill providers.";
 
       setError(message);
 
@@ -536,8 +741,90 @@ const ServicePayment = ({
       return;
     }
 
-    loadBillers();
+    const initialProvider =
+      serviceType === "internet"
+        ? PROVIDER_FLUTTERWAVE
+        : PROVIDER_FLUTTERWAVE;
+
+    setSelectedProviderId(
+      initialProvider
+    );
+
+    loadBillers(
+      initialProvider
+    );
   }, [category]);
+
+  // ==========================================================
+  // PROVIDER OPTIONS
+  // ==========================================================
+
+  useEffect(() => {
+    if (serviceType === "internet") {
+      setAvailableProviders([
+        PROVIDER_FLUTTERWAVE,
+      ]);
+
+      setSelectedProviderId(
+        PROVIDER_FLUTTERWAVE
+      );
+
+      return;
+    }
+
+    if (
+      serviceType === "airtime" ||
+      serviceType === "data" ||
+      serviceType === "electricity" ||
+      serviceType === "cable"
+    ) {
+      setAvailableProviders([
+        PROVIDER_FLUTTERWAVE,
+        PROVIDER_CLUBKONNECT,
+      ]);
+
+      return;
+    }
+
+    setAvailableProviders([
+      PROVIDER_FLUTTERWAVE,
+    ]);
+  }, [serviceType]);
+
+  // ==========================================================
+  // PROVIDER CHANGE
+  // ==========================================================
+
+  const handleProviderChange = async (
+    providerId: string
+  ) => {
+    if (
+      processingPayment ||
+      verifyingPin
+    ) {
+      return;
+    }
+
+    const normalized =
+      cleanString(
+        providerId
+      ).toLowerCase();
+
+    setSelectedProviderId(
+      normalized
+    );
+
+    setSelectedBillerCode("");
+    setSelectedItemCode("");
+    setItems([]);
+    setAmount("");
+    setCustomAmountMode(false);
+    setError("");
+
+    await loadBillers(
+      normalized
+    );
+  };
 
   // ==========================================================
   // LOAD ITEMS
@@ -547,7 +834,9 @@ const ServicePayment = ({
     billerCode: string
   ) => {
     const cleanBillerCode =
-      String(billerCode ?? "").trim();
+      String(
+        billerCode ?? ""
+      ).trim();
 
     if (!cleanBillerCode) {
       setItems([]);
@@ -574,7 +863,10 @@ const ServicePayment = ({
               action: "items",
               biller_code:
                 cleanBillerCode,
+              category,
               country: "NG",
+              provider_id:
+                selectedProviderId,
             },
           }
         );
@@ -586,8 +878,7 @@ const ServicePayment = ({
         );
 
         throw new Error(
-          functionError.message ||
-            "Unable to load bill packages."
+          "Unable to load bill packages."
         );
       }
 
@@ -595,6 +886,11 @@ const ServicePayment = ({
         !data ||
         data.success !== true
       ) {
+        console.error(
+          "Bill items API response:",
+          data
+        );
+
         throw new Error(
           data?.error ||
             data?.message ||
@@ -607,10 +903,44 @@ const ServicePayment = ({
           ? data.items
           : [];
 
-      setItems(loadedItems);
+      const normalizedItems =
+        loadedItems.map(
+          (item: BillItem) => ({
+            ...item,
+
+            provider_id:
+              cleanString(
+                item.provider_id ??
+                  selectedProviderId
+              ).toLowerCase(),
+
+            item_code:
+              item.item_code !==
+                undefined &&
+              item.item_code !== null
+                ? String(
+                    item.item_code
+                  )
+                : undefined,
+
+            plan_type:
+              item.plan_type ??
+              (isHotDeal(item)
+                ? "SME"
+                : "REGULAR"),
+
+            is_hot_deal:
+              item.is_hot_deal === true ||
+              isHotDeal(item),
+          })
+        );
+
+      setItems(
+        normalizedItems
+      );
 
       if (
-        loadedItems.length === 0
+        normalizedItems.length === 0
       ) {
         setError(
           "No packages are currently available for this provider."
@@ -623,7 +953,6 @@ const ServicePayment = ({
       );
 
       const message =
-        err?.message ||
         "Unable to load bill packages.";
 
       setError(message);
@@ -694,11 +1023,24 @@ const ServicePayment = ({
       return;
     }
 
-    setSelectedItemCode(code);
+    const itemProviderId =
+      getItemProviderId(
+        item
+      );
+
+    const sellingPrice =
+      getDataSellingPrice(
+        item,
+        itemProviderId
+      );
+
+    setSelectedItemCode(
+      code
+    );
 
     setAmount(
       String(
-        getDataSellingPrice(item)
+        sellingPrice
       )
     );
 
@@ -740,7 +1082,19 @@ const ServicePayment = ({
       return;
     }
 
-    setAmount(String(value));
+    const sellingPrice =
+      isSelectedClubKonnect
+        ? getClubKonnectSellingPrice(
+            value
+          )
+        : value;
+
+    setAmount(
+      String(
+        sellingPrice
+      )
+    );
+
     setCustomAmountMode(false);
     setError("");
   };
@@ -762,7 +1116,8 @@ const ServicePayment = ({
   // AMOUNT RULES
   // ==========================================================
 
-  const amountNumber = Number(amount);
+  const amountNumber =
+    Number(amount);
 
   const itemMinimum =
     Number(
@@ -779,10 +1134,17 @@ const ServicePayment = ({
       selectedItem
     );
 
+  const selectedItemProviderId =
+    getItemProviderId(
+      selectedItem
+    );
+
   const dataSellingAmount =
-    isData && selectedItem
+    isData &&
+    selectedItem
       ? getDataSellingPrice(
-          selectedItem
+          selectedItem,
+          selectedItemProviderId
         )
       : 0;
 
@@ -790,328 +1152,452 @@ const ServicePayment = ({
   // CUSTOMER NORMALISATION
   // ==========================================================
 
-  const normaliseCustomer = (): string => {
-    let value = customer.trim();
-
-    if (
-      serviceType === "airtime" ||
-      serviceType === "data"
-    ) {
-      value = value.replace(
-        /\s+/g,
-        ""
-      );
+  const normaliseCustomer =
+    (): string => {
+      let value =
+        customer.trim();
 
       if (
-        /^0\d{10}$/.test(value)
+        serviceType === "airtime" ||
+        serviceType === "data"
       ) {
-        return `+234${value.substring(1)}`;
+        value =
+          value.replace(
+            /\s+/g,
+            ""
+          );
+
+        if (
+          /^0\d{10}$/.test(
+            value
+          )
+        ) {
+          return `+234${value.substring(
+            1
+          )}`;
+        }
+
+        if (
+          /^\d{10}$/.test(
+            value
+          )
+        ) {
+          return `+234${value}`;
+        }
+
+        if (
+          /^234\d{10}$/.test(
+            value
+          )
+        ) {
+          return `+${value}`;
+        }
+
+        if (
+          /^\+234\d{10}$/.test(
+            value
+          )
+        ) {
+          return value;
+        }
       }
 
-      if (
-        /^\d{10}$/.test(value)
-      ) {
-        return `+234${value}`;
-      }
-
-      if (
-        /^234\d{10}$/.test(value)
-      ) {
-        return `+${value}`;
-      }
-
-      if (
-        /^\+234\d{10}$/.test(value)
-      ) {
-        return value;
-      }
-    }
-
-    return value;
-  };
+      return value;
+    };
 
   // ==========================================================
   // VALIDATION
   // ==========================================================
 
-  const validateForm = (): boolean => {
-    if (!selectedBillerCode) {
-      toast({
-        title: "Select a provider",
-        description:
-          "Please select a bill provider.",
-        variant: "destructive",
-      });
+  const validateForm =
+    (): boolean => {
+      if (!selectedBillerCode) {
+        toast({
+          title:
+            "Select a provider",
+          description:
+            "Please select a bill provider.",
+          variant:
+            "destructive",
+        });
 
-      return false;
-    }
+        return false;
+      }
 
-    if (!selectedItemCode) {
-      toast({
-        title: "Select a package",
-        description:
-          "Please select a bill package.",
-        variant: "destructive",
-      });
+      if (!selectedItemCode) {
+        toast({
+          title:
+            "Select a package",
+          description:
+            "Please select a bill package.",
+          variant:
+            "destructive",
+        });
 
-      return false;
-    }
+        return false;
+      }
 
-    const finalCustomer =
-      normaliseCustomer();
+      const finalCustomer =
+        normaliseCustomer();
 
-    if (!finalCustomer) {
-      toast({
-        title:
-          "Customer information required",
-        description:
-          `Please enter the ${customerLabel.toLowerCase()}.`,
-        variant: "destructive",
-      });
+      if (!finalCustomer) {
+        toast({
+          title:
+            "Customer information required",
+          description:
+            `Please enter the ${customerLabel.toLowerCase()}.`,
+          variant:
+            "destructive",
+        });
 
-      return false;
-    }
+        return false;
+      }
 
-    if (
-      serviceType === "airtime" ||
-      serviceType === "data"
-    ) {
       if (
-        !/^\+234\d{10}$/.test(
-          finalCustomer
+        serviceType ===
+          "airtime" ||
+        serviceType === "data"
+      ) {
+        if (
+          !/^\+234\d{10}$/.test(
+            finalCustomer
+          )
+        ) {
+          toast({
+            title:
+              "Invalid phone number",
+            description:
+              "Enter a valid Nigerian phone number.",
+            variant:
+              "destructive",
+          });
+
+          return false;
+        }
+      }
+
+      if (
+        !Number.isFinite(
+          amountNumber
+        ) ||
+        amountNumber <= 0
+      ) {
+        toast({
+          title:
+            "Invalid amount",
+          description:
+            "Please select or enter a valid amount.",
+          variant:
+            "destructive",
+        });
+
+        return false;
+      }
+
+      if (isData) {
+        if (
+          providerItemAmount <=
+          0
+        ) {
+          toast({
+            title:
+              "Invalid data plan",
+            description:
+              "The selected data plan does not have a valid provider price.",
+            variant:
+              "destructive",
+          });
+
+          return false;
+        }
+
+        if (
+          Math.abs(
+            amountNumber -
+              dataSellingAmount
+          ) > 0.01
+        ) {
+          toast({
+            title:
+              "Invalid data price",
+            description:
+              `This plan costs ${formatNaira(
+                dataSellingAmount
+              )}.`,
+            variant:
+              "destructive",
+          });
+
+          return false;
+        }
+      }
+
+      if (
+        !isData &&
+        isSelectedClubKonnect
+      ) {
+        const expectedSellingPrice =
+          getNonDataSellingPrice(
+            providerItemAmount > 0
+              ? providerItemAmount
+              : amountNumber,
+            PROVIDER_CLUBKONNECT
+          );
+
+        if (
+          providerItemAmount > 0 &&
+          Math.abs(
+            amountNumber -
+              expectedSellingPrice
+          ) > 0.01
+        ) {
+          toast({
+            title:
+              "Invalid service price",
+            description:
+              `This service costs ${formatNaira(
+                expectedSellingPrice
+              )}.`,
+            variant:
+              "destructive",
+          });
+
+          return false;
+        }
+      }
+
+      if (
+        !isData &&
+        !isSelectedClubKonnect &&
+        itemMinimum > 0 &&
+        amountNumber <
+          itemMinimum
+      ) {
+        toast({
+          title:
+            "Amount too low",
+          description:
+            `Minimum amount is ${formatNaira(
+              itemMinimum
+            )}.`,
+          variant:
+            "destructive",
+        });
+
+        return false;
+      }
+
+      if (
+        !isData &&
+        !isSelectedClubKonnect &&
+        itemMaximum > 0 &&
+        amountNumber >
+          itemMaximum
+      ) {
+        toast({
+          title:
+            "Amount too high",
+          description:
+            `Maximum amount is ${formatNaira(
+              itemMaximum
+            )}.`,
+          variant:
+            "destructive",
+        });
+
+        return false;
+      }
+
+      if (
+        amountNumber >
+        Number(
+          walletBalance
         )
       ) {
         toast({
           title:
-            "Invalid phone number",
+            "Insufficient Balance",
           description:
-            "Enter a valid Nigerian phone number.",
-          variant: "destructive",
-        });
-
-        return false;
-      }
-    }
-
-    if (
-      !Number.isFinite(amountNumber) ||
-      amountNumber <= 0
-    ) {
-      toast({
-        title: "Invalid amount",
-        description:
-          "Please select or enter a valid amount.",
-        variant: "destructive",
-      });
-
-      return false;
-    }
-
-    if (isData) {
-      if (providerItemAmount <= 0) {
-        toast({
-          title:
-            "Invalid data plan",
-          description:
-            "The selected data plan does not have a valid provider price.",
-          variant: "destructive",
+            "Please fund your wallet to continue.",
+          variant:
+            "destructive",
         });
 
         return false;
       }
 
-      if (
-        Math.abs(
-          amountNumber -
-            dataSellingAmount
-        ) > 0.01
-      ) {
-        toast({
-          title:
-            "Invalid data price",
-          description:
-            `This plan costs ${formatNaira(
-              dataSellingAmount
-            )}.`,
-          variant: "destructive",
-        });
-
-        return false;
-      }
-    }
-
-    if (
-      !isData &&
-      itemMinimum > 0 &&
-      amountNumber < itemMinimum
-    ) {
-      toast({
-        title: "Amount too low",
-        description:
-          `Minimum amount is ${formatNaira(
-            itemMinimum
-          )}.`,
-        variant: "destructive",
-      });
-
-      return false;
-    }
-
-    if (
-      !isData &&
-      itemMaximum > 0 &&
-      amountNumber > itemMaximum
-    ) {
-      toast({
-        title: "Amount too high",
-        description:
-          `Maximum amount is ${formatNaira(
-            itemMaximum
-          )}.`,
-        variant: "destructive",
-      });
-
-      return false;
-    }
-
-    if (
-      amountNumber >
-      Number(walletBalance)
-    ) {
-      toast({
-        title: "Insufficient Balance",
-        description:
-          "Please fund your wallet to continue.",
-        variant: "destructive",
-      });
-
-      return false;
-    }
-
-    return true;
-  };
+      return true;
+    };
 
   // ==========================================================
   // PURCHASE DETAILS
   // ==========================================================
 
-  const buildPurchaseDetails = () => {
-    const finalCustomer =
-      normaliseCustomer();
+  const buildPurchaseDetails =
+    () => {
+      const finalCustomer =
+        normaliseCustomer();
 
-    const providerAmount =
-      isData
-        ? providerItemAmount
-        : amountNumber;
-
-    return {
-      customer: finalCustomer,
-
-      biller_code:
-        selectedBillerCode,
-
-      item_code:
-        selectedItemCode,
-
-      provider:
-        selectedBiller?.name ??
-        selectedBiller?.short_name ??
-        "",
-
-      phoneNumber:
-        serviceType === "airtime" ||
-        serviceType === "data"
-          ? finalCustomer
-          : "",
-
-      phone:
-        serviceType === "airtime" ||
-        serviceType === "data"
-          ? finalCustomer
-          : "",
-
-      meterNumber:
-        serviceType === "electricity"
-          ? finalCustomer
-          : "",
-
-      meter_number:
-        serviceType === "electricity"
-          ? finalCustomer
-          : "",
-
-      smartCardNumber:
-        serviceType === "cable"
-          ? finalCustomer
-          : "",
-
-      smartcardNumber:
-        serviceType === "cable"
-          ? finalCustomer
-          : "",
-
-      smartcard_number:
-        serviceType === "cable"
-          ? finalCustomer
-          : "",
-
-      accountNumber:
-        serviceType === "internet"
-          ? finalCustomer
-          : "",
-
-      account_number:
-        serviceType === "internet"
-          ? finalCustomer
-          : "",
-
-      type: serviceType,
-
-      country: "NG",
-
-      customerLabel,
-
-      item: selectedItem,
-
-      biller: selectedBiller,
-
-      selling_amount:
-        amountNumber,
-
-      provider_amount:
-        providerAmount,
-
-      data_markup:
+      const providerAmount =
         isData
-          ? DATA_MARKUP
-          : 0,
+          ? providerItemAmount
+          : isSelectedClubKonnect &&
+              providerItemAmount > 0
+            ? providerItemAmount
+            : amountNumber;
+
+      return {
+        customer:
+          finalCustomer,
+
+        biller_code:
+          selectedBillerCode,
+
+        item_code:
+          selectedItemCode,
+
+        provider:
+          selectedBiller?.name ??
+          selectedBiller?.short_name ??
+          providerDisplayName,
+
+        provider_id:
+          selectedProviderId,
+
+        phoneNumber:
+          serviceType ===
+              "airtime" ||
+          serviceType === "data"
+            ? finalCustomer
+            : "",
+
+        phone:
+          serviceType ===
+              "airtime" ||
+          serviceType === "data"
+            ? finalCustomer
+            : "",
+
+        meterNumber:
+          serviceType ===
+          "electricity"
+            ? finalCustomer
+            : "",
+
+        meter_number:
+          serviceType ===
+          "electricity"
+            ? finalCustomer
+            : "",
+
+        smartCardNumber:
+          serviceType === "cable"
+            ? finalCustomer
+            : "",
+
+        smartcardNumber:
+          serviceType === "cable"
+            ? finalCustomer
+            : "",
+
+        smartcard_number:
+          serviceType === "cable"
+            ? finalCustomer
+            : "",
+
+        accountNumber:
+          serviceType ===
+          "internet"
+            ? finalCustomer
+            : "",
+
+        account_number:
+          serviceType ===
+          "internet"
+            ? finalCustomer
+            : "",
+
+        type:
+          serviceType,
+
+        country: "NG",
+
+        customerLabel,
+
+        item:
+          selectedItem,
+
+        biller:
+          selectedBiller,
+
+        selling_amount:
+          amountNumber,
+
+        provider_amount:
+          providerAmount,
+
+        provider_markup_rate:
+          isSelectedClubKonnect
+            ? CLUBKONNECT_MARKUP_RATE
+            : isData
+              ? DATA_MARKUP
+              : 0,
+
+        data_markup:
+          isData &&
+          !isSelectedClubKonnect
+            ? DATA_MARKUP
+            : 0,
+
+        clubkonnect_markup:
+          isSelectedClubKonnect
+            ? amountNumber -
+              providerAmount
+            : 0,
+
+        plan_type:
+          isData
+            ? getPlanType(
+                selectedItem ??
+                  {}
+              )
+            : "",
+
+        is_hot_deal:
+          isData
+            ? isHotDeal(
+                selectedItem ??
+                  {}
+              )
+            : false,
+      };
     };
-  };
 
   // ==========================================================
   // SHOW PIN
   // ==========================================================
 
-  const handlePurchase = async () => {
-    if (!service) {
-      return;
-    }
+  const handlePurchase =
+    async () => {
+      if (!service) {
+        return;
+      }
 
-    if (
-      processingPayment ||
-      verifyingPin
-    ) {
-      return;
-    }
+      if (
+        processingPayment ||
+        verifyingPin
+      ) {
+        return;
+      }
 
-    if (!validateForm()) {
-      return;
-    }
+      if (!validateForm()) {
+        return;
+      }
 
-    setPaymentPin("");
-    setError("");
-    setShowPinPrompt(true);
-  };
+      setPaymentPin("");
+      setError("");
+      setShowPinPrompt(true);
+    };
 
   // ==========================================================
   // VERIFY PIN + PURCHASE
@@ -1136,10 +1622,12 @@ const ServicePayment = ({
         )
       ) {
         toast({
-          title: "Invalid PIN",
+          title:
+            "Invalid PIN",
           description:
             "Enter your 4-digit payment PIN.",
-          variant: "destructive",
+          variant:
+            "destructive",
         });
 
         return;
@@ -1156,7 +1644,8 @@ const ServicePayment = ({
           await supabase.rpc(
             "verify_payment_pin",
             {
-              _pin: paymentPin,
+              _pin:
+                paymentPin,
             }
           );
 
@@ -1167,8 +1656,7 @@ const ServicePayment = ({
           );
 
           throw new Error(
-            pinError.message ||
-              "Unable to verify payment PIN."
+            "Unable to verify payment PIN."
           );
         }
 
@@ -1183,9 +1671,12 @@ const ServicePayment = ({
           setPaymentPin("");
 
           toast({
-            title: "Payment PIN",
-            description: message,
-            variant: "destructive",
+            title:
+              "Payment PIN",
+            description:
+              message,
+            variant:
+              "destructive",
           });
 
           return;
@@ -1197,26 +1688,45 @@ const ServicePayment = ({
         const sellingAmount =
           amountNumber;
 
-        setShowPinPrompt(false);
+        setShowPinPrompt(
+          false
+        );
+
         setPaymentPin("");
-        setProcessingPayment(true);
+        setProcessingPayment(
+          true
+        );
 
         console.log(
           "Payment PIN verified. Sending bill purchase:",
           {
-            service: serviceType,
+            service:
+              serviceType,
+
+            provider_id:
+              details.provider_id,
+
             selling_amount:
               sellingAmount,
+
             provider_amount:
               details.provider_amount,
+
             data_markup:
               details.data_markup,
+
+            clubkonnect_markup:
+              details.clubkonnect_markup,
+
             biller_code:
               selectedBillerCode,
+
             item_code:
               selectedItemCode,
+
             customer:
               details.customer,
+
             details,
           }
         );
@@ -1234,19 +1744,26 @@ const ServicePayment = ({
         );
 
         const message =
-          err?.message ||
           "Unable to complete this payment.";
 
         setError(message);
 
         toast({
-          title: "Payment failed",
-          description: message,
-          variant: "destructive",
+          title:
+            "Payment failed",
+          description:
+            message,
+          variant:
+            "destructive",
         });
       } finally {
-        setVerifyingPin(false);
-        setProcessingPayment(false);
+        setVerifyingPin(
+          false
+        );
+
+        setProcessingPayment(
+          false
+        );
       }
     };
 
@@ -1278,7 +1795,9 @@ const ServicePayment = ({
             No payment service selected.
           </p>
 
-          <Button onClick={onBack}>
+          <Button
+            onClick={onBack}
+          >
             Go Back
           </Button>
         </div>
@@ -1304,7 +1823,9 @@ const ServicePayment = ({
               type="button"
               variant="ghost"
               size="sm"
-              onClick={handleBack}
+              onClick={
+                handleBack
+              }
               disabled={
                 processingPayment ||
                 verifyingPin
@@ -1377,9 +1898,10 @@ const ServicePayment = ({
                 </span>
 
                 <span className="text-sm font-medium text-gray-900 text-right">
-                  {selectedBiller?.name ??
-                    selectedBiller?.short_name ??
-                    "-"}
+                  {providerDisplayName}
+                  {selectedBiller?.name
+                    ? ` • ${selectedBiller.name}`
+                    : ""}
                 </span>
               </div>
 
@@ -1407,6 +1929,18 @@ const ServicePayment = ({
                 </div>
               )}
 
+              {isSelectedClubKonnect && (
+                <div className="flex items-center justify-between gap-4 pt-2 border-t border-green-100">
+                  <span className="text-sm text-gray-600">
+                    Service markup
+                  </span>
+
+                  <span className="text-sm font-semibold text-green-700">
+                    15%
+                  </span>
+                </div>
+              )}
+
             </div>
 
             {/* PIN */}
@@ -1424,29 +1958,43 @@ const ServicePayment = ({
                 autoComplete="off"
                 maxLength={4}
                 value={paymentPin}
-                onChange={(event) => {
+                onChange={(
+                  event
+                ) => {
                   const value =
                     event.target.value
                       .replace(
                         /\D/g,
                         ""
                       )
-                      .slice(0, 4);
+                      .slice(
+                        0,
+                        4
+                      );
 
-                  setPaymentPin(value);
+                  setPaymentPin(
+                    value
+                  );
+
                   setError("");
                 }}
-                onKeyDown={(event) => {
+                onKeyDown={(
+                  event
+                ) => {
                   if (
-                    event.key === "Enter" &&
-                    paymentPin.length === 4 &&
+                    event.key ===
+                      "Enter" &&
+                    paymentPin.length ===
+                      4 &&
                     !verifyingPin
                   ) {
                     handlePinVerification();
                   }
                 }}
                 placeholder="••••"
-                disabled={verifyingPin}
+                disabled={
+                  verifyingPin
+                }
                 autoFocus
                 className="text-center text-2xl tracking-[0.5em]"
               />
@@ -1476,7 +2024,8 @@ const ServicePayment = ({
                 }
                 disabled={
                   verifyingPin ||
-                  paymentPin.length !== 4
+                  paymentPin.length !==
+                    4
                 }
                 className="w-full bg-green-600 hover:bg-green-700"
               >
@@ -1501,11 +2050,21 @@ const ServicePayment = ({
                     return;
                   }
 
-                  setPaymentPin("");
-                  setError("");
-                  setShowPinPrompt(false);
+                  setPaymentPin(
+                    ""
+                  );
+
+                  setError(
+                    ""
+                  );
+
+                  setShowPinPrompt(
+                    false
+                  );
                 }}
-                disabled={verifyingPin}
+                disabled={
+                  verifyingPin
+                }
                 className="w-full"
               >
                 Back
@@ -1530,12 +2089,78 @@ const ServicePayment = ({
                 Wallet Balance:{" "}
                 <strong>
                   {formatNaira(
-                    Number(walletBalance)
+                    Number(
+                      walletBalance
+                    )
                   )}
                 </strong>
               </p>
 
             </div>
+
+            {/* PROVIDER */}
+
+            {availableProviders.length >
+              1 && (
+              <div className="space-y-2 mb-5">
+
+                <Label>
+                  Service Provider
+                </Label>
+
+                <select
+                  value={
+                    selectedProviderId
+                  }
+                  onChange={(
+                    event
+                  ) =>
+                    handleProviderChange(
+                      event.target.value
+                    )
+                  }
+                  disabled={
+                    loadingBillers ||
+                    processingPayment ||
+                    verifyingPin
+                  }
+                  className="w-full h-11 rounded-md border bg-background px-3 text-sm"
+                >
+
+                  {availableProviders.map(
+                    (
+                      provider
+                    ) => (
+                      <option
+                        key={
+                          provider
+                        }
+                        value={
+                          provider
+                        }
+                      >
+                        {provider ===
+                        PROVIDER_CLUBKONNECT
+                          ? "ClubKonnect"
+                          : "Flutterwave"}
+                      </option>
+                    )
+                  )}
+
+                </select>
+
+                {isSelectedClubKonnect && (
+                  <div className="rounded-lg bg-orange-50 border border-orange-100 p-3">
+                    <p className="text-xs text-orange-700">
+                      ClubKonnect services are
+                      priced with a 15% service
+                      markup.
+                    </p>
+                  </div>
+                )}
+
+              </div>
+            )}
 
             {/* LOADING BILLERS */}
 
@@ -1546,14 +2171,17 @@ const ServicePayment = ({
               </div>
             )}
 
-            {/* PROVIDER */}
+            {/* BILLER / NETWORK */}
 
             <div className="space-y-2 mb-5">
 
               <div className="flex items-center justify-between">
 
                 <Label>
-                  Provider
+                  {isAirtime ||
+                  isData
+                    ? "Network"
+                    : "Provider"}
                 </Label>
 
                 {!loadingBillers &&
@@ -1563,8 +2191,10 @@ const ServicePayment = ({
                       type="button"
                       variant="ghost"
                       size="sm"
-                      onClick={
-                        loadBillers
+                      onClick={() =>
+                        loadBillers(
+                          selectedProviderId
+                        )
                       }
                       className="h-7 px-2"
                     >
@@ -1579,7 +2209,9 @@ const ServicePayment = ({
                 value={
                   selectedBillerCode
                 }
-                onChange={(event) =>
+                onChange={(
+                  event
+                ) =>
                   handleBillerChange(
                     event.target.value
                   )
@@ -1588,14 +2220,15 @@ const ServicePayment = ({
                   loadingBillers ||
                   processingPayment ||
                   verifyingPin ||
-                  billers.length === 0
+                  billers.length ===
+                    0
                 }
                 className="w-full h-11 rounded-md border bg-background px-3 text-sm"
               >
 
                 <option value="">
                   {loadingBillers
-                    ? "Loading providers..."
+                    ? "Loading..."
                     : "Select provider"}
                 </option>
 
@@ -1653,14 +2286,15 @@ const ServicePayment = ({
 
                 {!selectedBillerCode && (
                   <div className="rounded-lg border border-dashed p-5 text-center text-sm text-gray-500">
-                    Select a provider to view
+                    Select a network to view
                     data plans.
                   </div>
                 )}
 
                 {selectedBillerCode &&
                   !loadingItems &&
-                  items.length === 0 && (
+                  items.length ===
+                    0 && (
                     <div className="rounded-lg border border-dashed p-5 text-center text-sm text-gray-500">
                       No data plans are
                       currently available.
@@ -1674,100 +2308,140 @@ const ServicePayment = ({
                     "Monthly",
                     "Other",
                   ] as const
-                ).map((group) => {
-                  const groupItems =
-                    dataGroups[group];
+                ).map(
+                  (group) => {
+                    const groupItems =
+                      dataGroups[
+                        group
+                      ];
 
-                  if (
-                    groupItems.length === 0
-                  ) {
-                    return null;
-                  }
+                    if (
+                      groupItems.length ===
+                      0
+                    ) {
+                      return null;
+                    }
 
-                  return (
-                    <div
-                      key={group}
-                      className="space-y-2"
-                    >
+                    return (
+                      <div
+                        key={group}
+                        className="space-y-2"
+                      >
 
-                      <h3 className="text-sm font-semibold text-gray-700">
-                        {group}
-                      </h3>
+                        <h3 className="text-sm font-semibold text-gray-700">
+                          {group}
+                        </h3>
 
-                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
 
-                        {groupItems.map(
-                          (
-                            item,
-                            index
-                          ) => {
-                            const code =
-                              String(
-                                item.item_code ??
-                                  ""
-                              );
+                          {groupItems.map(
+                            (
+                              item,
+                              index
+                            ) => {
+                              const code =
+                                String(
+                                  item.item_code ??
+                                    ""
+                                );
 
-                            if (!code) {
-                              return null;
-                            }
+                              if (
+                                !code
+                              ) {
+                                return null;
+                              }
 
-                            const providerPrice =
-                              getItemProviderPrice(
-                                item
-                              );
+                              const itemProviderId =
+                                getItemProviderId(
+                                  item
+                                );
 
-                            const sellingPrice =
-                              providerPrice +
-                              DATA_MARKUP;
+                              const providerPrice =
+                                getItemProviderPrice(
+                                  item
+                                );
 
-                            const selected =
-                              selectedItemCode ===
-                              code;
+                              const sellingPrice =
+                                getDataSellingPrice(
+                                  item,
+                                  itemProviderId
+                                );
 
-                            return (
-                              <button
-                                type="button"
-                                key={`${code}-${index}`}
-                                onClick={() =>
-                                  handleDataPlanSelect(
-                                    item
-                                  )
-                                }
-                                disabled={
-                                  processingPayment ||
-                                  verifyingPin
-                                }
-                                className={[
-                                  "text-left rounded-xl border p-3 transition-all",
-                                  "hover:border-green-500 hover:bg-green-50",
-                                  selected
-                                    ? "border-green-600 bg-green-50 ring-1 ring-green-600"
-                                    : "border-gray-200 bg-white",
-                                ].join(" ")}
-                              >
+                              const selected =
+                                selectedItemCode ===
+                                code;
 
-                                <p className="text-sm font-medium text-gray-900 line-clamp-2">
-                                  {item.name ??
-                                    item.short_name ??
-                                    "Data Plan"}
-                                </p>
+                              const hotDeal =
+                                isHotDeal(
+                                  item
+                                );
 
-                                <p className="text-base font-bold text-green-700 mt-2">
-                                  {formatNaira(
-                                    sellingPrice
+                              return (
+                                <button
+                                  type="button"
+                                  key={`${code}-${index}`}
+                                  onClick={() =>
+                                    handleDataPlanSelect(
+                                      item
+                                    )
+                                  }
+                                  disabled={
+                                    processingPayment ||
+                                    verifyingPin
+                                  }
+                                  className={[
+                                    "relative text-left rounded-xl border p-3 transition-all",
+                                    "hover:border-green-500 hover:bg-green-50",
+                                    selected
+                                      ? "border-green-600 bg-green-50 ring-1 ring-green-600"
+                                      : "border-gray-200 bg-white",
+                                  ].join(
+                                    " "
                                   )}
-                                </p>
+                                >
 
-                              </button>
-                            );
-                          }
-                        )}
+                                  {hotDeal && (
+                                    <span className="absolute -top-2 -right-2 inline-flex items-center gap-1 rounded-full bg-orange-500 text-white px-2 py-1 text-[10px] font-bold shadow-sm">
+                                      <Flame className="h-3 w-3" />
+                                      HOT DEAL
+                                    </span>
+                                  )}
+
+                                  <p className="text-sm font-medium text-gray-900 line-clamp-2">
+                                    {item.name ??
+                                      item.short_name ??
+                                      "Data Plan"}
+                                  </p>
+
+                                  {item.plan_type && (
+                                    <p className="text-[10px] text-gray-500 mt-1 uppercase">
+                                      {item.plan_type}
+                                    </p>
+                                  )}
+
+                                  <p className="text-base font-bold text-green-700 mt-2">
+                                    {formatNaira(
+                                      sellingPrice
+                                    )}
+                                  </p>
+
+                                  {isSelectedClubKonnect && (
+                                    <p className="text-[10px] text-gray-400 mt-1">
+                                      Includes 15% service markup
+                                    </p>
+                                  )}
+
+                                </button>
+                              );
+                            }
+                          )}
+
+                        </div>
 
                       </div>
-
-                    </div>
-                  );
-                })}
+                    );
+                  }
+                )}
 
               </div>
             ) : (
@@ -1788,7 +2462,9 @@ const ServicePayment = ({
                   value={
                     selectedItemCode
                   }
-                  onChange={(event) =>
+                  onChange={(
+                    event
+                  ) =>
                     handleItemChange(
                       event.target.value
                     )
@@ -1798,7 +2474,8 @@ const ServicePayment = ({
                     processingPayment ||
                     verifyingPin ||
                     !selectedBillerCode ||
-                    items.length === 0
+                    items.length ===
+                      0
                   }
                   className="w-full h-11 rounded-md border bg-background px-3 text-sm"
                 >
@@ -1854,8 +2531,12 @@ const ServicePayment = ({
 
               <Input
                 id="billCustomer"
-                value={customer}
-                onChange={(event) =>
+                value={
+                  customer
+                }
+                onChange={(
+                  event
+                ) =>
                   setCustomer(
                     event.target.value
                   )
@@ -1874,7 +2555,8 @@ const ServicePayment = ({
                       "data" ||
                   serviceType ===
                       "electricity" ||
-                  serviceType === "cable"
+                  serviceType ===
+                      "cable"
                     ? "numeric"
                     : "text"
                 }
@@ -1915,6 +2597,20 @@ const ServicePayment = ({
 
                   </div>
 
+                  {isSelectedClubKonnect && (
+                    <div className="flex items-center justify-between mt-2">
+
+                      <span className="text-sm text-gray-600">
+                        Markup
+                      </span>
+
+                      <span className="text-sm font-semibold text-green-700">
+                        15%
+                      </span>
+
+                    </div>
+                  )}
+
                 </div>
               )}
 
@@ -1932,31 +2628,48 @@ const ServicePayment = ({
                   {(isAirtime
                     ? AIRTIME_AMOUNTS
                     : BILL_AMOUNTS
-                  ).map((value) => (
-                    <button
-                      type="button"
-                      key={value}
-                      onClick={() =>
-                        handleAmountSelect(
-                          value
-                        )
-                      }
-                      disabled={
-                        processingPayment ||
-                        verifyingPin
-                      }
-                      className={[
-                        "rounded-xl border p-3 text-center font-semibold transition-all",
-                        "hover:border-green-500 hover:bg-green-50",
-                        amount ===
-                        String(value)
-                          ? "border-green-600 bg-green-50 text-green-700 ring-1 ring-green-600"
-                          : "border-gray-200",
-                      ].join(" ")}
-                    >
-                      {formatNaira(value)}
-                    </button>
-                  ))}
+                  ).map(
+                    (value) => {
+                      const displayAmount =
+                        isSelectedClubKonnect
+                          ? getClubKonnectSellingPrice(
+                              value
+                            )
+                          : value;
+
+                      return (
+                        <button
+                          type="button"
+                          key={value}
+                          onClick={() =>
+                            handleAmountSelect(
+                              value
+                            )
+                          }
+                          disabled={
+                            processingPayment ||
+                            verifyingPin
+                          }
+                          className={[
+                            "rounded-xl border p-3 text-center font-semibold transition-all",
+                            "hover:border-green-500 hover:bg-green-50",
+                            amount ===
+                            String(
+                              displayAmount
+                            )
+                              ? "border-green-600 bg-green-50 text-green-700 ring-1 ring-green-600"
+                              : "border-gray-200",
+                          ].join(
+                            " "
+                          )}
+                        >
+                          {formatNaira(
+                            displayAmount
+                          )}
+                        </button>
+                      );
+                    }
+                  )}
 
                   <button
                     type="button"
@@ -1973,12 +2686,21 @@ const ServicePayment = ({
                       customAmountMode
                         ? "border-green-600 bg-green-50 text-green-700 ring-1 ring-green-600"
                         : "border-gray-200",
-                    ].join(" ")}
+                    ].join(
+                      " "
+                    )}
                   >
                     Enter Amount
                   </button>
 
                 </div>
+
+                {isSelectedClubKonnect && (
+                  <p className="text-xs text-gray-500">
+                    ClubKonnect services include a
+                    15% service markup.
+                  </p>
+                )}
 
                 {customAmountMode && (
                   <Input
@@ -1986,13 +2708,21 @@ const ServicePayment = ({
                     type="number"
                     min="0"
                     step="0.01"
-                    value={amount}
-                    onChange={(event) =>
+                    value={
+                      amount
+                    }
+                    onChange={(
+                      event
+                    ) =>
                       setAmount(
                         event.target.value
                       )
                     }
-                    placeholder="Enter exact amount"
+                    placeholder={
+                      isSelectedClubKonnect
+                        ? "Enter selling amount"
+                        : "Enter exact amount"
+                    }
                     disabled={
                       processingPayment ||
                       verifyingPin
@@ -2001,22 +2731,28 @@ const ServicePayment = ({
                   />
                 )}
 
-                {(itemMinimum > 0 ||
-                  itemMaximum > 0) && (
+                {(itemMinimum >
+                  0 ||
+                  itemMaximum >
+                    0) && (
                   <p className="text-xs text-gray-500">
 
-                    {itemMinimum > 0
+                    {itemMinimum >
+                    0
                       ? `Minimum: ${formatNaira(
                           itemMinimum
                         )}`
                       : ""}
 
-                    {itemMinimum > 0 &&
-                    itemMaximum > 0
+                    {itemMinimum >
+                      0 &&
+                    itemMaximum >
+                      0
                       ? " • "
                       : ""}
 
-                    {itemMaximum > 0
+                    {itemMaximum >
+                    0
                       ? `Maximum: ${formatNaira(
                           itemMaximum
                         )}`

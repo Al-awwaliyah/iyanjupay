@@ -5,7 +5,19 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
  * IYANJUPAY — CLUBKONNECT SERVICE
  * ============================================================
  *
- * Supported:
+ * PUBLIC ACTIONS:
+ *
+ *   health
+ *   catalog
+ *   balance
+ *
+ * AUTHENTICATED ACTIONS:
+ *
+ *   verify
+ *   query
+ *   purchase
+ *
+ * SUPPORTED SERVICES:
  *
  *   airtime
  *   data
@@ -21,7 +33,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
  *
  *   betting
  *
- * Pricing:
+ * PRICING:
  *
  *   Regular:
  *     airtime       15%
@@ -36,16 +48,17 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
  *     waec         20%
  *     jamb         20%
  *
- * Security:
+ * SECURITY:
  *
- *   - User authentication required.
- *   - Provider credentials never exposed.
- *   - Wallet is HOLDed before provider purchase.
- *   - Provider is called only after successful HOLD.
- *   - Successful provider order is finalized by RPC.
- *   - Failed provider order releases the HOLD.
- *   - Queued provider orders remain held.
- *   - Provider OrderID / RequestID stored in transaction metadata.
+ *   - Public health/catalog/balance endpoints do not require login.
+ *   - Verification/query/purchase require a valid Supabase user.
+ *   - Provider credentials are never returned to clients.
+ *   - Wallet is held before provider purchase.
+ *   - Provider is called only after successful wallet HOLD.
+ *   - Successful provider orders are finalized by RPC.
+ *   - Failed provider orders release the HOLD.
+ *   - Queued orders remain held.
+ *   - Provider references are stored in transaction metadata/RPC.
  *   - Betting is permanently rejected.
  *
  * ============================================================
@@ -102,36 +115,46 @@ const PURCHASE_SERVICES =
     SUPPORTED_SERVICES,
   );
 
-const ACTIVE_ORDER_STATUSES = new Set([
-  "ORDER_RECEIVED",
-  "ORDER_PROCESSING",
-  "ORDER_PROCESSED",
-  "ORDER_ONHOLD",
-  "PROCESSING",
-  "PENDING",
-  "QUEUED",
-]);
+const PUBLIC_ACTIONS =
+  new Set<Action>([
+    "health",
+    "balance",
+    "catalog",
+  ]);
 
-const SUCCESS_ORDER_STATUSES = new Set([
-  "ORDER_COMPLETED",
-  "COMPLETED",
-  "SUCCESS",
-  "SUCCESSFUL",
-]);
+const ACTIVE_ORDER_STATUSES =
+  new Set([
+    "ORDER_RECEIVED",
+    "ORDER_PROCESSING",
+    "ORDER_PROCESSED",
+    "ORDER_ONHOLD",
+    "PROCESSING",
+    "PENDING",
+    "QUEUED",
+  ]);
 
-const FAILURE_ORDER_STATUSES = new Set([
-  "ORDER_FAILED",
-  "FAILED",
-  "ORDER_CANCELLED",
-  "CANCELLED",
-  "CANCELED",
-  "DECLINED",
-  "REJECTED",
-]);
+const SUCCESS_ORDER_STATUSES =
+  new Set([
+    "ORDER_COMPLETED",
+    "COMPLETED",
+    "SUCCESS",
+    "SUCCESSFUL",
+  ]);
+
+const FAILURE_ORDER_STATUSES =
+  new Set([
+    "ORDER_FAILED",
+    "FAILED",
+    "ORDER_CANCELLED",
+    "CANCELLED",
+    "CANCELED",
+    "DECLINED",
+    "REJECTED",
+  ]);
 
 /**
  * ============================================================
- * SUPABASE CLIENTS
+ * SUPABASE CONFIGURATION
  * ============================================================
  */
 
@@ -234,6 +257,9 @@ function safeErrorMessage(
     PURCHASE_NOT_ALLOWED:
       "This purchase cannot be processed.",
 
+    PURCHASE_SETTLEMENT_FAILED:
+      "The transaction is being reconciled. Please check your transaction history.",
+
     MISSING_SERVICE:
       "A service is required.",
 
@@ -252,7 +278,7 @@ function safeErrorMessage(
     MINIMUM_50:
       "The minimum airtime amount is ₦50.",
 
-    MINIMUM_200000:
+    MAXIMUM_200000:
       "The maximum airtime amount is ₦200,000.",
 
     INVALID_RECIPIENT:
@@ -321,6 +347,12 @@ function safeErrorMessage(
     INVALID_ACCOUNTNO:
       "The account number is invalid.",
 
+    REQUEST_ID_OR_ORDER_ID_REQUIRED:
+      "Request ID or Order ID is required.",
+
+    VERIFICATION_NOT_SUPPORTED:
+      "Customer verification is not supported for this service.",
+
     ORDER_RECEIVED:
       "Your order has been received and is being processed.",
 
@@ -350,13 +382,9 @@ function safeErrorMessage(
 }
 
 /**
- * Provider payloads may contain sensitive operational
- * information. Credentials are always removed.
- *
- * Card PINs are intentionally preserved because they are
- * the actual product returned to the customer.
- *
- * Provider wallet balance is removed.
+ * ============================================================
+ * SANITIZE PROVIDER RESPONSE
+ * ============================================================
  */
 
 function sanitizeProviderResponse(
@@ -416,6 +444,9 @@ function sanitizeProviderResponse(
       ) ||
       normalized.includes(
         "secret",
+      ) ||
+      normalized.includes(
+        "token",
       ) ||
       normalized ===
         "walletbalance"
@@ -635,8 +666,10 @@ async function clubKonnectGet(
     buildProviderUrl(
       endpoint,
       {
-        UserID: userId,
-        APIKey: apiKey,
+        UserID:
+          userId,
+        APIKey:
+          apiKey,
         ...params,
       },
     );
@@ -679,7 +712,7 @@ async function clubKonnectGet(
       : {};
   } catch (error) {
     console.error(
-      "ClubKonnect invalid JSON:",
+      "ClubKonnect invalid JSON response:",
       {
         status:
           response.status,
@@ -735,7 +768,8 @@ async function clubKonnectGet(
   }
 
   return {
-    ok: response.ok,
+    ok:
+      response.ok,
     httpStatus:
       response.status,
     data,
@@ -745,6 +779,31 @@ async function clubKonnectGet(
 /**
  * ============================================================
  * AUTHENTICATION
+ * ============================================================
+ *
+ * IMPORTANT:
+ *
+ * Authentication is intentionally NOT performed globally.
+ *
+ * Public actions:
+ *
+ *   health
+ *   catalog
+ *   balance
+ *
+ * do not require a user JWT.
+ *
+ * Protected actions:
+ *
+ *   verify
+ *   query
+ *   purchase
+ *
+ * call authenticateUser() explicitly.
+ *
+ * This allows us to test the provider connection and
+ * catalogue without having to obtain a Supabase user token.
+ *
  * ============================================================
  */
 
@@ -767,7 +826,14 @@ async function authenticateUser(
       "Authorization",
     );
 
-  if (!authorization) {
+  if (
+    !authorization ||
+    !authorization
+      .toLowerCase()
+      .startsWith(
+        "bearer ",
+      )
+  ) {
     throw new Error(
       "AUTHENTICATION_REQUIRED",
     );
@@ -786,6 +852,7 @@ async function authenticateUser(
         },
         auth: {
           persistSession: false,
+          autoRefreshToken: false,
         },
       },
     );
@@ -811,7 +878,8 @@ async function authenticateUser(
   }
 
   return {
-    id: data.user.id,
+    id:
+      data.user.id,
   };
 }
 
@@ -819,41 +887,6 @@ async function authenticateUser(
  * ============================================================
  * CATALOGUE DATABASE
  * ============================================================
- *
- * Default table:
- *
- *   service_catalog
- *
- * Can be overridden by:
- *
- *   CLUBKONNECT_CATALOG_TABLE
- *
- * The table contains the columns supplied during setup:
- *
- * id
- * service
- * provider
- * provider_id
- * product_id
- * product_code
- * product_sno
- * product_name
- * product_description
- * package_id
- * package_name
- * provider_amount
- * provider_discount_percent
- * provider_discount_amount
- * provider_cost
- * markup_percent
- * selling_price
- * currency
- * active
- * provider_service
- * metadata
- * last_synced_at
- * created_at
- * updated_at
  */
 
 const CATALOG_TABLE =
@@ -948,6 +981,102 @@ async function getCatalogRow(
     string,
     unknown
   >;
+}
+
+/**
+ * ============================================================
+ * PUBLIC CATALOGUE SANITIZATION
+ * ============================================================
+ *
+ * The catalogue endpoint is public for testing/frontend
+ * discovery.
+ *
+ * Provider acquisition cost is NOT exposed.
+ *
+ * Selling price remains available because the frontend
+ * needs the customer-facing price.
+ *
+ * ============================================================
+ */
+
+function sanitizeCatalogRow(
+  row: Record<
+    string,
+    unknown
+  >,
+): Record<
+  string,
+  unknown
+> {
+  return {
+    id:
+      row.id ??
+      null,
+
+    service:
+      row.service ??
+      null,
+
+    provider:
+      row.provider ??
+      "clubkonnect",
+
+    provider_id:
+      row.provider_id ??
+      null,
+
+    product_id:
+      row.product_id ??
+      null,
+
+    product_code:
+      row.product_code ??
+      null,
+
+    product_sno:
+      row.product_sno ??
+      null,
+
+    product_name:
+      row.product_name ??
+      null,
+
+    product_description:
+      row.product_description ??
+      null,
+
+    package_id:
+      row.package_id ??
+      null,
+
+    package_name:
+      row.package_name ??
+      null,
+
+    currency:
+      row.currency ??
+      "NGN",
+
+    selling_price:
+      row.selling_price ??
+      null,
+
+    markup_percent:
+      row.markup_percent ??
+      null,
+
+    active:
+      row.active ??
+      false,
+
+    provider_service:
+      row.provider_service ??
+      null,
+
+    metadata:
+      row.metadata ??
+      null,
+  };
 }
 
 /**
@@ -1066,14 +1195,19 @@ async function createPurchaseHold(
       {
         _user_id:
           userId,
+
         _amount:
           amount,
+
         _description:
           description,
+
         _provider_reference:
           requestId,
+
         _service:
           service,
+
         _metadata:
           metadata,
       },
@@ -1151,17 +1285,22 @@ async function finalizePurchase(
       {
         _transaction_id:
           transactionId,
+
         _success:
           success,
+
         _provider_status:
           providerStatus ||
           null,
+
         _provider_reference:
           providerReference ||
           null,
+
         _provider_remark:
           providerRemark ||
           null,
+
         _provider_payload:
           providerPayload ??
           {},
@@ -1317,7 +1456,7 @@ function buildPurchaseRequest(
         200000
       ) {
         throw new Error(
-          "MINIMUM_200000",
+          "MAXIMUM_200000",
         );
       }
 
@@ -1342,15 +1481,20 @@ function buildPurchaseRequest(
       return {
         endpoint:
           "APIAirtimeV1.asp",
+
         params: {
           MobileNetwork:
             mobileNetwork,
+
           Amount:
             amount,
+
           MobileNumber:
             mobileNumber,
+
           RequestID:
             requestId,
+
           CallBackURL:
             callbackUrl,
         },
@@ -1402,15 +1546,20 @@ function buildPurchaseRequest(
       return {
         endpoint:
           "APIDatabundleV1.asp",
+
         params: {
           MobileNetwork:
             mobileNetwork,
+
           DataPlan:
             dataPlan,
+
           MobileNumber:
             mobileNumber,
+
           RequestID:
             requestId,
+
           CallBackURL:
             callbackUrl,
         },
@@ -1473,17 +1622,23 @@ function buildPurchaseRequest(
       return {
         endpoint:
           "APICableTVV1.asp",
+
         params: {
           CableTV:
             cableTv,
+
           Package:
             packageCode,
+
           SmartCardNo:
             smartCardNo,
+
           PhoneNo:
             phone,
+
           RequestID:
             requestId,
+
           CallBackURL:
             callbackUrl,
         },
@@ -1551,19 +1706,26 @@ function buildPurchaseRequest(
       return {
         endpoint:
           "APIElectricityV1.asp",
+
         params: {
           ElectricCompany:
             company,
+
           MeterType:
             meterType,
+
           MeterNo:
             meterNo,
+
           Amount:
             amount,
+
           PhoneNo:
             phone,
+
           RequestID:
             requestId,
+
           CallBackURL:
             callbackUrl,
         },
@@ -1635,15 +1797,20 @@ function buildPurchaseRequest(
       return {
         endpoint:
           "APIEPINV1.asp",
+
         params: {
           MobileNetwork:
             mobileNetwork,
+
           Value:
             value,
+
           Quantity:
             quantity,
+
           RequestID:
             requestId,
+
           CallBackURL:
             callbackUrl,
         },
@@ -1703,15 +1870,20 @@ function buildPurchaseRequest(
       return {
         endpoint:
           "APIDatabundleEPINV1.asp",
+
         params: {
           MobileNetwork:
             mobileNetwork,
+
           DataPlan:
             dataPlan,
+
           Quantity:
             quantity,
+
           RequestID:
             requestId,
+
           CallBackURL:
             callbackUrl,
         },
@@ -1746,15 +1918,20 @@ function buildPurchaseRequest(
       return {
         endpoint:
           "APISmileV1.asp",
+
         params: {
           MobileNetwork:
             "smile-direct",
+
           DataPlan:
             dataPlan,
+
           MobileNumber:
             mobileNumber,
+
           RequestID:
             requestId,
+
           CallBackURL:
             callbackUrl,
         },
@@ -1797,13 +1974,17 @@ function buildPurchaseRequest(
       return {
         endpoint:
           "APIWAECV1.asp",
+
         params: {
           ExamType:
             examType,
+
           PhoneNo:
             phone,
+
           RequestID:
             requestId,
+
           CallBackURL:
             callbackUrl,
         },
@@ -1846,13 +2027,17 @@ function buildPurchaseRequest(
       return {
         endpoint:
           "APIJAMBV1.asp",
+
         params: {
           ExamType:
             examType,
+
           PhoneNo:
             phone,
+
           RequestID:
             requestId,
+
           CallBackURL:
             callbackUrl,
         },
@@ -1930,6 +2115,7 @@ async function getCatalog(
         {
           ascending:
             true,
+
           nullsFirst:
             false,
         },
@@ -1969,36 +2155,56 @@ async function getCatalog(
     service:
       service ??
       null,
+
     markup_rules: {
       regular_services: {
         airtime:
           15,
+
         data:
           15,
+
         cable_tv:
           15,
+
         electricity:
           15,
       },
+
       premium_services: {
         airtime_epin:
           20,
+
         data_epin:
           20,
+
         smile:
           20,
+
         waec:
           20,
+
         jamb:
           20,
       },
+
       betting:
         "disabled",
     },
+
     count:
       rows.length,
+
     data:
-      rows,
+      rows.map(
+        (row) =>
+          sanitizeCatalogRow(
+            row as Record<
+              string,
+              unknown
+            >,
+          ),
+      ),
   };
 }
 
@@ -2034,6 +2240,7 @@ async function checkProviderBalance() {
     connected:
       result.ok &&
       hasBalance,
+
     provider_status:
       providerStatus ||
       null,
@@ -2065,6 +2272,7 @@ async function queryTransaction(
       RequestID:
         requestId ||
         undefined,
+
       OrderID:
         orderId ||
         undefined,
@@ -2086,6 +2294,12 @@ async function verifyCustomer(
   >,
 ) {
   switch (service) {
+    /**
+     * --------------------------------------------------------
+     * CABLE TV
+     * --------------------------------------------------------
+     */
+
     case "cable_tv": {
       const cableTv =
         requireString(
@@ -2108,11 +2322,18 @@ async function verifyCustomer(
         {
           CableTV:
             cableTv,
+
           SmartCardNo:
             smartCardNo,
         },
       );
     }
+
+    /**
+     * --------------------------------------------------------
+     * ELECTRICITY
+     * --------------------------------------------------------
+     */
 
     case "electricity": {
       const company =
@@ -2142,13 +2363,21 @@ async function verifyCustomer(
         {
           ElectricCompany:
             company,
+
           MeterNo:
             meterNo,
+
           MeterType:
             meterType,
         },
       );
     }
+
+    /**
+     * --------------------------------------------------------
+     * SMILE
+     * --------------------------------------------------------
+     */
 
     case "smile": {
       const account =
@@ -2164,11 +2393,18 @@ async function verifyCustomer(
         {
           MobileNetwork:
             "smile-direct",
+
           MobileNumber:
             account,
         },
       );
     }
+
+    /**
+     * --------------------------------------------------------
+     * JAMB
+     * --------------------------------------------------------
+     */
 
     case "jamb": {
       const examType =
@@ -2190,6 +2426,7 @@ async function verifyCustomer(
         {
           ExamType:
             examType,
+
           ProfileID:
             profileId,
         },
@@ -2245,10 +2482,8 @@ async function purchaseService(
 
   /**
    * ----------------------------------------------------------
-   * LOAD AUTHORITATIVE PRICE
+   * AUTHORITATIVE CATALOGUE PRICE
    * ----------------------------------------------------------
-   *
-   * The browser does NOT determine the price.
    */
 
   const catalog =
@@ -2281,11 +2516,9 @@ async function purchaseService(
   }
 
   /**
-   * The catalogue price is authoritative.
+   * The frontend cannot choose the price.
    *
-   * Recalculate the expected selling price from the
-   * provider cost to prevent an incorrect markup from
-   * being supplied by the frontend.
+   * Selling price is calculated again on the server.
    */
 
   const calculatedSellingPrice =
@@ -2294,11 +2527,6 @@ async function purchaseService(
       service,
     );
 
-  /**
-   * Use the calculated price.
-   *
-   * The stored price is retained only as catalogue metadata.
-   */
   const sellingPrice =
     calculatedSellingPrice;
 
@@ -2327,11 +2555,8 @@ async function purchaseService(
 
   /**
    * ----------------------------------------------------------
-   * BUILD PROVIDER REQUEST BEFORE HOLD
+   * VALIDATE CUSTOMER INPUT BEFORE HOLD
    * ----------------------------------------------------------
-   *
-   * This validates all required customer fields before
-   * touching the wallet.
    */
 
   const providerRequest =
@@ -2476,10 +2701,10 @@ async function purchaseService(
       );
   } catch (error) {
     /**
-     * The provider call failed before a provider order
-     * could be confirmed.
+     * Provider request failed before we received a
+     * trustworthy provider response.
      *
-     * Release the wallet hold.
+     * Release the wallet HOLD.
      */
 
     try {
@@ -2526,19 +2751,7 @@ async function purchaseService(
 
   /**
    * ----------------------------------------------------------
-   * IMPORTANT:
-   *
-   * Provider credentials and full provider payload are NOT
-   * logged.
-   * ----------------------------------------------------------
-   */
-
-  /**
-   * ----------------------------------------------------------
    * IMMEDIATE SUCCESS
-   *
-   * Some ClubKonnect APIs may return completed products
-   * immediately, especially e-PIN services.
    * ----------------------------------------------------------
    */
 
@@ -2562,14 +2775,19 @@ async function purchaseService(
       const finalTxn =
         await finalizePurchase(
           holdTransactionId,
+
           true,
+
           status ||
             "ORDER_COMPLETED",
+
           orderId ||
             returnedRequestId ||
             requestId,
+
           remark ||
             "TRANSACTION SUCCESSFUL",
+
           providerData,
         );
 
@@ -2615,18 +2833,18 @@ async function purchaseService(
           ),
       };
     } catch (error) {
+      /**
+       * Provider already confirmed success.
+       *
+       * NEVER release the wallet here.
+       *
+       * The callback/reconciliation process must settle it.
+       */
+
       console.error(
         "Immediate ClubKonnect success could not be settled:",
         error,
       );
-
-      /**
-       * DO NOT release the wallet here.
-       *
-       * The provider has already reported success.
-       * Leaving the transaction held allows the callback/
-       * reconciliation process to settle it safely.
-       */
 
       return {
         success:
@@ -2674,12 +2892,17 @@ async function purchaseService(
     try {
       await finalizePurchase(
         holdTransactionId,
+
         false,
+
         status,
+
         orderId ||
           returnedRequestId ||
           requestId,
+
         remark,
+
         providerData,
       );
     } catch (error) {
@@ -2688,10 +2911,6 @@ async function purchaseService(
         error,
       );
 
-      /**
-       * Do not pretend the refund/release happened.
-       * The transaction remains available for reconciliation.
-       */
       return {
         success:
           false,
@@ -2799,20 +3018,23 @@ async function purchaseService(
   /**
    * ----------------------------------------------------------
    * UNKNOWN PROVIDER RESPONSE
-   *
-   * Never automatically release money when we cannot tell
-   * whether the provider accepted the order.
    * ----------------------------------------------------------
+   *
+   * NEVER release money when we cannot determine whether
+   * ClubKonnect accepted the order.
    */
 
   console.error(
     "Unknown ClubKonnect purchase response:",
     {
       service,
+
       request_id:
         requestId,
+
       provider_status:
         status,
+
       has_order_id:
         Boolean(orderId),
     },
@@ -2847,6 +3069,67 @@ async function purchaseService(
     message:
       "Your order is being reconciled with the provider. Your wallet amount remains temporarily held.",
   };
+}
+
+/**
+ * ============================================================
+ * REQUEST BODY
+ * ============================================================
+ */
+
+async function readRequestBody(
+  request: Request,
+): Promise<
+  Record<
+    string,
+    unknown
+  >
+> {
+  if (
+    request.method ===
+    "POST"
+  ) {
+    const raw =
+      await request.text();
+
+    if (
+      !raw.trim()
+    ) {
+      return {};
+    }
+
+    const parsed =
+      JSON.parse(
+        raw,
+      );
+
+    if (
+      !parsed ||
+      typeof parsed !==
+        "object" ||
+      Array.isArray(
+        parsed,
+      )
+    ) {
+      throw new Error(
+        "INVALID_REQUEST_BODY",
+      );
+    }
+
+    return parsed as Record<
+      string,
+      unknown
+    >;
+  }
+
+  const url =
+    new URL(
+      request.url,
+    );
+
+  return Object.fromEntries(
+    url.searchParams.entries(),
+  );
 }
 
 /**
@@ -2889,67 +3172,11 @@ Deno.serve(
         {
           success:
             false,
+
           error:
             "Method not allowed.",
         },
         405,
-      );
-    }
-
-    /**
-     * --------------------------------------------------------
-     * AUTHENTICATE USER
-     * --------------------------------------------------------
-     */
-
-    let user:
-      | {
-          id: string;
-        }
-      | null =
-      null;
-
-    try {
-      user =
-        await authenticateUser(
-          request,
-        );
-    } catch (error) {
-      const code =
-        error instanceof Error
-          ? error.message
-          : "";
-
-      console.error(
-        "ClubKonnect authentication error:",
-        error,
-      );
-
-      if (
-        code ===
-        "AUTHENTICATION_REQUIRED"
-      ) {
-        return jsonResponse(
-          {
-            success:
-              false,
-            error:
-              safeErrorMessage(
-                code,
-              ),
-          },
-          401,
-        );
-      }
-
-      return jsonResponse(
-        {
-          success:
-            false,
-          error:
-            "Unable to authenticate the request.",
-        },
-        500,
       );
     }
 
@@ -2966,57 +3193,10 @@ Deno.serve(
       > = {};
 
     try {
-      if (
-        request.method ===
-        "POST"
-      ) {
-        const raw =
-          await request.text();
-
-        if (
-          raw.trim()
-        ) {
-          const parsed =
-            JSON.parse(
-              raw,
-            );
-
-          if (
-            !parsed ||
-            typeof parsed !==
-              "object" ||
-            Array.isArray(
-              parsed,
-            )
-          ) {
-            return jsonResponse(
-              {
-                success:
-                  false,
-                error:
-                  "Invalid request body.",
-              },
-              400,
-            );
-          }
-
-          body =
-            parsed as Record<
-              string,
-              unknown
-            >;
-        }
-      } else {
-        const url =
-          new URL(
-            request.url,
-          );
-
-        body =
-          Object.fromEntries(
-            url.searchParams.entries(),
-          );
-      }
+      body =
+        await readRequestBody(
+          request,
+        );
     } catch (error) {
       console.error(
         "ClubKonnect request parsing error:",
@@ -3027,6 +3207,7 @@ Deno.serve(
         {
           success:
             false,
+
           error:
             "Invalid request format.",
         },
@@ -3046,8 +3227,10 @@ Deno.serve(
 
     /**
      * --------------------------------------------------------
-     * DEFAULT
+     * DEFAULT INFORMATION ENDPOINT
      * --------------------------------------------------------
+     *
+     * This endpoint is public.
      */
 
     if (!action) {
@@ -3062,10 +3245,22 @@ Deno.serve(
           "clubkonnect-service",
 
         authenticated:
-          true,
+          false,
 
         supported_services:
           SUPPORTED_SERVICES,
+
+        public_actions: [
+          "health",
+          "catalog",
+          "balance",
+        ],
+
+        authenticated_actions: [
+          "verify",
+          "query",
+          "purchase",
+        ],
 
         actions: [
           "health",
@@ -3077,8 +3272,11 @@ Deno.serve(
         ],
 
         markup_rules: {
-          regular: 15,
-          premium: 20,
+          regular:
+            15,
+
+          premium:
+            20,
         },
 
         betting:
@@ -3106,6 +3304,7 @@ Deno.serve(
         {
           success:
             false,
+
           error:
             "This service is not supported by IyanjuPay.",
         },
@@ -3115,8 +3314,14 @@ Deno.serve(
 
     /**
      * --------------------------------------------------------
-     * HEALTH
+     * PUBLIC ACTIONS
      * --------------------------------------------------------
+     *
+     * IMPORTANT:
+     *
+     * There is NO authenticateUser() call here.
+     *
+     * This is the fix for the 401 problem.
      */
 
     if (
@@ -3159,8 +3364,10 @@ Deno.serve(
           {
             success:
               false,
+
             connected:
               false,
+
             error:
               "Unable to connect to the ClubKonnect service.",
           },
@@ -3173,6 +3380,10 @@ Deno.serve(
      * --------------------------------------------------------
      * BALANCE
      * --------------------------------------------------------
+     *
+     * Public connection test.
+     *
+     * The actual ClubKonnect wallet balance is NEVER returned.
      */
 
     if (
@@ -3212,6 +3423,7 @@ Deno.serve(
           {
             success:
               false,
+
             error:
               "Unable to verify the ClubKonnect provider account.",
           },
@@ -3224,6 +3436,8 @@ Deno.serve(
      * --------------------------------------------------------
      * CATALOG
      * --------------------------------------------------------
+     *
+     * Public.
      */
 
     if (
@@ -3247,6 +3461,7 @@ Deno.serve(
               {
                 success:
                   false,
+
                 error:
                   "Unsupported service.",
               },
@@ -3282,12 +3497,75 @@ Deno.serve(
           {
             success:
               false,
+
             error:
               "Unable to retrieve the ClubKonnect service catalogue.",
           },
           502,
         );
       }
+    }
+
+    /**
+     * --------------------------------------------------------
+     * FROM THIS POINT ON:
+     *
+     * AUTHENTICATION IS REQUIRED.
+     *
+     * --------------------------------------------------------
+     */
+
+    let user:
+      | {
+          id: string;
+        }
+      | null =
+      null;
+
+    try {
+      user =
+        await authenticateUser(
+          request,
+        );
+    } catch (error) {
+      const code =
+        error instanceof Error
+          ? error.message
+          : "";
+
+      console.error(
+        "ClubKonnect protected endpoint authentication error:",
+        error,
+      );
+
+      if (
+        code ===
+        "AUTHENTICATION_REQUIRED"
+      ) {
+        return jsonResponse(
+          {
+            success:
+              false,
+
+            error:
+              safeErrorMessage(
+                code,
+              ),
+          },
+          401,
+        );
+      }
+
+      return jsonResponse(
+        {
+          success:
+            false,
+
+          error:
+            "Unable to authenticate the request.",
+        },
+        500,
+      );
     }
 
     /**
@@ -3309,6 +3587,7 @@ Deno.serve(
           {
             success:
               false,
+
             error:
               "A supported service is required for verification.",
           },
@@ -3353,6 +3632,7 @@ Deno.serve(
           {
             success:
               false,
+
             error:
               safeErrorMessage(
                 code,
@@ -3394,6 +3674,7 @@ Deno.serve(
           {
             success:
               false,
+
             error:
               "Request ID or Order ID is required.",
           },
@@ -3406,6 +3687,7 @@ Deno.serve(
           await queryTransaction(
             requestId ||
               undefined,
+
             orderId ||
               undefined,
           );
@@ -3432,6 +3714,7 @@ Deno.serve(
           {
             success:
               false,
+
             error:
               "Unable to query the ClubKonnect transaction.",
           },
@@ -3459,6 +3742,7 @@ Deno.serve(
           {
             success:
               false,
+
             error:
               "A supported service is required.",
           },
@@ -3487,36 +3771,58 @@ Deno.serve(
           "ClubKonnect purchase error:",
           {
             code,
+
             service:
               requestedService,
+
             user_id:
               user.id,
           },
         );
 
-        const status =
+        let statusCode =
+          400;
+
+        if (
           code ===
-          "INSUFFICIENT_FUNDS"
-            ? 400
-            : code ===
-                "AUTHENTICATION_REQUIRED"
-              ? 401
-              : code ===
-                  "CATALOG_NOT_FOUND"
-                ? 404
-                : 400;
+          "AUTHENTICATION_REQUIRED"
+        ) {
+          statusCode =
+            401;
+        } else if (
+          code ===
+          "CATALOG_NOT_FOUND"
+        ) {
+          statusCode =
+            404;
+        } else if (
+          code ===
+          "SUPABASE_CONFIGURATION_ERROR" ||
+          code ===
+          "CLUBKONNECT_CONFIGURATION_ERROR"
+        ) {
+          statusCode =
+            503;
+        } else if (
+          code ===
+          "CLUBKONNECT_NETWORK_ERROR"
+        ) {
+          statusCode =
+            502;
+        }
 
         return jsonResponse(
           {
             success:
               false,
+
             error:
               safeErrorMessage(
                 code,
                 "Unable to process the purchase.",
               ),
           },
-          status,
+          statusCode,
         );
       }
     }
@@ -3531,6 +3837,7 @@ Deno.serve(
       {
         success:
           false,
+
         error:
           "Unsupported ClubKonnect action.",
       },

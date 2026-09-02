@@ -26,3 +26,6 @@ verify_jwt = true
 
 [functions.iyanjuPay-transfer]
 verify_jwt = true
+
+[functions.clubkonnect-services]
+verify_jwt = false

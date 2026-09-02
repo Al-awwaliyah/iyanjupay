@@ -5,6 +5,7 @@ import React, {
 } from "react";
 
 import { Button } from "@/components/ui/button";
+
 import {
   Card,
   CardContent,
@@ -30,17 +31,14 @@ import {
   Wifi,
   Zap,
   CreditCard,
-  Loader2,
-  Headphones,
 } from "lucide-react";
 
 import ServiceCard from "./services/ServiceCard";
 import FundWalletModal from "./modals/FundWalletModal";
 import ServicePayment from "@/pages/ServicePayment";
+import TransferModal from "./modals/TransferModal";
 import QRCodeModal from "./modals/QRCodeModal";
 import WhatsAppFloat from "./WhatsAppFloat";
-import SupportChat from "./support/SupportChat";
-import SendMoneyPage from "@/pages/SendMoney";
 
 import ProfilePage from "./profile/ProfilePage";
 import TransactionHistory from "./transactions/TransactionHistory";
@@ -51,8 +49,6 @@ import MePage from "./me/MePage";
 import CustomerServicePage from "./me/CustomerServicePage";
 import SupportPage from "./me/SupportPage";
 import TransactionLimitPage from "./me/TransactionLimitPage";
-import PaymentPinPage from "./me/PaymentPinPage";
-import DisputesPage from "./disputes/UserDisputesPage";
 
 import { useAuth } from "@/hooks/useAuth";
 import { useWallet } from "@/hooks/useWallet";
@@ -77,14 +73,18 @@ type CurrentPage =
   | "support"
   | "transaction-limit"
   | "payment-pin"
-  | "disputes"
-  | "send-money"
   | "service-payment";
 
 type SelectedService = {
   title: string;
   type: BillService;
 };
+
+/*
+ * ============================================================
+ * DASHBOARD STATISTICS TYPES
+ * ============================================================
+ */
 
 type TransactionStats = {
   monthlySpent: number;
@@ -103,6 +103,12 @@ type DashboardTransaction = {
   created_at: string;
 };
 
+/*
+ * ============================================================
+ * SUPPORTED BILL SERVICES
+ * ============================================================
+ */
+
 const SUPPORTED_BILL_SERVICES: BillService[] = [
   "airtime",
   "data",
@@ -111,6 +117,12 @@ const SUPPORTED_BILL_SERVICES: BillService[] = [
   "internet",
 ];
 
+/*
+ * ============================================================
+ * SUCCESSFUL STATUSES
+ * ============================================================
+ */
+
 const SUCCESS_STATUSES = new Set([
   "success",
   "successful",
@@ -118,6 +130,12 @@ const SUCCESS_STATUSES = new Set([
   "complete",
   "succeeded",
 ]);
+
+/*
+ * ============================================================
+ * FAILED STATUSES
+ * ============================================================
+ */
 
 const FAILED_STATUSES = new Set([
   "failed",
@@ -128,6 +146,19 @@ const FAILED_STATUSES = new Set([
   "canceled",
   "reversed",
 ]);
+
+/*
+ * ============================================================
+ * MONEY-OUT TRANSACTION TYPES
+ *
+ * These are the transaction types that should contribute
+ * to "Total Spent".
+ *
+ * The helper also checks metadata/category/description so
+ * your existing transaction records remain compatible even
+ * if the exact transaction_type naming differs.
+ * ============================================================
+ */
 
 const MONEY_OUT_TYPES = new Set([
   "debit",
@@ -147,6 +178,12 @@ const MONEY_OUT_TYPES = new Set([
   "payout",
 ]);
 
+/*
+ * ============================================================
+ * HELPER: NORMALIZE TEXT
+ * ============================================================
+ */
+
 const normalizeText = (
   value: unknown
 ): string => {
@@ -156,6 +193,12 @@ const normalizeText = (
     .replace(/\s+/g, "_");
 };
 
+/*
+ * ============================================================
+ * HELPER: IS SUCCESSFUL
+ * ============================================================
+ */
+
 const isSuccessfulTransaction = (
   transaction: DashboardTransaction
 ): boolean => {
@@ -164,6 +207,12 @@ const isSuccessfulTransaction = (
   );
 };
 
+/*
+ * ============================================================
+ * HELPER: IS FAILED
+ * ============================================================
+ */
+
 const isFailedTransaction = (
   transaction: DashboardTransaction
 ): boolean => {
@@ -171,6 +220,15 @@ const isFailedTransaction = (
     normalizeText(transaction.status)
   );
 };
+
+/*
+ * ============================================================
+ * HELPER: IS MONEY OUT
+ *
+ * This prevents wallet funding/deposit transactions from
+ * being counted as "Total Spent".
+ * ============================================================
+ */
 
 const isMoneyOutTransaction = (
   transaction: DashboardTransaction
@@ -206,8 +264,10 @@ const isMoneyOutTransaction = (
     );
 
   /*
-   * Explicit incoming transactions.
+   * Explicit credit/deposit/funding transactions
+   * should NEVER be considered spending.
    */
+
   if (
     type === "credit" ||
     type === "funding" ||
@@ -223,8 +283,9 @@ const isMoneyOutTransaction = (
   }
 
   /*
-   * Explicit outgoing transactions.
+   * Explicit debit/outgoing transactions.
    */
+
   if (
     type === "debit" ||
     metadataDirection === "debit" ||
@@ -235,8 +296,9 @@ const isMoneyOutTransaction = (
   }
 
   /*
-   * Known outgoing types.
+   * Known money-out transaction types.
    */
+
   if (
     MONEY_OUT_TYPES.has(type) ||
     MONEY_OUT_TYPES.has(category) ||
@@ -247,6 +309,10 @@ const isMoneyOutTransaction = (
   ) {
     return true;
   }
+
+  /*
+   * Fallback based on description.
+   */
 
   const moneyOutWords = [
     "transfer",
@@ -262,196 +328,200 @@ const isMoneyOutTransaction = (
   ];
 
   return moneyOutWords.some(
-    (word) =>
+    word =>
       description.includes(word)
   );
 };
 
+/*
+ * ============================================================
+ * DASHBOARD COMPONENT
+ * ============================================================
+ */
+
 const Dashboard = () => {
+  const { user, signOut } = useAuth();
+
   const {
-    user,
-    loading: authLoading,
-    signOut,
-  } = useAuth();
+    wallet,
+    loading,
+    refreshWallet,
+  } = useWallet(user?.id);
+
+  const [
+    fundModalOpen,
+    setFundModalOpen,
+  ] = useState(false);
+
+  const [
+    transferModalOpen,
+    setTransferModalOpen,
+  ] = useState(false);
+
+  const [
+    qrModalOpen,
+    setQrModalOpen,
+  ] = useState(false);
+
+  const [
+    selectedService,
+    setSelectedService,
+  ] = useState<SelectedService | null>(
+    null
+  );
+
+  const [
+    showBalance,
+    setShowBalance,
+  ] = useState(true);
+
+  const [
+    currentPage,
+    setCurrentPage,
+  ] = useState<CurrentPage>("home");
+
+  /*
+   * ==========================================================
+   * DASHBOARD STATS STATE
+   * ==========================================================
+   */
+
+  const [
+    stats,
+    setStats,
+  ] = useState<TransactionStats>({
+    monthlySpent: 0,
+    monthlyTransactions: 0,
+    successRate: 100,
+  });
+
+  const [
+    statsLoading,
+    setStatsLoading,
+  ] = useState(true);
 
   const { toast } = useToast();
 
   /*
-   * ============================================================
-   * PAGE
-   * ============================================================
+   * ==========================================================
+   * EXTRACT EDGE FUNCTION ERROR
+   * ==========================================================
    */
 
-  const [currentPage, setCurrentPage] =
-    useState<CurrentPage>("home");
+  const extractFunctionError = async (
+    error: any,
+    fallback = "Unable to process your request."
+  ): Promise<string> => {
+    console.error(
+      "Supabase function error:",
+      error
+    );
 
-  /*
-   * ============================================================
-   * WALLET
-   * ============================================================
-   */
-
-  const {
-    wallet,
-    loading: walletLoading,
-    refreshWallet,
-  } = useWallet(user?.id);
-
-  /*
-   * ============================================================
-   * MODALS
-   * ============================================================
-   */
-
-  const [fundModalOpen, setFundModalOpen] =
-    useState(false);
-
-  const [qrModalOpen, setQrModalOpen] =
-    useState(false);
-
-  const [
-    supportChatOpen,
-    setSupportChatOpen,
-  ] = useState(false);
-
-  const [selectedService, setSelectedService] =
-    useState<SelectedService | null>(null);
-
-  const [showBalance, setShowBalance] =
-    useState(true);
-
-  /*
-   * ============================================================
-   * STATS
-   * ============================================================
-   */
-
-  const [stats, setStats] =
-    useState<TransactionStats>({
-      monthlySpent: 0,
-      monthlyTransactions: 0,
-      successRate: 100,
-    });
-
-  const [statsLoading, setStatsLoading] =
-    useState(true);
-
-  /*
-   * ============================================================
-   * AUTH REDIRECT
-   * ============================================================
-   */
-
-  useEffect(() => {
-    if (authLoading) {
-      return;
-    }
-
-    if (!user) {
-      window.location.replace("/");
-    }
-  }, [authLoading, user]);
-
-  /*
-   * ============================================================
-   * EDGE FUNCTION ERROR
-   * ============================================================
-   */
-
-  const extractFunctionError =
-    async (
-      error: any,
-      fallback = "Unable to process your request."
-    ): Promise<string> => {
-      console.error(
-        "Supabase function error:",
-        error
-      );
-
-      try {
-        if (
-          error?.context &&
-          typeof error.context.json ===
-            "function"
-        ) {
-          const response = error.context;
-
-          let payload: any = null;
-
-          try {
-            payload =
-              await response.json();
-          } catch {
-            payload = null;
-          }
-
-          console.error(
-            "Edge Function response:",
-            payload
-          );
-
-          if (payload?.error) {
-            return String(
-              payload.error
-            );
-          }
-
-          if (payload?.message) {
-            return String(
-              payload.message
-            );
-          }
-
-          if (
-            payload?.provider_message
-          ) {
-            return String(
-              payload.provider_message
-            );
-          }
-
-          if (
-            payload?.provider_response
-              ?.message
-          ) {
-            return String(
-              payload.provider_response
-                .message
-            );
-          }
-
-          if (
-            payload?.provider_response
-              ?.data?.message
-          ) {
-            return String(
-              payload.provider_response
-                .data.message
-            );
-          }
-        }
-      } catch (parseError) {
-        console.error(
-          "Could not parse Edge Function error:",
-          parseError
-        );
-      }
-
+    try {
       if (
-        error?.message &&
-        error.message !==
-          "Edge Function returned a non-2xx status code"
+        error?.context &&
+        typeof error.context.json ===
+          "function"
       ) {
-        return String(error.message);
-      }
+        const response =
+          error.context;
 
-      return fallback;
-    };
+        let payload: any = null;
+
+        try {
+          payload =
+            await response.json();
+        } catch {
+          payload = null;
+        }
+
+        console.error(
+          "Edge Function response:",
+          payload
+        );
+
+        if (payload?.error) {
+          return String(
+            payload.error
+          );
+        }
+
+        if (payload?.message) {
+          return String(
+            payload.message
+          );
+        }
+
+        if (payload?.provider_message) {
+          return String(
+            payload.provider_message
+          );
+        }
+
+        if (
+          payload?.provider_response
+            ?.message
+        ) {
+          return String(
+            payload.provider_response
+              .message
+          );
+        }
+
+        if (
+          payload?.provider_response
+            ?.data?.message
+        ) {
+          return String(
+            payload.provider_response
+              .data.message
+          );
+        }
+
+        if (
+          payload?.validation_data
+            ?.response_message
+        ) {
+          return String(
+            payload.validation_data
+              .response_message
+          );
+        }
+
+        if (
+          payload?.provider_response
+            ?.data?.response_message
+        ) {
+          return String(
+            payload.provider_response.data
+              .response_message
+          );
+        }
+      }
+    } catch (parseError) {
+      console.error(
+        "Could not parse Edge Function error:",
+        parseError
+      );
+    }
+
+    if (
+      error?.message &&
+      error.message !==
+        "Edge Function returned a non-2xx status code"
+    ) {
+      return String(
+        error.message
+      );
+    }
+
+    return fallback;
+  };
 
   /*
-   * ============================================================
-   * DASHBOARD STATISTICS
-   * ============================================================
+   * ==========================================================
+   * LOAD DASHBOARD STATISTICS
+   * ==========================================================
    */
 
   const loadDashboardStats =
@@ -471,6 +541,14 @@ const Dashboard = () => {
       try {
         setStatsLoading(true);
 
+        /*
+         * Get all transactions belonging to
+         * the currently authenticated user.
+         *
+         * RLS should restrict this to the user's
+         * own records.
+         */
+
         const {
           data,
           error,
@@ -488,44 +566,74 @@ const Dashboard = () => {
               created_at
             `
           )
-          .eq("user_id", user.id)
-          .order("created_at", {
-            ascending: false,
-          });
+          .eq(
+            "user_id",
+            user.id
+          )
+          .order(
+            "created_at",
+            {
+              ascending: false,
+            }
+          );
 
         if (error) {
-          throw error;
+          console.error(
+            "Failed to load dashboard statistics:",
+            error
+          );
+
+          /*
+           * Do not show fake success data when
+           * the database request fails.
+           */
+
+          setStats({
+            monthlySpent: 0,
+            monthlyTransactions: 0,
+            successRate: 0,
+          });
+
+          return;
         }
 
         const transactions =
           (data ??
             []) as DashboardTransaction[];
 
+        /*
+         * ======================================================
+         * THIS MONTH
+         * ======================================================
+         */
+
         const now = new Date();
 
-        const monthStart = new Date(
-          now.getFullYear(),
-          now.getMonth(),
-          1,
-          0,
-          0,
-          0,
-          0
-        );
+        const monthStart =
+          new Date(
+            now.getFullYear(),
+            now.getMonth(),
+            1,
+            0,
+            0,
+            0,
+            0
+          );
 
-        const monthEnd = new Date(
-          now.getFullYear(),
-          now.getMonth() + 1,
-          1,
-          0,
-          0,
-          0,
-          0
-        );
+        const monthEnd =
+          new Date(
+            now.getFullYear(),
+            now.getMonth() + 1,
+            1,
+            0,
+            0,
+            0,
+            0
+          );
 
         const monthlyTransactions =
           transactions.filter(
-            (transaction) => {
+            transaction => {
               const createdAt =
                 new Date(
                   transaction.created_at
@@ -534,15 +642,24 @@ const Dashboard = () => {
               return (
                 createdAt >=
                   monthStart &&
-                createdAt < monthEnd
+                createdAt <
+                  monthEnd
               );
             }
           );
 
+        /*
+         * ======================================================
+         * MONTHLY TOTAL SPENT
+         *
+         * Only successful money-out transactions count.
+         * ======================================================
+         */
+
         const monthlySpent =
           monthlyTransactions
             .filter(
-              (transaction) =>
+              transaction =>
                 isSuccessfulTransaction(
                   transaction
                 ) &&
@@ -575,23 +692,55 @@ const Dashboard = () => {
               0
             );
 
+        /*
+         * ======================================================
+         * MONTHLY TRANSACTION COUNT
+         *
+         * Count every transaction created
+         * during this month.
+         * ======================================================
+         */
+
+        const monthlyTransactionCount =
+          monthlyTransactions.length;
+
+        /*
+         * ======================================================
+         * ALL-TIME SUCCESS RATE
+         *
+         * Pending transactions are excluded.
+         *
+         * Example:
+         *
+         * 90 successful
+         * 10 failed
+         *
+         * = 90 / 100 = 90%
+         * ======================================================
+         */
+
         const successfulCount =
           transactions.filter(
-            isSuccessfulTransaction
+            transaction =>
+              isSuccessfulTransaction(
+                transaction
+              )
           ).length;
 
         const failedCount =
           transactions.filter(
-            isFailedTransaction
+            transaction =>
+              isFailedTransaction(
+                transaction
+              )
           ).length;
 
         const terminalTransactions =
           successfulCount +
           failedCount;
 
-        const successRate =
-          terminalTransactions ===
-          0
+        const calculatedSuccessRate =
+          terminalTransactions === 0
             ? 100
             : Math.round(
                 (successfulCount /
@@ -599,11 +748,18 @@ const Dashboard = () => {
                   100
               );
 
+        /*
+         * ======================================================
+         * UPDATE STATE
+         * ======================================================
+         */
+
         setStats({
           monthlySpent,
           monthlyTransactions:
-            monthlyTransactions.length,
-          successRate,
+            monthlyTransactionCount,
+          successRate:
+            calculatedSuccessRate,
         });
       } catch (error) {
         console.error(
@@ -621,22 +777,25 @@ const Dashboard = () => {
       }
     }, [user?.id]);
 
-  useEffect(() => {
-    if (authLoading || !user) {
-      return;
-    }
+  /*
+   * ==========================================================
+   * LOAD STATS WHEN USER CHANGES
+   * ==========================================================
+   */
 
+  useEffect(() => {
     loadDashboardStats();
   }, [
-    authLoading,
-    user,
     loadDashboardStats,
   ]);
 
   /*
-   * ============================================================
-   * REALTIME TRANSACTIONS
-   * ============================================================
+   * ==========================================================
+   * REALTIME TRANSACTION REFRESH
+   *
+   * Whenever a transaction is inserted/updated for this
+   * user, refresh the dashboard statistics.
+   * ==========================================================
    */
 
   useEffect(() => {
@@ -644,23 +803,24 @@ const Dashboard = () => {
       return;
     }
 
-    const channel = supabase
-      .channel(
-        `dashboard-transactions-${user.id}`
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "transactions",
-          filter: `user_id=eq.${user.id}`,
-        },
-        () => {
-          loadDashboardStats();
-        }
-      )
-      .subscribe();
+    const channel =
+      supabase
+        .channel(
+          `dashboard-transactions-${user.id}`
+        )
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "transactions",
+            filter: `user_id=eq.${user.id}`,
+          },
+          () => {
+            loadDashboardStats();
+          }
+        )
+        .subscribe();
 
     return () => {
       supabase.removeChannel(
@@ -673,15 +833,13 @@ const Dashboard = () => {
   ]);
 
   /*
-   * ============================================================
+   * ==========================================================
    * WALLET BOOTSTRAP
-   * ============================================================
+   * ==========================================================
    */
 
   useEffect(() => {
-    if (!user?.id) {
-      return;
-    }
+    if (!user) return;
 
     let cancelled = false;
 
@@ -719,6 +877,11 @@ const Dashboard = () => {
 
           await refreshWallet();
 
+          /*
+           * Refresh dashboard statistics
+           * after wallet bootstrap.
+           */
+
           await loadDashboardStats();
         } catch (error) {
           if (cancelled) {
@@ -738,15 +901,70 @@ const Dashboard = () => {
       cancelled = true;
     };
   }, [
-    user?.id,
+    user,
     refreshWallet,
     loadDashboardStats,
   ]);
 
   /*
-   * ============================================================
+   * ==========================================================
+   * OPTIONAL MANUAL DEPOSIT SYNC
+   * ==========================================================
+   */
+
+  const syncDeposits = async () => {
+    if (!user) return;
+
+    try {
+      console.log(
+        "Starting Flutterwave deposit sync..."
+      );
+
+      const {
+        data,
+        error,
+      } =
+        await supabase.functions.invoke(
+          "flutterwave-sync-deposits",
+          {
+            body: {},
+          }
+        );
+
+      console.log(
+        "SYNC DATA:",
+        data
+      );
+
+      console.log(
+        "SYNC ERROR:",
+        error
+      );
+
+      if (error) {
+        console.error(
+          "Deposit sync failed:",
+          error
+        );
+
+        return;
+      }
+
+      await refreshWallet();
+
+      await loadDashboardStats();
+    } catch (error) {
+      console.error(
+        "Deposit sync error:",
+        error
+      );
+    }
+  };
+
+  /*
+   * ==========================================================
    * SERVICES
-   * ============================================================
+   * ==========================================================
    */
 
   const services = [
@@ -849,20 +1067,19 @@ const Dashboard = () => {
   ];
 
   /*
-   * ============================================================
+   * ==========================================================
    * SERVICE CLICK
-   * ============================================================
+   * ==========================================================
    */
 
   const handleServiceClick = (
-    service: (typeof services)[number]
+    service: typeof services[number]
   ) => {
     if (
-      service.type === "transfer"
+      service.type ===
+      "transfer"
     ) {
-      setCurrentPage(
-        "send-money"
-      );
+      setTransferModalOpen(true);
 
       return;
     }
@@ -888,15 +1105,13 @@ const Dashboard = () => {
         service.type as BillService,
     });
 
-    setCurrentPage(
-      "service-payment"
-    );
+    setCurrentPage("service-payment");
   };
 
   /*
-   * ============================================================
+   * ==========================================================
    * BILL PAYMENT
-   * ============================================================
+   * ==========================================================
    */
 
   const handlePurchase = async (
@@ -928,6 +1143,14 @@ const Dashboard = () => {
       );
     }
 
+    // Provider routing is hidden from the customer-facing UI.
+    // Data is handled by ClubKonnect; all other bill services use
+    // the Flutterwave-backed function.
+    const serviceFunction =
+      service === "data"
+        ? "clubkonnect-services"
+        : "flutterwave-bills";
+
     if (
       !Number.isFinite(amount) ||
       amount <= 0
@@ -943,7 +1166,8 @@ const Dashboard = () => {
       );
 
     if (
-      amount > currentBalance
+      amount >
+      currentBalance
     ) {
       throw new Error(
         "Insufficient wallet balance. Please fund your wallet."
@@ -985,7 +1209,7 @@ const Dashboard = () => {
 
     if (country !== "NG") {
       throw new Error(
-        "Flutterwave bill payments currently support Nigeria only."
+        "Bill payments currently support Nigeria only."
       );
     }
 
@@ -1045,7 +1269,8 @@ const Dashboard = () => {
     }
 
     if (
-      service === "electricity"
+      service ===
+      "electricity"
     ) {
       if (!details?.provider) {
         throw new Error(
@@ -1053,9 +1278,7 @@ const Dashboard = () => {
         );
       }
 
-      if (
-        customer.length < 5
-      ) {
+      if (customer.length < 5) {
         throw new Error(
           "Please provide a valid meter number."
         );
@@ -1069,9 +1292,7 @@ const Dashboard = () => {
         );
       }
 
-      if (
-        customer.length < 5
-      ) {
+      if (customer.length < 5) {
         throw new Error(
           "Please provide a valid smartcard or decoder number."
         );
@@ -1079,7 +1300,8 @@ const Dashboard = () => {
     }
 
     if (
-      service === "internet"
+      service ===
+      "internet"
     ) {
       if (!details?.provider) {
         throw new Error(
@@ -1087,9 +1309,7 @@ const Dashboard = () => {
         );
       }
 
-      if (
-        customer.length < 3
-      ) {
+      if (customer.length < 3) {
         throw new Error(
           "Please provide a valid internet account number."
         );
@@ -1108,6 +1328,21 @@ const Dashboard = () => {
         itemCode,
     };
 
+    console.log(
+      "Sending bill payment request:",
+      {
+        action: "pay",
+        service,
+        amount,
+        country,
+        biller_code:
+          billerCode,
+        item_code:
+          itemCode,
+        customer,
+      }
+    );
+
     toast({
       title:
         "Processing payment",
@@ -1121,7 +1356,7 @@ const Dashboard = () => {
         error,
       } =
         await supabase.functions.invoke(
-          "flutterwave-bills",
+          serviceFunction,
           {
             body: {
               action: "pay",
@@ -1146,10 +1381,24 @@ const Dashboard = () => {
             "Unable to process bill payment."
           );
 
+        console.error(
+          "Service payment invocation error:",
+          {
+            error,
+            extractedMessage:
+              message,
+          }
+        );
+
         throw new Error(
           message
         );
       }
+
+      console.log(
+        "Service payment response:",
+        data
+      );
 
       if (
         !data ||
@@ -1164,7 +1413,19 @@ const Dashboard = () => {
       }
 
       await refreshWallet();
+
+      /*
+       * Refresh dashboard statistics
+       * immediately after payment.
+       */
+
       await loadDashboardStats();
+
+      const reference =
+        data?.reference ??
+        data?.transaction_reference ??
+        data?.transaction_id ??
+        null;
 
       const isPending =
         data?.status ===
@@ -1174,12 +1435,38 @@ const Dashboard = () => {
         title: isPending
           ? "Payment Processing"
           : "Payment Successful",
+
         description:
           data?.message ||
           (isPending
             ? `${selectedService.title} payment is being verified.`
             : `${selectedService.title} payment was completed successfully.`),
       });
+
+      setSelectedService(null);
+      setCurrentPage("home");
+
+      console.log(
+        "Bill payment processed:",
+        {
+          service,
+          amount,
+          reference,
+          transaction_id:
+            data?.transaction_id,
+          provider_reference:
+            data?.provider_reference,
+          biller_code:
+            billerCode,
+          item_code:
+            itemCode,
+          customer,
+          status:
+            data?.status,
+          provider_data:
+            data?.data,
+        }
+      );
     } catch (error: any) {
       console.error(
         "Bill payment failed:",
@@ -1194,9 +1481,9 @@ const Dashboard = () => {
   };
 
   /*
-   * ============================================================
-   * BANK TRANSFER
-   * ============================================================
+   * ==========================================================
+   * TRANSFER HANDLER
+   * ==========================================================
    */
 
   const handleTransfer = async (
@@ -1232,10 +1519,6 @@ const Dashboard = () => {
       return;
     }
 
-    /*
-     * IyanjuPay transfers must
-     * not reach this handler.
-     */
     if (
       details?.type ===
         "iyanjupay" ||
@@ -1244,6 +1527,10 @@ const Dashboard = () => {
       details?.recipientType ===
         "iyanjupay"
     ) {
+      console.warn(
+        "IyanjuPay transfer reached Dashboard bank handler unexpectedly."
+      );
+
       toast({
         title:
           "Transfer routing error",
@@ -1259,7 +1546,9 @@ const Dashboard = () => {
     if (
       wallet &&
       amount >
-        Number(wallet.balance)
+        Number(
+          wallet.balance
+        )
     ) {
       toast({
         title:
@@ -1355,6 +1644,11 @@ const Dashboard = () => {
         );
 
       if (error) {
+        console.error(
+          "Flutterwave transfer function error:",
+          error
+        );
+
         const message =
           await extractFunctionError(
             error,
@@ -1365,6 +1659,11 @@ const Dashboard = () => {
           message
         );
       }
+
+      console.log(
+        "Flutterwave transfer response:",
+        data
+      );
 
       if (
         !data ||
@@ -1378,7 +1677,16 @@ const Dashboard = () => {
       }
 
       await refreshWallet();
+
+      /*
+       * Refresh statistics after transfer.
+       */
+
       await loadDashboardStats();
+
+      setTransferModalOpen(
+        false
+      );
 
       toast({
         title:
@@ -1387,6 +1695,32 @@ const Dashboard = () => {
           data?.message ||
           `₦${amount.toLocaleString()} sent to ${details.recipient}.`,
       });
+
+      console.log(
+        "Bank transfer successfully initiated:",
+        {
+          transaction_id:
+            data?.transaction_id,
+
+          flutterwave_transfer_id:
+            data?.flutterwave_transfer_id,
+
+          reference:
+            data?.reference,
+
+          amount,
+
+          beneficiary:
+            details.recipient,
+
+          fee:
+            details?.fee ?? 10,
+
+          total_charged:
+            details?.totalCharged ??
+            amount + 10,
+        }
+      );
     } catch (error: any) {
       console.error(
         "Bank transfer failed:",
@@ -1406,105 +1740,31 @@ const Dashboard = () => {
   };
 
   /*
-   * ============================================================
-   * AUTH LOADING
-   * ============================================================
-   */
-
-  if (authLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-50">
-        <div className="text-center">
-          <Loader2 className="h-12 w-12 animate-spin text-purple-600 mx-auto" />
-
-          <p className="mt-4 text-gray-600">
-            Loading your account...
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  /*
-   * ============================================================
-   * NO USER
-   * ============================================================
-   */
-
-  if (!user) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-purple-600" />
-      </div>
-    );
-  }
-
-  /*
-   * ============================================================
-   * INTERNAL PAGE ROUTING
-   * ============================================================
+   * ==========================================================
+   * PAGE ROUTING
+   * ==========================================================
    */
 
   /*
    * SERVICE PAYMENT PAGE
+   *
+   * Full bill-payment flow.
    */
-
-  if (
-    currentPage ===
-    "service-payment"
-  ) {
+  if (currentPage === "service-payment") {
     return (
       <ServicePayment
-        service={
-          selectedService
-        }
+        service={selectedService}
         walletBalance={Number(
           wallet?.balance ?? 0
         )}
         onBack={() => {
-          setSelectedService(
-            null
-          );
-
-          setCurrentPage(
-            "home"
-          );
+          setSelectedService(null);
+          setCurrentPage("home");
         }}
-        onPurchase={
-          handlePurchase
-        }
+        onPurchase={handlePurchase}
       />
     );
   }
-
-  /*
-   * SEND MONEY PAGE
-   */
-
-  if (
-    currentPage ===
-    "send-money"
-  ) {
-    return (
-      <SendMoneyPage
-        onBack={() =>
-          setCurrentPage(
-            "home"
-          )
-        }
-        walletBalance={Number(
-          wallet?.balance ?? 0
-        )}
-        onTransfer={
-          handleTransfer
-        }
-      />
-    );
-  }
-
-  /*
-   * PROFILE
-   */
 
   if (
     currentPage ===
@@ -1513,17 +1773,11 @@ const Dashboard = () => {
     return (
       <ProfilePage
         onBack={() =>
-          setCurrentPage(
-            "me"
-          )
+          setCurrentPage("me")
         }
       />
     );
   }
-
-  /*
-   * TRANSACTION HISTORY
-   */
 
   if (
     currentPage ===
@@ -1532,17 +1786,11 @@ const Dashboard = () => {
     return (
       <TransactionHistory
         onBack={() =>
-          setCurrentPage(
-            "me"
-          )
+          setCurrentPage("me")
         }
       />
     );
   }
-
-  /*
-   * REWARDS
-   */
 
   if (
     currentPage ===
@@ -1551,17 +1799,11 @@ const Dashboard = () => {
     return (
       <RewardsPage
         onBack={() =>
-          setCurrentPage(
-            "home"
-          )
+          setCurrentPage("home")
         }
       />
     );
   }
-
-  /*
-   * CARDS
-   */
 
   if (
     currentPage ===
@@ -1570,16 +1812,16 @@ const Dashboard = () => {
     return (
       <CardsPage
         onBack={() =>
-          setCurrentPage(
-            "home"
-          )
+          setCurrentPage("home")
         }
       />
     );
   }
 
   /*
+   * ==========================================================
    * CUSTOMER SERVICE
+   * ==========================================================
    */
 
   if (
@@ -1589,16 +1831,16 @@ const Dashboard = () => {
     return (
       <CustomerServicePage
         onBack={() =>
-          setCurrentPage(
-            "me"
-          )
+          setCurrentPage("me")
         }
       />
     );
   }
 
   /*
+   * ==========================================================
    * SUPPORT
+   * ==========================================================
    */
 
   if (
@@ -1608,16 +1850,16 @@ const Dashboard = () => {
     return (
       <SupportPage
         onBack={() =>
-          setCurrentPage(
-            "me"
-          )
+          setCurrentPage("me")
         }
       />
     );
   }
 
   /*
+   * ==========================================================
    * TRANSACTION LIMIT
+   * ==========================================================
    */
 
   if (
@@ -1627,56 +1869,16 @@ const Dashboard = () => {
     return (
       <TransactionLimitPage
         onBack={() =>
-          setCurrentPage(
-            "me"
-          )
+          setCurrentPage("me")
         }
       />
     );
   }
 
   /*
-   * PAYMENT PIN
-   */
-
-  if (
-    currentPage ===
-    "payment-pin"
-  ) {
-    return (
-      <PaymentPinPage
-        onBack={() =>
-          setCurrentPage(
-            "me"
-          )
-        }
-      />
-    );
-  }
-
-  /*
-   * ============================================================
-   * DISPUTES
-   * ============================================================
-   */
-
-  if (
-    currentPage ===
-    "disputes"
-  ) {
-    return (
-      <DisputesPage
-        onBack={() =>
-          setCurrentPage(
-            "me"
-          )
-        }
-      />
-    );
-  }
-
-  /*
-   * ME PAGE
+   * ==========================================================
+   * ME
+   * ==========================================================
    */
 
   if (
@@ -1686,9 +1888,7 @@ const Dashboard = () => {
     return (
       <MePage
         onBack={() =>
-          setCurrentPage(
-            "home"
-          )
+          setCurrentPage("home")
         }
         onProfileClick={() =>
           setCurrentPage(
@@ -1715,54 +1915,46 @@ const Dashboard = () => {
             "transaction-limit"
           )
         }
-        onPaymentPinClick={() =>
-          setCurrentPage(
-            "payment-pin"
-          )
-        }
-        onDisputesClick={() =>
-          setCurrentPage(
-            "disputes"
-          )
-        }
       />
     );
   }
 
   /*
-   * ============================================================
+   * ==========================================================
    * WALLET LOADING
-   * ============================================================
+   * ==========================================================
    */
 
-  if (walletLoading) {
+  if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-purple-50 to-blue-50">
         <div className="text-center">
-          <Loader2 className="h-12 w-12 animate-spin text-purple-600 mx-auto" />
+
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto" />
 
           <p className="mt-4 text-gray-600">
             Loading your wallet...
           </p>
+
         </div>
       </div>
     );
   }
 
   /*
-   * ============================================================
+   * ==========================================================
    * BOTTOM NAVIGATION
-   * ============================================================
+   * ==========================================================
    */
 
   const renderBottomNav = (
     page: CurrentPage
   ) => (
     <div className="fixed bottom-0 left-0 right-0 z-40 bg-white border-t border-gray-200 px-4 py-2">
-      <div className="max-w-7xl mx-auto">
-        <div className="flex justify-around">
 
-          {/* HOME */}
+      <div className="max-w-7xl mx-auto">
+
+        <div className="flex justify-around">
 
           <Button
             variant={
@@ -1772,9 +1964,7 @@ const Dashboard = () => {
             }
             size="sm"
             onClick={() =>
-              setCurrentPage(
-                "home"
-              )
+              setCurrentPage("home")
             }
             className={`flex flex-col items-center gap-1 px-6 py-3 ${
               page === "home"
@@ -1788,8 +1978,6 @@ const Dashboard = () => {
               Home
             </span>
           </Button>
-
-          {/* REWARDS */}
 
           <Button
             variant={
@@ -1816,8 +2004,6 @@ const Dashboard = () => {
             </span>
           </Button>
 
-          {/* CARDS */}
-
           <Button
             variant={
               page === "cards"
@@ -1843,8 +2029,6 @@ const Dashboard = () => {
             </span>
           </Button>
 
-          {/* ME */}
-
           <Button
             variant={
               page === "me"
@@ -1853,9 +2037,7 @@ const Dashboard = () => {
             }
             size="sm"
             onClick={() =>
-              setCurrentPage(
-                "me"
-              )
+              setCurrentPage("me")
             }
             className={`flex flex-col items-center gap-1 px-6 py-3 ${
               page === "me"
@@ -1876,25 +2058,23 @@ const Dashboard = () => {
   );
 
   /*
-   * ============================================================
+   * ==========================================================
    * DASHBOARD
-   * ============================================================
+   * ==========================================================
    */
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-50 pb-20">
 
-      {/* ====================================================== */}
-      {/* HEADER */}
-      {/* ====================================================== */}
+      {/* ======================================================
+          HEADER
+      ====================================================== */}
 
       <header className="bg-gradient-to-r from-purple-600 to-blue-600 text-white">
 
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
 
           <div className="flex justify-between items-center h-16">
-
-            {/* LOGO */}
 
             <div className="flex items-center">
 
@@ -1912,43 +2092,29 @@ const Dashboard = () => {
 
             </div>
 
-            {/* HEADER ACTIONS */}
-
             <div className="flex items-center gap-2">
-
-              {/* QR */}
 
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={() =>
-                  setQrModalOpen(
-                    true
-                  )
+                  setQrModalOpen(true)
                 }
                 className="text-white hover:bg-white/20"
-                aria-label="Show QR code"
               >
                 <QrCode className="h-4 w-4" />
               </Button>
 
-              {/* PROFILE */}
-
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={() =>
-                  setCurrentPage(
-                    "me"
-                  )
+                  setCurrentPage("me")
                 }
                 className="text-white hover:bg-white/20"
-                aria-label="Open profile"
               >
                 <User className="h-4 w-4" />
               </Button>
-
-              {/* HISTORY */}
 
               <Button
                 variant="ghost"
@@ -1959,21 +2125,15 @@ const Dashboard = () => {
                   )
                 }
                 className="text-white hover:bg-white/20"
-                aria-label="Transaction history"
               >
                 <History className="h-4 w-4" />
               </Button>
 
-              {/* SIGN OUT */}
-
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={
-                  signOut
-                }
+                onClick={signOut}
                 className="text-white hover:bg-white/20"
-                aria-label="Sign out"
               >
                 <LogOut className="h-4 w-4" />
               </Button>
@@ -1986,13 +2146,11 @@ const Dashboard = () => {
 
       </header>
 
-      {/* ====================================================== */}
-      {/* MAIN */}
-      {/* ====================================================== */}
+      {/* ======================================================
+          MAIN
+      ====================================================== */}
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-
-        {/* GREETING */}
 
         <div className="mb-6">
 
@@ -2006,9 +2164,9 @@ const Dashboard = () => {
 
         </div>
 
-        {/* ==================================================== */}
-        {/* WALLET */}
-        {/* ==================================================== */}
+        {/* ====================================================
+            WALLET
+        ==================================================== */}
 
         <div className="mb-6">
 
@@ -2017,8 +2175,6 @@ const Dashboard = () => {
             <CardContent className="p-6">
 
               <div className="flex justify-between items-start mb-4">
-
-                {/* BALANCE */}
 
                 <div>
 
@@ -2035,13 +2191,7 @@ const Dashboard = () => {
                         ? Number(
                             wallet?.balance ??
                               0
-                          ).toLocaleString(
-                            "en-NG",
-                            {
-                              minimumFractionDigits: 0,
-                              maximumFractionDigits: 2,
-                            }
-                          )
+                          ).toLocaleString()
                         : "****"}
 
                     </span>
@@ -2051,16 +2201,11 @@ const Dashboard = () => {
                       size="sm"
                       onClick={() =>
                         setShowBalance(
-                          (previous) =>
+                          previous =>
                             !previous
                         )
                       }
                       className="text-white hover:bg-white/20 p-1"
-                      aria-label={
-                        showBalance
-                          ? "Hide balance"
-                          : "Show balance"
-                      }
                     >
                       {showBalance ? (
                         <EyeOff className="h-4 w-4" />
@@ -2072,8 +2217,6 @@ const Dashboard = () => {
                   </div>
 
                 </div>
-
-                {/* WALLET ID */}
 
                 <div className="text-right">
 
@@ -2090,8 +2233,6 @@ const Dashboard = () => {
 
               </div>
 
-              {/* WALLET ACTIONS */}
-
               <div className="flex gap-3">
 
                 <Button
@@ -2103,21 +2244,19 @@ const Dashboard = () => {
                   className="flex-1 bg-white text-purple-600 hover:bg-gray-100 font-semibold"
                 >
                   <Plus className="h-4 w-4 mr-2" />
-
                   Add Money
                 </Button>
 
                 <Button
                   onClick={() =>
-                    setCurrentPage(
-                      "send-money"
+                    setTransferModalOpen(
+                      true
                     )
                   }
                   variant="outline"
                   className="flex-1 bg-white text-purple-600 hover:bg-gray-100 font-semibold"
                 >
                   <Send className="h-4 w-4 mr-2" />
-
                   Send Money
                 </Button>
 
@@ -2129,9 +2268,9 @@ const Dashboard = () => {
 
         </div>
 
-        {/* ==================================================== */}
-        {/* SERVICES */}
-        {/* ==================================================== */}
+        {/* ====================================================
+            SERVICES
+        ==================================================== */}
 
         <div className="mb-6">
 
@@ -2173,13 +2312,15 @@ const Dashboard = () => {
 
         </div>
 
-        {/* ==================================================== */}
-        {/* STATS */}
-        {/* ==================================================== */}
+        {/* ====================================================
+            LIVE STATS
+        ==================================================== */}
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
 
-          {/* MONTHLY SPENDING */}
+          {/* ==================================================
+              TOTAL SPENT
+          ================================================== */}
 
           <Card className="bg-white shadow-sm">
 
@@ -2225,7 +2366,9 @@ const Dashboard = () => {
 
           </Card>
 
-          {/* TRANSACTIONS */}
+          {/* ==================================================
+              MONTHLY TRANSACTIONS
+          ================================================== */}
 
           <Card className="bg-white shadow-sm">
 
@@ -2265,7 +2408,9 @@ const Dashboard = () => {
 
           </Card>
 
-          {/* SUCCESS RATE */}
+          {/* ==================================================
+              SUCCESS RATE
+          ================================================== */}
 
           <Card className="bg-white shadow-sm">
 
@@ -2309,17 +2454,17 @@ const Dashboard = () => {
 
       </main>
 
-      {/* ====================================================== */}
-      {/* BOTTOM NAVIGATION */}
-      {/* ====================================================== */}
+      {/* ======================================================
+          BOTTOM NAVIGATION
+      ====================================================== */}
 
       {renderBottomNav(
         currentPage
       )}
 
-      {/* ====================================================== */}
-      {/* FUND WALLET */}
-      {/* ====================================================== */}
+      {/* ======================================================
+          MODALS
+      ====================================================== */}
 
       <FundWalletModal
         isOpen={
@@ -2336,9 +2481,22 @@ const Dashboard = () => {
         }}
       />
 
-      {/* ====================================================== */}
-      {/* QR CODE */}
-      {/* ====================================================== */}
+      <TransferModal
+        isOpen={
+          transferModalOpen
+        }
+        onClose={() =>
+          setTransferModalOpen(
+            false
+          )
+        }
+        walletBalance={Number(
+          wallet?.balance ?? 0
+        )}
+        onTransfer={
+          handleTransfer
+        }
+      />
 
       <QRCodeModal
         isOpen={
@@ -2349,47 +2507,12 @@ const Dashboard = () => {
             false
           )
         }
-        virtualAccountNumber={
-          wallet?.virtual_account_number ||
-          ""
-        }
+        virtualAccountNumber=""
         userName={
           user?.email ||
           "User"
         }
       />
-
-      {/* ====================================================== */}
-      {/* LIVE SUPPORT CHAT */}
-      {/* ====================================================== */}
-
-      <Button
-        type="button"
-        onClick={() =>
-          setSupportChatOpen(
-            true
-          )
-        }
-        className="fixed bottom-24 right-5 z-50 h-14 w-14 rounded-full bg-purple-600 hover:bg-purple-700 shadow-xl p-0"
-        aria-label="Open live support chat"
-      >
-        <Headphones className="h-6 w-6" />
-      </Button>
-
-      <SupportChat
-        open={
-          supportChatOpen
-        }
-        onClose={() =>
-          setSupportChatOpen(
-            false
-          )
-        }
-      />
-
-      {/* ====================================================== */}
-      {/* WHATSAPP */}
-      {/* ====================================================== */}
 
       <WhatsAppFloat />
 

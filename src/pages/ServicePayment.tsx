@@ -126,6 +126,30 @@ function cleanString(value: unknown): string {
   return String(value ?? "").trim();
 }
 
+const NON_PROVIDER_LABELS = new Set([
+  "mobilenetwork",
+  "mobilenetworks",
+  "mobilenetworkservice",
+  "mobiledata",
+  "airtime",
+  "cabletv",
+  "cablebills",
+  "internet",
+  "internetservice",
+  "intservice",
+  "electricity",
+  "utilitybills",
+  "utilitybill",
+]);
+
+function isActualProvider(value: unknown): boolean {
+  const key = cleanString(value)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "");
+
+  return Boolean(key) && !NON_PROVIDER_LABELS.has(key);
+}
+
 function numberValue(value: unknown): number {
   const n = Number(value);
 
@@ -748,11 +772,20 @@ const ServicePayment = ({
         throw new Error(data?.error || "Unable to load service providers.");
       }
 
-      const loadedBillers = Array.isArray(data?.billers)
+      const rawBillers = Array.isArray(data?.billers)
         ? data.billers
         : Array.isArray(data?.data)
           ? data.data
           : [];
+
+      // The catalogue can contain category/group labels such as
+      // MOBILE_NETWORK or CABLE TV. Those are not customer-selectable
+      // providers and must never appear as provider cards.
+      const loadedBillers = rawBillers.filter((biller: Biller) =>
+        isActualProvider(
+          biller?.short_name ?? biller?.name
+        )
+      );
 
       setBillers(loadedBillers);
 

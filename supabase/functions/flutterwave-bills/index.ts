@@ -1125,34 +1125,78 @@ function isClubKonnectSME(item: any): boolean {
 }
 
 function getDataPlanPeriod(item: any): "Daily" | "Weekly" | "Monthly" | "Other" {
+  // Providers use many different field names for the same concept.
+  // Normalize every useful period/category field before falling back to
+  // the human-readable plan text.
   const explicit = [
     item?.plan_period,
     item?.planPeriod,
     item?.period,
     item?.period_name,
     item?.periodName,
+    item?.validity_period,
+    item?.validityPeriod,
+    item?.duration_unit,
+    item?.durationUnit,
     item?.group_name,
     item?.groupName,
+    item?.group,
     item?.category,
+    item?.category_name,
+    item?.categoryName,
     item?.plan_type,
+    item?.planType,
     item?.type,
-  ].map(cleanString).filter(Boolean).join(" ").toLowerCase();
+    item?.Type,
+  ]
+    .map(cleanString)
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
 
-  if (explicit.includes("month")) return "Monthly";
-  if (explicit.includes("week")) return "Weekly";
-  if (explicit.includes("day")) return "Daily";
+  if (/\b(month|monthly|monthly plan|30 days?|31 days?)\b/.test(explicit)) return "Monthly";
+  if (/\b(week|weekly|weekly plan|7 days?|14 days?)\b/.test(explicit)) return "Weekly";
+  if (/\b(day|daily|daily plan|24 hours?)\b/.test(explicit)) return "Daily";
 
   const text = [
-    item?.validity, item?.duration,
-    item?.name, item?.Name,
-    item?.description, item?.Description,
-    item?.plan, item?.Plan,
-    item?.plan_name, item?.planName,
-  ].map(cleanString).filter(Boolean).join(" ").toLowerCase();
+    item?.validity,
+    item?.duration,
+    item?.duration_value,
+    item?.durationValue,
+    item?.name,
+    item?.Name,
+    item?.description,
+    item?.Description,
+    item?.plan,
+    item?.Plan,
+    item?.plan_name,
+    item?.planName,
+    item?.bundle,
+    item?.Bundle,
+  ]
+    .map(cleanString)
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
 
-  if (/\b(30|31)\s*(day|days)\b/.test(text) || /\bmonthly\b/.test(text) || /\b[1-3]\s*months?\b/.test(text)) return "Monthly";
-  if (/\b(7|14)\s*(day|days)\b/.test(text) || /\bweekly\b/.test(text) || /\b[1-2]\s*weeks?\b/.test(text)) return "Weekly";
-  if (/\b(1|2|3)\s*(day|days)\b/.test(text) || /\bdaily\b/.test(text) || /\b24\s*hours?\b/.test(text)) return "Daily";
+  if (
+    /\b(monthly|month|months)\b/.test(text) ||
+    /\b(30|31)\s*(day|days)\b/.test(text) ||
+    /\b[1-3]\s*months?\b/.test(text)
+  ) return "Monthly";
+
+  if (
+    /\b(weekly|week|weeks)\b/.test(text) ||
+    /\b(7|14)\s*(day|days)\b/.test(text) ||
+    /\b[1-2]\s*weeks?\b/.test(text)
+  ) return "Weekly";
+
+  if (
+    /\b(daily|day|days)\b/.test(text) ||
+    /\b(1|2|3)\s*(day|days)\b/.test(text) ||
+    /\b24\s*hours?\b/.test(text)
+  ) return "Daily";
+
   return "Other";
 }
 
@@ -2078,15 +2122,59 @@ Deno.serve(
         const addItem = async (item: any, candidate: ProviderCandidate) => {
           const originalCode = cleanString(item?.item_code ?? item?.itemCode ?? item?.code ?? item?.id);
           if (!originalCode) return;
-          const providerAmount = normalizeAmount(item?.provider_amount ?? item?.amount ?? item?.price ?? item?.selling_price ?? item?.cost ?? item?.value);
+          const providerAmount = normalizeAmount(
+            firstNonEmpty(
+              item?.provider_amount,
+              item?.providerAmount,
+              item?.amount,
+              item?.Amount,
+              item?.price,
+              item?.Price,
+              item?.selling_price,
+              item?.sellingPrice,
+              item?.cost,
+              item?.Cost,
+              item?.value,
+              item?.Value,
+              item?.data?.amount,
+              item?.data?.price,
+            ),
+          );
           if (providerAmount <= 0) return;
-          const name = cleanString(item?.name ?? item?.short_name ?? item?.description ?? originalCode);
+
+          const name = cleanString(
+            firstNonEmpty(
+              item?.name,
+              item?.Name,
+              item?.short_name,
+              item?.shortName,
+              item?.description,
+              item?.Description,
+              item?.plan_name,
+              item?.planName,
+              item?.plan,
+              item?.Plan,
+              item?.bundle,
+              item?.Bundle,
+              originalCode,
+            ),
+          );
+
           const hotFlag =
             item?.is_hot_deal === true ||
+            item?.isHotDeal === true ||
+            item?.hot_deal === true ||
+            item?.hotDeal === true ||
             (service === "data" && isClubKonnectSME(item));
+
           const period =
             service === "data"
-              ? cleanString(item?.plan_period) || getDataPlanPeriod(item)
+              ? cleanString(
+                  firstNonEmpty(
+                    item?.plan_period,
+                    item?.planPeriod,
+                  ),
+                ) || getDataPlanPeriod(item)
               : "";
           const identity = normalizeCatalogKey(
             `${name}|${item?.validity ?? item?.duration ?? ""}|${item?.label_name ?? ""}|${period}|${hotFlag ? "HOT" : "REGULAR"}`
@@ -2141,7 +2229,18 @@ Deno.serve(
             } else if (candidate.provider_id === "flutterwave") {
               const response = await fetchBillItems(candidate.biller_code);
               if (response.ok && response.body?.status === "success") {
-                for (const item of Array.isArray(response.body?.data) ? response.body.data : []) await addItem(item, candidate);
+                // Flutterwave normally returns data as an array, but some
+                // biller catalogues have historically returned the list under
+                // another collection key. Normalize both forms here so the
+                // Data catalogue is never silently empty because of response
+                // shape differences.
+                const flutterwaveItems = normalizeClubKonnectList(
+                  response.body?.data ?? response.body,
+                );
+
+                for (const item of flutterwaveItems) {
+                  await addItem(item, candidate);
+                }
               }
             }
           } catch (error) {

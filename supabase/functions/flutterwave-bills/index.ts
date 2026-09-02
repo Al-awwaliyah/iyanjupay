@@ -1265,72 +1265,73 @@ function extractClubKonnectName(
 function normalizeClubKonnectList(
   responseBody: any,
 ): any[] {
-  if (
-    Array.isArray(
-      responseBody,
-    )
-  ) {
-    return responseBody;
-  }
+  /*
+   * ClubKonnect catalogue endpoints can return either:
+   *   - an array;
+   *   - { data: [...] };
+   *   - { data: { code: name, ... } };
+   *   - a direct object map { code: name, ... }.
+   *
+   * Keep this helper for network/cable catalogues only. The data-plan
+   * catalogue has a dedicated recursive parser below because its
+   * NETWORK -> DATAPLAN -> DESCRIPTION shape needs the parent network.
+   */
+  if (Array.isArray(responseBody)) return responseBody;
 
   const candidates = [
     responseBody?.data,
     responseBody?.Data,
-    responseBody?.plans,
-    responseBody?.Plans,
-    responseBody?.items,
-    responseBody?.Items,
     responseBody?.networks,
     responseBody?.Networks,
     responseBody?.packages,
     responseBody?.Packages,
+    responseBody?.items,
+    responseBody?.Items,
     responseBody?.result,
     responseBody?.Result,
+    responseBody?.plans,
+    responseBody?.Plans,
   ];
 
-  for (
-    const candidate of candidates
-  ) {
-    if (
-      Array.isArray(
-        candidate,
-      )
-    ) {
-      return candidate;
+  for (const candidate of candidates) {
+    if (Array.isArray(candidate)) return candidate;
+
+    if (candidate && typeof candidate === "object") {
+      const entries = Object.entries(candidate);
+      if (entries.length) {
+        return entries.map(([key, value]) => {
+          if (value && typeof value === "object" && !Array.isArray(value)) {
+            return {
+              code: key,
+              ...(value as Record<string, unknown>),
+            };
+          }
+
+          return {
+            code: key,
+            name: String(value ?? key),
+          };
+        });
+      }
     }
   }
 
-  if (
-    responseBody &&
-    typeof responseBody ===
-      "object"
-  ) {
-    return Object.entries(
-      responseBody,
-    ).map(
-      ([key, value]) => {
-        if (
-          value &&
-          typeof value ===
-            "object"
-        ) {
+  if (responseBody && typeof responseBody === "object") {
+    return Object.entries(responseBody)
+      .filter(([key]) => !["status", "statuscode", "statusCode", "message", "error"].includes(key))
+      .map(([key, value]) => {
+        if (value && typeof value === "object" && !Array.isArray(value)) {
           return {
             code: key,
-            ...(value as Record<
-              string,
-              unknown
-            >),
+            ...(value as Record<string, unknown>),
           };
         }
 
         return {
           code: key,
-          name: String(
-            value ?? key,
-          ),
+          name: String(value ?? key),
         };
-      },
-    );
+      });
   }
 
   return [];
@@ -1339,36 +1340,88 @@ function normalizeClubKonnectList(
 function normalizeNetworkName(value: unknown): string {
   return cleanString(value)
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "")
-    .replace(/^0+/, "");
+    .replace(/[^a-z0-9]+/g, "");
 }
 
 function networkAliases(value: unknown): Set<string> {
   const raw = normalizeNetworkName(value);
-  const aliases = new Set<string>([raw]);
+  const aliases = new Set<string>();
+  if (raw) aliases.add(raw);
 
-  if (raw === "01" || raw === "1" || raw === "mtn" || raw === "mtnnigeria") {
-    aliases.add("mtn"); aliases.add("01"); aliases.add("1");
+  /*
+   * ClubKonnect's current documentation lists:
+   *   01 = MTN
+   *   02 = Glo
+   *   03 = t2mobile / 9mobile
+   *   04 = Airtel
+   *
+   * The plans page currently labels the 03 network as 9mobile,
+   * while the network endpoint may call it t2mobile. Treat all
+   * documented names as aliases so catalogue matching is stable.
+   */
+  if (["01", "1", "mtn", "mtnnigeria"].includes(raw)) {
+    aliases.add("01");
+    aliases.add("1");
+    aliases.add("mtn");
+    aliases.add("mtnnigeria");
   }
-  if (raw === "02" || raw === "2" || raw === "glo" || raw === "globacom") {
-    aliases.add("glo"); aliases.add("globacom"); aliases.add("02"); aliases.add("2");
+
+  if (["02", "2", "glo", "globacom"].includes(raw)) {
+    aliases.add("02");
+    aliases.add("2");
+    aliases.add("glo");
+    aliases.add("globacom");
   }
-  if (raw === "03" || raw === "3" || raw === "airtel" || raw === "airtelnigeria") {
-    aliases.add("airtel"); aliases.add("03"); aliases.add("3");
+
+  if (["03", "3", "t2mobile", "9mobile", "etisalat"].includes(raw)) {
+    aliases.add("03");
+    aliases.add("3");
+    aliases.add("t2mobile");
+    aliases.add("9mobile");
+    aliases.add("etisalat");
   }
-  if (raw === "04" || raw === "4" || raw === "9mobile" || raw === "etisalat") {
-    aliases.add("9mobile"); aliases.add("etisalat"); aliases.add("04"); aliases.add("4");
+
+  if (["04", "4", "airtel", "airtelnigeria"].includes(raw)) {
+    aliases.add("04");
+    aliases.add("4");
+    aliases.add("airtel");
+    aliases.add("airtelnigeria");
   }
 
   return aliases;
 }
 
-function networkMatches(item: any, networkCode: string): boolean {
-  const targetAliases = networkAliases(networkCode);
-  if (!targetAliases.size) return true;
+function networksMatch(
+  left: unknown,
+  right: unknown,
+): boolean {
+  const leftAliases = networkAliases(left);
+  const rightAliases = networkAliases(right);
 
-  // Only inspect fields that actually describe a mobile network.
-  // Do NOT use plan/code/id because those are commonly product IDs.
+  if (!leftAliases.size || !rightAliases.size) return false;
+
+  for (const alias of leftAliases) {
+    if (rightAliases.has(alias)) return true;
+  }
+
+  return false;
+}
+
+function networkNameFromCode(code: unknown): string {
+  const raw = normalizeNetworkName(code);
+
+  if (["01", "1", "mtn", "mtnnigeria"].includes(raw)) return "MTN";
+  if (["02", "2", "glo", "globacom"].includes(raw)) return "Glo";
+  if (["03", "3", "t2mobile", "9mobile", "etisalat"].includes(raw)) return "9mobile";
+  if (["04", "4", "airtel", "airtelnigeria"].includes(raw)) return "Airtel";
+
+  return cleanString(code);
+}
+
+function networkMatches(item: any, networkCode: string): boolean {
+  const target = cleanString(networkCode);
+  if (!target) return true;
+
   const values = [
     item?.network,
     item?.Network,
@@ -1382,147 +1435,349 @@ function networkMatches(item: any, networkCode: string): boolean {
     item?.networkId,
     item?.mobile_network_id,
     item?.mobileNetworkId,
-  ].map(normalizeNetworkName).filter(Boolean);
+  ]
+    .map(cleanString)
+    .filter(Boolean);
 
-  // If ClubKonnect did not include a network field, do not discard the plan.
+  /*
+   * If the flattened plan inherited no explicit network, retain it.
+   * ClubKonnect's plans endpoint can be a network-keyed object where
+   * the network is represented by the parent key rather than a field.
+   */
   if (!values.length) return true;
 
-  return values.some((value) => {
-    const aliases = networkAliases(value);
-    return Array.from(aliases).some((alias) => targetAliases.has(alias));
-  });
+  return values.some((value) => networksMatch(value, target));
 }
 
 function normalizeClubKonnectNetworks(
   body: any,
 ): any[] {
-  return normalizeClubKonnectList(
-    body,
-  ).map(
-    (item) => {
-      const code =
-        cleanString(
-          firstNonEmpty(
-            item?.code,
-            item?.Code,
-            item?.network_code,
-            item?.networkCode,
-            item?.MobileNetwork,
-            item?.mobilenetwork,
-            item?.id,
-          ),
-        );
+  return normalizeClubKonnectList(body).map((item) => {
+    const code = cleanString(
+      firstNonEmpty(
+        item?.code,
+        item?.Code,
+        item?.network_code,
+        item?.networkCode,
+        item?.MobileNetwork,
+        item?.mobilenetwork,
+        item?.id,
+      ),
+    );
 
-      const name =
-        extractClubKonnectName(
-          item,
-        );
+    const name = extractClubKonnectName(item);
 
-      return {
-        ...item,
-        biller_code:
-          code,
-        billerCode:
-          code,
-        code,
-        name:
-          name || code,
-        provider:
-          "clubkonnect",
-        provider_id:
-          "clubkonnect",
-      };
-    },
+    return {
+      ...item,
+      biller_code: code,
+      billerCode: code,
+      code,
+      name: name || networkNameFromCode(code) || code,
+      provider: "clubkonnect",
+      provider_id: "clubkonnect",
+    };
+  });
+}
+
+function parseClubKonnectMoney(value: unknown): number {
+  if (typeof value === "number") return normalizeAmount(value);
+
+  const text = cleanString(value);
+  if (!text) return 0;
+
+  const cleaned = text
+    .replace(/[₦,]/g, "")
+    .replace(/^NGN\s*/i, "")
+    .trim();
+
+  const numberMatch = cleaned.match(/-?\d+(?:\.\d+)?/);
+  return numberMatch ? normalizeAmount(numberMatch[0]) : 0;
+}
+
+function parseClubKonnectPriceFromText(value: unknown): number {
+  const text = cleanString(value);
+  if (!text) return 0;
+
+  /* Documented catalogue format: "... @ ₦307.00". */
+  const atMatch = text.match(/@\s*[₦N]\s*([0-9][0-9,]*(?:\.[0-9]+)?)/i);
+  if (atMatch?.[1]) {
+    return normalizeAmount(atMatch[1]);
+  }
+
+  /* Defensive support for other common price labels. */
+  const priceMatch = text.match(/(?:price|amount|cost)\s*[:=]?\s*[₦N]?\s*([0-9][0-9,]*(?:\.[0-9]+)?)/i);
+  if (priceMatch?.[1]) {
+    return normalizeAmount(priceMatch[1]);
+  }
+
+  return 0;
+}
+
+function parseClubKonnectPlanDescription(
+  text: string,
+): {
+  name: string;
+  amount: number;
+  period: "Daily" | "Weekly" | "Monthly" | "Other";
+  isHot: boolean;
+} {
+  const name = cleanString(text);
+  const amount = parseClubKonnectPriceFromText(name);
+  const period = getDataPlanPeriod({ name });
+  const isHot = /\bsme\b|hot\s*deal|hotdeal/i.test(name);
+
+  return {
+    name,
+    amount,
+    period,
+    isHot,
+  };
+}
+
+function isClubKonnectPlanObject(value: any): boolean {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+
+  return Boolean(
+    firstNonEmpty(
+      value?.DataPlan,
+      value?.dataplan,
+      value?.data_plan,
+      value?.dataPlan,
+      value?.item_code,
+      value?.itemCode,
+      value?.plan_id,
+      value?.planId,
+      value?.amount,
+      value?.Amount,
+      value?.price,
+      value?.Price,
+      value?.description,
+      value?.Description,
+      value?.name,
+      value?.Name,
+    ),
   );
+}
+
+function flattenClubKonnectDataPlans(
+  value: any,
+  inheritedNetwork: string | null = null,
+  output: any[] = [],
+): any[] {
+  if (Array.isArray(value)) {
+    for (const entry of value) {
+      flattenClubKonnectDataPlans(entry, inheritedNetwork, output);
+    }
+    return output;
+  }
+
+  if (!value || typeof value !== "object") return output;
+
+  /* A plan object may carry its network explicitly. */
+  const ownNetwork = cleanString(
+    firstNonEmpty(
+      value?.network,
+      value?.Network,
+      value?.MobileNetwork,
+      value?.mobilenetwork,
+      value?.network_code,
+      value?.networkCode,
+      value?.mobile_network,
+      value?.mobileNetwork,
+    ),
+  );
+
+  const currentNetwork = ownNetwork || inheritedNetwork;
+
+  if (isClubKonnectPlanObject(value)) {
+    output.push({
+      ...value,
+      network: currentNetwork,
+      MobileNetwork: currentNetwork,
+    });
+    return output;
+  }
+
+  for (const [key, child] of Object.entries(value)) {
+    const keyText = cleanString(key);
+
+    /* Network metadata should not become a plan. */
+    if (
+      [
+        "network",
+        "Network",
+        "MobileNetwork",
+        "mobilenetwork",
+        "network_code",
+        "networkCode",
+        "mobile_network",
+        "mobileNetwork",
+      ].includes(keyText)
+    ) {
+      continue;
+    }
+
+    if (Array.isArray(child)) {
+      flattenClubKonnectDataPlans(child, currentNetwork || keyText || null, output);
+      continue;
+    }
+
+    if (child && typeof child === "object") {
+      /*
+       * Example documented catalogue shape:
+       * {
+       *   "MTN": {
+       *     "500": "500 MB - Weekly (SME) @ ₦307.00",
+       *     "1000.00": "1 GB - Monthly (SME) @ ₦563.00"
+       *   }
+       * }
+       */
+      flattenClubKonnectDataPlans(
+        child,
+        currentNetwork || keyText || null,
+        output,
+      );
+      continue;
+    }
+
+    const description = cleanString(child);
+    if (!description) continue;
+
+    const parsed = parseClubKonnectPlanDescription(description);
+
+    output.push({
+      network: currentNetwork || keyText || null,
+      MobileNetwork: currentNetwork || keyText || null,
+      item_code: keyText,
+      itemCode: keyText,
+      DataPlan: keyText,
+      dataPlan: keyText,
+      data_plan: keyText,
+      name: parsed.name || keyText,
+      description: parsed.name || keyText,
+      amount: parsed.amount,
+      provider_amount: parsed.amount,
+      plan_period: parsed.period,
+      plan_type: parsed.isHot ? "SME" : "REGULAR",
+      is_hot_deal: parsed.isHot,
+    });
+  }
+
+  return output;
 }
 
 function normalizeClubKonnectDataPlans(
   body: any,
   networkCode: string,
 ): any[] {
-  return normalizeClubKonnectList(
-    body,
-  )
-    .filter(
-      (item) =>
-        networkMatches(
-          item,
-          networkCode,
+  const catalogBody =
+    body?.data && typeof body.data === "object"
+      ? body.data
+      : body?.Data && typeof body.Data === "object"
+        ? body.Data
+        : body;
+
+  const flattened = flattenClubKonnectDataPlans(catalogBody);
+  const targetNetwork = cleanString(networkCode);
+
+  return flattened
+    .filter((item) => {
+      const explicitNetwork = cleanString(
+        firstNonEmpty(
+          item?.network,
+          item?.Network,
+          item?.MobileNetwork,
+          item?.mobilenetwork,
+          item?.network_code,
+          item?.networkCode,
         ),
-    )
-    .map(
-      (item) => {
-        /*
-         * IMPORTANT:
-         * item_code remains a string.
-         */
-        const itemCode =
-          extractClubKonnectItemCode(
-            item,
-          );
+      );
 
-        const providerAmount =
-          extractClubKonnectItemAmount(
-            item,
-          );
-
-        const name =
-          extractClubKonnectName(
-            item,
-          );
-
-        const isSME =
-          isClubKonnectSME(
-            item,
-          );
-
-        return {
-          ...item,
-
-          item_code:
-            itemCode,
-
-          itemCode:
-            itemCode,
-
-          data_plan:
-            itemCode,
-
-          dataPlan:
-            itemCode,
-
-          name:
-            name ||
-            itemCode,
-
-          amount:
-            providerAmount,
-
-          provider_amount:
-            providerAmount,
-
-          provider:
-            "clubkonnect",
-
-          provider_id:
-            "clubkonnect",
-
-          plan_type:
-            isSME
-              ? "SME"
-              : "REGULAR",
-
-          is_hot_deal:
-            isSME,
-        };
-      },
-    )
-    .filter(
-      (item) =>
-        Boolean(
-          item.item_code,
+      if (!explicitNetwork) return true;
+      return networksMatch(explicitNetwork, targetNetwork);
+    })
+    .map((item) => {
+      const itemCode = cleanString(
+        firstNonEmpty(
+          item?.item_code,
+          item?.itemCode,
+          item?.DataPlan,
+          item?.dataplan,
+          item?.data_plan,
+          item?.dataPlan,
+          item?.plan_id,
+          item?.planId,
+          item?.code,
+          item?.Code,
+          item?.id,
         ),
-    );
+      );
+
+      const rawName = cleanString(
+        firstNonEmpty(
+          item?.name,
+          item?.Name,
+          item?.description,
+          item?.Description,
+          item?.plan_name,
+          item?.planName,
+          item?.plan,
+          item?.Plan,
+          item?.bundle,
+          item?.Bundle,
+          itemCode,
+        ),
+      );
+
+      const providerAmount = parseClubKonnectMoney(
+        firstNonEmpty(
+          item?.provider_amount,
+          item?.providerAmount,
+          item?.amount,
+          item?.Amount,
+          item?.price,
+          item?.Price,
+          item?.cost,
+          item?.Cost,
+          item?.data?.amount,
+          item?.data?.price,
+        ),
+      ) || parseClubKonnectPriceFromText(rawName);
+
+      const isSME =
+        item?.is_hot_deal === true ||
+        item?.isHotDeal === true ||
+        item?.hot_deal === true ||
+        item?.hotDeal === true ||
+        isClubKonnectSME(item) ||
+        /\bsme\b|hot\s*deal|hotdeal/i.test(rawName);
+
+      const period =
+        cleanString(
+          firstNonEmpty(
+            item?.plan_period,
+            item?.planPeriod,
+          ),
+        ) || getDataPlanPeriod(item);
+
+      return {
+        ...item,
+        item_code: itemCode,
+        itemCode,
+        DataPlan: itemCode,
+        dataPlan: itemCode,
+        data_plan: itemCode,
+        name: rawName || itemCode,
+        amount: providerAmount,
+        provider_amount: providerAmount,
+        plan_period: period,
+        plan_type: isSME ? "SME" : "REGULAR",
+        is_hot_deal: isSME,
+        provider: "clubkonnect",
+        provider_id: "clubkonnect",
+      };
+    })
+    .filter((item) => Boolean(item.item_code) && item.provider_amount > 0);
 }
 
 function normalizeClubKonnectCableTypes(
@@ -1758,6 +2013,20 @@ async function getFlutterwaveBillStatus(
  * ============================================================
  */
 
+function catalogGroupKey(name: string, service: ServiceType): string {
+  const normalized = normalizeCatalogKey(name);
+
+  if (service === "airtime" || service === "data") {
+    const network = normalizeNetworkName(name);
+    if (networkAliases(network).has("mtn")) return "mtn";
+    if (networkAliases(network).has("glo")) return "glo";
+    if (networkAliases(network).has("airtel")) return "airtel";
+    if (networkAliases(network).has("03")) return "9mobile";
+  }
+
+  return normalized;
+}
+
 function getSafeProviderLogo(raw: any): string | null {
   const value = cleanString(
     raw?.logo ??
@@ -1991,7 +2260,7 @@ Deno.serve(
 
         const addBiller = (name: string, candidate: ProviderCandidate, raw?: any) => {
           const displayName = cleanString(name) || candidate.biller_code;
-          const key = normalizeCatalogKey(displayName);
+          const key = catalogGroupKey(displayName, service);
           if (!key) return;
           const existing = grouped.get(key);
           if (existing) {
@@ -2219,7 +2488,28 @@ Deno.serve(
             if (service === "data" && candidate.provider_id === "clubkonnect") {
               const response = await clubKonnectDataPlans();
               if (response.ok) {
-                for (const item of normalizeClubKonnectDataPlans(response.body, candidate.biller_code)) await addItem(item, candidate);
+                const normalizedPlans = normalizeClubKonnectDataPlans(
+                  response.body,
+                  candidate.biller_code,
+                );
+
+                console.log(
+                  "ClubKonnect data catalog loaded:",
+                  JSON.stringify({
+                    network: candidate.biller_code,
+                    plans: normalizedPlans.length,
+                    hot_deals: normalizedPlans.filter((item) => item?.is_hot_deal === true).length,
+                  }),
+                );
+
+                for (const item of normalizedPlans) {
+                  await addItem(item, candidate);
+                }
+              } else {
+                console.error(
+                  "ClubKonnect data catalog request failed:",
+                  response.body,
+                );
               }
             } else if (service === "cable" && candidate.provider_id === "clubkonnect") {
               const response = await clubKonnectCablePackages();
@@ -2248,11 +2538,24 @@ Deno.serve(
           }
         }
 
+        const items = Array.from(output.values());
+
+        if (service === "data") {
+          console.log(
+            "Final data catalogue response:",
+            JSON.stringify({
+              biller_code: publicBillerCode,
+              items: items.length,
+              hot_deals: items.filter((item) => item?.is_hot_deal === true).length,
+            }),
+          );
+        }
+
         return jsonResponse({
           success: true,
           service,
           biller_code: publicBillerCode,
-          items: Array.from(output.values()),
+          items,
         });
       }
 

@@ -1714,20 +1714,34 @@ async function getFlutterwaveBillStatus(
  * ============================================================
  */
 
-function providerFallbackLogo(name: string): string | null {
-  const key = normalizeCatalogKey(name).replace(/\s+/g, " ");
-  if (key.includes("mtn")) return "https://cdn.simpleicons.org/mtn/FFCC00";
-  if (key.includes("glo") || key.includes("globacom")) return "https://cdn.simpleicons.org/globacom/00A651";
-  if (key.includes("airtel")) return "https://cdn.simpleicons.org/airtel/E4002B";
-  if (key.includes("9mobile") || key.includes("etisalat")) return "https://cdn.simpleicons.org/9mobile/008751";
-  if (key.includes("dstv")) return "https://cdn.simpleicons.org/dstv/00A4E4";
-  if (key.includes("gotv")) return "https://cdn.simpleicons.org/gotv/00A4E4";
-  if (key.includes("startimes")) return "https://cdn.simpleicons.org/startimes/FF6A00";
-  if (key.includes("smile")) return "https://cdn.simpleicons.org/smile/EC008C";
-  if (key.includes("spectranet")) return "https://cdn.simpleicons.org/spectranet/0057B8";
-  return null;
-}
+function getSafeProviderLogo(raw: any): string | null {
+  const value = cleanString(
+    raw?.logo ??
+      raw?.logo_url ??
+      raw?.logoUrl,
+  );
 
+  if (!value) return null;
+
+  try {
+    const url = new URL(value);
+
+    // Never expose or request the old guessed Simple Icons URLs.
+    // If an upstream provider sends one, the frontend will use
+    // its initials fallback instead of generating a 404 request.
+    if (url.hostname === "cdn.simpleicons.org") {
+      return null;
+    }
+
+    if (url.protocol !== "https:" && url.protocol !== "http:") {
+      return null;
+    }
+
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
 Deno.serve(
   async (req) => {
     /*
@@ -2028,7 +2042,7 @@ Deno.serve(
               ...publicBiller,
               name: entry.name,
               short_name: cleanString(entry.raw?.short_name ?? entry.name),
-              logo: cleanString(entry.raw?.logo ?? entry.raw?.logo_url ?? entry.raw?.logoUrl) || providerFallbackLogo(entry.name),
+              logo: getSafeProviderLogo(entry.raw),
               biller_code: await encodeRouteToken({ version: 1, service, candidates: entry.candidates }),
               category,
               country: "NG",

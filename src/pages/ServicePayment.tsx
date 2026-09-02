@@ -163,16 +163,32 @@ function formatNaira(value: number): string {
 function getDataGroup(
   item: BillItem
 ): "Daily" | "Weekly" | "Monthly" | "Other" {
-  const explicit = cleanString(
-    (item as any).plan_period ??
-      (item as any).period ??
-      (item as any).group_name ??
-      (item as any).category
-  ).toLowerCase();
+  // The Edge Function now sends a normalized `plan_period` value of
+  // Daily | Weekly | Monthly | Other. Prefer that authoritative value.
+  const explicitValues = [
+    (item as any).plan_period,
+    (item as any).planPeriod,
+    (item as any).period,
+    (item as any).period_name,
+    (item as any).periodName,
+    (item as any).validity_period,
+    (item as any).validityPeriod,
+    (item as any).duration_unit,
+    (item as any).durationUnit,
+    (item as any).group_name,
+    (item as any).groupName,
+    (item as any).group,
+    (item as any).category,
+  ]
+    .filter((value) => value !== undefined && value !== null)
+    .map((value) => cleanString(value).toLowerCase())
+    .filter(Boolean);
 
-  if (explicit.includes("month")) return "Monthly";
-  if (explicit.includes("week")) return "Weekly";
-  if (explicit.includes("day")) return "Daily";
+  for (const value of explicitValues) {
+    if (value === "monthly" || value.includes("month")) return "Monthly";
+    if (value === "weekly" || value.includes("week")) return "Weekly";
+    if (value === "daily" || value.includes("day")) return "Daily";
+  }
 
   const text = [
     item.name,
@@ -180,10 +196,13 @@ function getDataGroup(
     item.description,
     item.validity,
     item.duration,
+    (item as any).plan,
+    (item as any).plan_name,
+    (item as any).planName,
+    (item as any).bundle,
+    (item as any).Bundle,
     (item as any).plan_type,
-    (item as any).plan_period,
-    (item as any).period_name,
-    (item as any).group_name,
+    ...explicitValues,
   ]
     .filter((value) => value !== undefined && value !== null)
     .join(" ")
@@ -192,31 +211,48 @@ function getDataGroup(
   if (
     /\b(30|31)\s*(day|days)\b/.test(text) ||
     /\bmonthly\b/.test(text) ||
-    /\b1\s*month\b/.test(text) ||
-    /\b2\s*months?\b/.test(text) ||
-    /\b3\s*months?\b/.test(text)
-  ) return "Monthly";
+    /\b[1-3]\s*months?\b/.test(text)
+  ) {
+    return "Monthly";
+  }
 
   if (
     /\b(7|14)\s*(day|days)\b/.test(text) ||
     /\bweekly\b/.test(text) ||
-    /\b1\s*week\b/.test(text) ||
-    /\b2\s*weeks?\b/.test(text)
-  ) return "Weekly";
+    /\b[1-2]\s*weeks?\b/.test(text)
+  ) {
+    return "Weekly";
+  }
 
   if (
     /\b(1|2|3)\s*(day|days)\b/.test(text) ||
     /\bdaily\b/.test(text) ||
-    /\b24\s*hours?\b/.test(text) ||
-    /\bday\b/.test(text)
-  ) return "Daily";
+    /\b24\s*hours?\b/.test(text)
+  ) {
+    return "Daily";
+  }
 
   return "Other";
 }
 
-function isHotDeal(item: BillItem): boolean {
-  if (item.is_hot_deal === true) return true;
+function isTrueFlag(value: unknown): boolean {
+  if (value === true) return true;
+  if (typeof value === "number") return value === 1;
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    return normalized === "true" || normalized === "1" || normalized === "yes";
+  }
+  return false;
+}
 
+function isHotDeal(item: BillItem): boolean {
+  // `is_hot_deal` is the authoritative customer-facing flag returned by
+  // flutterwave-bills. ClubKonnect SME plans are converted to this boolean
+  // by the Edge Function before the response reaches the browser.
+  if (isTrueFlag(item.is_hot_deal)) return true;
+
+  // Defensive fallback for older cached/catalogue responses. This does not
+  // route anything to a provider; it only preserves the Hot Deal display.
   const text = [
     item.name,
     item.short_name,
@@ -231,7 +267,7 @@ function isHotDeal(item: BillItem): boolean {
     (item as any).data_type,
     (item as any).dataType,
   ]
-    .filter(Boolean)
+    .filter((value) => value !== undefined && value !== null)
     .join(" ")
     .toLowerCase();
 
@@ -426,7 +462,7 @@ function DataPlanCard({
   onClick: () => void;
   disabled: boolean;
 }) {
-  const hot = isHotDeal(item);
+  const hot = isTrueFlag(item.is_hot_deal);
   const price = numberValue(item.selling_price ?? item.amount ?? item.price);
   const name = cleanString(item.name ?? item.short_name ?? item.data_plan ?? "Data Plan");
   const duration = cleanString(item.validity ?? item.duration ?? (item as any).plan_period);
@@ -626,7 +662,7 @@ const ServicePayment = ({
     items.forEach((item) => {
       if (!cleanString(item.item_code) || isVariableItem(item)) return;
 
-      if (isHotDeal(item)) {
+      if (isTrueFlag(item.is_hot_deal)) {
         groups["HOT DEALS"].push(item);
         return;
       }
@@ -890,35 +926,50 @@ const ServicePayment = ({
           ? data.items
           : [];
 
-      const normalizedItems =
-        loadedItems.map(
-          (item: BillItem) => ({
+      const normalizedItems = loadedItems
+        .map((item: BillItem) => {
+          const itemCode = cleanString(item.item_code);
+          if (!itemCode) return null;
+
+          // The Edge Function returns the public/opaque item route token in
+          // `item_code`. It must be sent back unchanged when purchasing.
+          // Never replace it with ClubKonnect's upstream item code.
+          const sellingPrice = numberValue(
+            item.selling_price ??
+              item.amount ??
+              (item as any).price
+          );
+
+          // For ClubKonnect, flutterwave-bills already normalizes this to
+          // Daily | Weekly | Monthly | Other. Prefer that value exactly.
+          // Only infer it when an older response does not contain it.
+          const backendPeriod = cleanString(
+            (item as any).plan_period ??
+              (item as any).planPeriod
+          );
+
+          const planPeriod = backendPeriod || getDataGroup(item);
+
+          // `is_hot_deal` is the backend contract. Keep it as a boolean so
+          // ClubKonnect SME plans reliably enter the HOT DEALS collection.
+          const hotDeal = isTrueFlag(item.is_hot_deal);
+
+          return {
             ...item,
-
-            item_code:
-              item.item_code !==
-                undefined &&
-              item.item_code !== null
-                ? String(
-                    item.item_code
-                  )
-                : undefined,
-
+            item_code: itemCode,
+            amount: sellingPrice > 0 ? sellingPrice : item.amount,
+            selling_price:
+              sellingPrice > 0
+                ? sellingPrice
+                : (item as any).selling_price,
+            plan_period: planPeriod,
             plan_type:
-              item.plan_type ??
-              (isHotDeal(item) ? "SME" : "REGULAR"),
-
-            plan_period:
-              item.plan_period ??
-              item.period ??
-              item.group_name ??
-              getDataGroup(item),
-
-            is_hot_deal:
-              item.is_hot_deal === true ||
-              isHotDeal(item),
-          })
-        );
+              cleanString(item.plan_type) ||
+              (hotDeal ? "SME" : "REGULAR"),
+            is_hot_deal: hotDeal,
+          };
+        })
+        .filter((item): item is BillItem => item !== null);
 
       setItems(
         normalizedItems

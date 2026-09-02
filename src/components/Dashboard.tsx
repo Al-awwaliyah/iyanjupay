@@ -18,11 +18,7 @@ import {
   Send,
   QrCode,
   Shield,
-  Gift,
   Banknote,
-  Car,
-  Gamepad2,
-  Plane,
   Home,
   Plus,
   Eye,
@@ -36,8 +32,8 @@ import {
 import ServiceCard from "./services/ServiceCard";
 import FundWalletModal from "./modals/FundWalletModal";
 import ServicePayment from "@/pages/ServicePayment";
-import TransferModal from "./modals/TransferModal";
 import QRCodeModal from "./modals/QRCodeModal";
+import SendMoneyPage from "@/pages/SendMoney";
 import WhatsAppFloat from "./WhatsAppFloat";
 
 import ProfilePage from "./profile/ProfilePage";
@@ -60,7 +56,11 @@ type BillService =
   | "data"
   | "electricity"
   | "cable"
-  | "internet";
+  | "internet"
+  | "insurance"
+  | "education"
+  | "airtime-card"
+  | "data-card";
 
 type CurrentPage =
   | "home"
@@ -73,6 +73,7 @@ type CurrentPage =
   | "support"
   | "transaction-limit"
   | "payment-pin"
+  | "send-money"
   | "service-payment";
 
 type SelectedService = {
@@ -115,7 +116,18 @@ const SUPPORTED_BILL_SERVICES: BillService[] = [
   "electricity",
   "cable",
   "internet",
+  "insurance",
+  "education",
+  "airtime-card",
+  "data-card",
 ];
+
+const CLUBKONNECT_SERVICES = new Set<BillService>([
+  "data",
+  "education",
+  "airtime-card",
+  "data-card",
+]);
 
 /*
  * ============================================================
@@ -351,11 +363,6 @@ const Dashboard = () => {
   const [
     fundModalOpen,
     setFundModalOpen,
-  ] = useState(false);
-
-  const [
-    transferModalOpen,
-    setTransferModalOpen,
   ] = useState(false);
 
   const [
@@ -968,102 +975,16 @@ const Dashboard = () => {
    */
 
   const services = [
-    {
-      title: "Buy Airtime",
-      description:
-        "Recharge your phone",
-      icon: Smartphone,
-      color: "bg-blue-500",
-      type: "airtime",
-    },
-    {
-      title: "Buy Data",
-      description:
-        "Internet data bundles",
-      icon: Wifi,
-      color: "bg-purple-500",
-      type: "data",
-    },
-    {
-      title: "Electricity",
-      description:
-        "Pay electricity bills",
-      icon: Zap,
-      color: "bg-yellow-500",
-      type: "electricity",
-    },
-    {
-      title: "Cable TV",
-      description:
-        "DSTV, GOTV, Startimes",
-      icon: CreditCard,
-      color: "bg-red-500",
-      type: "cable",
-    },
-    {
-      title: "Transfer Money",
-      description:
-        "Send money to others",
-      icon: Send,
-      color: "bg-green-500",
-      type: "transfer",
-    },
-    {
-      title: "Internet Bills",
-      description:
-        "Pay internet bills",
-      icon: Wifi,
-      color: "bg-indigo-500",
-      type: "internet",
-    },
-    {
-      title: "Insurance",
-      description:
-        "Pay insurance premiums",
-      icon: Shield,
-      color: "bg-teal-500",
-      type: "insurance",
-    },
-    {
-      title: "Gift Cards",
-      description:
-        "Buy digital gift cards",
-      icon: Gift,
-      color: "bg-pink-500",
-      type: "giftcards",
-    },
-    {
-      title: "Betting",
-      description:
-        "Fund betting accounts",
-      icon: Gamepad2,
-      color: "bg-orange-500",
-      type: "betting",
-    },
-    {
-      title: "Flight Booking",
-      description:
-        "Book domestic flights",
-      icon: Plane,
-      color: "bg-sky-500",
-      type: "flight",
-    },
-    {
-      title: "Hotel Booking",
-      description:
-        "Book hotel rooms",
-      icon: Home,
-      color: "bg-emerald-500",
-      type: "hotel",
-    },
-    {
-      title: "Transport",
-      description:
-        "Book bus tickets",
-      icon: Car,
-      color: "bg-gray-500",
-      type: "transport",
-    },
+    { title: "Buy Airtime", description: "Recharge your phone", icon: Smartphone, color: "bg-blue-500", type: "airtime" },
+    { title: "Buy Data", description: "Internet data bundles", icon: Wifi, color: "bg-purple-500", type: "data" },
+    { title: "Electricity", description: "Pay electricity bills", icon: Zap, color: "bg-yellow-500", type: "electricity" },
+    { title: "Cable TV", description: "DSTV, GOTV, Startimes", icon: CreditCard, color: "bg-red-500", type: "cable" },
+    { title: "Send Money", description: "Send money securely", icon: Send, color: "bg-green-500", type: "transfer" },
+    { title: "Internet Bills", description: "Pay internet bills", icon: Wifi, color: "bg-indigo-500", type: "internet" },
+    { title: "Insurance", description: "Pay insurance premiums", icon: Shield, color: "bg-teal-500", type: "insurance" },
+    { title: "Education", description: "Buy education PINs", icon: CreditCard, color: "bg-amber-500", type: "education" },
+    { title: "Airtime PIN", description: "Buy recharge PINs", icon: Smartphone, color: "bg-pink-500", type: "airtime-card" },
+    { title: "Data PIN", description: "Buy data PINs", icon: Wifi, color: "bg-cyan-500", type: "data-card" },
   ];
 
   /*
@@ -1075,12 +996,8 @@ const Dashboard = () => {
   const handleServiceClick = (
     service: typeof services[number]
   ) => {
-    if (
-      service.type ===
-      "transfer"
-    ) {
-      setTransferModalOpen(true);
-
+    if (service.type === "transfer") {
+      setCurrentPage("send-money");
       return;
     }
 
@@ -1143,14 +1060,6 @@ const Dashboard = () => {
       );
     }
 
-    // Provider routing is hidden from the customer-facing UI.
-    // Data is handled by ClubKonnect; all other bill services use
-    // the Flutterwave-backed function.
-    const serviceFunction =
-      service === "data"
-        ? "clubkonnect-services"
-        : "flutterwave-bills";
-
     if (
       !Number.isFinite(amount) ||
       amount <= 0
@@ -1207,9 +1116,9 @@ const Dashboard = () => {
         .trim()
         .toUpperCase();
 
-    if (country !== "NG") {
+    if (!CLUBKONNECT_SERVICES.has(service) && country !== "NG") {
       throw new Error(
-        "Bill payments currently support Nigeria only."
+        "This service currently supports Nigeria only."
       );
     }
 
@@ -1241,9 +1150,13 @@ const Dashboard = () => {
         );
     }
 
-    if (!customer) {
+    const requiresCustomer = !["airtime-card", "data-card"].includes(service);
+
+    if (requiresCustomer && !customer) {
       throw new Error(
-        "Customer information is required."
+        service === "education"
+          ? "Please enter the mobile number to receive the education PIN."
+          : "Customer information is required."
       );
     }
 
@@ -1351,27 +1264,38 @@ const Dashboard = () => {
     });
 
     try {
+      const functionName = CLUBKONNECT_SERVICES.has(service)
+        ? "clubkonnect-services"
+        : "flutterwave-bills";
+
+      const requestBody = CLUBKONNECT_SERVICES.has(service)
+        ? {
+            action: "pay",
+            service,
+            amount,
+            biller_code: billerCode,
+            item_code: itemCode,
+            customer,
+            details: paymentDetails,
+          }
+        : {
+            action: "pay",
+            service,
+            amount,
+            biller_code: billerCode,
+            item_code: itemCode,
+            customer,
+            country,
+            details: paymentDetails,
+          };
+
       const {
         data,
         error,
       } =
         await supabase.functions.invoke(
-          serviceFunction,
-          {
-            body: {
-              action: "pay",
-              service,
-              amount,
-              biller_code:
-                billerCode,
-              item_code:
-                itemCode,
-              customer,
-              country,
-              details:
-                paymentDetails,
-            },
-          }
+          functionName,
+          { body: requestBody }
         );
 
       if (error) {
@@ -1382,7 +1306,7 @@ const Dashboard = () => {
           );
 
         console.error(
-          "Service payment invocation error:",
+          "Service payment function error:",
           {
             error,
             extractedMessage:
@@ -1684,10 +1608,6 @@ const Dashboard = () => {
 
       await loadDashboardStats();
 
-      setTransferModalOpen(
-        false
-      );
-
       toast({
         title:
           "Transfer Processing",
@@ -1762,6 +1682,16 @@ const Dashboard = () => {
           setCurrentPage("home");
         }}
         onPurchase={handlePurchase}
+      />
+    );
+  }
+
+  if (currentPage === "send-money") {
+    return (
+      <SendMoneyPage
+        onBack={() => setCurrentPage("home")}
+        walletBalance={Number(wallet?.balance ?? 0)}
+        onTransfer={handleTransfer}
       />
     );
   }
@@ -2479,23 +2409,6 @@ const Dashboard = () => {
           await refreshWallet();
           await loadDashboardStats();
         }}
-      />
-
-      <TransferModal
-        isOpen={
-          transferModalOpen
-        }
-        onClose={() =>
-          setTransferModalOpen(
-            false
-          )
-        }
-        walletBalance={Number(
-          wallet?.balance ?? 0
-        )}
-        onTransfer={
-          handleTransfer
-        }
       />
 
       <QRCodeModal

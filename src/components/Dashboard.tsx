@@ -26,6 +26,7 @@ import {
   Smartphone,
   Wifi,
   Zap,
+  Gift,
   CreditCard,
 } from "lucide-react";
 

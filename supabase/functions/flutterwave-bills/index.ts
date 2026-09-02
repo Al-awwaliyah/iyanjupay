@@ -424,6 +424,94 @@ function extractCustomer(
   );
 }
 
+type ProviderCandidate = {
+  provider_id: ProviderId;
+  biller_code: string;
+  item_code?: string;
+};
+
+async function getRouteTokenSecret(): Promise<CryptoKey> {
+  const secret = cleanString(
+    Deno.env.get("SERVICE_ROUTE_TOKEN_SECRET") ??
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ??
+      "",
+  );
+  if (!secret) throw new Error("Service route secret is not configured.");
+  return crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign", "verify"],
+  );
+}
+
+function base64UrlEncode(bytes: Uint8Array): string {
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+
+function base64UrlDecode(value: string): Uint8Array {
+  const padded = value.replace(/-/g, "+").replace(/_/g, "/") + "=".repeat((4 - value.length % 4) % 4);
+  const binary = atob(padded);
+  return Uint8Array.from(binary, (char) => char.charCodeAt(0));
+}
+
+async function encodeRouteToken(value: unknown): Promise<string> {
+  const payload = base64UrlEncode(new TextEncoder().encode(JSON.stringify(value)));
+  const key = await getRouteTokenSecret();
+  const signature = await crypto.subtle.sign(
+    "HMAC",
+    key,
+    new TextEncoder().encode(payload),
+  );
+  return `${payload}.${base64UrlEncode(new Uint8Array(signature))}`;
+}
+
+async function decodeRouteToken<T>(value: unknown): Promise<T | null> {
+  const token = cleanString(value);
+  const [payload, signature] = token.split(".");
+  if (!payload || !signature) return null;
+  try {
+    const key = await getRouteTokenSecret();
+    const valid = await crypto.subtle.verify(
+      "HMAC",
+      key,
+      base64UrlDecode(signature),
+      new TextEncoder().encode(payload),
+    );
+    if (!valid) return null;
+    return JSON.parse(new TextDecoder().decode(base64UrlDecode(payload))) as T;
+  } catch (error) {
+    console.error("Invalid service route token:", error);
+    return null;
+  }
+}
+
+function normalizeCatalogKey(value: unknown): string {
+  return cleanString(value)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function providerSellingPrice(providerId: ProviderId, providerAmount: number, service: ServiceType): number {
+  if (providerId === "clubkonnect") {
+    return calculateClubKonnectPrice(providerAmount, service).sellingAmount;
+  }
+  return roundMoney(providerAmount + (service === "data" ? FLUTTERWAVE_DATA_MARKUP : 0));
+}
+
+function chooseCheapestCandidate(candidates: ProviderCandidate[], service: ServiceType): ProviderCandidate | null {
+  if (!candidates.length) return null;
+  if (service !== "data" && service !== "cable") {
+    const flutterwave = candidates.find((candidate) => candidate.provider_id === "flutterwave");
+    if (flutterwave) return flutterwave;
+  }
+  return candidates[0] ?? null;
+}
+
 function extractProviderId(
   body: any,
   details: any,
@@ -1749,8 +1837,6 @@ Deno.serve(
           {
             success:
               true,
-            provider:
-              "flutterwave",
             data:
               response.body
                 ?.data ??
@@ -1763,308 +1849,136 @@ Deno.serve(
        * ========================================================
        * ACTION: BILLERS
        * ========================================================
+       *
+       * The client never selects an integration provider.
+       * We merge the available billers from all supported
+       * integrations and return an opaque route token.
        */
 
-      if (
-        action ===
-        "billers"
-      ) {
-        const provider =
-          extractProviderId(
-            body,
-            body?.details ??
-              {},
-          );
-
-        const service =
-          normalizeService(
-            body?.service ??
-              body?.details
-                ?.service,
-          );
-
-        /*
-         * ------------------------------------------------------
-         * CLUBKONNECT BILLERS
-         * ------------------------------------------------------
-         */
-
-        if (
-          provider ===
-          "clubkonnect"
-        ) {
-          if (
-            !service ||
-            !CLUBKONNECT_SERVICES.includes(
-              service,
-            )
-          ) {
-            return jsonResponse(
-              {
-                success:
-                  false,
-                error:
-                  "ClubKonnect does not support this service.",
-              },
-              400,
-            );
-          }
-
-          if (
-            service ===
-            "internet"
-          ) {
-            return jsonResponse(
-              {
-                success:
-                  false,
-                error:
-                  "ClubKonnect Internet service is not enabled yet.",
-              },
-              400,
-            );
-          }
-
-          if (
-            service ===
-            "airtime"
-          ) {
-            const response =
-              await clubKonnectAirtimeNetworks();
-
-            if (
-              !response.ok
-            ) {
-              console.error(
-                "ClubKonnect airtime networks failed:",
-                response.body,
-              );
-
-              return jsonResponse(
-                {
-                  success:
-                    false,
-                  error:
-                    "Unable to load airtime networks.",
-                },
-                502,
-              );
-            }
-
-            return jsonResponse(
-              {
-                success:
-                  true,
-                provider:
-                  "clubkonnect",
-                service,
-                data:
-                  normalizeClubKonnectNetworks(
-                    response.body,
-                  ),
-              },
-            );
-          }
-
-          if (
-            service ===
-            "data"
-          ) {
-            const response =
-              await clubKonnectDataNetworks();
-
-            if (
-              !response.ok
-            ) {
-              console.error(
-                "ClubKonnect data networks failed:",
-                response.body,
-              );
-
-              return jsonResponse(
-                {
-                  success:
-                    false,
-                  error:
-                    "Unable to load data networks.",
-                },
-                502,
-              );
-            }
-
-            return jsonResponse(
-              {
-                success:
-                  true,
-                provider:
-                  "clubkonnect",
-                service,
-                data:
-                  normalizeClubKonnectNetworks(
-                    response.body,
-                  ),
-              },
-            );
-          }
-
-          if (
-            service ===
-            "cable"
-          ) {
-            const response =
-              await clubKonnectCableTypes();
-
-            if (
-              !response.ok
-            ) {
-              console.error(
-                "ClubKonnect cable types failed:",
-                response.body,
-              );
-
-              return jsonResponse(
-                {
-                  success:
-                    false,
-                  error:
-                    "Unable to load cable providers.",
-                },
-                502,
-              );
-            }
-
-            return jsonResponse(
-              {
-                success:
-                  true,
-                provider:
-                  "clubkonnect",
-                service,
-                data:
-                  normalizeClubKonnectCableTypes(
-                    response.body,
-                  ),
-              },
-            );
-          }
-
-          /*
-           * Electricity:
-           *
-           * The deployed ClubKonnect helper currently
-           * exposes verification and purchase methods,
-           * not a verified electricity-company catalog
-           * endpoint.
-           *
-           * Therefore we do not invent one here.
-           *
-           * The frontend/backend can use the configured
-           * provider code when supplied.
-           */
-
-          if (
-            service ===
-            "electricity"
-          ) {
-            return jsonResponse(
-              {
-                success:
-                  true,
-                provider:
-                  "clubkonnect",
-                service,
-                data:
-                  [],
-                catalog_source:
-                  "manual_provider_selection",
-              },
-            );
-          }
-
-          return jsonResponse(
-            {
-              success:
-                true,
-              provider:
-                "clubkonnect",
-              service,
-              data:
-                [],
-            },
-          );
-        }
-
-        /*
-         * ------------------------------------------------------
-         * FLUTTERWAVE BILLERS
-         * ------------------------------------------------------
-         */
-
-        const category =
-          cleanString(
-            body?.category ??
-              body?.details
-                ?.category,
-          );
-
-        if (
-          !category
-        ) {
-          return jsonResponse(
-            {
-              success:
-                false,
-              error:
-                "Bill category is required.",
-            },
-            400,
-          );
-        }
-
-        const response =
-          await flw(
-            `/bills/${encodeURIComponent(
-              category,
-            )}/billers?country=NG`,
-            {
-              method:
-                "GET",
-            },
-          );
-
-        if (
-          !response.ok ||
-          response.body?.status !==
-            "success"
-        ) {
-          console.error(
-            "Flutterwave billers request failed:",
-            response.body,
-          );
-
-          return jsonResponse(
-            {
-              success:
-                false,
-              error:
-                "Unable to load bill providers.",
-            },
-            502,
-          );
-        }
-
-        return jsonResponse(
-          {
-            success:
-              true,
-            provider:
-              "flutterwave",
-            data:
-              response.body
-                ?.data ??
-              [],
-          },
+      if (action === "billers") {
+        const service = normalizeService(
+          body?.service ?? body?.details?.service,
         );
+        const category = cleanString(
+          body?.category ?? body?.details?.category ??
+            (service ? SERVICE_CATEGORY_MAP[service] : ""),
+        );
+
+        if (!service) {
+          return jsonResponse({ success: false, error: "A valid service is required." }, 400);
+        }
+
+        const grouped = new Map<string, { name: string; candidates: ProviderCandidate[]; raw?: any }>();
+
+        const addBiller = (name: string, candidate: ProviderCandidate, raw?: any) => {
+          const displayName = cleanString(name) || candidate.biller_code;
+          const key = normalizeCatalogKey(displayName);
+          if (!key) return;
+          const existing = grouped.get(key);
+          if (existing) {
+            if (!existing.candidates.some((c) => c.provider_id === candidate.provider_id && c.biller_code === candidate.biller_code)) {
+              existing.candidates.push(candidate);
+            }
+            return;
+          }
+          grouped.set(key, { name: displayName, candidates: [candidate], raw });
+        };
+
+        // Flutterwave is queried for every supported service.
+        if (category) {
+          try {
+            const response = await flw(
+              `/bills/${encodeURIComponent(category)}/billers?country=NG`,
+              { method: "GET" },
+            );
+            if (response.ok && response.body?.status === "success") {
+              for (const biller of Array.isArray(response.body?.data) ? response.body.data : []) {
+                const code = cleanString(biller?.biller_code ?? biller?.code ?? biller?.id);
+                const name = cleanString(biller?.name ?? biller?.short_name ?? biller?.biller_name ?? code);
+                if (code) addBiller(name, { provider_id: "flutterwave", biller_code: code }, biller);
+              }
+            } else {
+              console.error("Flutterwave billers request failed:", response.body);
+            }
+          } catch (error) {
+            console.error("Flutterwave billers request exception:", error);
+          }
+        }
+
+        // ClubKonnect catalogs are added where the integration has an authoritative list.
+        if (service === "airtime" || service === "data") {
+          try {
+            const response = await clubKonnectDataNetworks();
+            if (response.ok) {
+              for (const biller of normalizeClubKonnectNetworks(response.body)) {
+                const code = cleanString(biller?.biller_code ?? biller?.code);
+                if (code) addBiller(cleanString(biller?.name ?? code), { provider_id: "clubkonnect", biller_code: code }, biller);
+              }
+            }
+          } catch (error) {
+            console.error("ClubKonnect data networks exception:", error);
+          }
+        }
+
+        if (service === "airtime") {
+          try {
+            const response = await clubKonnectAirtimeNetworks();
+            if (response.ok) {
+              for (const biller of normalizeClubKonnectNetworks(response.body)) {
+                const code = cleanString(biller?.biller_code ?? biller?.code);
+                if (code) addBiller(cleanString(biller?.name ?? code), { provider_id: "clubkonnect", biller_code: code }, biller);
+              }
+            }
+          } catch (error) {
+            console.error("ClubKonnect airtime networks exception:", error);
+          }
+        }
+
+        if (service === "cable") {
+          try {
+            const response = await clubKonnectCableTypes();
+            if (response.ok) {
+              for (const biller of normalizeClubKonnectCableTypes(response.body)) {
+                const code = cleanString(biller?.biller_code ?? biller?.code);
+                if (code) addBiller(cleanString(biller?.name ?? code), { provider_id: "clubkonnect", biller_code: code }, biller);
+              }
+            }
+          } catch (error) {
+            console.error("ClubKonnect cable types exception:", error);
+          }
+        }
+
+        const billers = await Promise.all(
+          Array.from(grouped.values()).map(async (entry) => {
+            const publicBiller =
+              entry.raw && typeof entry.raw === "object"
+                ? { ...(entry.raw as Record<string, unknown>) }
+                : {};
+
+            // Never expose integration/provider metadata to the customer.
+            delete publicBiller.provider;
+            delete publicBiller.provider_id;
+            delete publicBiller.provider_amount;
+            delete publicBiller.selling_amount;
+            delete publicBiller.markup_rate;
+            delete publicBiller.markup_amount;
+
+            return {
+              ...publicBiller,
+              name: entry.name,
+              short_name: cleanString(entry.raw?.short_name ?? entry.name),
+              biller_code: await encodeRouteToken({ version: 1, service, candidates: entry.candidates }),
+              category,
+              country: "NG",
+            };
+          }),
+        );
+
+        if (!billers.length) {
+          return jsonResponse({ success: false, error: "No service providers are currently available." }, 502);
+        }
+
+        return jsonResponse({ success: true, service, billers });
       }
 
       /*
@@ -2073,266 +1987,87 @@ Deno.serve(
        * ========================================================
        */
 
-      if (
-        action ===
-        "items"
-      ) {
-        const provider =
-          extractProviderId(
-            body,
-            body?.details ??
-              {},
-          );
+      if (action === "items") {
+        const service = normalizeService(body?.service ?? body?.details?.service);
+        const publicBillerCode = extractBillerCode(body, body?.details ?? {});
+        if (!service) return jsonResponse({ success: false, error: "A valid service is required." }, 400);
+        if (!publicBillerCode) return jsonResponse({ success: false, error: "A valid biller is required." }, 400);
 
-        const service =
-          normalizeService(
-            body?.service ??
-              body?.details
-                ?.service,
-          );
+        const route = await decodeRouteToken<{ version: number; service: ServiceType; candidates: ProviderCandidate[] }>(publicBillerCode);
+        const candidates = route?.candidates ?? [];
+        if (!candidates.length) return jsonResponse({ success: false, error: "The selected service provider is no longer available." }, 400);
 
-        const billerCode =
-          extractBillerCode(
-            body,
-            body?.details ??
-              {},
-          );
+        const output = new Map<string, any>();
 
-        if (
-          !service
-        ) {
-          return jsonResponse(
-            {
-              success:
-                false,
-              error:
-                "A valid service is required.",
-            },
-            400,
-          );
-        }
+        const addItem = async (item: any, candidate: ProviderCandidate) => {
+          const originalCode = cleanString(item?.item_code ?? item?.itemCode ?? item?.code ?? item?.id);
+          if (!originalCode) return;
+          const providerAmount = normalizeAmount(item?.provider_amount ?? item?.amount ?? item?.price ?? item?.selling_price ?? item?.cost ?? item?.value);
+          if (providerAmount <= 0) return;
+          const name = cleanString(item?.name ?? item?.short_name ?? item?.description ?? originalCode);
+          const identity = normalizeCatalogKey(`${name}|${item?.validity ?? item?.duration ?? ""}|${item?.label_name ?? ""}`) || originalCode.toLowerCase();
+          const sellingPrice = providerSellingPrice(candidate.provider_id, providerAmount, service);
+          const routeCode = await encodeRouteToken({ version: 1, provider_id: candidate.provider_id, biller_code: candidate.biller_code, item_code: originalCode });
+          const publicItem = {
+            ...item,
+            name,
+            item_code: routeCode,
+            amount: sellingPrice,
+            selling_price: sellingPrice,
 
-        if (
-          !billerCode
-        ) {
-          return jsonResponse(
-            {
-              success:
-                false,
-              error:
-                "A valid bill provider is required.",
-            },
-            400,
-          );
-        }
 
-        /*
-         * ------------------------------------------------------
-         * CLUBKONNECT DATA PLANS
-         * ------------------------------------------------------
-         */
+            provider_id: undefined,
+          };
+          const existing = output.get(identity);
+          if (!existing || sellingPrice < normalizeAmount(existing.selling_price)) output.set(identity, publicItem);
+        };
 
-        if (
-          provider ===
-            "clubkonnect" &&
-          service ===
-            "data"
-        ) {
-          const response =
-            await clubKonnectDataPlans();
-
-          if (
-            !response.ok
-          ) {
-            console.error(
-              "ClubKonnect data plans failed:",
-              response.body,
-            );
-
-            return jsonResponse(
+        // ClubKonnect airtime/electricity are variable-amount services and do not
+        // have a package catalog. Expose one neutral selectable service entry so
+        // the customer can choose an amount while routing remains server-side.
+        for (const candidate of candidates) {
+          if (candidate.provider_id === "clubkonnect" &&
+              (service === "airtime" || service === "electricity")) {
+            await addItem(
               {
-                success:
-                  false,
-                error:
-                  "Unable to load ClubKonnect data plans.",
+                item_code: "__variable__",
+                name: service === "airtime" ? "Airtime Recharge" : "Electricity Payment",
+                amount: 1,
               },
-              502,
+              candidate,
             );
           }
-
-          const plans =
-            normalizeClubKonnectDataPlans(
-              response.body,
-              billerCode,
-            );
-
-          return jsonResponse(
-            {
-              success:
-                true,
-              provider:
-                "clubkonnect",
-              service,
-              biller_code:
-                billerCode,
-              data:
-                plans,
-            },
-          );
         }
 
-        /*
-         * ------------------------------------------------------
-         * CLUBKONNECT CABLE PACKAGES
-         * ------------------------------------------------------
-         */
-
-        if (
-          provider ===
-            "clubkonnect" &&
-          service ===
-            "cable"
-        ) {
-          const response =
-            await clubKonnectCablePackages();
-
-          if (
-            !response.ok
-          ) {
-            console.error(
-              "ClubKonnect cable packages failed:",
-              response.body,
-            );
-
-            return jsonResponse(
-              {
-                success:
-                  false,
-                error:
-                  "Unable to load ClubKonnect cable packages.",
-              },
-              502,
-            );
+        for (const candidate of candidates) {
+          try {
+            if (service === "data" && candidate.provider_id === "clubkonnect") {
+              const response = await clubKonnectDataPlans();
+              if (response.ok) {
+                for (const item of normalizeClubKonnectDataPlans(response.body, candidate.biller_code)) await addItem(item, candidate);
+              }
+            } else if (service === "cable" && candidate.provider_id === "clubkonnect") {
+              const response = await clubKonnectCablePackages();
+              if (response.ok) {
+                for (const item of normalizeClubKonnectCablePackages(response.body, candidate.biller_code)) await addItem(item, candidate);
+              }
+            } else if (candidate.provider_id === "flutterwave") {
+              const response = await fetchBillItems(candidate.biller_code);
+              if (response.ok && response.body?.status === "success") {
+                for (const item of Array.isArray(response.body?.data) ? response.body.data : []) await addItem(item, candidate);
+              }
+            }
+          } catch (error) {
+            console.error("Service item catalog exception:", error);
           }
-
-          const packages =
-            normalizeClubKonnectCablePackages(
-              response.body,
-              billerCode,
-            );
-
-          return jsonResponse(
-            {
-              success:
-                true,
-              provider:
-                "clubkonnect",
-              service,
-              biller_code:
-                billerCode,
-              data:
-                packages,
-            },
-          );
         }
 
-        /*
-         * ClubKonnect Airtime and Electricity
-         * do not require a package catalog in
-         * the same way.
-         */
-
-        if (
-          provider ===
-            "clubkonnect" &&
-          (
-            service ===
-              "airtime" ||
-            service ===
-              "electricity"
-          )
-        ) {
-          return jsonResponse(
-            {
-              success:
-                true,
-              provider:
-                "clubkonnect",
-              service,
-              biller_code:
-                billerCode,
-              data:
-                [],
-            },
-          );
-        }
-
-        /*
-         * ClubKonnect Internet is not supported.
-         */
-
-        if (
-          provider ===
-            "clubkonnect"
-        ) {
-          return jsonResponse(
-            {
-              success:
-                false,
-              error:
-                "ClubKonnect does not support this service yet.",
-            },
-            400,
-          );
-        }
-
-        /*
-         * ------------------------------------------------------
-         * FLUTTERWAVE ITEMS
-         * ------------------------------------------------------
-         */
-
-        const response =
-          await fetchBillItems(
-            billerCode,
-          );
-
-        if (
-          !response.ok ||
-          response.body?.status !==
-            "success"
-        ) {
-          console.error(
-            "Flutterwave bill items request failed:",
-            response.body,
-          );
-
-          return jsonResponse(
-            {
-              success:
-                false,
-              error:
-                "Unable to load bill packages.",
-            },
-            502,
-          );
-        }
-
-        return jsonResponse(
-          {
-            success:
-              true,
-            provider:
-              "flutterwave",
-            service,
-            biller_code:
-              billerCode,
-            data:
-              response.body
-                ?.data ??
-              [],
-          },
-        );
+        return jsonResponse({
+          success: true,
+          service,
+          biller_code: publicBillerCode,
+          items: Array.from(output.values()),
+        });
       }
 
       /*
@@ -2474,8 +2209,6 @@ Deno.serve(
               success:
                 status.state !==
                 "failed",
-              provider:
-                "clubkonnect",
               service,
               validated:
                 status.state !==
@@ -2574,8 +2307,6 @@ Deno.serve(
               success:
                 status.state !==
                 "failed",
-              provider:
-                "clubkonnect",
               service,
               validated:
                 status.state !==
@@ -2621,8 +2352,6 @@ Deno.serve(
             {
               success:
                 true,
-              provider:
-                "clubkonnect",
               service,
               validated:
                 true,
@@ -2683,8 +2412,6 @@ Deno.serve(
           {
             success:
               true,
-            provider:
-              "flutterwave",
             service,
             validated:
               true,
@@ -2942,10 +2669,6 @@ Deno.serve(
                 status:
                   "successful",
                 reference,
-                provider:
-                  "clubkonnect",
-                provider_reference:
-                  providerReference,
                 message:
                   "Payment completed successfully.",
               },
@@ -3114,10 +2837,6 @@ Deno.serve(
               status:
                 "pending",
               reference,
-              provider:
-                "clubkonnect",
-              provider_reference:
-                providerReference,
               message:
                 "Your payment is still being verified.",
             },
@@ -3260,10 +2979,6 @@ Deno.serve(
               status:
                 "successful",
               reference,
-              provider:
-                "flutterwave",
-              provider_reference:
-                providerReference,
               message:
                 "Payment completed successfully.",
             },
@@ -3414,10 +3129,6 @@ Deno.serve(
             status:
               "pending",
             reference,
-            provider:
-              "flutterwave",
-            provider_reference:
-              providerReference,
             message:
               "Your payment is still being verified.",
           },
@@ -3460,11 +3171,28 @@ Deno.serve(
           );
         }
 
-        const provider =
-          extractProviderId(
-            body,
-            details,
-          );
+        let provider = extractProviderId(body, details);
+
+        // Provider routing is server-controlled. Public biller/item codes are opaque route tokens.
+        const publicBillerCode = extractBillerCode(body, details);
+        const publicItemCode = extractItemCode(body, details);
+        const billerRoute = await decodeRouteToken<{ version: number; service: ServiceType; candidates: ProviderCandidate[] }>(publicBillerCode);
+        const itemRoute = await decodeRouteToken<{ version: number; provider_id: ProviderId; biller_code: string; item_code: string }>(publicItemCode);
+
+        if (itemRoute?.provider_id && itemRoute.biller_code && itemRoute.item_code) {
+          provider = itemRoute.provider_id;
+        } else if (billerRoute?.candidates?.length) {
+          const selected = chooseCheapestCandidate(billerRoute.candidates, service);
+          if (selected) provider = selected.provider_id;
+        } else {
+          return jsonResponse({ success: false, error: "The selected service is no longer available." }, 400);
+        }
+
+        const billerCode = itemRoute?.biller_code ??
+          (billerRoute?.candidates?.find((candidate) => candidate.provider_id === provider)?.biller_code ??
+            publicBillerCode);
+
+        const itemCode = itemRoute?.item_code ?? publicItemCode;
 
         const country =
           cleanString(
@@ -3489,18 +3217,6 @@ Deno.serve(
             400,
           );
         }
-
-        const billerCode =
-          extractBillerCode(
-            body,
-            details,
-          );
-
-        const itemCode =
-          extractItemCode(
-            body,
-            details,
-          );
 
         let customer =
           extractCustomer(
@@ -3644,20 +3360,6 @@ Deno.serve(
           service ===
           "internet"
         ) {
-          if (
-            !details?.provider
-          ) {
-            return jsonResponse(
-              {
-                success:
-                  false,
-                error:
-                  "Please select an internet provider.",
-              },
-              400,
-            );
-          }
-
           if (
             customer.length <
             3
@@ -4393,8 +4095,6 @@ Deno.serve(
                 reference,
                 transaction_id:
                   transactionId,
-                provider:
-                  "clubkonnect",
                 message:
                   "Your payment is being verified. Please wait while we confirm the provider result.",
               },
@@ -4502,18 +4202,6 @@ Deno.serve(
                 reference,
                 transaction_id:
                   transactionId,
-                provider:
-                  "clubkonnect",
-                provider_reference:
-                  providerReference,
-                provider_amount:
-                  providerAmount,
-                markup_rate:
-                  markupRate,
-                markup_amount:
-                  markupAmount,
-                selling_amount:
-                  sellingAmount,
                 message:
                   "Payment completed successfully.",
               },
@@ -4721,18 +4409,6 @@ Deno.serve(
               reference,
               transaction_id:
                 transactionId,
-              provider:
-                "clubkonnect",
-              provider_reference:
-                providerReference,
-              provider_amount:
-                providerAmount,
-              markup_rate:
-                markupRate,
-              markup_amount:
-                markupAmount,
-              selling_amount:
-                sellingAmount,
               message:
                 "Your payment has been initiated and is being verified.",
             },
@@ -5061,7 +4737,8 @@ Deno.serve(
                     country:
                       "NG",
 
-                    customer,
+                    customer_id:
+                      customer,
 
                     amount:
                       providerAmount,
@@ -5141,8 +4818,6 @@ Deno.serve(
               reference,
               transaction_id:
                 transactionId,
-              provider:
-                "flutterwave",
               message:
                 "Your payment is being verified.",
             },
@@ -5243,14 +4918,6 @@ Deno.serve(
               reference,
               transaction_id:
                 transactionId,
-              provider:
-                "flutterwave",
-              provider_reference:
-                providerReference,
-              provider_amount:
-                providerAmount,
-              selling_amount:
-                sellingAmount,
               message:
                 "Payment completed successfully.",
             },
@@ -5433,14 +5100,6 @@ Deno.serve(
             reference,
             transaction_id:
               transactionId,
-            provider:
-              "flutterwave",
-            provider_reference:
-              providerReference,
-            provider_amount:
-              providerAmount,
-            selling_amount:
-              sellingAmount,
             message:
               "Your payment has been initiated and is being verified.",
           },

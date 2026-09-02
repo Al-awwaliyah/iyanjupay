@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 
-const SPLASH_DURATION = 10_000;
+const SPLASH_DURATION = 8_000;
 
 const AppSplash = () => {
   const [progress, setProgress] = useState(0);

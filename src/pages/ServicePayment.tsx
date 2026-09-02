@@ -6,9 +6,17 @@ import React, {
 
 import {
   ArrowLeft,
+  Check,
+  ChevronDown,
+  Flame,
+  History,
   Loader2,
   RefreshCw,
-  Flame,
+  ShieldCheck,
+  Smartphone,
+  Tv,
+  Wifi,
+  Zap,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -36,11 +44,18 @@ interface ServicePaymentProps {
     amount: number,
     details: Record<string, any>
   ) => Promise<void>;
+
+  /**
+   * Optional history handler.
+   *
+   * The existing parent does not need to provide this.
+   * If supplied, the History button will use it.
+   */
+  onHistory?: () => void;
 }
 
 interface Biller {
   id?: number | string;
-
   name?: string;
   biller_code?: string;
   category?: string;
@@ -49,7 +64,6 @@ interface Biller {
   logo?: string | null;
   description?: string;
   short_name?: string;
-
   [key: string]: any;
 }
 
@@ -64,6 +78,9 @@ interface BillItem {
   biller_name?: string;
 
   amount?: number | string;
+  selling_price?: number | string;
+  price?: number | string;
+
   minimum?: number | string;
   maximum?: number | string;
   fee?: number | string;
@@ -77,7 +94,6 @@ interface BillItem {
 
   is_airtime?: boolean;
   country?: string;
-
 
   data_plan?: string;
   network_code?: string;
@@ -109,12 +125,28 @@ const AIRTIME_AMOUNTS = [
 ];
 
 const BILL_AMOUNTS = [
-  50,
-  100,
-  200,
   500,
   1000,
+  2000,
+  5000,
+  10000,
 ];
+
+const DATA_TABS = [
+  "HOT",
+  "Extra Night",
+  "Daily",
+  "Weekly",
+  "Monthly",
+] as const;
+
+type DataTab = (typeof DATA_TABS)[number];
+
+type DataGroup =
+  | "Daily"
+  | "Weekly"
+  | "Monthly"
+  | "Other";
 
 // ============================================================
 // HELPERS
@@ -131,22 +163,68 @@ function numberValue(value: unknown): number {
 }
 
 function formatNaira(value: number): string {
-  return `₦${Number(value).toLocaleString("en-NG")}`;
+  return `₦${Number(value || 0).toLocaleString("en-NG")}`;
 }
 
-function getDataGroup(
-  item: BillItem
-): "Daily" | "Weekly" | "Monthly" | "Other" {
-  const text = [
+function getItemName(item: BillItem): string {
+  return (
+    cleanString(item.name) ||
+    cleanString(item.short_name) ||
+    cleanString(item.data_plan) ||
+    "Service Plan"
+  );
+}
+
+function getItemPrice(item: BillItem): number {
+  return numberValue(
+    item.selling_price ??
+      item.amount ??
+      item.price
+  );
+}
+
+function getDataText(item: BillItem): string {
+  return [
     item.name,
     item.short_name,
     item.description,
     item.validity,
     item.duration,
+    item.data_plan,
+    item.plan_type,
   ]
     .filter(Boolean)
     .join(" ")
     .toLowerCase();
+}
+
+function isHotDeal(item: BillItem): boolean {
+  if (item.is_hot_deal === true) {
+    return true;
+  }
+
+  const text = getDataText(item);
+
+  return (
+    /\bsme\b/.test(text) ||
+    /\bhot\b/.test(text) ||
+    /\bhot deal\b/.test(text) ||
+    /\bextra\s*value\b/.test(text)
+  );
+}
+
+function isExtraNight(item: BillItem): boolean {
+  const text = getDataText(item);
+
+  return (
+    /\bnight\b/.test(text) ||
+    /\bmidnight\b/.test(text) ||
+    /\bextra\s*night\b/.test(text)
+  );
+}
+
+function getDataGroup(item: BillItem): DataGroup {
+  const text = getDataText(item);
 
   if (
     /\b(30|31)\s*(day|days)\b/.test(text) ||
@@ -179,44 +257,36 @@ function getDataGroup(
   return "Other";
 }
 
-function isHotDeal(
-  item: BillItem
-): boolean {
-  if (
-    item.is_hot_deal === true
-  ) {
-    return true;
-  }
-
-  const text = [
-    item.name,
-    item.short_name,
-    item.description,
-    item.plan_type,
-  ]
-    .filter(Boolean)
-    .join(" ")
-    .toLowerCase();
-
-  return /\bsme\b/.test(text);
-}
-
-function getPlanType(
-  item: BillItem
-): string {
-  if (
-    cleanString(
-      item.plan_type
-    )
-  ) {
-    return cleanString(
-      item.plan_type
-    );
+function getPlanType(item: BillItem): string {
+  if (cleanString(item.plan_type)) {
+    return cleanString(item.plan_type);
   }
 
   return isHotDeal(item)
-    ? "SME"
+    ? "HOT"
     : "REGULAR";
+}
+
+function getServiceIcon(type: string) {
+  switch (type) {
+    case "airtime":
+      return Smartphone;
+
+    case "data":
+      return Wifi;
+
+    case "electricity":
+      return Zap;
+
+    case "cable":
+      return Tv;
+
+    case "internet":
+      return Wifi;
+
+    default:
+      return Smartphone;
+  }
 }
 
 // ============================================================
@@ -228,18 +298,30 @@ const ServicePayment = ({
   walletBalance,
   onBack,
   onPurchase,
+  onHistory,
 }: ServicePaymentProps) => {
   // ==========================================================
   // FORM STATE
   // ==========================================================
 
-  const [amount, setAmount] = useState("");
-  const [customer, setCustomer] = useState("");
+  const [amount, setAmount] =
+    useState("");
+
+  const [customer, setCustomer] =
+    useState("");
+
   const [customAmountMode, setCustomAmountMode] =
     useState(false);
 
   // ==========================================================
-  // PAYMENT PIN
+  // DATA TAB
+  // ==========================================================
+
+  const [dataTab, setDataTab] =
+    useState<DataTab>("HOT");
+
+  // ==========================================================
+  // PIN
   // ==========================================================
 
   const [showPinPrompt, setShowPinPrompt] =
@@ -261,15 +343,11 @@ const ServicePayment = ({
   const [items, setItems] =
     useState<BillItem[]>([]);
 
-  const [
-    selectedBillerCode,
-    setSelectedBillerCode,
-  ] = useState("");
+  const [selectedBillerCode, setSelectedBillerCode] =
+    useState("");
 
-  const [
-    selectedItemCode,
-    setSelectedItemCode,
-  ] = useState("");
+  const [selectedItemCode, setSelectedItemCode] =
+    useState("");
 
   // ==========================================================
   // LOADING
@@ -284,7 +362,8 @@ const ServicePayment = ({
   const [processingPayment, setProcessingPayment] =
     useState(false);
 
-  const [error, setError] = useState("");
+  const [error, setError] =
+    useState("");
 
   const { toast } = useToast();
 
@@ -295,13 +374,8 @@ const ServicePayment = ({
   const serviceType =
     service?.type ?? "";
 
-  const category = useMemo(
-    () =>
-      SERVICE_CATEGORY_MAP[
-        serviceType
-      ] ?? "",
-    [serviceType]
-  );
+  const category =
+    SERVICE_CATEGORY_MAP[serviceType] ?? "";
 
   const isData =
     serviceType === "data";
@@ -309,8 +383,17 @@ const ServicePayment = ({
   const isAirtime =
     serviceType === "airtime";
 
+  const isElectricity =
+    serviceType === "electricity";
+
+  const isCable =
+    serviceType === "cable";
+
   const isInternet =
     serviceType === "internet";
+
+  const ServiceIcon =
+    getServiceIcon(serviceType);
 
   // ==========================================================
   // SELECTED BILLER
@@ -354,10 +437,7 @@ const ServicePayment = ({
 
   const dataGroups = useMemo(() => {
     const groups: Record<
-      "Daily" |
-        "Weekly" |
-        "Monthly" |
-        "Other",
+      DataGroup,
       BillItem[]
     > = {
       Daily: [],
@@ -367,13 +447,56 @@ const ServicePayment = ({
     };
 
     items.forEach((item) => {
-      const group = getDataGroup(item);
+      const group =
+        getDataGroup(item);
 
       groups[group].push(item);
     });
 
     return groups;
   }, [items]);
+
+  // ==========================================================
+  // FILTERED DATA PLANS
+  // ==========================================================
+
+  const visibleDataPlans =
+    useMemo(() => {
+      if (!isData) {
+        return [];
+      }
+
+      switch (dataTab) {
+        case "HOT":
+          return items.filter(
+            (item) =>
+              isHotDeal(item)
+          );
+
+        case "Extra Night":
+          return items.filter(
+            (item) =>
+              isExtraNight(item)
+          );
+
+        case "Daily":
+          return dataGroups.Daily;
+
+        case "Weekly":
+          return dataGroups.Weekly;
+
+        case "Monthly":
+          return dataGroups.Monthly;
+
+        default:
+          return [];
+      }
+    }, [
+      dataTab,
+      dataGroups,
+      isData,
+      items,
+    ]);
 
   // ==========================================================
   // CUSTOMER LABEL
@@ -393,13 +516,13 @@ const ServicePayment = ({
         return "Meter Number";
 
       case "cable":
-        return "Smart Card / Decoder Number";
+        return "Smart Card Number";
 
       case "internet":
         return "Account Number";
 
       default:
-        return "Customer ID";
+        return "Customer Number";
     }
   }, [
     selectedItem,
@@ -410,25 +533,26 @@ const ServicePayment = ({
   // CUSTOMER PLACEHOLDER
   // ==========================================================
 
-  const customerPlaceholder = useMemo(() => {
-    switch (serviceType) {
-      case "airtime":
-      case "data":
-        return "e.g. 08012345678";
+  const customerPlaceholder =
+    useMemo(() => {
+      switch (serviceType) {
+        case "airtime":
+        case "data":
+          return "08012345678";
 
-      case "electricity":
-        return "Enter meter number";
+        case "electricity":
+          return "Enter meter number";
 
-      case "cable":
-        return "Enter smart card number";
+        case "cable":
+          return "Enter smart card number";
 
-      case "internet":
-        return "Enter account number";
+        case "internet":
+          return "Enter account number";
 
-      default:
-        return "Enter customer identifier";
-    }
-  }, [serviceType]);
+        default:
+          return "Enter customer number";
+      }
+    }, [serviceType]);
 
   // ==========================================================
   // RESET FORM
@@ -448,8 +572,11 @@ const ServicePayment = ({
 
     setCustomAmountMode(false);
 
+    setDataTab("HOT");
+
     setLoadingBillers(false);
     setLoadingItems(false);
+
     setProcessingPayment(false);
 
     setShowPinPrompt(false);
@@ -462,11 +589,21 @@ const ServicePayment = ({
   // ==========================================================
 
   useEffect(() => {
-    resetForm();
+    setAmount("");
+    setCustomer("");
+    setBillers([]);
+    setItems([]);
+    setSelectedBillerCode("");
+    setSelectedItemCode("");
+    setError("");
+    setCustomAmountMode(false);
+    setDataTab("HOT");
+    setShowPinPrompt(false);
+    setPaymentPin("");
   }, [serviceType]);
 
   // ==========================================================
-  // LOAD BILLERS
+  // LOAD BILLERS / NETWORKS
   // ==========================================================
 
   const loadBillers = async () => {
@@ -477,50 +614,87 @@ const ServicePayment = ({
 
     setLoadingBillers(true);
     setError("");
+
     setSelectedBillerCode("");
     setSelectedItemCode("");
+
     setItems([]);
     setAmount("");
+
     setCustomAmountMode(false);
 
     try {
-      const { data, error: functionError } =
-        await supabase.functions.invoke("flutterwave-bills", {
-          body: {
-            action: "billers",
-            service: serviceType,
-            category,
-            country: "NG",
-          },
-        });
+      const {
+        data,
+        error: functionError,
+      } =
+        await supabase.functions.invoke(
+          "flutterwave-bills",
+          {
+            body: {
+              action: "billers",
+              service: serviceType,
+              category,
+              country: "NG",
+            },
+          }
+        );
 
       if (functionError) {
-        console.error("Billers function error:", functionError);
-        throw new Error("Unable to load available options.");
+        console.error(
+          "Billers function error:",
+          functionError
+        );
+
+        throw new Error(
+          "Unable to load available options."
+        );
       }
 
-      if (!data || data.success !== true) {
-        console.error("Billers API response:", data);
-        throw new Error(data?.error || "Unable to load available options.");
+      if (
+        !data ||
+        data.success !== true
+      ) {
+        console.error(
+          "Billers API response:",
+          data
+        );
+
+        throw new Error(
+          "Unable to load available options."
+        );
       }
 
-      const loadedBillers = Array.isArray(data?.billers)
-        ? data.billers
-        : Array.isArray(data?.data)
-          ? data.data
-          : [];
+      const loadedBillers =
+        Array.isArray(data?.billers)
+          ? data.billers
+          : Array.isArray(data?.data)
+            ? data.data
+            : [];
 
-      setBillers(loadedBillers);
+      setBillers(
+        loadedBillers
+      );
 
       if (!loadedBillers.length) {
-        setError("No options are currently available.");
+        setError(
+          "No options are currently available."
+        );
       }
     } catch (err) {
-      console.error("Failed to load billers:", err);
-      const message = "Unable to load available options.";
+      console.error(
+        "Failed to load billers:",
+        err
+      );
+
+      const message =
+        "Unable to load available options.";
+
       setError(message);
+
       toast({
-        title: "Unable to load services",
+        title:
+          "Unable to load options",
         description: message,
         variant: "destructive",
       });
@@ -530,15 +704,17 @@ const ServicePayment = ({
   };
 
   // ==========================================================
-  // LOAD BILLERS WHEN PAGE OPENS
+  // LOAD ON PAGE OPEN
   // ==========================================================
 
   useEffect(() => {
-    if (category) loadBillers();
+    if (category) {
+      void loadBillers();
+    }
   }, [category]);
 
   // ==========================================================
-  // LOAD ITEMS
+  // LOAD SERVICE ITEMS
   // ==========================================================
 
   const loadItems = async (
@@ -588,7 +764,7 @@ const ServicePayment = ({
         );
 
         throw new Error(
-          "Unable to load bill packages."
+          "Unable to load available packages."
         );
       }
 
@@ -602,9 +778,7 @@ const ServicePayment = ({
         );
 
         throw new Error(
-          data?.error ||
-            data?.message ||
-            "Unable to load bill packages."
+          "Unable to load available packages."
         );
       }
 
@@ -630,7 +804,7 @@ const ServicePayment = ({
             plan_type:
               item.plan_type ??
               (isHotDeal(item)
-                ? "SME"
+                ? "HOT"
                 : "REGULAR"),
 
             is_hot_deal:
@@ -647,22 +821,23 @@ const ServicePayment = ({
         normalizedItems.length === 0
       ) {
         setError(
-          "No packages are currently available for this service."
+          "No packages are currently available."
         );
       }
-    } catch (err: any) {
+    } catch (err) {
       console.error(
         "Failed to load bill items:",
         err
       );
 
       const message =
-        "Unable to load bill packages.";
+        "Unable to load available packages.";
 
       setError(message);
 
       toast({
-        title: "Unable to load packages",
+        title:
+          "Unable to load packages",
         description: message,
         variant: "destructive",
       });
@@ -672,7 +847,7 @@ const ServicePayment = ({
   };
 
   // ==========================================================
-  // BILLER CHANGE
+  // BILLER / NETWORK CHANGE
   // ==========================================================
 
   const handleBillerChange = async (
@@ -685,13 +860,15 @@ const ServicePayment = ({
       return;
     }
 
-    setSelectedBillerCode(value);
+    setSelectedBillerCode(
+      value
+    );
 
     await loadItems(value);
   };
 
   // ==========================================================
-  // DATA PLAN
+  // DATA PLAN SELECT
   // ==========================================================
 
   const handleDataPlanSelect = (
@@ -713,13 +890,13 @@ const ServicePayment = ({
       return;
     }
 
-    const sellingPrice = numberValue(
-      item.selling_price ?? item.amount ?? item.price
-    );
+    const sellingPrice =
+      getItemPrice(item);
 
     if (sellingPrice <= 0) {
       toast({
-        title: "Invalid data plan",
+        title:
+          "Invalid data plan",
         description:
           "This data plan does not have a valid price.",
         variant: "destructive",
@@ -738,12 +915,15 @@ const ServicePayment = ({
       )
     );
 
-    setCustomAmountMode(false);
+    setCustomAmountMode(
+      false
+    );
+
     setError("");
   };
 
   // ==========================================================
-  // NON-DATA ITEM
+  // NORMAL ITEM SELECT
   // ==========================================================
 
   const handleItemChange = (
@@ -756,10 +936,15 @@ const ServicePayment = ({
       return;
     }
 
-    setSelectedItemCode(value);
+    setSelectedItemCode(
+      value
+    );
+
     setError("");
     setAmount("");
-    setCustomAmountMode(false);
+    setCustomAmountMode(
+      false
+    );
   };
 
   // ==========================================================
@@ -776,15 +961,14 @@ const ServicePayment = ({
       return;
     }
 
-    const sellingPrice = value;
-
     setAmount(
-      String(
-        sellingPrice
-      )
+      String(value)
     );
 
-    setCustomAmountMode(false);
+    setCustomAmountMode(
+      false
+    );
+
     setError("");
   };
 
@@ -796,41 +980,40 @@ const ServicePayment = ({
       return;
     }
 
-    setCustomAmountMode(true);
+    setCustomAmountMode(
+      true
+    );
+
     setAmount("");
     setError("");
   };
 
   // ==========================================================
-  // AMOUNT RULES
+  // AMOUNT VALUES
   // ==========================================================
 
   const amountNumber =
     Number(amount);
 
   const itemMinimum =
-    Number(
-      selectedItem?.minimum ?? 0
+    numberValue(
+      selectedItem?.minimum
     );
 
   const itemMaximum =
-    Number(
-      selectedItem?.maximum ?? 0
+    numberValue(
+      selectedItem?.maximum
     );
 
   const selectedItemPrice =
-    numberValue(
-      selectedItem?.selling_price ??
-        selectedItem?.amount ??
-        selectedItem?.price
+    getItemPrice(
+      selectedItem ?? {}
     );
 
   const dataSellingAmount =
     isData && selectedItem
-      ? numberValue(
-          selectedItem.selling_price ??
-            selectedItem.amount ??
-            selectedItem.price
+      ? getItemPrice(
+          selectedItem
         )
       : 0;
 
@@ -844,7 +1027,8 @@ const ServicePayment = ({
         customer.trim();
 
       if (
-        serviceType === "airtime" ||
+        serviceType ===
+          "airtime" ||
         serviceType === "data"
       ) {
         value =
@@ -900,9 +1084,13 @@ const ServicePayment = ({
       if (!selectedBillerCode) {
         toast({
           title:
-            "Select a network or biller",
+            isAirtime || isData
+              ? "Select a network"
+              : "Select a service",
           description:
-            "Please select a network or biller.",
+            isAirtime || isData
+              ? "Please select your network."
+              : "Please select the service you want to use.",
           variant:
             "destructive",
         });
@@ -912,10 +1100,18 @@ const ServicePayment = ({
 
       if (!selectedItemCode) {
         toast({
-          title: "Select a package",
-          description: "Please select a service package.",
-          variant: "destructive",
+          title:
+            isData
+              ? "Select a data plan"
+              : "Select a package",
+          description:
+            isData
+              ? "Please select a data plan."
+              : "Please select a service package.",
+          variant:
+            "destructive",
         });
+
         return false;
       }
 
@@ -925,7 +1121,7 @@ const ServicePayment = ({
       if (!finalCustomer) {
         toast({
           title:
-            "Customer information required",
+            "Information required",
           description:
             `Please enter the ${customerLabel.toLowerCase()}.`,
           variant:
@@ -1013,6 +1209,7 @@ const ServicePayment = ({
           return false;
         }
       }
+
       if (
         !isData &&
         itemMinimum > 0 &&
@@ -1035,7 +1232,6 @@ const ServicePayment = ({
 
       if (
         !isData &&
-        !false &&
         itemMaximum > 0 &&
         amountNumber >
           itemMaximum
@@ -1054,6 +1250,9 @@ const ServicePayment = ({
         return false;
       }
 
+      // Wallet balance is intentionally NOT displayed
+      // in the customer-facing Service UI.
+      // It remains here only as an internal validation.
       if (
         amountNumber >
         Number(
@@ -1079,38 +1278,108 @@ const ServicePayment = ({
   // PURCHASE DETAILS
   // ==========================================================
 
-  const buildPurchaseDetails = () => {
-    const finalCustomer = normaliseCustomer();
+  const buildPurchaseDetails =
+    () => {
+      const finalCustomer =
+        normaliseCustomer();
 
-    return {
-      customer: finalCustomer,
-      biller_code: selectedBillerCode,
-      item_code: selectedItemCode,
-      phoneNumber:
-        serviceType === "airtime" || serviceType === "data"
-          ? finalCustomer
-          : "",
-      phone:
-        serviceType === "airtime" || serviceType === "data"
-          ? finalCustomer
-          : "",
-      meterNumber: serviceType === "electricity" ? finalCustomer : "",
-      meter_number: serviceType === "electricity" ? finalCustomer : "",
-      smartCardNumber: serviceType === "cable" ? finalCustomer : "",
-      smartcardNumber: serviceType === "cable" ? finalCustomer : "",
-      smartcard_number: serviceType === "cable" ? finalCustomer : "",
-      accountNumber: serviceType === "internet" ? finalCustomer : "",
-      account_number: serviceType === "internet" ? finalCustomer : "",
-      type: serviceType,
-      country: "NG",
-      customerLabel,
-      item: selectedItem,
-      biller: selectedBiller,
-      selling_amount: amountNumber,
-      plan_type: isData ? getPlanType(selectedItem ?? {}) : "",
-      is_hot_deal: isData ? isHotDeal(selectedItem ?? {}) : false,
+      return {
+        customer:
+          finalCustomer,
+
+        biller_code:
+          selectedBillerCode,
+
+        item_code:
+          selectedItemCode,
+
+        phoneNumber:
+          serviceType ===
+              "airtime" ||
+          serviceType === "data"
+            ? finalCustomer
+            : "",
+
+        phone:
+          serviceType ===
+              "airtime" ||
+          serviceType === "data"
+            ? finalCustomer
+            : "",
+
+        meterNumber:
+          serviceType ===
+          "electricity"
+            ? finalCustomer
+            : "",
+
+        meter_number:
+          serviceType ===
+          "electricity"
+            ? finalCustomer
+            : "",
+
+        smartCardNumber:
+          serviceType === "cable"
+            ? finalCustomer
+            : "",
+
+        smartcardNumber:
+          serviceType === "cable"
+            ? finalCustomer
+            : "",
+
+        smartcard_number:
+          serviceType === "cable"
+            ? finalCustomer
+            : "",
+
+        accountNumber:
+          serviceType ===
+          "internet"
+            ? finalCustomer
+            : "",
+
+        account_number:
+          serviceType ===
+          "internet"
+            ? finalCustomer
+            : "",
+
+        type:
+          serviceType,
+
+        country:
+          "NG",
+
+        customerLabel,
+
+        item:
+          selectedItem,
+
+        biller:
+          selectedBiller,
+
+        selling_amount:
+          amountNumber,
+
+        plan_type:
+          isData
+            ? getPlanType(
+                selectedItem ??
+                  {}
+              )
+            : "",
+
+        is_hot_deal:
+          isData
+            ? isHotDeal(
+                selectedItem ??
+                  {}
+              )
+            : false,
+      };
     };
-  };
 
   // ==========================================================
   // SHOW PIN
@@ -1135,7 +1404,9 @@ const ServicePayment = ({
 
       setPaymentPin("");
       setError("");
-      setShowPinPrompt(true);
+      setShowPinPrompt(
+        true
+      );
     };
 
   // ==========================================================
@@ -1173,7 +1444,10 @@ const ServicePayment = ({
       }
 
       try {
-        setVerifyingPin(true);
+        setVerifyingPin(
+          true
+        );
+
         setError("");
 
         const {
@@ -1232,6 +1506,7 @@ const ServicePayment = ({
         );
 
         setPaymentPin("");
+
         setProcessingPayment(
           true
         );
@@ -1264,7 +1539,7 @@ const ServicePayment = ({
         );
 
         resetForm();
-      } catch (err: any) {
+      } catch (err) {
         console.error(
           "Service purchase failed:",
           err
@@ -1311,19 +1586,43 @@ const ServicePayment = ({
   };
 
   // ==========================================================
-  // NO SERVICE
+  // NETWORK / SERVICE SELECTOR LABEL
+  // ==========================================================
+
+  const selectorLabel =
+    isAirtime || isData
+      ? "Network"
+      : isElectricity
+        ? "Electricity Company"
+        : isCable
+          ? "TV Service"
+          : isInternet
+            ? "Internet Service"
+            : "Service";
+
+  // ==========================================================
+  // EMPTY STATE
   // ==========================================================
 
   if (!service) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-50">
-        <div className="text-center">
-          <p className="text-gray-600 mb-4">
-            No payment service selected.
+      <div className="min-h-screen bg-[#f7f9fc] flex items-center justify-center px-4">
+        <div className="w-full max-w-md rounded-3xl border border-slate-200 bg-white p-8 text-center shadow-sm">
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-[#082A63]/10">
+            <Smartphone className="h-7 w-7 text-[#082A63]" />
+          </div>
+
+          <h2 className="text-lg font-bold text-slate-900">
+            No payment service selected
+          </h2>
+
+          <p className="mt-2 text-sm text-slate-500">
+            Please select a service to continue.
           </p>
 
           <Button
             onClick={onBack}
+            className="mt-6 w-full rounded-xl bg-[#082A63] hover:bg-[#061f4a]"
           >
             Go Back
           </Button>
@@ -1337,438 +1636,608 @@ const ServicePayment = ({
   // ==========================================================
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-50 pb-8">
+    <div className="min-h-screen bg-[#f7f9fc] pb-10">
 
-      {/* HEADER */}
+      {/* ======================================================
+          TOP BAR
+          ====================================================== */}
 
-      <header className="bg-gradient-to-r from-purple-600 to-blue-600 text-white">
-        <div className="max-w-3xl mx-auto px-4 sm:px-6">
+      <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur">
+        <div className="mx-auto flex h-16 max-w-5xl items-center justify-between px-4 sm:px-6">
 
-          <div className="flex items-center gap-3 h-16">
+          <div className="flex min-w-0 items-center gap-3">
 
-            <Button
+            <button
               type="button"
-              variant="ghost"
-              size="sm"
-              onClick={
-                handleBack
-              }
+              onClick={handleBack}
               disabled={
                 processingPayment ||
                 verifyingPin
               }
-              className="text-white hover:bg-white/20"
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 transition hover:border-[#082A63] hover:bg-[#082A63]/5 disabled:cursor-not-allowed disabled:opacity-50"
+              aria-label="Go back"
             >
               <ArrowLeft className="h-5 w-5" />
-            </Button>
+            </button>
 
-            <h1 className="text-lg font-bold">
-              {service.title}
-            </h1>
+            <div className="flex min-w-0 items-center gap-3">
 
+              <div className="hidden h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#082A63] text-white sm:flex">
+                <ServiceIcon className="h-5 w-5" />
+              </div>
+
+              <div className="min-w-0">
+                <h1 className="truncate text-base font-bold text-slate-900 sm:text-lg">
+                  {service.title}
+                </h1>
+
+                <p className="hidden text-xs text-slate-500 sm:block">
+                  Secure service payment
+                </p>
+              </div>
+
+            </div>
           </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              if (onHistory) {
+                onHistory();
+              }
+            }}
+            disabled={!onHistory}
+            className="flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold text-[#082A63] transition hover:bg-[#082A63]/5 disabled:cursor-default disabled:opacity-100"
+          >
+            <History className="h-4 w-4" />
+            <span>History</span>
+          </button>
 
         </div>
       </header>
 
-      {/* CONTENT */}
+      {/* ======================================================
+          CONTENT
+          ====================================================== */}
 
-      <main className="max-w-3xl mx-auto px-4 sm:px-6 py-6">
+      <main className="mx-auto w-full max-w-5xl px-4 py-5 sm:px-6 sm:py-7">
 
-        {/* PIN SCREEN */}
+        {/* ====================================================
+            PIN CONFIRMATION
+            ==================================================== */}
 
         {showPinPrompt ? (
-          <div className="bg-white rounded-2xl shadow-sm border p-5 sm:p-6">
+          <div className="mx-auto max-w-lg">
 
-            <div className="text-center mb-6">
+            <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
 
-              <div className="w-14 h-14 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-3">
-                <span className="text-2xl">
-                  🔐
-                </span>
+              <div className="text-center">
+
+                <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-[#082A63]/10">
+                  <ShieldCheck className="h-8 w-8 text-[#082A63]" />
+                </div>
+
+                <h2 className="mt-5 text-xl font-bold text-slate-900">
+                  Confirm Payment
+                </h2>
+
+                <p className="mt-1 text-sm text-slate-500">
+                  Enter your 4-digit Payment PIN to confirm this payment.
+                </p>
+
               </div>
 
-              <h2 className="text-xl font-bold text-gray-900">
-                Confirm Payment
-              </h2>
+              {/* SUMMARY */}
 
-              <p className="text-sm text-gray-500 mt-1">
-                Enter your 4-digit Payment PIN
-                to confirm this payment.
-              </p>
+              <div className="mt-6 rounded-2xl border border-slate-200 bg-[#f8fafc] p-4">
 
-              <p className="text-lg font-semibold text-green-700 mt-2">
-                {service.title}
-              </p>
-
-            </div>
-
-            {/* SUMMARY */}
-
-            <div className="rounded-xl bg-green-50 border border-green-100 p-4 space-y-3 mb-6">
-
-              <div className="flex items-center justify-between gap-4">
-                <span className="text-sm text-gray-600">
-                  Amount
-                </span>
-
-                <span className="font-bold text-green-700">
-                  {formatNaira(
-                    amountNumber
-                  )}
-                </span>
-              </div>
-
-              <div className="flex items-center justify-between gap-4">
-                <span className="text-sm text-gray-600">
-                  {customerLabel}
-                </span>
-
-                <span className="text-sm font-medium text-gray-900 text-right break-all">
-                  {normaliseCustomer()}
-                </span>
-              </div>
-
-              {selectedItem && (
-                <div className="flex items-center justify-between gap-4">
-                  <span className="text-sm text-gray-600">
-                    Package
+                <div className="flex items-center justify-between gap-4 border-b border-slate-200 pb-3">
+                  <span className="text-sm text-slate-500">
+                    Service
                   </span>
 
-                  <span className="text-sm font-medium text-gray-900 text-right">
-                    {selectedItem.name ??
-                      selectedItem.short_name ??
-                      "-"}
+                  <span className="text-sm font-semibold text-slate-900">
+                    {service.title}
                   </span>
+                </div>
+
+                <div className="flex items-center justify-between gap-4 border-b border-slate-200 py-3">
+                  <span className="text-sm text-slate-500">
+                    Amount
+                  </span>
+
+                  <span className="font-bold text-[#082A63]">
+                    {formatNaira(
+                      amountNumber
+                    )}
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between gap-4 pt-3">
+                  <span className="text-sm text-slate-500">
+                    {customerLabel}
+                  </span>
+
+                  <span className="max-w-[62%] break-all text-right text-sm font-semibold text-slate-900">
+                    {normaliseCustomer()}
+                  </span>
+                </div>
+
+                {selectedItem && (
+                  <div className="mt-3 flex items-center justify-between gap-4 border-t border-slate-200 pt-3">
+                    <span className="text-sm text-slate-500">
+                      Package
+                    </span>
+
+                    <span className="max-w-[62%] text-right text-sm font-semibold text-slate-900">
+                      {getItemName(
+                        selectedItem
+                      )}
+                    </span>
+                  </div>
+                )}
+
+              </div>
+
+              {/* PIN */}
+
+              <div className="mt-6">
+
+                <Label
+                  htmlFor="servicePaymentPin"
+                  className="text-sm font-semibold text-slate-800"
+                >
+                  Payment PIN
+                </Label>
+
+                <Input
+                  id="servicePaymentPin"
+                  type="password"
+                  inputMode="numeric"
+                  autoComplete="off"
+                  maxLength={4}
+                  value={paymentPin}
+                  onChange={(event) => {
+                    const value =
+                      event.target.value
+                        .replace(
+                          /\D/g,
+                          ""
+                        )
+                        .slice(
+                          0,
+                          4
+                        );
+
+                    setPaymentPin(
+                      value
+                    );
+
+                    setError("");
+                  }}
+                  onKeyDown={(event) => {
+                    if (
+                      event.key ===
+                        "Enter" &&
+                      paymentPin.length ===
+                        4 &&
+                      !verifyingPin
+                    ) {
+                      void handlePinVerification();
+                    }
+                  }}
+                  placeholder="••••"
+                  disabled={
+                    verifyingPin
+                  }
+                  autoFocus
+                  className="mt-2 h-14 rounded-xl border-slate-200 text-center text-2xl tracking-[0.6em] focus:border-[#082A63] focus:ring-[#082A63]/20"
+                />
+
+                <p className="mt-2 text-center text-xs text-slate-500">
+                  Your PIN is securely verified before your payment is processed.
+                </p>
+
+              </div>
+
+              {error && (
+                <div className="mt-5 rounded-xl border border-red-200 bg-red-50 p-3">
+                  <p className="text-sm text-red-700">
+                    {error}
+                  </p>
                 </div>
               )}
 
-            </div>
+              <div className="mt-6 space-y-3">
 
-            {/* PIN */}
-
-            <div className="space-y-2 mb-5">
-
-              <Label htmlFor="servicePaymentPin">
-                Payment PIN
-              </Label>
-
-              <Input
-                id="servicePaymentPin"
-                type="password"
-                inputMode="numeric"
-                autoComplete="off"
-                maxLength={4}
-                value={paymentPin}
-                onChange={(
-                  event
-                ) => {
-                  const value =
-                    event.target.value
-                      .replace(
-                        /\D/g,
-                        ""
-                      )
-                      .slice(
-                        0,
-                        4
-                      );
-
-                  setPaymentPin(
-                    value
-                  );
-
-                  setError("");
-                }}
-                onKeyDown={(
-                  event
-                ) => {
-                  if (
-                    event.key ===
-                      "Enter" &&
-                    paymentPin.length ===
-                      4 &&
-                    !verifyingPin
-                  ) {
-                    handlePinVerification();
+                <Button
+                  type="button"
+                  onClick={() =>
+                    void handlePinVerification()
                   }
-                }}
-                placeholder="••••"
-                disabled={
-                  verifyingPin
-                }
-                autoFocus
-                className="text-center text-2xl tracking-[0.5em]"
-              />
-
-              <p className="text-xs text-gray-500 text-center">
-                Your Payment PIN is securely
-                verified before the payment
-                is processed.
-              </p>
-
-            </div>
-
-            {error && (
-              <div className="rounded-lg bg-red-50 border border-red-200 p-3 mb-5">
-                <p className="text-sm text-red-700">
-                  {error}
-                </p>
-              </div>
-            )}
-
-            <div className="space-y-3">
-
-              <Button
-                type="button"
-                onClick={
-                  handlePinVerification
-                }
-                disabled={
-                  verifyingPin ||
-                  paymentPin.length !==
-                    4
-                }
-                className="w-full bg-green-600 hover:bg-green-700"
-              >
-                {verifyingPin ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Verifying PIN...
-                  </>
-                ) : (
-                  "Confirm Payment"
-                )}
-              </Button>
-
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => {
-                  if (
+                  disabled={
                     verifyingPin ||
-                    processingPayment
-                  ) {
-                    return;
+                    paymentPin.length !==
+                      4
                   }
+                  className="h-12 w-full rounded-xl bg-[#082A63] font-semibold hover:bg-[#061f4a]"
+                >
+                  {verifyingPin ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Verifying PIN...
+                    </>
+                  ) : (
+                    <>
+                      <Check className="mr-2 h-4 w-4" />
+                      Confirm Payment
+                    </>
+                  )}
+                </Button>
 
-                  setPaymentPin(
-                    ""
-                  );
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    if (
+                      verifyingPin ||
+                      processingPayment
+                    ) {
+                      return;
+                    }
 
-                  setError(
-                    ""
-                  );
+                    setPaymentPin("");
+                    setError("");
+                    setShowPinPrompt(
+                      false
+                    );
+                  }}
+                  disabled={
+                    verifyingPin
+                  }
+                  className="h-12 w-full rounded-xl border-slate-200"
+                >
+                  Back
+                </Button>
 
-                  setShowPinPrompt(
-                    false
-                  );
-                }}
-                disabled={
-                  verifyingPin
-                }
-                className="w-full"
-              >
-                Back
-              </Button>
+              </div>
 
             </div>
-
           </div>
         ) : (
 
           /* ==================================================
-             NORMAL FORM
+             NORMAL SERVICE PAGE
              ================================================== */
 
-          <div className="bg-white rounded-2xl shadow-sm border p-5 sm:p-6">
+          <div className="grid gap-5 lg:grid-cols-[1fr_360px]">
 
-            {/* WALLET */}
+            {/* ==================================================
+                LEFT / MAIN
+                ================================================== */}
 
-            <div className="bg-green-50 border border-green-100 p-4 rounded-xl mb-5">
+            <div className="space-y-5">
 
-              <p className="text-sm text-green-700">
-                Wallet Balance:{" "}
-                <strong>
-                  {formatNaira(
-                    Number(
-                      walletBalance
-                    )
-                  )}
-                </strong>
-              </p>
+              {/* SERVICE INTRO */}
 
-            </div>
+              <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
 
-            {/* PROVIDER */}
-            {/* LOADING BILLERS */}
+                <div className="flex items-center gap-4">
 
-            {loadingBillers && (
-              <div className="flex items-center justify-center gap-2 py-4 text-sm text-gray-500">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Loading networks and billers...
-              </div>
-            )}
+                  <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-[#082A63]/10">
+                    <ServiceIcon className="h-7 w-7 text-[#082A63]" />
+                  </div>
 
-            {/* BILLER / NETWORK */}
+                  <div>
+                    <h2 className="text-lg font-bold text-slate-900">
+                      {service.title}
+                    </h2>
 
-            <div className="space-y-2 mb-5">
-
-              <div className="flex items-center justify-between">
-
-                <Label>
-                  {isAirtime || isData ? "Network" : "Service Option"}
-                </Label>
-
-                {!loadingBillers &&
-                  !processingPayment &&
-                  !verifyingPin && (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() =>
-                        loadBillers()
-                      }
-                      className="h-7 px-2"
-                    >
-                      <RefreshCw className="h-3.5 w-3.5 mr-1" />
-                      Refresh
-                    </Button>
-                  )}
-
-              </div>
-
-              <select
-                value={
-                  selectedBillerCode
-                }
-                onChange={(
-                  event
-                ) =>
-                  handleBillerChange(
-                    event.target.value
-                  )
-                }
-                disabled={
-                  loadingBillers ||
-                  processingPayment ||
-                  verifyingPin ||
-                  billers.length ===
-                    0
-                }
-                className="w-full h-11 rounded-md border bg-background px-3 text-sm"
-              >
-
-                <option value="">
-                  {loadingBillers
-                    ? "Loading..."
-                    : "Select network or biller"}
-                </option>
-
-                {billers.map(
-                  (
-                    biller,
-                    index
-                  ) => {
-                    const code =
-                      String(
-                        biller.biller_code ??
-                          ""
-                      );
-
-                    if (!code) {
-                      return null;
-                    }
-
-                    return (
-                      <option
-                        key={`${code}-${index}`}
-                        value={code}
-                      >
-                        {biller.name ??
-                          biller.short_name ??
-                          code}
-                      </option>
-                    );
-                  }
-                )}
-
-              </select>
-
-            </div>
-
-            {/* DATA */}
-
-            {isData ? (
-              <div className="space-y-4 mb-5">
-
-                <div className="flex items-center justify-between">
-
-                  <Label>
-                    Data Plan
-                  </Label>
-
-                  {loadingItems && (
-                    <div className="flex items-center gap-1 text-xs text-gray-500">
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      Loading...
-                    </div>
-                  )}
+                    <p className="mt-1 text-sm text-slate-500">
+                      Select your details below to continue.
+                    </p>
+                  </div>
 
                 </div>
 
-                {!selectedBillerCode && (
-                  <div className="rounded-lg border border-dashed p-5 text-center text-sm text-gray-500">
-                    Select a network to view
-                    data plans.
+              </div>
+
+              {/* ==================================================
+                  NETWORK / CUSTOMER SERVICE
+                  ================================================== */}
+
+              <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+
+                <div className="mb-4 flex items-center justify-between gap-3">
+
+                  <div>
+                    <h3 className="text-base font-bold text-slate-900">
+                      {selectorLabel}
+                    </h3>
+
+                    <p className="mt-1 text-xs text-slate-500">
+                      Choose the option you want to use.
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      void loadBillers()
+                    }
+                    disabled={
+                      loadingBillers ||
+                      processingPayment ||
+                      verifyingPin
+                    }
+                    className="flex h-9 items-center gap-1.5 rounded-lg px-2.5 text-xs font-semibold text-[#082A63] hover:bg-[#082A63]/5 disabled:opacity-50"
+                  >
+                    <RefreshCw
+                      className={`h-3.5 w-3.5 ${
+                        loadingBillers
+                          ? "animate-spin"
+                          : ""
+                      }`}
+                    />
+                    Refresh
+                  </button>
+
+                </div>
+
+                {loadingBillers ? (
+                  <div className="flex min-h-24 items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50">
+                    <div className="flex items-center gap-2 text-sm text-slate-500">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Loading available options...
+                    </div>
+                  </div>
+                ) : billers.length === 0 ? (
+                  <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-6 text-center">
+                    <p className="text-sm font-medium text-slate-700">
+                      No options available
+                    </p>
+
+                    <p className="mt-1 text-xs text-slate-500">
+                      Please refresh and try again.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+
+                    {billers.map(
+                      (
+                        biller,
+                        index
+                      ) => {
+                        const code =
+                          String(
+                            biller.biller_code ??
+                              ""
+                          );
+
+                        if (!code) {
+                          return null;
+                        }
+
+                        const selected =
+                          selectedBillerCode ===
+                          code;
+
+                        return (
+                          <button
+                            type="button"
+                            key={`${code}-${index}`}
+                            onClick={() =>
+                              void handleBillerChange(
+                                code
+                              )
+                            }
+                            disabled={
+                              processingPayment ||
+                              verifyingPin
+                            }
+                            className={[
+                              "group relative min-h-[76px] rounded-2xl border p-3 text-left transition-all",
+                              "hover:-translate-y-0.5 hover:border-[#082A63]/40 hover:bg-[#082A63]/[0.025]",
+                              selected
+                                ? "border-[#082A63] bg-[#082A63]/[0.05] ring-2 ring-[#082A63]/10"
+                                : "border-slate-200 bg-white",
+                            ].join(" ")}
+                          >
+
+                            {selected && (
+                              <span className="absolute right-2 top-2 flex h-5 w-5 items-center justify-center rounded-full bg-[#082A63] text-white">
+                                <Check className="h-3 w-3" />
+                              </span>
+                            )}
+
+                            {biller.logo ? (
+                              <img
+                                src={
+                                  biller.logo
+                                }
+                                alt=""
+                                className="mb-2 h-7 w-7 rounded-lg object-contain"
+                              />
+                            ) : (
+                              <div className="mb-2 flex h-7 w-7 items-center justify-center rounded-lg bg-slate-100">
+                                <Smartphone className="h-4 w-4 text-slate-500" />
+                              </div>
+                            )}
+
+                            <p
+                              className={[
+                                "pr-5 text-sm font-semibold",
+                                selected
+                                  ? "text-[#082A63]"
+                                  : "text-slate-800",
+                              ].join(" ")}
+                            >
+                              {biller.name ??
+                                biller.short_name ??
+                                "Service"}
+                            </p>
+
+                          </button>
+                        );
+                      }
+                    )}
+
                   </div>
                 )}
 
-                {selectedBillerCode &&
-                  !loadingItems &&
-                  items.length ===
-                    0 && (
-                    <div className="rounded-lg border border-dashed p-5 text-center text-sm text-gray-500">
-                      No data plans are
-                      currently available.
+              </section>
+
+              {/* ==================================================
+                  DATA
+                  ================================================== */}
+
+              {isData && (
+                <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+
+                  <div className="mb-4">
+
+                    <h3 className="text-base font-bold text-slate-900">
+                      Choose Data Plan
+                    </h3>
+
+                    <p className="mt-1 text-xs text-slate-500">
+                      Select the plan that works best for you.
+                    </p>
+
+                  </div>
+
+                  {!selectedBillerCode ? (
+                    <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-7 text-center">
+                      <Wifi className="mx-auto h-7 w-7 text-slate-400" />
+
+                      <p className="mt-3 text-sm font-semibold text-slate-700">
+                        Select a network first
+                      </p>
+
+                      <p className="mt-1 text-xs text-slate-500">
+                        Available data plans will appear here.
+                      </p>
                     </div>
-                  )}
+                  ) : loadingItems ? (
+                    <div className="flex min-h-32 items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50">
+                      <div className="flex items-center gap-2 text-sm text-slate-500">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Loading data plans...
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      {/* DATA TABS */}
 
-                {(
-                  [
-                    "Daily",
-                    "Weekly",
-                    "Monthly",
-                    "Other",
-                  ] as const
-                ).map(
-                  (group) => {
-                    const groupItems =
-                      dataGroups[
-                        group
-                      ];
+                      <div className="mb-5 overflow-x-auto pb-1">
+                        <div className="flex min-w-max gap-2">
 
-                    if (
-                      groupItems.length ===
-                      0
-                    ) {
-                      return null;
-                    }
+                          {DATA_TABS.map(
+                            (tab) => {
+                              const count =
+                                tab === "HOT"
+                                  ? items.filter(
+                                      isHotDeal
+                                    ).length
+                                  : tab ===
+                                      "Extra Night"
+                                    ? items.filter(
+                                        isExtraNight
+                                      ).length
+                                    : tab ===
+                                        "Daily"
+                                      ? dataGroups
+                                          .Daily
+                                          .length
+                                      : tab ===
+                                          "Weekly"
+                                        ? dataGroups
+                                            .Weekly
+                                            .length
+                                        : dataGroups
+                                            .Monthly
+                                            .length;
 
-                    return (
-                      <div
-                        key={group}
-                        className="space-y-2"
-                      >
+                              return (
+                                <button
+                                  type="button"
+                                  key={tab}
+                                  onClick={() =>
+                                    setDataTab(
+                                      tab
+                                    )
+                                  }
+                                  disabled={
+                                    processingPayment ||
+                                    verifyingPin
+                                  }
+                                  className={[
+                                    "rounded-xl px-4 py-2.5 text-sm font-semibold transition",
+                                    dataTab ===
+                                    tab
+                                      ? "bg-[#082A63] text-white shadow-sm"
+                                      : "bg-slate-100 text-slate-600 hover:bg-slate-200",
+                                  ].join(
+                                    " "
+                                  )}
+                                >
+                                  <span className="flex items-center gap-1.5">
+                                    {tab ===
+                                      "HOT" && (
+                                      <Flame className="h-3.5 w-3.5" />
+                                    )}
 
-                        <h3 className="text-sm font-semibold text-gray-700">
-                          {group}
-                        </h3>
+                                    {tab}
 
-                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                                    {count >
+                                      0 && (
+                                      <span
+                                        className={
+                                          dataTab ===
+                                          tab
+                                            ? "text-white/70"
+                                            : "text-slate-400"
+                                        }
+                                      >
+                                        {count}
+                                      </span>
+                                    )}
+                                  </span>
+                                </button>
+                              );
+                            }
+                          )}
 
-                          {groupItems.map(
+                        </div>
+                      </div>
+
+                      {/* DATA PLAN CARDS */}
+
+                      {visibleDataPlans.length ===
+                      0 ? (
+                        <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-7 text-center">
+
+                          {dataTab ===
+                          "HOT" ? (
+                            <Flame className="mx-auto h-7 w-7 text-orange-400" />
+                          ) : (
+                            <Wifi className="mx-auto h-7 w-7 text-slate-400" />
+                          )}
+
+                          <p className="mt-3 text-sm font-semibold text-slate-700">
+                            No plans available in this category
+                          </p>
+
+                          <p className="mt-1 text-xs text-slate-500">
+                            Try another plan category.
+                          </p>
+
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+
+                          {visibleDataPlans.map(
                             (
                               item,
                               index
@@ -1779,24 +2248,26 @@ const ServicePayment = ({
                                     ""
                                 );
 
-                              if (
-                                !code
-                              ) {
+                              if (!code) {
                                 return null;
                               }
 
-                              const sellingPrice = numberValue(
-                                item.selling_price ??
-                                  item.amount ??
-                                  item.price
-                              );
+                              const price =
+                                getItemPrice(
+                                  item
+                                );
 
                               const selected =
                                 selectedItemCode ===
                                 code;
 
-                              const hotDeal =
+                              const hot =
                                 isHotDeal(
+                                  item
+                                );
+
+                              const night =
+                                isExtraNight(
                                   item
                                 );
 
@@ -1814,40 +2285,90 @@ const ServicePayment = ({
                                     verifyingPin
                                   }
                                   className={[
-                                    "relative text-left rounded-xl border p-3 transition-all",
-                                    "hover:border-green-500 hover:bg-green-50",
+                                    "relative overflow-hidden rounded-2xl border p-4 text-left transition-all",
+                                    "hover:-translate-y-0.5 hover:border-[#082A63]/40",
                                     selected
-                                      ? "border-green-600 bg-green-50 ring-1 ring-green-600"
-                                      : "border-gray-200 bg-white",
+                                      ? "border-[#082A63] bg-[#082A63]/[0.035] ring-2 ring-[#082A63]/10"
+                                      : "border-slate-200 bg-white",
                                   ].join(
                                     " "
                                   )}
                                 >
 
-                                  {hotDeal && (
-                                    <span className="absolute -top-2 -right-2 inline-flex items-center gap-1 rounded-full bg-orange-500 text-white px-2 py-1 text-[10px] font-bold shadow-sm">
-                                      <Flame className="h-3 w-3" />
-                                      HOT DEAL
+                                  {(hot ||
+                                    night) && (
+                                    <span
+                                      className={[
+                                        "absolute right-3 top-3 inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-bold",
+                                        hot
+                                          ? "bg-orange-50 text-orange-600"
+                                          : "bg-indigo-50 text-indigo-600",
+                                      ].join(
+                                        " "
+                                      )}
+                                    >
+                                      {hot ? (
+                                        <Flame className="h-3 w-3" />
+                                      ) : null}
+
+                                      {hot
+                                        ? "HOT"
+                                        : "NIGHT"}
                                     </span>
                                   )}
 
-                                  <p className="text-sm font-medium text-gray-900 line-clamp-2">
-                                    {item.name ??
-                                      item.short_name ??
-                                      "Data Plan"}
-                                  </p>
+                                  <div className="pr-10">
 
-                                  {item.plan_type && (
-                                    <p className="text-[10px] text-gray-500 mt-1 uppercase">
-                                      {item.plan_type}
+                                    <p className="line-clamp-2 text-sm font-bold text-slate-900">
+                                      {getItemName(
+                                        item
+                                      )}
                                     </p>
-                                  )}
 
-                                  <p className="text-base font-bold text-green-700 mt-2">
-                                    {formatNaira(
-                                      sellingPrice
+                                    {(item.validity ||
+                                      item.duration) && (
+                                      <p className="mt-1 text-xs text-slate-500">
+                                        {cleanString(
+                                          item.validity ??
+                                            item.duration
+                                        )}
+                                      </p>
                                     )}
-                                  </p>
+
+                                  </div>
+
+                                  <div className="mt-4 flex items-end justify-between gap-3">
+
+                                    <div>
+                                      <p className="text-xs text-slate-500">
+                                        Price
+                                      </p>
+
+                                      <p className="mt-0.5 text-lg font-extrabold text-[#082A63]">
+                                        {formatNaira(
+                                          price
+                                        )}
+                                      </p>
+                                    </div>
+
+                                    <span
+                                      className={[
+                                        "flex h-8 w-8 items-center justify-center rounded-full border",
+                                        selected
+                                          ? "border-[#082A63] bg-[#082A63] text-white"
+                                          : "border-slate-200 text-slate-400",
+                                      ].join(
+                                        " "
+                                      )}
+                                    >
+                                      {selected ? (
+                                        <Check className="h-4 w-4" />
+                                      ) : (
+                                        <ChevronDown className="h-4 w-4" />
+                                      )}
+                                    </span>
+
+                                  </div>
 
                                 </button>
                               );
@@ -1855,351 +2376,506 @@ const ServicePayment = ({
                           )}
 
                         </div>
+                      )}
 
-                      </div>
-                    );
-                  }
-                )}
-
-              </div>
-            ) : (
-
-              /* =================================================
-                 NON-DATA PACKAGE
-                 ================================================= */
-
-              <div className="space-y-2 mb-5">
-
-                <Label>
-                  {isAirtime
-                    ? "Airtime Type"
-                    : "Bill Package"}
-                </Label>
-
-                <select
-                  value={
-                    selectedItemCode
-                  }
-                  onChange={(
-                    event
-                  ) =>
-                    handleItemChange(
-                      event.target.value
-                    )
-                  }
-                  disabled={
-                    loadingItems ||
-                    processingPayment ||
-                    verifyingPin ||
-                    !selectedBillerCode ||
-                    items.length ===
-                      0
-                  }
-                  className="w-full h-11 rounded-md border bg-background px-3 text-sm"
-                >
-
-                  <option value="">
-                    {loadingItems
-                      ? "Loading packages..."
-                      : !selectedBillerCode
-                        ? "Select network or service first"
-                        : "Select package"}
-                  </option>
-
-                  {items.map(
-                    (
-                      item,
-                      index
-                    ) => {
-                      const code =
-                        String(
-                          item.item_code ??
-                            ""
-                        );
-
-                      if (!code) {
-                        return null;
-                      }
-
-                      return (
-                        <option
-                          key={`${code}-${index}`}
-                          value={code}
-                        >
-                          {item.name ??
-                            item.short_name ??
-                            code}
-                        </option>
-                      );
-                    }
+                    </>
                   )}
 
-                </select>
+                </section>
+              )}
 
-              </div>
-            )}
+              {/* ==================================================
+                  NON-DATA PACKAGE
+                  ================================================== */}
 
-            {/* CUSTOMER */}
+              {!isData && (
+                <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
 
-            <div className="space-y-2 mb-5">
+                  <div className="mb-4">
 
-              <Label htmlFor="billCustomer">
-                {customerLabel}
-              </Label>
+                    <h3 className="text-base font-bold text-slate-900">
+                      {isAirtime
+                        ? "Airtime Type"
+                        : "Package"}
+                    </h3>
 
-              <Input
-                id="billCustomer"
-                value={
-                  customer
-                }
-                onChange={(
-                  event
-                ) =>
-                  setCustomer(
-                    event.target.value
-                  )
-                }
-                placeholder={
-                  customerPlaceholder
-                }
-                disabled={
-                  processingPayment ||
-                  verifyingPin
-                }
-                inputMode={
-                  serviceType ===
-                      "airtime" ||
-                  serviceType ===
-                      "data" ||
-                  serviceType ===
-                      "electricity" ||
-                  serviceType ===
-                      "cable"
-                    ? "numeric"
-                    : "text"
-                }
-              />
-
-            </div>
-
-            {/* DATA PRICE */}
-
-            {isData &&
-              selectedItem && (
-                <div className="rounded-lg bg-green-50 border border-green-100 p-4 mb-5">
-
-                  <div className="flex items-center justify-between gap-4">
-
-                    <span className="text-sm text-gray-600">
-                      Selected Plan
-                    </span>
-
-                    <span className="text-sm font-medium text-right">
-                      {selectedItem.name ??
-                        selectedItem.short_name}
-                    </span>
+                    <p className="mt-1 text-xs text-slate-500">
+                      {loadingItems
+                        ? "Loading available options..."
+                        : "Select an option to continue."}
+                    </p>
 
                   </div>
 
-                  <div className="flex items-center justify-between mt-2">
+                  {loadingItems ? (
+                    <div className="flex min-h-24 items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50">
+                      <div className="flex items-center gap-2 text-sm text-slate-500">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Loading packages...
+                      </div>
+                    </div>
+                  ) : !selectedBillerCode ? (
+                    <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-6 text-center">
+                      <p className="text-sm text-slate-500">
+                        Select a service above first.
+                      </p>
+                    </div>
+                  ) : items.length ===
+                    0 ? (
+                    <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-6 text-center">
+                      <p className="text-sm font-medium text-slate-700">
+                        No packages available
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
 
-                    <span className="text-sm text-gray-600">
-                      Price
+                      {items.map(
+                        (
+                          item,
+                          index
+                        ) => {
+                          const code =
+                            String(
+                              item.item_code ??
+                                ""
+                            );
+
+                          if (!code) {
+                            return null;
+                          }
+
+                          const selected =
+                            selectedItemCode ===
+                            code;
+
+                          const price =
+                            getItemPrice(
+                              item
+                            );
+
+                          return (
+                            <button
+                              type="button"
+                              key={`${code}-${index}`}
+                              onClick={() =>
+                                handleItemChange(
+                                  code
+                                )
+                              }
+                              disabled={
+                                processingPayment ||
+                                verifyingPin
+                              }
+                              className={[
+                                "relative rounded-2xl border p-4 text-left transition-all",
+                                "hover:border-[#082A63]/40 hover:bg-[#082A63]/[0.025]",
+                                selected
+                                  ? "border-[#082A63] bg-[#082A63]/[0.04] ring-2 ring-[#082A63]/10"
+                                  : "border-slate-200",
+                              ].join(
+                                " "
+                              )}
+                            >
+
+                              {selected && (
+                                <span className="absolute right-3 top-3 flex h-6 w-6 items-center justify-center rounded-full bg-[#082A63] text-white">
+                                  <Check className="h-3.5 w-3.5" />
+                                </span>
+                              )}
+
+                              <p className="pr-8 text-sm font-bold text-slate-900">
+                                {getItemName(
+                                  item
+                                )}
+                              </p>
+
+                              {item.description && (
+                                <p className="mt-1 line-clamp-2 text-xs text-slate-500">
+                                  {item.description}
+                                </p>
+                              )}
+
+                              {price > 0 && (
+                                <p className="mt-3 text-base font-extrabold text-[#082A63]">
+                                  {formatNaira(
+                                    price
+                                  )}
+                                </p>
+                              )}
+
+                            </button>
+                          );
+                        }
+                      )}
+
+                    </div>
+                  )}
+
+                </section>
+              )}
+
+              {/* ==================================================
+                  CUSTOMER DETAILS
+                  ================================================== */}
+
+              <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+
+                <div className="mb-4">
+
+                  <h3 className="text-base font-bold text-slate-900">
+                    Customer Details
+                  </h3>
+
+                  <p className="mt-1 text-xs text-slate-500">
+                    Enter the details for this payment.
+                  </p>
+
+                </div>
+
+                <div className="space-y-2">
+
+                  <Label
+                    htmlFor="billCustomer"
+                    className="text-sm font-semibold text-slate-800"
+                  >
+                    {customerLabel}
+                  </Label>
+
+                  <Input
+                    id="billCustomer"
+                    value={customer}
+                    onChange={(event) =>
+                      setCustomer(
+                        event.target.value
+                      )
+                    }
+                    placeholder={
+                      customerPlaceholder
+                    }
+                    disabled={
+                      processingPayment ||
+                      verifyingPin
+                    }
+                    inputMode={
+                      serviceType ===
+                          "airtime" ||
+                      serviceType ===
+                          "data" ||
+                      serviceType ===
+                          "electricity" ||
+                      serviceType ===
+                          "cable"
+                        ? "numeric"
+                        : "text"
+                    }
+                    className="h-12 rounded-xl border-slate-200 focus:border-[#082A63] focus:ring-[#082A63]/20"
+                  />
+
+                </div>
+
+              </section>
+
+            </div>
+
+            {/* ==================================================
+                RIGHT / PAYMENT
+                ================================================== */}
+
+            <aside className="lg:sticky lg:top-24 lg:self-start">
+
+              <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+
+                <div className="mb-5">
+
+                  <div className="flex items-center gap-3">
+
+                    <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#082A63]/10">
+                      <ShieldCheck className="h-5 w-5 text-[#082A63]" />
+                    </div>
+
+                    <div>
+                      <h3 className="text-base font-bold text-slate-900">
+                        Payment
+                      </h3>
+
+                      <p className="text-xs text-slate-500">
+                        Pay securely from your wallet
+                      </p>
+                    </div>
+
+                  </div>
+
+                </div>
+
+                {/* SELECTED PLAN */}
+
+                {selectedItem && (
+                  <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+
+                    <div className="flex items-start justify-between gap-4">
+
+                      <div className="min-w-0">
+
+                        <p className="text-xs text-slate-500">
+                          Selected
+                        </p>
+
+                        <p className="mt-1 line-clamp-2 text-sm font-bold text-slate-900">
+                          {getItemName(
+                            selectedItem
+                          )}
+                        </p>
+
+                      </div>
+
+                      <p className="shrink-0 text-sm font-bold text-[#082A63]">
+                        {formatNaira(
+                          amountNumber
+                        )}
+                      </p>
+
+                    </div>
+
+                  </div>
+                )}
+
+                {/* AMOUNT */}
+
+                {!isData && (
+                  <div className="mt-5">
+
+                    <div className="mb-3 flex items-center justify-between">
+
+                      <div>
+                        <p className="text-sm font-bold text-slate-900">
+                          Amount
+                        </p>
+
+                        <p className="text-xs text-slate-500">
+                          Select an amount
+                        </p>
+                      </div>
+
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+
+                      {(isAirtime
+                        ? AIRTIME_AMOUNTS
+                        : BILL_AMOUNTS
+                      ).map(
+                        (value) => {
+                          const selected =
+                            amount ===
+                            String(
+                              value
+                            );
+
+                          return (
+                            <button
+                              type="button"
+                              key={value}
+                              onClick={() =>
+                                handleAmountSelect(
+                                  value
+                                )
+                              }
+                              disabled={
+                                processingPayment ||
+                                verifyingPin
+                              }
+                              className={[
+                                "rounded-xl border px-3 py-3 text-sm font-bold transition",
+                                selected
+                                  ? "border-[#082A63] bg-[#082A63]/[0.05] text-[#082A63] ring-1 ring-[#082A63]"
+                                  : "border-slate-200 text-slate-700 hover:border-[#082A63]/40 hover:bg-slate-50",
+                              ].join(
+                                " "
+                              )}
+                            >
+                              {formatNaira(
+                                value
+                              )}
+                            </button>
+                          );
+                        }
+                      )}
+
+                      <button
+                        type="button"
+                        onClick={
+                          handleCustomAmount
+                        }
+                        disabled={
+                          processingPayment ||
+                          verifyingPin
+                        }
+                        className={[
+                          "col-span-2 rounded-xl border px-3 py-3 text-sm font-bold transition",
+                          customAmountMode
+                            ? "border-[#082A63] bg-[#082A63]/[0.05] text-[#082A63] ring-1 ring-[#082A63]"
+                            : "border-slate-200 text-slate-700 hover:border-[#082A63]/40 hover:bg-slate-50",
+                        ].join(
+                          " "
+                        )}
+                      >
+                        Enter Custom Amount
+                      </button>
+
+                    </div>
+
+                    {customAmountMode && (
+                      <Input
+                        id="billAmount"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={amount}
+                        onChange={(
+                          event
+                        ) =>
+                          setAmount(
+                            event.target
+                              .value
+                          )
+                        }
+                        placeholder="Enter amount"
+                        disabled={
+                          processingPayment ||
+                          verifyingPin
+                        }
+                        autoFocus
+                        className="mt-3 h-12 rounded-xl border-slate-200"
+                      />
+                    )}
+
+                    {(itemMinimum >
+                      0 ||
+                      itemMaximum >
+                        0) && (
+                      <p className="mt-2 text-xs text-slate-500">
+                        {itemMinimum >
+                        0
+                          ? `Minimum: ${formatNaira(
+                              itemMinimum
+                            )}`
+                          : ""}
+
+                        {itemMinimum >
+                          0 &&
+                        itemMaximum >
+                          0
+                          ? " • "
+                          : ""}
+
+                        {itemMaximum >
+                        0
+                          ? `Maximum: ${formatNaira(
+                              itemMaximum
+                            )}`
+                          : ""}
+                      </p>
+                    )}
+
+                  </div>
+                )}
+
+                {/* DATA PRICE */}
+
+                {isData &&
+                  selectedItem && (
+                    <div className="mt-5 rounded-2xl border border-[#082A63]/10 bg-[#082A63]/[0.035] p-4">
+
+                      <div className="flex items-center justify-between gap-3">
+
+                        <span className="text-sm text-slate-500">
+                          Plan Price
+                        </span>
+
+                        <span className="text-lg font-extrabold text-[#082A63]">
+                          {formatNaira(
+                            dataSellingAmount
+                          )}
+                        </span>
+
+                      </div>
+
+                    </div>
+                  )}
+
+                {/* PAYMENT TOTAL */}
+
+                <div className="mt-5 border-t border-slate-200 pt-5">
+
+                  <div className="flex items-center justify-between">
+
+                    <span className="text-sm font-medium text-slate-500">
+                      Total
                     </span>
 
-                    <span className="font-bold text-green-700">
+                    <span className="text-xl font-extrabold text-slate-900">
                       {formatNaira(
-                        dataSellingAmount
+                        amountNumber
                       )}
                     </span>
 
                   </div>
 
                 </div>
-              )}
 
-            {/* AMOUNT */}
+                {/* ERROR */}
 
-            {!isData && (
-              <div className="space-y-2 mb-5">
+                {error && (
+                  <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-3">
+                    <p className="text-sm text-red-700">
+                      {error}
+                    </p>
+                  </div>
+                )}
 
-                <Label>
-                  Amount (₦)
-                </Label>
+                {/* PAY BUTTON */}
 
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-
-                  {(isAirtime
-                    ? AIRTIME_AMOUNTS
-                    : BILL_AMOUNTS
-                  ).map(
-                    (value) => {
-                      const displayAmount = value;
-
-                      return (
-                        <button
-                          type="button"
-                          key={value}
-                          onClick={() =>
-                            handleAmountSelect(
-                              value
-                            )
-                          }
-                          disabled={
-                            processingPayment ||
-                            verifyingPin
-                          }
-                          className={[
-                            "rounded-xl border p-3 text-center font-semibold transition-all",
-                            "hover:border-green-500 hover:bg-green-50",
-                            amount ===
-                            String(
-                              displayAmount
-                            )
-                              ? "border-green-600 bg-green-50 text-green-700 ring-1 ring-green-600"
-                              : "border-gray-200",
-                          ].join(
-                            " "
-                          )}
-                        >
-                          {formatNaira(
-                            displayAmount
-                          )}
-                        </button>
-                      );
-                    }
+                <Button
+                  type="button"
+                  onClick={() =>
+                    void handlePurchase()
+                  }
+                  disabled={
+                    loadingBillers ||
+                    loadingItems ||
+                    processingPayment ||
+                    verifyingPin ||
+                    !selectedBillerCode ||
+                    !selectedItemCode ||
+                    !customer.trim() ||
+                    !amount
+                  }
+                  className="mt-5 h-13 w-full rounded-xl bg-[#082A63] py-6 text-sm font-bold hover:bg-[#061f4a] disabled:opacity-50"
+                >
+                  {processingPayment ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Processing Payment...
+                    </>
+                  ) : (
+                    <>
+                      <ShieldCheck className="mr-2 h-4 w-4" />
+                      Pay {formatNaira(
+                        amountNumber
+                      )}
+                    </>
                   )}
+                </Button>
 
-                  <button
-                    type="button"
-                    onClick={
-                      handleCustomAmount
-                    }
-                    disabled={
-                      processingPayment ||
-                      verifyingPin
-                    }
-                    className={[
-                      "rounded-xl border p-3 text-center font-semibold transition-all",
-                      "hover:border-green-500 hover:bg-green-50",
-                      customAmountMode
-                        ? "border-green-600 bg-green-50 text-green-700 ring-1 ring-green-600"
-                        : "border-gray-200",
-                    ].join(
-                      " "
-                    )}
-                  >
-                    Enter Amount
-                  </button>
-
+                <div className="mt-4 flex items-center justify-center gap-2 text-center text-[11px] text-slate-400">
+                  <ShieldCheck className="h-3.5 w-3.5" />
+                  Payment is protected by your Payment PIN
                 </div>
 
-                {customAmountMode && (
-                  <Input
-                    id="billAmount"
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={
-                      amount
-                    }
-                    onChange={(
-                      event
-                    ) =>
-                      setAmount(
-                        event.target.value
-                      )
-                    }
-                    placeholder="Enter exact amount"
-                    disabled={
-                      processingPayment ||
-                      verifyingPin
-                    }
-                    autoFocus
-                  />
-                )}
+              </section>
 
-                {(itemMinimum >
-                  0 ||
-                  itemMaximum >
-                    0) && (
-                  <p className="text-xs text-gray-500">
-
-                    {itemMinimum >
-                    0
-                      ? `Minimum: ${formatNaira(
-                          itemMinimum
-                        )}`
-                      : ""}
-
-                    {itemMinimum >
-                      0 &&
-                    itemMaximum >
-                      0
-                      ? " • "
-                      : ""}
-
-                    {itemMaximum >
-                    0
-                      ? `Maximum: ${formatNaira(
-                          itemMaximum
-                        )}`
-                      : ""}
-
-                  </p>
-                )}
-
-              </div>
-            )}
-
-            {/* ERROR */}
-
-            {error && (
-              <div className="rounded-lg bg-red-50 border border-red-200 p-3 mb-5">
-                <p className="text-sm text-red-700">
-                  {error}
-                </p>
-              </div>
-            )}
-
-            {/* PURCHASE */}
-
-            <Button
-              type="button"
-              onClick={
-                handlePurchase
-              }
-              disabled={
-                loadingBillers ||
-                loadingItems ||
-                processingPayment ||
-                verifyingPin ||
-                !selectedBillerCode ||
-                !selectedItemCode ||
-                !customer.trim() ||
-                !amount
-              }
-              className="w-full bg-green-600 hover:bg-green-700 h-11"
-            >
-
-              {processingPayment ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Processing...
-                </>
-              ) : (
-                `Purchase ${service.title}`
-              )}
-
-            </Button>
-
-            {processingPayment && (
-              <p className="text-xs text-center text-gray-500 mt-3">
-                Please do not leave this page
-                while your payment is being
-                processed.
-              </p>
-            )}
+            </aside>
 
           </div>
         )}

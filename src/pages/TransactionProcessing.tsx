@@ -477,7 +477,7 @@ const TransactionProcessingPage = ({
           (resolve) => {
             setTimeout(
               resolve,
-              6000
+              8000
             );
           }
         );

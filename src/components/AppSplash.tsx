@@ -11,8 +11,8 @@ const AppSplash = () => {
     const interval = window.setInterval(() => {
       const elapsed = Date.now() - startTime;
       const percentage = Math.min(
-        (elapsed / SPLASH_DURATION) * 100,
-        100
+        (elapsed / SPLASH_DURATION) * 80,
+        80
       );
 
       setProgress(percentage);

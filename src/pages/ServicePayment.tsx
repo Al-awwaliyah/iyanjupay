@@ -496,12 +496,12 @@ const ServicePayment = ({
 
       if (functionError) {
         console.error("Billers function error:", functionError);
-        throw new Error("Unable to load service providers.");
+        throw new Error("Unable to load available options.");
       }
 
       if (!data || data.success !== true) {
         console.error("Billers API response:", data);
-        throw new Error(data?.error || "Unable to load service providers.");
+        throw new Error(data?.error || "Unable to load available options.");
       }
 
       const loadedBillers = Array.isArray(data?.billers)
@@ -513,11 +513,11 @@ const ServicePayment = ({
       setBillers(loadedBillers);
 
       if (!loadedBillers.length) {
-        setError("No service providers are currently available.");
+        setError("No options are currently available.");
       }
     } catch (err) {
       console.error("Failed to load billers:", err);
-      const message = "Unable to load service providers.";
+      const message = "Unable to load available options.";
       setError(message);
       toast({
         title: "Unable to load services",
@@ -572,6 +572,7 @@ const ServicePayment = ({
           {
             body: {
               action: "items",
+              service: serviceType,
               biller_code:
                 cleanBillerCode,
               category,
@@ -646,7 +647,7 @@ const ServicePayment = ({
         normalizedItems.length === 0
       ) {
         setError(
-          "No packages are currently available for this provider."
+          "No packages are currently available for this service."
         );
       }
     } catch (err: any) {
@@ -1616,7 +1617,7 @@ const ServicePayment = ({
               <div className="flex items-center justify-between">
 
                 <Label>
-                  {isAirtime || isData ? "Network" : "Provider"}
+                  {isAirtime || isData ? "Network" : "Service Option"}
                 </Label>
 
                 {!loadingBillers &&
@@ -1901,7 +1902,7 @@ const ServicePayment = ({
                     {loadingItems
                       ? "Loading packages..."
                       : !selectedBillerCode
-                        ? "Select network/provider first"
+                        ? "Select network or service first"
                         : "Select package"}
                   </option>
 

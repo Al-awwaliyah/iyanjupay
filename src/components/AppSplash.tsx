@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 
-const SPLASH_DURATION = 8_000;
+const SPLASH_DURATION = 10_000;
 
 const AppSplash = () => {
   const [progress, setProgress] = useState(0);
@@ -11,8 +11,8 @@ const AppSplash = () => {
     const interval = window.setInterval(() => {
       const elapsed = Date.now() - startTime;
       const percentage = Math.min(
-        (elapsed / SPLASH_DURATION) * 80,
-        80
+        (elapsed / SPLASH_DURATION) * 100,
+        100
       );
 
       setProgress(percentage);

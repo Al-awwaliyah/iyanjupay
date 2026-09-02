@@ -47,6 +47,8 @@ interface Biller {
   country?: string;
   country_code?: string;
   logo?: string | null;
+  logo_url?: string | null;
+  logoUrl?: string | null;
   description?: string;
   short_name?: string;
 
@@ -224,17 +226,29 @@ function normaliseProviderKey(value: unknown): string {
     .replace(/[^a-z0-9]+/g, "");
 }
 
-// Reliable public logo assets for customer-facing provider cards.
-// These are selected from the provider display name only; no provider ID
-// or integration/provider metadata is exposed to the customer.
-const NETWORK_PROVIDER_LOGOS: Record<string, string> = {
+const PROVIDER_LOGOS: Record<string, string> = {
+  // Mobile networks
   mtn: "https://upload.wikimedia.org/wikipedia/commons/a/af/MTN_Logo.svg",
   glo: "https://upload.wikimedia.org/wikipedia/commons/8/86/GloLogo.png",
   airtel: "https://upload.wikimedia.org/wikipedia/commons/f/fb/Bharti_Airtel_Logo.svg",
   "9mobile": "https://images.seeklogo.com/logo-png/48/1/9mobile-logo-png_seeklogo-481168.png",
+
+  // Cable TV / entertainment
+  dstv: "https://res.cloudinary.com/paybeta/image/upload/v1714827633/Provider/Cable/dstv.jpg",
+  gotv: "https://res.cloudinary.com/paybeta/image/upload/v1714828100/Provider/Cable/gotv.png",
+  startimes: "https://res.cloudinary.com/paybeta/image/upload/v1714827913/Provider/Cable/startimes.jpg",
+  showmax: "https://commons.wikimedia.org/wiki/Special:Redirect/file/Showmax_Logo.svg",
+
+  // Internet / ISP
+  smile: "https://cdn.jsdelivr.net/gh/PaystackHQ/nigerialogos@master/public/logos/smile/smile.svg",
+  spectranet: "https://cdn.jsdelivr.net/gh/PaystackHQ/nigerialogos@master/public/logos/spectranet/spectranet.svg",
+  ipnx: "https://cdn.jsdelivr.net/gh/PaystackHQ/nigerialogos@master/public/logos/ipnx/ipnx.svg",
+  ntel: "https://cdn.jsdelivr.net/gh/PaystackHQ/nigerialogos@master/public/logos/ntel/ntel.svg",
 };
 
 function getProviderLogo(provider: Biller): string | null {
+  // Prefer a real logo supplied by the backend catalogue.
+  // This is the safest source because it is already tied to the public biller.
   const backendLogo = cleanString(
     provider.logo ??
       provider.logo_url ??
@@ -245,38 +259,50 @@ function getProviderLogo(provider: Biller): string | null {
     try {
       const url = new URL(backendLogo);
 
-      // Never use the old guessed Simple Icons URLs.
-      if (url.hostname !== "cdn.simpleicons.org" &&
-          (url.protocol === "https:" || url.protocol === "http:")) {
+      // Never request the old guessed Simple Icons URLs that produced 404s.
+      if (
+        url.hostname !== "cdn.simpleicons.org" &&
+        (url.protocol === "https:" || url.protocol === "http:")
+      ) {
         return url.toString();
       }
     } catch {
-      // Fall through to the verified network-logo mapping below.
+      // Fall through to the public-name mapping below.
     }
   }
 
   const key = normaliseProviderKey(
-    provider.short_name ?? provider.name ?? provider.biller_code
+    [
+      provider.short_name,
+      provider.name,
+      (provider as any).display_name,
+      (provider as any).displayName,
+    ]
+      .filter(Boolean)
+      .join(" ")
   );
 
-  if (key.includes("mtn")) {
-    return NETWORK_PROVIDER_LOGOS.mtn;
-  }
+  // Mobile networks.
+  if (key.includes("mtn")) return PROVIDER_LOGOS.mtn;
+  if (key.includes("glo") || key.includes("globacom")) return PROVIDER_LOGOS.glo;
+  if (key.includes("airtel")) return PROVIDER_LOGOS.airtel;
+  if (key.includes("9mobile") || key.includes("etisalat")) return PROVIDER_LOGOS["9mobile"];
 
-  if (key.includes("glo") || key.includes("globacom")) {
-    return NETWORK_PROVIDER_LOGOS.glo;
-  }
+  // Cable TV / entertainment.
+  if (key.includes("dstv") || key.includes("multichoice")) return PROVIDER_LOGOS.dstv;
+  if (key.includes("gotv")) return PROVIDER_LOGOS.gotv;
+  if (key.includes("startimes") || key.includes("startime")) return PROVIDER_LOGOS.startimes;
+  if (key.includes("showmax")) return PROVIDER_LOGOS.showmax;
 
-  if (key.includes("airtel")) {
-    return NETWORK_PROVIDER_LOGOS.airtel;
-  }
-
-  if (key.includes("9mobile") || key.includes("etisalat")) {
-    return NETWORK_PROVIDER_LOGOS["9mobile"];
-  }
+  // Internet / ISP.
+  if (key.includes("smile")) return PROVIDER_LOGOS.smile;
+  if (key.includes("spectranet")) return PROVIDER_LOGOS.spectranet;
+  if (key.includes("ipnx")) return PROVIDER_LOGOS.ipnx;
+  if (key.includes("ntel")) return PROVIDER_LOGOS.ntel;
 
   return null;
 }
+
 
 function getProviderDisplayName(provider: Biller): string {
   return cleanString(provider.short_name ?? provider.name ?? "Provider");

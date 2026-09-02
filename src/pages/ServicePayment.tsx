@@ -598,6 +598,11 @@ const ServicePayment = ({
   const isData =
     serviceType === "data";
 
+  // Data uses the ClubKonnect-backed service abstraction.
+  // All other services continue through the Flutterwave-backed function.
+  const serviceFunction =
+    isData ? "clubkonnect-services" : "flutterwave-bills";
+
   const isAirtime =
     serviceType === "airtime";
 
@@ -789,7 +794,7 @@ const ServicePayment = ({
 
     try {
       const { data, error: functionError } =
-        await supabase.functions.invoke("flutterwave-bills", {
+        await supabase.functions.invoke(serviceFunction, {
           body: {
             action: "billers",
             service: serviceType,
@@ -848,7 +853,7 @@ const ServicePayment = ({
 
   useEffect(() => {
     if (category) loadBillers();
-  }, [category]);
+  }, [category, serviceFunction]);
 
   // ==========================================================
   // LOAD ITEMS
@@ -881,7 +886,7 @@ const ServicePayment = ({
         error: functionError,
       } =
         await supabase.functions.invoke(
-          "flutterwave-bills",
+          serviceFunction,
           {
             body: {
               action: "items",
@@ -1447,6 +1452,7 @@ const ServicePayment = ({
       customerLabel,
       item: selectedItem,
       biller: selectedBiller,
+      provider: selectedBiller,
       selling_amount: amountNumber,
       plan_type: isData ? getPlanType(selectedItem ?? {}) : "",
       is_hot_deal: isData ? isHotDeal(selectedItem ?? {}) : false,

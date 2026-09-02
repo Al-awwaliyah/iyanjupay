@@ -1103,28 +1103,57 @@ function calculateClubKonnectPrice(
   };
 }
 
-function isClubKonnectSME(
-  item: any,
-): boolean {
+function isClubKonnectSME(item: any): boolean {
   const combined = [
-    item?.name,
-    item?.Name,
-    item?.description,
-    item?.Description,
-    item?.plan,
-    item?.Plan,
-    item?.plan_name,
-    item?.planName,
-    item?.bundle,
-    item?.Bundle,
+    item?.name, item?.Name,
+    item?.description, item?.Description,
+    item?.plan, item?.Plan,
+    item?.plan_name, item?.planName,
+    item?.bundle, item?.Bundle,
+    item?.plan_type, item?.planType,
+    item?.type, item?.Type,
+    item?.category, item?.category_name, item?.categoryName,
+    item?.data_type, item?.dataType,
+    item?.service_type, item?.serviceType,
   ]
     .map(cleanString)
+    .filter(Boolean)
     .join(" ")
     .toLowerCase();
 
-  return combined.includes(
-    "sme",
-  );
+  return /\bsme\b/.test(combined) || /hot\s*deal/.test(combined) || /hotdeal/.test(combined);
+}
+
+function getDataPlanPeriod(item: any): "Daily" | "Weekly" | "Monthly" | "Other" {
+  const explicit = [
+    item?.plan_period,
+    item?.planPeriod,
+    item?.period,
+    item?.period_name,
+    item?.periodName,
+    item?.group_name,
+    item?.groupName,
+    item?.category,
+    item?.plan_type,
+    item?.type,
+  ].map(cleanString).filter(Boolean).join(" ").toLowerCase();
+
+  if (explicit.includes("month")) return "Monthly";
+  if (explicit.includes("week")) return "Weekly";
+  if (explicit.includes("day")) return "Daily";
+
+  const text = [
+    item?.validity, item?.duration,
+    item?.name, item?.Name,
+    item?.description, item?.Description,
+    item?.plan, item?.Plan,
+    item?.plan_name, item?.planName,
+  ].map(cleanString).filter(Boolean).join(" ").toLowerCase();
+
+  if (/\b(30|31)\s*(day|days)\b/.test(text) || /\bmonthly\b/.test(text) || /\b[1-3]\s*months?\b/.test(text)) return "Monthly";
+  if (/\b(7|14)\s*(day|days)\b/.test(text) || /\bweekly\b/.test(text) || /\b[1-2]\s*weeks?\b/.test(text)) return "Weekly";
+  if (/\b(1|2|3)\s*(day|days)\b/.test(text) || /\bdaily\b/.test(text) || /\b24\s*hours?\b/.test(text)) return "Daily";
+  return "Other";
 }
 
 function extractClubKonnectItemAmount(
@@ -1263,22 +1292,40 @@ function normalizeClubKonnectList(
   return [];
 }
 
-function networkMatches(
-  item: any,
-  networkCode: string,
-): boolean {
-  const target =
-    cleanString(
-      networkCode,
-    ).toLowerCase();
+function normalizeNetworkName(value: unknown): string {
+  return cleanString(value)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "")
+    .replace(/^0+/, "");
+}
 
-  if (!target) {
-    return true;
+function networkAliases(value: unknown): Set<string> {
+  const raw = normalizeNetworkName(value);
+  const aliases = new Set<string>([raw]);
+
+  if (raw === "01" || raw === "1" || raw === "mtn" || raw === "mtnnigeria") {
+    aliases.add("mtn"); aliases.add("01"); aliases.add("1");
+  }
+  if (raw === "02" || raw === "2" || raw === "glo" || raw === "globacom") {
+    aliases.add("glo"); aliases.add("globacom"); aliases.add("02"); aliases.add("2");
+  }
+  if (raw === "03" || raw === "3" || raw === "airtel" || raw === "airtelnigeria") {
+    aliases.add("airtel"); aliases.add("03"); aliases.add("3");
+  }
+  if (raw === "04" || raw === "4" || raw === "9mobile" || raw === "etisalat") {
+    aliases.add("9mobile"); aliases.add("etisalat"); aliases.add("04"); aliases.add("4");
   }
 
+  return aliases;
+}
+
+function networkMatches(item: any, networkCode: string): boolean {
+  const targetAliases = networkAliases(networkCode);
+  if (!targetAliases.size) return true;
+
+  // Only inspect fields that actually describe a mobile network.
+  // Do NOT use plan/code/id because those are commonly product IDs.
   const values = [
-    item?.code,
-    item?.Code,
     item?.network,
     item?.Network,
     item?.network_code,
@@ -1289,17 +1336,17 @@ function networkMatches(
     item?.mobileNetwork,
     item?.network_id,
     item?.networkId,
-  ]
-    .map(cleanString)
-    .filter(Boolean)
-    .map(
-      (value) =>
-        value.toLowerCase(),
-    );
+    item?.mobile_network_id,
+    item?.mobileNetworkId,
+  ].map(normalizeNetworkName).filter(Boolean);
 
-  return values.includes(
-    target,
-  );
+  // If ClubKonnect did not include a network field, do not discard the plan.
+  if (!values.length) return true;
+
+  return values.some((value) => {
+    const aliases = networkAliases(value);
+    return Array.from(aliases).some((alias) => targetAliases.has(alias));
+  });
 }
 
 function normalizeClubKonnectNetworks(
@@ -1667,6 +1714,20 @@ async function getFlutterwaveBillStatus(
  * ============================================================
  */
 
+function providerFallbackLogo(name: string): string | null {
+  const key = normalizeCatalogKey(name).replace(/\s+/g, " ");
+  if (key.includes("mtn")) return "https://cdn.simpleicons.org/mtn/FFCC00";
+  if (key.includes("glo") || key.includes("globacom")) return "https://cdn.simpleicons.org/globacom/00A651";
+  if (key.includes("airtel")) return "https://cdn.simpleicons.org/airtel/E4002B";
+  if (key.includes("9mobile") || key.includes("etisalat")) return "https://cdn.simpleicons.org/9mobile/008751";
+  if (key.includes("dstv")) return "https://cdn.simpleicons.org/dstv/00A4E4";
+  if (key.includes("gotv")) return "https://cdn.simpleicons.org/gotv/00A4E4";
+  if (key.includes("startimes")) return "https://cdn.simpleicons.org/startimes/FF6A00";
+  if (key.includes("smile")) return "https://cdn.simpleicons.org/smile/EC008C";
+  if (key.includes("spectranet")) return "https://cdn.simpleicons.org/spectranet/0057B8";
+  return null;
+}
+
 Deno.serve(
   async (req) => {
     /*
@@ -1967,6 +2028,7 @@ Deno.serve(
               ...publicBiller,
               name: entry.name,
               short_name: cleanString(entry.raw?.short_name ?? entry.name),
+              logo: cleanString(entry.raw?.logo ?? entry.raw?.logo_url ?? entry.raw?.logoUrl) || providerFallbackLogo(entry.name),
               biller_code: await encodeRouteToken({ version: 1, service, candidates: entry.candidates }),
               category,
               country: "NG",
@@ -2005,7 +2067,16 @@ Deno.serve(
           const providerAmount = normalizeAmount(item?.provider_amount ?? item?.amount ?? item?.price ?? item?.selling_price ?? item?.cost ?? item?.value);
           if (providerAmount <= 0) return;
           const name = cleanString(item?.name ?? item?.short_name ?? item?.description ?? originalCode);
-          const identity = normalizeCatalogKey(`${name}|${item?.validity ?? item?.duration ?? ""}|${item?.label_name ?? ""}`) || originalCode.toLowerCase();
+          const hotFlag =
+            item?.is_hot_deal === true ||
+            (service === "data" && isClubKonnectSME(item));
+          const period =
+            service === "data"
+              ? cleanString(item?.plan_period) || getDataPlanPeriod(item)
+              : "";
+          const identity = normalizeCatalogKey(
+            `${name}|${item?.validity ?? item?.duration ?? ""}|${item?.label_name ?? ""}|${period}|${hotFlag ? "HOT" : "REGULAR"}`
+          ) || originalCode.toLowerCase();
           const sellingPrice = providerSellingPrice(candidate.provider_id, providerAmount, service);
           const routeCode = await encodeRouteToken({ version: 1, provider_id: candidate.provider_id, biller_code: candidate.biller_code, item_code: originalCode });
           const publicItem = {
@@ -2014,9 +2085,11 @@ Deno.serve(
             item_code: routeCode,
             amount: sellingPrice,
             selling_price: sellingPrice,
-
-
+            plan_period: service === "data" ? period : item?.plan_period,
+            plan_type: service === "data" ? (item?.plan_type ?? (hotFlag ? "SME" : "REGULAR")) : item?.plan_type,
+            is_hot_deal: service === "data" ? hotFlag : item?.is_hot_deal === true,
             provider_id: undefined,
+            provider: undefined,
           };
           const existing = output.get(identity);
           if (!existing || sellingPrice < normalizeAmount(existing.selling_price)) output.set(identity, publicItem);
@@ -5150,4 +5223,3 @@ Deno.serve(
     }
   },
 );
-

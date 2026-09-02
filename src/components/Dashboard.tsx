@@ -27,6 +27,7 @@ import {
   Wifi,
   Zap,
   CreditCard,
+  Gift,
 } from "lucide-react";
 
 import ServiceCard from "./services/ServiceCard";
@@ -81,12 +82,6 @@ type SelectedService = {
   type: BillService;
 };
 
-/*
- * ============================================================
- * DASHBOARD STATISTICS TYPES
- * ============================================================
- */
-
 type TransactionStats = {
   monthlySpent: number;
   monthlyTransactions: number;
@@ -103,12 +98,6 @@ type DashboardTransaction = {
   metadata: Record<string, any> | null;
   created_at: string;
 };
-
-/*
- * ============================================================
- * SUPPORTED BILL SERVICES
- * ============================================================
- */
 
 const SUPPORTED_BILL_SERVICES: BillService[] = [
   "airtime",
@@ -129,12 +118,6 @@ const CLUBKONNECT_SERVICES = new Set<BillService>([
   "data-card",
 ]);
 
-/*
- * ============================================================
- * SUCCESSFUL STATUSES
- * ============================================================
- */
-
 const SUCCESS_STATUSES = new Set([
   "success",
   "successful",
@@ -142,12 +125,6 @@ const SUCCESS_STATUSES = new Set([
   "complete",
   "succeeded",
 ]);
-
-/*
- * ============================================================
- * FAILED STATUSES
- * ============================================================
- */
 
 const FAILED_STATUSES = new Set([
   "failed",
@@ -158,19 +135,6 @@ const FAILED_STATUSES = new Set([
   "canceled",
   "reversed",
 ]);
-
-/*
- * ============================================================
- * MONEY-OUT TRANSACTION TYPES
- *
- * These are the transaction types that should contribute
- * to "Total Spent".
- *
- * The helper also checks metadata/category/description so
- * your existing transaction records remain compatible even
- * if the exact transaction_type naming differs.
- * ============================================================
- */
 
 const MONEY_OUT_TYPES = new Set([
   "debit",
@@ -190,12 +154,6 @@ const MONEY_OUT_TYPES = new Set([
   "payout",
 ]);
 
-/*
- * ============================================================
- * HELPER: NORMALIZE TEXT
- * ============================================================
- */
-
 const normalizeText = (
   value: unknown
 ): string => {
@@ -205,12 +163,6 @@ const normalizeText = (
     .replace(/\s+/g, "_");
 };
 
-/*
- * ============================================================
- * HELPER: IS SUCCESSFUL
- * ============================================================
- */
-
 const isSuccessfulTransaction = (
   transaction: DashboardTransaction
 ): boolean => {
@@ -219,12 +171,6 @@ const isSuccessfulTransaction = (
   );
 };
 
-/*
- * ============================================================
- * HELPER: IS FAILED
- * ============================================================
- */
-
 const isFailedTransaction = (
   transaction: DashboardTransaction
 ): boolean => {
@@ -232,15 +178,6 @@ const isFailedTransaction = (
     normalizeText(transaction.status)
   );
 };
-
-/*
- * ============================================================
- * HELPER: IS MONEY OUT
- *
- * This prevents wallet funding/deposit transactions from
- * being counted as "Total Spent".
- * ============================================================
- */
 
 const isMoneyOutTransaction = (
   transaction: DashboardTransaction
@@ -275,11 +212,6 @@ const isMoneyOutTransaction = (
       metadata?.transaction_type
     );
 
-  /*
-   * Explicit credit/deposit/funding transactions
-   * should NEVER be considered spending.
-   */
-
   if (
     type === "credit" ||
     type === "funding" ||
@@ -294,10 +226,6 @@ const isMoneyOutTransaction = (
     return false;
   }
 
-  /*
-   * Explicit debit/outgoing transactions.
-   */
-
   if (
     type === "debit" ||
     metadataDirection === "debit" ||
@@ -306,10 +234,6 @@ const isMoneyOutTransaction = (
   ) {
     return true;
   }
-
-  /*
-   * Known money-out transaction types.
-   */
 
   if (
     MONEY_OUT_TYPES.has(type) ||
@@ -321,10 +245,6 @@ const isMoneyOutTransaction = (
   ) {
     return true;
   }
-
-  /*
-   * Fallback based on description.
-   */
 
   const moneyOutWords = [
     "transfer",
@@ -344,12 +264,6 @@ const isMoneyOutTransaction = (
       description.includes(word)
   );
 };
-
-/*
- * ============================================================
- * DASHBOARD COMPONENT
- * ============================================================
- */
 
 const Dashboard = () => {
   const { user, signOut } = useAuth();
@@ -387,12 +301,6 @@ const Dashboard = () => {
     setCurrentPage,
   ] = useState<CurrentPage>("home");
 
-  /*
-   * ==========================================================
-   * DASHBOARD STATS STATE
-   * ==========================================================
-   */
-
   const [
     stats,
     setStats,
@@ -408,12 +316,6 @@ const Dashboard = () => {
   ] = useState(true);
 
   const { toast } = useToast();
-
-  /*
-   * ==========================================================
-   * EXTRACT EDGE FUNCTION ERROR
-   * ==========================================================
-   */
 
   const extractFunctionError = async (
     error: any,
@@ -525,12 +427,6 @@ const Dashboard = () => {
     return fallback;
   };
 
-  /*
-   * ==========================================================
-   * LOAD DASHBOARD STATISTICS
-   * ==========================================================
-   */
-
   const loadDashboardStats =
     useCallback(async () => {
       if (!user?.id) {
@@ -547,14 +443,6 @@ const Dashboard = () => {
 
       try {
         setStatsLoading(true);
-
-        /*
-         * Get all transactions belonging to
-         * the currently authenticated user.
-         *
-         * RLS should restrict this to the user's
-         * own records.
-         */
 
         const {
           data,
@@ -590,11 +478,6 @@ const Dashboard = () => {
             error
           );
 
-          /*
-           * Do not show fake success data when
-           * the database request fails.
-           */
-
           setStats({
             monthlySpent: 0,
             monthlyTransactions: 0,
@@ -607,12 +490,6 @@ const Dashboard = () => {
         const transactions =
           (data ??
             []) as DashboardTransaction[];
-
-        /*
-         * ======================================================
-         * THIS MONTH
-         * ======================================================
-         */
 
         const now = new Date();
 
@@ -649,19 +526,10 @@ const Dashboard = () => {
               return (
                 createdAt >=
                   monthStart &&
-                createdAt <
-                  monthEnd
+                createdAt < monthEnd
               );
             }
           );
-
-        /*
-         * ======================================================
-         * MONTHLY TOTAL SPENT
-         *
-         * Only successful money-out transactions count.
-         * ======================================================
-         */
 
         const monthlySpent =
           monthlyTransactions
@@ -699,32 +567,8 @@ const Dashboard = () => {
               0
             );
 
-        /*
-         * ======================================================
-         * MONTHLY TRANSACTION COUNT
-         *
-         * Count every transaction created
-         * during this month.
-         * ======================================================
-         */
-
         const monthlyTransactionCount =
           monthlyTransactions.length;
-
-        /*
-         * ======================================================
-         * ALL-TIME SUCCESS RATE
-         *
-         * Pending transactions are excluded.
-         *
-         * Example:
-         *
-         * 90 successful
-         * 10 failed
-         *
-         * = 90 / 100 = 90%
-         * ======================================================
-         */
 
         const successfulCount =
           transactions.filter(
@@ -755,12 +599,6 @@ const Dashboard = () => {
                   100
               );
 
-        /*
-         * ======================================================
-         * UPDATE STATE
-         * ======================================================
-         */
-
         setStats({
           monthlySpent,
           monthlyTransactions:
@@ -784,26 +622,11 @@ const Dashboard = () => {
       }
     }, [user?.id]);
 
-  /*
-   * ==========================================================
-   * LOAD STATS WHEN USER CHANGES
-   * ==========================================================
-   */
-
   useEffect(() => {
     loadDashboardStats();
   }, [
     loadDashboardStats,
   ]);
-
-  /*
-   * ==========================================================
-   * REALTIME TRANSACTION REFRESH
-   *
-   * Whenever a transaction is inserted/updated for this
-   * user, refresh the dashboard statistics.
-   * ==========================================================
-   */
 
   useEffect(() => {
     if (!user?.id) {
@@ -838,12 +661,6 @@ const Dashboard = () => {
     user?.id,
     loadDashboardStats,
   ]);
-
-  /*
-   * ==========================================================
-   * WALLET BOOTSTRAP
-   * ==========================================================
-   */
 
   useEffect(() => {
     if (!user) return;
@@ -883,12 +700,6 @@ const Dashboard = () => {
           );
 
           await refreshWallet();
-
-          /*
-           * Refresh dashboard statistics
-           * after wallet bootstrap.
-           */
-
           await loadDashboardStats();
         } catch (error) {
           if (cancelled) {
@@ -912,12 +723,6 @@ const Dashboard = () => {
     refreshWallet,
     loadDashboardStats,
   ]);
-
-  /*
-   * ==========================================================
-   * OPTIONAL MANUAL DEPOSIT SYNC
-   * ==========================================================
-   */
 
   const syncDeposits = async () => {
     if (!user) return;
@@ -958,7 +763,6 @@ const Dashboard = () => {
       }
 
       await refreshWallet();
-
       await loadDashboardStats();
     } catch (error) {
       console.error(
@@ -968,30 +772,88 @@ const Dashboard = () => {
     }
   };
 
-  /*
-   * ==========================================================
-   * SERVICES
-   * ==========================================================
-   */
-
   const services = [
-    { title: "Buy Airtime", description: "Recharge your phone", icon: Smartphone, color: "bg-blue-500", type: "airtime" },
-    { title: "Buy Data", description: "Internet data bundles", icon: Wifi, color: "bg-purple-500", type: "data" },
-    { title: "Electricity", description: "Pay electricity bills", icon: Zap, color: "bg-yellow-500", type: "electricity" },
-    { title: "Cable TV", description: "DSTV, GOTV, Startimes", icon: CreditCard, color: "bg-red-500", type: "cable" },
-    { title: "Send Money", description: "Send money securely", icon: Send, color: "bg-green-500", type: "transfer" },
-    { title: "Internet Bills", description: "Pay internet bills", icon: Wifi, color: "bg-indigo-500", type: "internet" },
-    { title: "Insurance", description: "Pay insurance premiums", icon: Shield, color: "bg-teal-500", type: "insurance" },
-    { title: "Education", description: "Buy education PINs", icon: CreditCard, color: "bg-amber-500", type: "education" },
-    { title: "Airtime PIN", description: "Buy recharge PINs", icon: Smartphone, color: "bg-pink-500", type: "airtime-card" },
-    { title: "Data PIN", description: "Buy data PINs", icon: Wifi, color: "bg-cyan-500", type: "data-card" },
+    {
+      title: "Buy Airtime",
+      description:
+        "Recharge your phone",
+      icon: Smartphone,
+      color: "bg-blue-500",
+      type: "airtime",
+    },
+    {
+      title: "Buy Data",
+      description:
+        "Internet data bundles",
+      icon: Wifi,
+      color: "bg-purple-500",
+      type: "data",
+    },
+    {
+      title: "Electricity",
+      description:
+        "Pay electricity bills",
+      icon: Zap,
+      color: "bg-yellow-500",
+      type: "electricity",
+    },
+    {
+      title: "Cable TV",
+      description:
+        "DSTV, GOTV, Startimes",
+      icon: CreditCard,
+      color: "bg-red-500",
+      type: "cable",
+    },
+    {
+      title: "Send Money",
+      description:
+        "Send money securely",
+      icon: Send,
+      color: "bg-green-500",
+      type: "transfer",
+    },
+    {
+      title: "Internet Bills",
+      description:
+        "Pay internet bills",
+      icon: Wifi,
+      color: "bg-indigo-500",
+      type: "internet",
+    },
+    {
+      title: "Insurance",
+      description:
+        "Pay insurance premiums",
+      icon: Shield,
+      color: "bg-teal-500",
+      type: "insurance",
+    },
+    {
+      title: "Education",
+      description:
+        "Buy education PINs",
+      icon: CreditCard,
+      color: "bg-amber-500",
+      type: "education",
+    },
+    {
+      title: "Airtime PIN",
+      description:
+        "Buy recharge PINs",
+      icon: Smartphone,
+      color: "bg-pink-500",
+      type: "airtime-card",
+    },
+    {
+      title: "Data PIN",
+      description:
+        "Buy data PINs",
+      icon: Wifi,
+      color: "bg-cyan-500",
+      type: "data-card",
+    },
   ];
-
-  /*
-   * ==========================================================
-   * SERVICE CLICK
-   * ==========================================================
-   */
 
   const handleServiceClick = (
     service: typeof services[number]
@@ -1024,12 +886,6 @@ const Dashboard = () => {
 
     setCurrentPage("service-payment");
   };
-
-  /*
-   * ==========================================================
-   * BILL PAYMENT
-   * ==========================================================
-   */
 
   const handlePurchase = async (
     amount: number,
@@ -1092,7 +948,7 @@ const Dashboard = () => {
 
     if (!billerCode) {
       throw new Error(
-        "Please select a valid bill provider."
+        "Please select a valid service option."
       );
     }
 
@@ -1105,7 +961,7 @@ const Dashboard = () => {
 
     if (!itemCode) {
       throw new Error(
-        "Please select a valid bill package."
+        "Please select a valid package."
       );
     }
 
@@ -1116,7 +972,12 @@ const Dashboard = () => {
         .trim()
         .toUpperCase();
 
-    if (!CLUBKONNECT_SERVICES.has(service) && country !== "NG") {
+    if (
+      !CLUBKONNECT_SERVICES.has(
+        service
+      ) &&
+      country !== "NG"
+    ) {
       throw new Error(
         "This service currently supports Nigeria only."
       );
@@ -1150,9 +1011,16 @@ const Dashboard = () => {
         );
     }
 
-    const requiresCustomer = !["airtime-card", "data-card"].includes(service);
+    const requiresCustomer =
+      ![
+        "airtime-card",
+        "data-card",
+      ].includes(service);
 
-    if (requiresCustomer && !customer) {
+    if (
+      requiresCustomer &&
+      !customer
+    ) {
       throw new Error(
         service === "education"
           ? "Please enter the mobile number to receive the education PIN."
@@ -1182,8 +1050,7 @@ const Dashboard = () => {
     }
 
     if (
-      service ===
-      "electricity"
+      service === "electricity"
     ) {
       if (!details?.provider) {
         throw new Error(
@@ -1213,8 +1080,7 @@ const Dashboard = () => {
     }
 
     if (
-      service ===
-      "internet"
+      service === "internet"
     ) {
       if (!details?.provider) {
         throw new Error(
@@ -1264,30 +1130,42 @@ const Dashboard = () => {
     });
 
     try {
-      const functionName = CLUBKONNECT_SERVICES.has(service)
-        ? "clubkonnect-services"
-        : "flutterwave-bills";
+      const functionName =
+        CLUBKONNECT_SERVICES.has(
+          service
+        )
+          ? "clubkonnect-services"
+          : "flutterwave-bills";
 
-      const requestBody = CLUBKONNECT_SERVICES.has(service)
-        ? {
-            action: "pay",
-            service,
-            amount,
-            biller_code: billerCode,
-            item_code: itemCode,
-            customer,
-            details: paymentDetails,
-          }
-        : {
-            action: "pay",
-            service,
-            amount,
-            biller_code: billerCode,
-            item_code: itemCode,
-            customer,
-            country,
-            details: paymentDetails,
-          };
+      const requestBody =
+        CLUBKONNECT_SERVICES.has(
+          service
+        )
+          ? {
+              action: "pay",
+              service,
+              amount,
+              biller_code:
+                billerCode,
+              item_code:
+                itemCode,
+              customer,
+              details:
+                paymentDetails,
+            }
+          : {
+              action: "pay",
+              service,
+              amount,
+              biller_code:
+                billerCode,
+              item_code:
+                itemCode,
+              customer,
+              country,
+              details:
+                paymentDetails,
+            };
 
       const {
         data,
@@ -1295,7 +1173,10 @@ const Dashboard = () => {
       } =
         await supabase.functions.invoke(
           functionName,
-          { body: requestBody }
+          {
+            body:
+              requestBody,
+          }
         );
 
       if (error) {
@@ -1337,12 +1218,6 @@ const Dashboard = () => {
       }
 
       await refreshWallet();
-
-      /*
-       * Refresh dashboard statistics
-       * immediately after payment.
-       */
-
       await loadDashboardStats();
 
       const reference =
@@ -1359,7 +1234,6 @@ const Dashboard = () => {
         title: isPending
           ? "Payment Processing"
           : "Payment Successful",
-
         description:
           data?.message ||
           (isPending
@@ -1403,12 +1277,6 @@ const Dashboard = () => {
       );
     }
   };
-
-  /*
-   * ==========================================================
-   * TRANSFER HANDLER
-   * ==========================================================
-   */
 
   const handleTransfer = async (
     amount: number,
@@ -1601,11 +1469,6 @@ const Dashboard = () => {
       }
 
       await refreshWallet();
-
-      /*
-       * Refresh statistics after transfer.
-       */
-
       await loadDashboardStats();
 
       toast({
@@ -1659,18 +1522,10 @@ const Dashboard = () => {
     }
   };
 
-  /*
-   * ==========================================================
-   * PAGE ROUTING
-   * ==========================================================
-   */
-
-  /*
-   * SERVICE PAYMENT PAGE
-   *
-   * Full bill-payment flow.
-   */
-  if (currentPage === "service-payment") {
+  if (
+    currentPage ===
+    "service-payment"
+  ) {
     return (
       <ServicePayment
         service={selectedService}
@@ -1686,11 +1541,18 @@ const Dashboard = () => {
     );
   }
 
-  if (currentPage === "send-money") {
+  if (
+    currentPage ===
+    "send-money"
+  ) {
     return (
       <SendMoneyPage
-        onBack={() => setCurrentPage("home")}
-        walletBalance={Number(wallet?.balance ?? 0)}
+        onBack={() =>
+          setCurrentPage("home")
+        }
+        walletBalance={Number(
+          wallet?.balance ?? 0
+        )}
         onTransfer={handleTransfer}
       />
     );
@@ -1748,12 +1610,6 @@ const Dashboard = () => {
     );
   }
 
-  /*
-   * ==========================================================
-   * CUSTOMER SERVICE
-   * ==========================================================
-   */
-
   if (
     currentPage ===
     "customer-service"
@@ -1766,12 +1622,6 @@ const Dashboard = () => {
       />
     );
   }
-
-  /*
-   * ==========================================================
-   * SUPPORT
-   * ==========================================================
-   */
 
   if (
     currentPage ===
@@ -1786,12 +1636,6 @@ const Dashboard = () => {
     );
   }
 
-  /*
-   * ==========================================================
-   * TRANSACTION LIMIT
-   * ==========================================================
-   */
-
   if (
     currentPage ===
     "transaction-limit"
@@ -1804,12 +1648,6 @@ const Dashboard = () => {
       />
     );
   }
-
-  /*
-   * ==========================================================
-   * ME
-   * ==========================================================
-   */
 
   if (
     currentPage ===
@@ -1849,43 +1687,26 @@ const Dashboard = () => {
     );
   }
 
-  /*
-   * ==========================================================
-   * WALLET LOADING
-   * ==========================================================
-   */
-
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-purple-50 to-blue-50">
         <div className="text-center">
-
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto" />
 
           <p className="mt-4 text-gray-600">
             Loading your wallet...
           </p>
-
         </div>
       </div>
     );
   }
 
-  /*
-   * ==========================================================
-   * BOTTOM NAVIGATION
-   * ==========================================================
-   */
-
   const renderBottomNav = (
     page: CurrentPage
   ) => (
     <div className="fixed bottom-0 left-0 right-0 z-40 bg-white border-t border-gray-200 px-4 py-2">
-
       <div className="max-w-7xl mx-auto">
-
         <div className="flex justify-around">
-
           <Button
             variant={
               page === "home"
@@ -1981,49 +1802,31 @@ const Dashboard = () => {
               Me
             </span>
           </Button>
-
         </div>
       </div>
     </div>
   );
 
-  /*
-   * ==========================================================
-   * DASHBOARD
-   * ==========================================================
-   */
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-50 pb-20">
 
-      {/* ======================================================
-          HEADER
-      ====================================================== */}
-
       <header className="bg-gradient-to-r from-purple-600 to-blue-600 text-white">
-
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-
           <div className="flex justify-between items-center h-16">
 
             <div className="flex items-center">
-
               <div className="w-8 h-8 bg-white rounded-full flex items-center justify-center mr-3">
-
                 <span className="text-purple-600 font-bold text-sm">
                   IP
                 </span>
-
               </div>
 
               <h1 className="text-xl font-bold">
                 IyanjuPay
               </h1>
-
             </div>
 
             <div className="flex items-center gap-2">
-
               <Button
                 variant="ghost"
                 size="sm"
@@ -2067,23 +1870,14 @@ const Dashboard = () => {
               >
                 <LogOut className="h-4 w-4" />
               </Button>
-
             </div>
-
           </div>
-
         </div>
-
       </header>
-
-      {/* ======================================================
-          MAIN
-      ====================================================== */}
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
 
         <div className="mb-6">
-
           <h2 className="text-2xl font-bold text-gray-900 mb-1">
             Hello! 👋
           </h2>
@@ -2091,31 +1885,20 @@ const Dashboard = () => {
           <p className="text-gray-600">
             What would you like to do today?
           </p>
-
         </div>
 
-        {/* ====================================================
-            WALLET
-        ==================================================== */}
-
         <div className="mb-6">
-
           <Card className="bg-gradient-to-r from-purple-600 to-blue-600 text-white border-0 shadow-lg">
-
             <CardContent className="p-6">
 
               <div className="flex justify-between items-start mb-4">
-
                 <div>
-
                   <p className="text-purple-100 text-sm mb-1">
                     Total Balance
                   </p>
 
                   <div className="flex items-center gap-2">
-
                     <span className="text-3xl font-bold">
-
                       ₦
                       {showBalance
                         ? Number(
@@ -2123,7 +1906,6 @@ const Dashboard = () => {
                               0
                           ).toLocaleString()
                         : "****"}
-
                     </span>
 
                     <Button
@@ -2143,13 +1925,10 @@ const Dashboard = () => {
                         <Eye className="h-4 w-4" />
                       )}
                     </Button>
-
                   </div>
-
                 </div>
 
                 <div className="text-right">
-
                   <p className="text-purple-100 text-sm">
                     Wallet ID
                   </p>
@@ -2158,9 +1937,7 @@ const Dashboard = () => {
                     {wallet?.wallet_id ||
                       "—"}
                   </p>
-
                 </div>
-
               </div>
 
               <div className="flex gap-3">
@@ -2177,10 +1954,15 @@ const Dashboard = () => {
                   Add Money
                 </Button>
 
+                {/* IMPORTANT:
+                    TransferModal has been removed.
+                    Send Money now opens the dedicated
+                    SendMoney.tsx page.
+                */}
                 <Button
                   onClick={() =>
-                    setTransferModalOpen(
-                      true
+                    setCurrentPage(
+                      "send-money"
                     )
                   }
                   variant="outline"
@@ -2191,19 +1973,11 @@ const Dashboard = () => {
                 </Button>
 
               </div>
-
             </CardContent>
-
           </Card>
-
         </div>
 
-        {/* ====================================================
-            SERVICES
-        ==================================================== */}
-
         <div className="mb-6">
-
           <h3 className="text-lg font-semibold text-gray-900 mb-4">
             Services
           </h3>
@@ -2239,33 +2013,20 @@ const Dashboard = () => {
             )}
 
           </div>
-
         </div>
-
-        {/* ====================================================
-            LIVE STATS
-        ==================================================== */}
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
 
-          {/* ==================================================
-              TOTAL SPENT
-          ================================================== */}
-
           <Card className="bg-white shadow-sm">
-
             <CardContent className="p-4">
-
               <div className="flex items-center justify-between">
 
                 <div>
-
                   <p className="text-sm text-gray-600">
                     This Month
                   </p>
 
                   <p className="text-2xl font-bold text-gray-900">
-
                     {statsLoading
                       ? "..."
                       : `₦${stats.monthlySpent.toLocaleString(
@@ -2275,126 +2036,84 @@ const Dashboard = () => {
                             maximumFractionDigits: 2,
                           }
                         )}`}
-
                   </p>
 
                   <p className="text-xs text-gray-500">
                     Total Spent
                   </p>
-
                 </div>
 
                 <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center">
-
                   <Banknote className="h-6 w-6 text-red-600" />
-
                 </div>
 
               </div>
-
             </CardContent>
-
           </Card>
 
-          {/* ==================================================
-              MONTHLY TRANSACTIONS
-          ================================================== */}
-
           <Card className="bg-white shadow-sm">
-
             <CardContent className="p-4">
-
               <div className="flex items-center justify-between">
 
                 <div>
-
                   <p className="text-sm text-gray-600">
                     Transactions
                   </p>
 
                   <p className="text-2xl font-bold text-gray-900">
-
                     {statsLoading
                       ? "..."
                       : stats.monthlyTransactions.toLocaleString()}
-
                   </p>
 
                   <p className="text-xs text-gray-500">
                     This Month
                   </p>
-
                 </div>
 
                 <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
-
                   <History className="h-6 w-6 text-blue-600" />
-
                 </div>
 
               </div>
-
             </CardContent>
-
           </Card>
 
-          {/* ==================================================
-              SUCCESS RATE
-          ================================================== */}
-
           <Card className="bg-white shadow-sm">
-
             <CardContent className="p-4">
-
               <div className="flex items-center justify-between">
 
                 <div>
-
                   <p className="text-sm text-gray-600">
                     Success Rate
                   </p>
 
                   <p className="text-2xl font-bold text-gray-900">
-
                     {statsLoading
                       ? "..."
                       : `${stats.successRate}%`}
-
                   </p>
 
                   <p className="text-xs text-gray-500">
                     All Time
                   </p>
-
                 </div>
 
                 <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center">
-
                   <Shield className="h-6 w-6 text-green-600" />
-
                 </div>
 
               </div>
-
             </CardContent>
-
           </Card>
 
         </div>
 
       </main>
 
-      {/* ======================================================
-          BOTTOM NAVIGATION
-      ====================================================== */}
-
       {renderBottomNav(
         currentPage
       )}
-
-      {/* ======================================================
-          MODALS
-      ====================================================== */}
 
       <FundWalletModal
         isOpen={

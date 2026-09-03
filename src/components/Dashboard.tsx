@@ -5,6 +5,7 @@ import React, {
 } from "react";
 
 import { Button } from "@/components/ui/button";
+
 import {
   Card,
   CardContent,
@@ -67,8 +68,8 @@ import { useToast } from "@/hooks/use-toast";
  *
  * These are customer-facing services.
  *
- * The customer must never need to know which backend provider
- * is being used.
+ * The customer does not select or see the underlying service
+ * provider. Provider routing is handled by the backend.
  */
 
 type BillService =
@@ -127,10 +128,14 @@ type DashboardTransaction = {
  * SUPPORTED CUSTOMER SERVICES
  * ============================================================
  *
- * These are the services that can actually be purchased.
+ * These services are currently allowed to enter the unified
+ * ServicePayment flow.
  *
- * Internet, Insurance and Savings are deliberately excluded
- * because they are Coming Soon.
+ * All of these services are handled by:
+ *
+ * clubkonnect-services
+ *
+ * Internet, Insurance and Savings remain Coming Soon.
  */
 
 const SUPPORTED_BILL_SERVICES: BillService[] = [
@@ -296,7 +301,7 @@ const isMoneyOutTransaction = (
   }
 
   /*
-   * Known outgoing types.
+   * Known outgoing transaction types.
    */
   if (
     MONEY_OUT_TYPES.has(type) ||
@@ -425,7 +430,7 @@ const Dashboard = () => {
 
   /*
    * ============================================================
-   * EDGE FUNCTION ERROR
+   * EDGE FUNCTION ERROR EXTRACTION
    * ============================================================
    */
 
@@ -445,7 +450,8 @@ const Dashboard = () => {
           typeof error.context.json ===
             "function"
         ) {
-          const response = error.context;
+          const response =
+            error.context;
 
           let payload: any = null;
 
@@ -835,9 +841,13 @@ const Dashboard = () => {
    * Insurance
    * Savings
    *
-   * Other unwanted services such as betting, gift cards,
-   * flight booking, hotel booking and transport are not
-   * included.
+   * Removed:
+   * Betting
+   * Gift Cards
+   * Flight Booking
+   * Hotel Booking
+   * Transport
+   * NECO
    */
 
   const services = [
@@ -968,9 +978,9 @@ const Dashboard = () => {
     service: (typeof services)[number]
   ) => {
     /*
-     * Coming Soon services must never enter the payment
-     * flow.
+     * Coming Soon services must never enter the payment flow.
      */
+
     if (
       COMING_SOON_SERVICES.includes(
         service.type
@@ -986,9 +996,10 @@ const Dashboard = () => {
     }
 
     /*
-     * Only the explicitly supported customer services can
-     * enter ServicePayment.
+     * Only explicitly supported customer services may enter
+     * ServicePayment.
      */
+
     if (
       !service.available ||
       !SUPPORTED_BILL_SERVICES.includes(
@@ -1019,10 +1030,12 @@ const Dashboard = () => {
    * BILL / SERVICE PAYMENT
    * ============================================================
    *
-   * All customer service purchases use the unified
-   * ClubKonnect service Edge Function.
+   * Every supported customer service uses the same backend
+   * service Edge Function:
    *
-   * The provider is never selected by the customer.
+   * clubkonnect-services
+   *
+   * The customer never selects a provider.
    */
 
   const handlePurchase = async (
@@ -1066,9 +1079,10 @@ const Dashboard = () => {
     /*
      * Friendly frontend balance check.
      *
-     * The Edge Function remains responsible for the actual
-     * atomic wallet debit.
+     * The Edge Function remains responsible for the real
+     * atomic wallet debit and transaction processing.
      */
+
     const currentBalance =
       Number(
         wallet?.balance ?? 0
@@ -1085,8 +1099,9 @@ const Dashboard = () => {
     /*
      * Normalize customer-facing payment details.
      *
-     * No provider information is added here.
+     * No provider information is inserted here.
      */
+
     const paymentDetails = {
       ...details,
       service,
@@ -1109,24 +1124,29 @@ const Dashboard = () => {
     try {
       /*
        * ========================================================
-       * CLUBKONNECT SERVICE REQUEST
+       * CLUBKONNECT SERVICES REQUEST
        * ========================================================
        *
-       * The service-specific fields are exposed at the top
-       * level as well as retained inside `details`.
+       * IMPORTANT:
        *
-       * This makes the frontend tolerant of a standard
-       * service-function contract while keeping the complete
-       * customer details available to the Edge Function.
+       * The deployed Edge Function is named:
        *
-       * No Flutterwave bill-payment request is made here.
+       * clubkonnect-services
+       *
+       * NOT:
+       *
+       * clubkonnect-service
+       *
+       * ServicePayment and Dashboard must therefore use the
+       * same exact function name.
        */
+
       const {
         data,
         error,
       } =
         await supabase.functions.invoke(
-          "clubkonnect-service",
+          "clubkonnect-services",
           {
             body: {
               action: "purchase",
@@ -1168,11 +1188,26 @@ const Dashboard = () => {
               smartcard_no:
                 paymentDetails.smartcard_no,
 
+              smartcard_number:
+                paymentDetails.smartcard_number,
+
+              smartCardNumber:
+                paymentDetails.smartCardNumber,
+
               phone_no:
                 paymentDetails.phone_no,
 
+              phone:
+                paymentDetails.phone,
+
+              phoneNumber:
+                paymentDetails.phoneNumber,
+
               mobile_number:
                 paymentDetails.mobile_number,
+
+              recipient_phone:
+                paymentDetails.recipient_phone,
 
               account_id:
                 paymentDetails.account_id,
@@ -1182,6 +1217,9 @@ const Dashboard = () => {
 
               package:
                 paymentDetails.package,
+
+              package_code:
+                paymentDetails.package_code,
 
               electric_company:
                 paymentDetails.electric_company,
@@ -1207,6 +1245,10 @@ const Dashboard = () => {
           }
         );
 
+      /*
+       * Handle Supabase Edge Function transport errors.
+       */
+
       if (error) {
         const message =
           await extractFunctionError(
@@ -1218,6 +1260,11 @@ const Dashboard = () => {
           message
         );
       }
+
+      /*
+       * The service Edge Function must explicitly return
+       * success: true for a successful request.
+       */
 
       if (
         !data ||
@@ -1234,20 +1281,31 @@ const Dashboard = () => {
       /*
        * Refresh wallet after the service transaction.
        */
+
       await refreshWallet();
 
       /*
        * Refresh dashboard statistics so the transaction
        * appears immediately.
        */
+
       await loadDashboardStats();
+
+      /*
+       * Normalize the returned status so both completed and
+       * pending provider responses can be presented correctly.
+       */
 
       const normalizedStatus =
         String(
-          data?.status ?? ""
+          data?.status ??
+            data?.order_status ??
+            data?.orderStatus ??
+            ""
         )
           .trim()
-          .toLowerCase();
+          .toLowerCase()
+          .replace(/\s+/g, "_");
 
       const isPending =
         normalizedStatus ===
@@ -1259,12 +1317,19 @@ const Dashboard = () => {
         normalizedStatus ===
           "order_processed" ||
         normalizedStatus ===
+          "300" ||
+        normalizedStatus ===
+          "199" ||
+        normalizedStatus ===
+          "201" ||
+        normalizedStatus ===
           "on_hold";
 
       toast({
         title: isPending
           ? "Payment Processing"
           : "Payment Successful",
+
         description:
           data?.message ||
           (isPending
@@ -1292,6 +1357,10 @@ const Dashboard = () => {
    * This remains completely separate from the service system.
    *
    * SendMoney.tsx handles the customer-facing transfer flow.
+   *
+   * Bank transfers continue using:
+   *
+   * flutterwave-transfer
    */
 
   const handleTransfer = async (
@@ -1330,6 +1399,7 @@ const Dashboard = () => {
     /*
      * IyanjuPay transfers must not reach this handler.
      */
+
     if (
       details?.type ===
         "iyanjupay" ||
@@ -1472,6 +1542,7 @@ const Dashboard = () => {
       }
 
       await refreshWallet();
+
       await loadDashboardStats();
 
       toast({
@@ -1884,7 +1955,6 @@ const Dashboard = () => {
     <div className="fixed bottom-0 left-0 right-0 z-40 bg-white border-t border-gray-200 px-4 py-2">
       <div className="max-w-7xl mx-auto">
         <div className="flex justify-around">
-
           {/* HOME */}
 
           <Button
@@ -1992,7 +2062,6 @@ const Dashboard = () => {
               Me
             </span>
           </Button>
-
         </div>
       </div>
     </div>
@@ -2006,39 +2075,30 @@ const Dashboard = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-50 pb-20">
-
       {/* ====================================================== */}
       {/* HEADER */}
       {/* ====================================================== */}
 
       <header className="bg-gradient-to-r from-purple-600 to-blue-600 text-white">
-
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-
           <div className="flex justify-between items-center h-16">
-
             {/* LOGO */}
 
             <div className="flex items-center">
-
               <div className="w-8 h-8 bg-white rounded-full flex items-center justify-center mr-3">
-
                 <span className="text-purple-600 font-bold text-sm">
                   IP
                 </span>
-
               </div>
 
               <h1 className="text-xl font-bold">
                 IyanjuPay
               </h1>
-
             </div>
 
             {/* HEADER ACTIONS */}
 
             <div className="flex items-center gap-2">
-
               {/* QR */}
 
               <Button
@@ -2100,13 +2160,9 @@ const Dashboard = () => {
               >
                 <LogOut className="h-4 w-4" />
               </Button>
-
             </div>
-
           </div>
-
         </div>
-
       </header>
 
       {/* ====================================================== */}
@@ -2114,11 +2170,9 @@ const Dashboard = () => {
       {/* ====================================================== */}
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-
         {/* GREETING */}
 
         <div className="mb-6">
-
           <h2 className="text-2xl font-bold text-gray-900 mb-1">
             Hello! 👋
           </h2>
@@ -2126,7 +2180,6 @@ const Dashboard = () => {
           <p className="text-gray-600">
             What would you like to do today?
           </p>
-
         </div>
 
         {/* ==================================================== */}
@@ -2134,25 +2187,18 @@ const Dashboard = () => {
         {/* ==================================================== */}
 
         <div className="mb-6">
-
           <Card className="bg-gradient-to-r from-purple-600 to-blue-600 text-white border-0 shadow-lg">
-
             <CardContent className="p-6">
-
               <div className="flex justify-between items-start mb-4">
-
                 {/* BALANCE */}
 
                 <div>
-
                   <p className="text-purple-100 text-sm mb-1">
                     Total Balance
                   </p>
 
                   <div className="flex items-center gap-2">
-
                     <span className="text-3xl font-bold">
-
                       ₦
                       {showBalance
                         ? Number(
@@ -2166,7 +2212,6 @@ const Dashboard = () => {
                             }
                           )
                         : "****"}
-
                     </span>
 
                     <Button
@@ -2191,15 +2236,12 @@ const Dashboard = () => {
                         <Eye className="h-4 w-4" />
                       )}
                     </Button>
-
                   </div>
-
                 </div>
 
                 {/* WALLET ID */}
 
                 <div className="text-right">
-
                   <p className="text-purple-100 text-sm">
                     Wallet ID
                   </p>
@@ -2208,15 +2250,12 @@ const Dashboard = () => {
                     {wallet?.wallet_id ||
                       "—"}
                   </p>
-
                 </div>
-
               </div>
 
               {/* WALLET ACTIONS */}
 
               <div className="flex gap-3">
-
                 <Button
                   onClick={() =>
                     setFundModalOpen(
@@ -2243,13 +2282,9 @@ const Dashboard = () => {
 
                   Send Money
                 </Button>
-
               </div>
-
             </CardContent>
-
           </Card>
-
         </div>
 
         {/* ==================================================== */}
@@ -2257,13 +2292,11 @@ const Dashboard = () => {
         {/* ==================================================== */}
 
         <div className="mb-6">
-
           <h3 className="text-lg font-semibold text-gray-900 mb-4">
             Services
           </h3>
 
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-
             {services.map(
               (
                 service,
@@ -2291,9 +2324,7 @@ const Dashboard = () => {
                 />
               )
             )}
-
           </div>
-
         </div>
 
         {/* ==================================================== */}
@@ -2301,23 +2332,17 @@ const Dashboard = () => {
         {/* ==================================================== */}
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-
           {/* MONTHLY SPENDING */}
 
           <Card className="bg-white shadow-sm">
-
             <CardContent className="p-4">
-
               <div className="flex items-center justify-between">
-
                 <div>
-
                   <p className="text-sm text-gray-600">
                     This Month
                   </p>
 
                   <p className="text-2xl font-bold text-gray-900">
-
                     {statsLoading
                       ? "..."
                       : `₦${stats.monthlySpent.toLocaleString(
@@ -2327,109 +2352,76 @@ const Dashboard = () => {
                             maximumFractionDigits: 2,
                           }
                         )}`}
-
                   </p>
 
                   <p className="text-xs text-gray-500">
                     Total Spent
                   </p>
-
                 </div>
 
                 <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center">
-
                   <Banknote className="h-6 w-6 text-red-600" />
-
                 </div>
-
               </div>
-
             </CardContent>
-
           </Card>
 
           {/* TRANSACTIONS */}
 
           <Card className="bg-white shadow-sm">
-
             <CardContent className="p-4">
-
               <div className="flex items-center justify-between">
-
                 <div>
-
                   <p className="text-sm text-gray-600">
                     Transactions
                   </p>
 
                   <p className="text-2xl font-bold text-gray-900">
-
                     {statsLoading
                       ? "..."
                       : stats.monthlyTransactions.toLocaleString()}
-
                   </p>
 
                   <p className="text-xs text-gray-500">
                     This Month
                   </p>
-
                 </div>
 
                 <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
-
                   <History className="h-6 w-6 text-blue-600" />
-
                 </div>
-
               </div>
-
             </CardContent>
-
           </Card>
 
           {/* SUCCESS RATE */}
 
           <Card className="bg-white shadow-sm">
-
             <CardContent className="p-4">
-
               <div className="flex items-center justify-between">
-
                 <div>
-
                   <p className="text-sm text-gray-600">
                     Success Rate
                   </p>
 
                   <p className="text-2xl font-bold text-gray-900">
-
                     {statsLoading
                       ? "..."
                       : `${stats.successRate}%`}
-
                   </p>
 
                   <p className="text-xs text-gray-500">
                     All Time
                   </p>
-
                 </div>
 
                 <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center">
-
                   <Shield className="h-6 w-6 text-green-600" />
-
                 </div>
-
               </div>
-
             </CardContent>
-
           </Card>
-
         </div>
-
       </main>
 
       {/* ====================================================== */}
@@ -2515,7 +2507,6 @@ const Dashboard = () => {
       {/* ====================================================== */}
 
       <WhatsAppFloat />
-
     </div>
   );
 };

@@ -20,9 +20,6 @@ import {
   Shield,
   Gift,
   Banknote,
-  Car,
-  Gamepad2,
-  Plane,
   Home,
   Plus,
   Eye,
@@ -1016,54 +1013,6 @@ const Dashboard = () => {
       color: "bg-indigo-500",
       type: "internet",
     },
-    {
-      title: "Insurance",
-      description:
-        "Pay insurance premiums",
-      icon: Shield,
-      color: "bg-teal-500",
-      type: "insurance",
-    },
-    {
-      title: "Gift Cards",
-      description:
-        "Buy digital gift cards",
-      icon: Gift,
-      color: "bg-pink-500",
-      type: "giftcards",
-    },
-    {
-      title: "Betting",
-      description:
-        "Fund betting accounts",
-      icon: Gamepad2,
-      color: "bg-orange-500",
-      type: "betting",
-    },
-    {
-      title: "Flight Booking",
-      description:
-        "Book domestic flights",
-      icon: Plane,
-      color: "bg-sky-500",
-      type: "flight",
-    },
-    {
-      title: "Hotel Booking",
-      description:
-        "Book hotel rooms",
-      icon: Home,
-      color: "bg-emerald-500",
-      type: "hotel",
-    },
-    {
-      title: "Transport",
-      description:
-        "Book bus tickets",
-      icon: Car,
-      color: "bg-gray-500",
-      type: "transport",
-    },
   ];
 
   /*
@@ -1143,6 +1092,18 @@ const Dashboard = () => {
       );
     }
 
+    // Provider routing is strictly server-side. The customer only
+    // selects a network/biller; provider_id is an internal routing hint.
+    // ClubKonnect is used for Airtime, Data, Electricity and Cable TV.
+    // Flutterwave remains the provider for Internet Bills.
+    const providerId =
+      service === "airtime" ||
+      service === "data" ||
+      service === "electricity" ||
+      service === "cable"
+        ? "clubkonnect"
+        : "flutterwave";
+
     if (
       !Number.isFinite(amount) ||
       amount <= 0
@@ -1175,7 +1136,7 @@ const Dashboard = () => {
 
     if (!billerCode) {
       throw new Error(
-        "Please select a valid bill provider."
+        "Please select a valid network or biller."
       );
     }
 
@@ -1186,7 +1147,15 @@ const Dashboard = () => {
           ""
       ).trim();
 
-    if (!itemCode) {
+    // ClubKonnect Airtime and Electricity are amount-based services;
+    // they do not require a catalogue package/item code.
+    const itemCodeRequired = !(
+      providerId === "clubkonnect" &&
+      (service === "airtime" ||
+        service === "electricity")
+    );
+
+    if (itemCodeRequired && !itemCode) {
       throw new Error(
         "Please select a valid bill package."
       );
@@ -1201,7 +1170,7 @@ const Dashboard = () => {
 
     if (country !== "NG") {
       throw new Error(
-        "Flutterwave bill payments currently support Nigeria only."
+        "Bill payments currently support Nigeria only."
       );
     }
 
@@ -1243,12 +1212,6 @@ const Dashboard = () => {
       service === "airtime" ||
       service === "data"
     ) {
-      if (!details?.provider) {
-        throw new Error(
-          "Please select a network provider."
-        );
-      }
-
       if (
         !/^(?:\+?234|0)[0-9]{10}$/.test(
           customer
@@ -1260,52 +1223,22 @@ const Dashboard = () => {
       }
     }
 
-    if (
-      service ===
-      "electricity"
-    ) {
-      if (!details?.provider) {
-        throw new Error(
-          "Please select an electricity provider."
-        );
-      }
-
-      if (customer.length < 5) {
-        throw new Error(
-          "Please provide a valid meter number."
-        );
-      }
+    if (service === "electricity" && customer.length < 5) {
+      throw new Error(
+        "Please provide a valid meter number."
+      );
     }
 
-    if (service === "cable") {
-      if (!details?.provider) {
-        throw new Error(
-          "Please select a cable provider."
-        );
-      }
-
-      if (customer.length < 5) {
-        throw new Error(
-          "Please provide a valid smartcard or decoder number."
-        );
-      }
+    if (service === "cable" && customer.length < 5) {
+      throw new Error(
+        "Please provide a valid smartcard or decoder number."
+      );
     }
 
-    if (
-      service ===
-      "internet"
-    ) {
-      if (!details?.provider) {
-        throw new Error(
-          "Please select an internet provider."
-        );
-      }
-
-      if (customer.length < 3) {
-        throw new Error(
-          "Please provide a valid internet account number."
-        );
-      }
+    if (service === "internet" && customer.length < 3) {
+      throw new Error(
+        "Please provide a valid internet account number."
+      );
     }
 
     const paymentDetails = {
@@ -1318,6 +1251,8 @@ const Dashboard = () => {
         billerCode,
       item_code:
         itemCode,
+      provider_id: providerId,
+      providerId: providerId,
     };
 
     console.log(
@@ -1354,14 +1289,13 @@ const Dashboard = () => {
               action: "pay",
               service,
               amount,
-              biller_code:
-                billerCode,
-              item_code:
-                itemCode,
+              biller_code: billerCode,
+              item_code: itemCode,
               customer,
               country,
-              details:
-                paymentDetails,
+              provider_id: providerId,
+              providerId: providerId,
+              details: paymentDetails,
             },
           }
         );
@@ -1374,7 +1308,7 @@ const Dashboard = () => {
           );
 
         console.error(
-          "flutterwave-bills invocation error:",
+          "Service payment invocation error:",
           {
             error,
             extractedMessage:
@@ -1388,7 +1322,7 @@ const Dashboard = () => {
       }
 
       console.log(
-        "flutterwave-bills response:",
+        "Service payment response:",
         data
       );
 

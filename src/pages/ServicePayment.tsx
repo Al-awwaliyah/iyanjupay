@@ -17,6 +17,7 @@ import {
   ShieldCheck,
   Smartphone,
   Tv,
+  Wifi,
   Zap,
 } from "lucide-react";
 
@@ -51,10 +52,6 @@ import { Label } from "@/components/ui/label";
 
 import { toast } from "sonner";
 
-/* -------------------------------------------------------------------------- */
-/* TYPES                                                                      */
-/* -------------------------------------------------------------------------- */
-
 interface Service {
   title: string;
   type: string;
@@ -62,38 +59,27 @@ interface Service {
 
 interface ServicePaymentProps {
   service: Service | null;
-
-  /*
-   * Kept for Dashboard compatibility.
-   * Wallet balance is intentionally not displayed here.
-   */
   walletBalance: number;
-
   onBack: () => void;
-
   onPurchase: (
     amount: number,
     details: Record<string, any>
   ) => Promise<void>;
-
   onHistory?: () => void;
 }
 
 interface CatalogueNetwork {
   code: string;
   name: string;
-
   id?: string;
-
   network_code?: string;
   networkCode?: string;
-
   biller_code?: string;
   billerCode?: string;
-
   value?: string;
   label?: string;
-
+  network?: string;
+  company?: string;
   logo?: string;
   logo_url?: string;
   logoUrl?: string;
@@ -101,13 +87,6 @@ interface CatalogueNetwork {
   image_url?: string;
   imageUrl?: string;
   icon?: string;
-  icon_url?: string;
-  iconUrl?: string;
-
-  network?: string;
-  biller?: string;
-  company?: string;
-
   [key: string]: any;
 }
 
@@ -115,45 +94,50 @@ interface CatalogueItem {
   code: string;
   name: string;
 
-  providerPrice?: number;
   provider_price?: number;
-
-  providerAmount?: number;
+  providerPrice?: number;
   provider_amount?: number;
+  providerAmount?: number;
 
   price?: number;
-  amount?: number;
-
-  sellingPrice?: number;
   selling_price?: number;
+  sellingPrice?: number;
+  salePrice?: number;
 
+  amount?: number;
   value?: number | string;
   quantity?: number;
 
-  networkCode?: string;
   network_code?: string;
+  networkCode?: string;
 
-  billerCode?: string;
   biller_code?: string;
+  billerCode?: string;
+
+  product_code?: string;
+  productCode?: string;
+
+  variation_code?: string;
+  variationCode?: string;
+
+  plan_code?: string;
+  planCode?: string;
 
   code2?: string;
 
-  productCode?: string;
-  product_code?: string;
-
-  variationCode?: string;
-  variation_code?: string;
-
-  planCode?: string;
-  plan_code?: string;
-
   category?: string;
-  categoryName?: string;
   category_name?: string;
+  categoryName?: string;
 
   tab?: string;
   validity?: string;
-  type?: string;
+
+  label?: string;
+  title?: string;
+  plan_name?: string;
+  planName?: string;
+  package_name?: string;
+  packageName?: string;
 
   [key: string]: any;
 }
@@ -166,9 +150,12 @@ interface CatalogueResponse {
 
   networks?: CatalogueNetwork[];
   billers?: CatalogueNetwork[];
+  providers?: CatalogueNetwork[];
 
   plans?: CatalogueItem[];
   items?: CatalogueItem[];
+
+  data?: any;
 
   markup?: number;
 
@@ -185,12 +172,6 @@ interface VerificationResponse {
 
   [key: string]: any;
 }
-
-/* -------------------------------------------------------------------------- */
-/* CONSTANTS                                                                  */
-/* -------------------------------------------------------------------------- */
-
-const CLUBKONNECT_FUNCTION = "clubkonnect-services";
 
 const COMING_SOON_SERVICES = new Set([
   "internet",
@@ -221,18 +202,20 @@ const DATA_TABS = [
   "Monthly",
 ] as const;
 
-type DataTab = (typeof DATA_TABS)[number];
+type DataTab =
+  (typeof DATA_TABS)[number];
 
-/* -------------------------------------------------------------------------- */
-/* HELPERS                                                                    */
-/* -------------------------------------------------------------------------- */
-
-function normalizeServiceType(type?: string): string {
+function normalizeServiceType(
+  type?: string
+): string {
   const value = String(type || "")
     .trim()
     .toLowerCase();
 
-  const aliases: Record<string, string> = {
+  const aliases: Record<
+    string,
+    string
+  > = {
     airtime: "airtime",
     voice: "airtime",
 
@@ -275,14 +258,21 @@ function normalizeServiceType(type?: string): string {
   return aliases[value] || value;
 }
 
-function money(value: number): string {
-  return `₦${Number(value || 0).toLocaleString("en-NG", {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 2,
-  })}`;
+function money(
+  value: number
+): string {
+  return `₦${Number(value || 0).toLocaleString(
+    "en-NG",
+    {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 2,
+    }
+  )}`;
 }
 
-function numericValue(value: any): number {
+function numericValue(
+  value: any
+): number {
   const number = Number(
     String(value ?? "")
       .replace(/,/g, "")
@@ -290,36 +280,90 @@ function numericValue(value: any): number {
       .trim()
   );
 
-  return Number.isFinite(number) ? number : 0;
+  return Number.isFinite(number)
+    ? number
+    : 0;
 }
 
-function cleanPhone(value: string): string {
-  return value.replace(/\s+/g, "").trim();
+function cleanPhone(
+  value: string
+): string {
+  return value
+    .replace(/\s+/g, "")
+    .trim();
 }
 
-function getItemCode(item: CatalogueItem | null): string {
+function toCatalogueArray(
+  value: any
+): any[] {
+  if (Array.isArray(value)) {
+    return value;
+  }
+
+  if (
+    value &&
+    typeof value === "object"
+  ) {
+    return Object.entries(value).map(
+      ([key, entry]) => {
+        if (
+          entry &&
+          typeof entry === "object" &&
+          !Array.isArray(entry)
+        ) {
+          return {
+            ...(entry as Record<
+              string,
+              any
+            >
+          },
+            code:
+              (entry as any).code ??
+              (entry as any)
+                .networkCode ??
+              (entry as any)
+                .network_code ??
+              key,
+          };
+        }
+
+        return {
+          code: key,
+          name: String(entry ?? key),
+        };
+      }
+    );
+  }
+
+  return [];
+}
+
+function getItemCode(
+  item: CatalogueItem | null
+): string {
   if (!item) {
     return "";
   }
 
   return String(
     item.code ??
+      item.networkCode ??
+      item.network_code ??
+      item.billerCode ??
+      item.biller_code ??
       item.productCode ??
       item.product_code ??
       item.variationCode ??
       item.variation_code ??
       item.planCode ??
       item.plan_code ??
-      item.networkCode ??
-      item.network_code ??
-      item.billerCode ??
-      item.biller_code ??
-      item.code2 ??
       ""
   ).trim();
 }
 
-function getItemName(item: CatalogueItem | null): string {
+function getItemName(
+  item: CatalogueItem | null
+): string {
   if (!item) {
     return "";
   }
@@ -328,25 +372,17 @@ function getItemName(item: CatalogueItem | null): string {
     item.name ??
       item.label ??
       item.title ??
-      item.plan_name ??
       item.planName ??
-      item.package_name ??
+      item.plan_name ??
       item.packageName ??
+      item.package_name ??
       getItemCode(item)
   ).trim();
 }
 
-/*
- * IMPORTANT:
- *
- * The current clubkonnect-services Edge Function returns:
- *
- *   providerPrice = provider cost
- *   price         = customer selling price
- *
- * Therefore price MUST NOT be used as providerPrice.
- */
-function getItemProviderPrice(item: CatalogueItem | null): number {
+function getItemProviderPrice(
+  item: CatalogueItem | null
+): number {
   if (!item) {
     return 0;
   }
@@ -356,32 +392,36 @@ function getItemProviderPrice(item: CatalogueItem | null): number {
       item.provider_price ??
       item.providerAmount ??
       item.provider_amount ??
+      item.cost ??
+      item.cost_price ??
+      item.costPrice ??
+      item.amount ??
+      item.value ??
       0
   );
 }
 
-function getItemSellingPrice(item: CatalogueItem | null): number {
+function getItemSellingPrice(
+  item: CatalogueItem | null
+): number {
   if (!item) {
     return 0;
   }
 
-  const sellingPrice = numericValue(
-    item.sellingPrice ??
-      item.selling_price ??
-      item.price
-  );
+  const sellingPrice =
+    numericValue(
+      item.price ??
+        item.sellingPrice ??
+        item.selling_price ??
+        item.salePrice ??
+        0
+    );
 
   if (sellingPrice > 0) {
     return sellingPrice;
   }
 
-  /*
-   * Fallback only for older catalogue responses
-   * that do not provide a separate selling price.
-   */
-  const providerPrice = getItemProviderPrice(item);
-
-  return providerPrice > 0 ? providerPrice : numericValue(item.amount);
+  return getItemProviderPrice(item);
 }
 
 function normalizeNetwork(
@@ -401,6 +441,8 @@ function normalizeNetwork(
 
   const name = String(
     network.name ??
+      network.networkName ??
+      network.network_name ??
       network.label ??
       network.network ??
       network.biller ??
@@ -420,16 +462,113 @@ function normalizeItem(
   index: number
 ): CatalogueItem {
   const code =
-    getItemCode(item) || String(index);
+    getItemCode(item) ||
+    String(index);
 
   const name =
-    getItemName(item) || code;
+    getItemName(item) ||
+    code;
 
   return {
     ...item,
     code,
     name,
   };
+}
+
+function getNetworkLogo(
+  network: CatalogueNetwork
+): string {
+  return String(
+    network.logoUrl ??
+      network.logo_url ??
+      network.logo ??
+      network.imageUrl ??
+      network.image_url ??
+      network.image ??
+      network.icon ??
+      ""
+  ).trim();
+}
+
+function getNetworkBadgeText(
+  name: string
+): string {
+  const value = String(name || "")
+    .trim()
+    .toLowerCase();
+
+  if (value.includes("mtn")) {
+    return "MTN";
+  }
+
+  if (value.includes("airtel")) {
+    return "A";
+  }
+
+  if (value.includes("glo")) {
+    return "GLO";
+  }
+
+  if (
+    value.includes("9mobile") ||
+    value.includes("9 mobile") ||
+    value.includes("etisalat")
+  ) {
+    return "9M";
+  }
+
+  if (value.includes("smile")) {
+    return "SM";
+  }
+
+  const words = String(name || "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+
+  if (words.length >= 2) {
+    return `${words[0][0]}${words[1][0]}`.toUpperCase();
+  }
+
+  return String(name || "NW")
+    .replace(/[^a-zA-Z0-9]/g, "")
+    .slice(0, 3)
+    .toUpperCase();
+}
+
+function getNetworkAccent(
+  name: string
+): string {
+  const value = String(name || "")
+    .trim()
+    .toLowerCase();
+
+  if (value.includes("mtn")) {
+    return "bg-yellow-400 text-slate-900";
+  }
+
+  if (value.includes("airtel")) {
+    return "bg-red-500 text-white";
+  }
+
+  if (value.includes("glo")) {
+    return "bg-green-500 text-white";
+  }
+
+  if (
+    value.includes("9mobile") ||
+    value.includes("9 mobile") ||
+    value.includes("etisalat")
+  ) {
+    return "bg-green-600 text-white";
+  }
+
+  if (value.includes("smile")) {
+    return "bg-blue-500 text-white";
+  }
+
+  return "bg-indigo-100 text-indigo-700";
 }
 
 function isInvalidCustomerName(
@@ -455,8 +594,8 @@ function getDataTab(
   const raw = String(
     item.tab ??
       item.category ??
-      item.categoryName ??
       item.category_name ??
+      item.categoryName ??
       item.type ??
       item.validity ??
       ""
@@ -485,147 +624,99 @@ function getDataTab(
     return "Monthly";
   }
 
-  /*
-   * HOT intentionally contains every plan.
-   */
   return "HOT";
 }
 
-function getNetworkLogo(
-  network: CatalogueNetwork
-): string {
-  return String(
-    network.logo ??
-      network.logo_url ??
-      network.logoUrl ??
-      network.image ??
-      network.image_url ??
-      network.imageUrl ??
-      network.icon ??
-      network.icon_url ??
-      network.iconUrl ??
-      ""
-  ).trim();
+function extractNetworks(
+  response: CatalogueResponse
+): CatalogueNetwork[] {
+  const source =
+    response.networks ??
+    response.providers ??
+    response.data?.networks ??
+    response.data?.providers ??
+    response.data?.network ??
+    [];
+
+  return toCatalogueArray(source)
+    .map((item, index) =>
+      normalizeNetwork(
+        item as CatalogueNetwork,
+        index
+      )
+    )
+    .filter(
+      (item) =>
+        Boolean(item.code)
+    );
 }
 
-function getNetworkInitials(
-  name: string
-): string {
-  const clean = name
-    .trim()
-    .replace(/\s+/g, " ");
+function extractBillers(
+  response: CatalogueResponse
+): CatalogueNetwork[] {
+  const source =
+    response.billers ??
+    response.data?.billers ??
+    response.data?.companies ??
+    response.data?.providers ??
+    [];
 
-  if (!clean) {
-    return "?";
-  }
-
-  const words = clean.split(" ");
-
-  if (words.length >= 2) {
-    return `${words[0][0]}${words[1][0]}`.toUpperCase();
-  }
-
-  return clean.substring(0, 2).toUpperCase();
+  return toCatalogueArray(source)
+    .map((item, index) =>
+      normalizeNetwork(
+        item as CatalogueNetwork,
+        index
+      )
+    )
+    .filter(
+      (item) =>
+        Boolean(item.code)
+    );
 }
 
-function extractCatalogueArray(
-  response: CatalogueResponse,
-  key: "networks" | "billers" | "items" | "plans"
-): any[] {
-  const direct = response[key];
+function extractItems(
+  response: CatalogueResponse
+): CatalogueItem[] {
+  const source =
+    response.items ??
+    response.data?.items ??
+    [];
 
-  if (Array.isArray(direct)) {
-    return direct;
-  }
-
-  const nestedData = response.data;
-
-  if (
-    nestedData &&
-    typeof nestedData === "object" &&
-    Array.isArray(nestedData[key])
-  ) {
-    return nestedData[key];
-  }
-
-  return [];
+  return toCatalogueArray(source)
+    .map((item, index) =>
+      normalizeItem(
+        item as CatalogueItem,
+        index
+      )
+    );
 }
 
-/* -------------------------------------------------------------------------- */
-/* NETWORK LOGO                                                               */
-/* -------------------------------------------------------------------------- */
+function extractPlans(
+  response: CatalogueResponse
+): CatalogueItem[] {
+  const source =
+    response.plans ??
+    response.data?.plans ??
+    response.data?.packages ??
+    response.data?.products ??
+    [];
 
-function NetworkLogo({
-  network,
-  selected,
-}: {
-  network: CatalogueNetwork;
-  selected: boolean;
-}) {
-  const logo = getNetworkLogo(network);
-
-  const [imageFailed, setImageFailed] =
-    useState(false);
-
-  const initials =
-    getNetworkInitials(network.name);
-
-  return (
-    <div className="flex min-w-0 flex-col items-center">
-      <div
-        className={`flex h-[68px] w-[68px] items-center justify-center overflow-hidden rounded-full border-2 bg-white shadow-sm transition-all sm:h-[76px] sm:w-[76px] ${
-          selected
-            ? "border-indigo-600 ring-4 ring-indigo-100"
-            : "border-slate-200"
-        }`}
-      >
-        {logo && !imageFailed ? (
-          <img
-            src={logo}
-            alt={network.name}
-            className="h-full w-full rounded-full object-contain p-2"
-            onError={() =>
-              setImageFailed(true)
-            }
-          />
-        ) : (
-          <span
-            className={`flex h-full w-full items-center justify-center rounded-full text-lg font-extrabold ${
-              selected
-                ? "bg-indigo-600 text-white"
-                : "bg-slate-100 text-slate-700"
-            }`}
-          >
-            {initials}
-          </span>
-        )}
-      </div>
-
-      <span
-        className={`mt-2 max-w-[82px] truncate text-center text-xs font-semibold ${
-          selected
-            ? "text-indigo-700"
-            : "text-slate-700"
-        }`}
-        title={network.name}
-      >
-        {network.name}
-      </span>
-    </div>
-  );
+  return toCatalogueArray(source)
+    .map((item, index) =>
+      normalizeItem(
+        item as CatalogueItem,
+        index
+      )
+    );
 }
 
-/* -------------------------------------------------------------------------- */
-/* COMPONENT                                                                  */
-/* -------------------------------------------------------------------------- */
-
-function ServicePayment({
+const ServicePayment = ({
   service,
   walletBalance: _walletBalance,
   onBack,
   onPurchase,
   onHistory,
-}: ServicePaymentProps) {
+}: ServicePaymentProps) => {
   const serviceType = useMemo(
     () =>
       normalizeServiceType(
@@ -633,10 +724,6 @@ function ServicePayment({
       ),
     [service?.type]
   );
-
-  /* ------------------------------------------------------------------------ */
-  /* STATE                                                                    */
-  /* ------------------------------------------------------------------------ */
 
   const [
     loadingCatalogue,
@@ -651,22 +738,30 @@ function ServicePayment({
   const [
     networks,
     setNetworks,
-  ] = useState<CatalogueNetwork[]>([]);
+  ] = useState<
+    CatalogueNetwork[]
+  >([]);
 
   const [
     billers,
     setBillers,
-  ] = useState<CatalogueNetwork[]>([]);
+  ] = useState<
+    CatalogueNetwork[]
+  >([]);
 
   const [
     items,
     setItems,
-  ] = useState<CatalogueItem[]>([]);
+  ] = useState<
+    CatalogueItem[]
+  >([]);
 
   const [
     plans,
     setPlans,
-  ] = useState<CatalogueItem[]>([]);
+  ] = useState<
+    CatalogueItem[]
+  >([]);
 
   const [
     selectedNetwork,
@@ -688,14 +783,20 @@ function ServicePayment({
     setDataTab,
   ] = useState<DataTab>("HOT");
 
-  const [phone, setPhone] =
-    useState("");
+  const [
+    phone,
+    setPhone,
+  ] = useState("");
 
-  const [amount, setAmount] =
-    useState("");
+  const [
+    amount,
+    setAmount,
+  ] = useState("");
 
-  const [quantity, setQuantity] =
-    useState("1");
+  const [
+    quantity,
+    setQuantity,
+  ] = useState("1");
 
   const [
     meterType,
@@ -764,10 +865,6 @@ function ServicePayment({
     setRecipientPhone,
   ] = useState("");
 
-  /* ------------------------------------------------------------------------ */
-  /* SERVICE FLAGS                                                            */
-  /* ------------------------------------------------------------------------ */
-
   const isAirtime =
     serviceType === "airtime";
 
@@ -800,29 +897,24 @@ function ServicePayment({
       serviceType
     );
 
-  /* ------------------------------------------------------------------------ */
-  /* SELECTED ITEM                                                            */
-  /* ------------------------------------------------------------------------ */
+  const selectedItem = useMemo(() => {
+    const source = [
+      ...items,
+      ...plans,
+    ];
 
-  const selectedItem =
-    useMemo(() => {
-      const source = [
-        ...items,
-        ...plans,
-      ];
-
-      return (
-        source.find(
-          (item) =>
-            getItemCode(item) ===
-            selectedItemCode
-        ) || null
-      );
-    }, [
-      items,
-      plans,
-      selectedItemCode,
-    ]);
+    return (
+      source.find(
+        (item) =>
+          getItemCode(item) ===
+          selectedItemCode
+      ) ?? null
+    );
+  }, [
+    items,
+    plans,
+    selectedItemCode,
+  ]);
 
   const selectedProviderPrice =
     useMemo(
@@ -842,10 +934,6 @@ function ServicePayment({
       [selectedItem]
     );
 
-  /* ------------------------------------------------------------------------ */
-  /* DATA PLANS                                                               */
-  /* ------------------------------------------------------------------------ */
-
   const allDataPlans =
     useMemo(() => {
       const source =
@@ -857,11 +945,8 @@ function ServicePayment({
         new Set<string>();
 
       return source
-        .map((item, index) =>
-          normalizeItem(
-            item,
-            index
-          )
+        .map((item) =>
+          normalizeItem(item, 0)
         )
         .filter((item) => {
           const code =
@@ -896,9 +981,85 @@ function ServicePayment({
       dataTab,
     ]);
 
-  /* ------------------------------------------------------------------------ */
-  /* CATALOGUE REQUEST                                                        */
-  /* ------------------------------------------------------------------------ */
+  const itemList =
+    isData
+      ? visibleDataPlans
+      : [
+          ...items,
+          ...plans,
+        ];
+
+  const amountNumber =
+    numericValue(amount);
+
+  const quantityNumber =
+    Math.max(
+      1,
+      Math.floor(
+        numericValue(quantity) ||
+          1
+      )
+    );
+
+  /*
+   * For catalogue-based services, `price` is already the
+   * customer-facing selling price returned by the backend.
+   *
+   * Do not apply the markup again.
+   */
+
+  const estimatedTotal =
+    useMemo(() => {
+      if (
+        isAirtime ||
+        isElectricity
+      ) {
+        if (
+          amountNumber <= 0
+        ) {
+          return 0;
+        }
+
+        /*
+         * Airtime and electricity amounts are entered by the
+         * customer. The backend remains authoritative.
+         *
+         * This is only a customer-side estimate.
+         */
+
+        const markupRate =
+          0.15;
+
+        return (
+          Math.round(
+            amountNumber *
+              (1 +
+                markupRate) *
+              100
+          ) / 100
+        );
+      }
+
+      if (
+        isAirtimeCard ||
+        isDataCard
+      ) {
+        return (
+          selectedSellingPrice *
+          quantityNumber
+        );
+      }
+
+      return selectedSellingPrice;
+    }, [
+      isAirtime,
+      isElectricity,
+      isAirtimeCard,
+      isDataCard,
+      amountNumber,
+      selectedSellingPrice,
+      quantityNumber,
+    ]);
 
   const invokeCatalogue =
     useCallback(
@@ -913,11 +1074,12 @@ function ServicePayment({
           error,
         } =
           await supabase.functions.invoke(
-            CLUBKONNECT_FUNCTION,
+            "clubkonnect-services",
             {
               body: {
                 action: "catalog",
-                service: serviceType,
+                service:
+                  serviceType,
                 ...extra,
               },
             }
@@ -937,7 +1099,8 @@ function ServicePayment({
         }
 
         if (
-          data.success === false
+          data.success ===
+          false
         ) {
           throw new Error(
             data.error ||
@@ -951,244 +1114,237 @@ function ServicePayment({
       [serviceType]
     );
 
-  /* ------------------------------------------------------------------------ */
-  /* LOAD INITIAL CATALOGUE                                                   */
-  /* ------------------------------------------------------------------------ */
-
   const loadCatalogue =
-    useCallback(async () => {
-      if (
-        !serviceType ||
-        isComingSoon
-      ) {
-        return;
-      }
-
-      setLoadingCatalogue(true);
-      setCatalogueError("");
-
-      try {
-        setNetworks([]);
-        setBillers([]);
-        setItems([]);
-        setPlans([]);
-
-        setSelectedNetwork("");
-        setSelectedBiller("");
-        setSelectedItemCode("");
-
-        const response =
-          await invokeCatalogue();
-
-        const rawNetworks =
-          extractCatalogueArray(
-            response,
-            "networks"
-          );
-
-        const rawBillers =
-          extractCatalogueArray(
-            response,
-            "billers"
-          );
-
-        const rawItems =
-          extractCatalogueArray(
-            response,
-            "items"
-          );
-
-        const rawPlans =
-          extractCatalogueArray(
-            response,
-            "plans"
-          );
-
-        const normalizedNetworks =
-          rawNetworks.map(
-            (network, index) =>
-              normalizeNetwork(
-                network,
-                index
-              )
-          );
-
-        const normalizedBillers =
-          rawBillers.map(
-            (biller, index) =>
-              normalizeNetwork(
-                biller,
-                index
-              )
-          );
-
-        const normalizedItems =
-          rawItems.map(
-            (item, index) =>
-              normalizeItem(
-                item,
-                index
-              )
-          );
-
-        const normalizedPlans =
-          rawPlans.map(
-            (item, index) =>
-              normalizeItem(
-                item,
-                index
-              )
-          );
-
-        setNetworks(
-          normalizedNetworks
-        );
-
-        setBillers(
-          normalizedBillers
-        );
-
-        setItems(
-          normalizedItems
-        );
-
-        setPlans(
-          normalizedPlans
-        );
-
-        /*
-         * Smile does not need a customer-facing
-         * provider selection.
-         */
+    useCallback(
+      async () => {
         if (
-          isSmile &&
-          normalizedNetworks.length >
-            0
+          !serviceType ||
+          isComingSoon
         ) {
+          return;
+        }
+
+        setLoadingCatalogue(
+          true
+        );
+
+        setCatalogueError("");
+
+        try {
+          setNetworks([]);
+          setBillers([]);
+          setItems([]);
+          setPlans([]);
+
           setSelectedNetwork(
-            normalizedNetworks[0].code
+            ""
           );
-        }
 
-        /*
-         * If only one electricity/cable biller
-         * exists, select it automatically.
-         */
-        if (
-          (isElectricity ||
-            isCable) &&
-          normalizedBillers.length ===
-            1
-        ) {
           setSelectedBiller(
-            normalizedBillers[0].code
+            ""
           );
-        }
 
-        /*
-         * If a service returns exactly one
-         * fixed package immediately, select it.
-         */
-        if (
-          !isData &&
-          normalizedPlans.length ===
-            1
-        ) {
           setSelectedItemCode(
-            getItemCode(
-              normalizedPlans[0]
-            )
+            ""
+          );
+
+          const response =
+            await invokeCatalogue();
+
+          const normalizedNetworks =
+            extractNetworks(
+              response
+            );
+
+          const normalizedBillers =
+            extractBillers(
+              response
+            );
+
+          const normalizedItems =
+            extractItems(
+              response
+            );
+
+          const normalizedPlans =
+            extractPlans(
+              response
+            );
+
+          setNetworks(
+            normalizedNetworks
+          );
+
+          setBillers(
+            normalizedBillers
+          );
+
+          setItems(
+            normalizedItems
+          );
+
+          setPlans(
+            normalizedPlans
+          );
+
+          /*
+           * Smile does not need a customer-visible network
+           * selector.
+           */
+
+          if (
+            isSmile &&
+            normalizedNetworks.length >
+              0
+          ) {
+            setSelectedNetwork(
+              normalizedNetworks[0]
+                .code
+            );
+          }
+
+          if (
+            isElectricity &&
+            normalizedBillers.length ===
+              1
+          ) {
+            setSelectedBiller(
+              normalizedBillers[0]
+                .code
+            );
+          }
+
+          if (
+            isCable &&
+            normalizedBillers.length ===
+              1
+          ) {
+            setSelectedBiller(
+              normalizedBillers[0]
+                .code
+            );
+          }
+
+          if (
+            !isData &&
+            !isCable &&
+            normalizedPlans.length ===
+              1
+          ) {
+            setSelectedItemCode(
+              getItemCode(
+                normalizedPlans[0]
+              )
+            );
+          }
+        } catch (
+          error: any
+        ) {
+          console.error(
+            "ClubKonnect catalogue error:",
+            error
+          );
+
+          const message =
+            error?.message ||
+            "Unable to load available services.";
+
+          setCatalogueError(
+            message
+          );
+
+          toast.error(message);
+        } finally {
+          setLoadingCatalogue(
+            false
           );
         }
-      } catch (error: any) {
-        console.error(
-          "ClubKonnect catalogue error:",
-          error
-        );
-
-        const message =
-          error?.message ||
-          "Unable to load available services.";
-
-        setCatalogueError(
-          message
-        );
-
-        toast.error(message);
-      } finally {
-        setLoadingCatalogue(false);
-      }
-    }, [
-      serviceType,
-      isComingSoon,
-      isSmile,
-      isElectricity,
-      isCable,
-      isData,
-      invokeCatalogue,
-    ]);
+      },
+      [
+        serviceType,
+        isComingSoon,
+        isSmile,
+        isElectricity,
+        isCable,
+        isData,
+        invokeCatalogue,
+      ]
+    );
 
   useEffect(() => {
     void loadCatalogue();
   }, [loadCatalogue]);
 
-  /* ------------------------------------------------------------------------ */
-  /* LOAD NETWORK-SPECIFIC CATALOGUE                                          */
-  /* ------------------------------------------------------------------------ */
-
   const loadNetworkCatalogue =
     useCallback(
       async (
-        code: string,
+        networkCode?: string,
         billerCode?: string
       ) => {
         if (
-          !code ||
           !serviceType
         ) {
           return;
         }
 
-        setLoadingCatalogue(true);
+        if (
+          !networkCode &&
+          !billerCode
+        ) {
+          return;
+        }
+
+        setLoadingCatalogue(
+          true
+        );
+
         setCatalogueError("");
-        setSelectedItemCode("");
+
+        setSelectedItemCode(
+          ""
+        );
 
         try {
+          const payload: Record<
+            string,
+            any
+          > = {};
+
+          if (networkCode) {
+            payload.network_code =
+              networkCode;
+          }
+
+          if (billerCode) {
+            payload.biller_code =
+              billerCode;
+          }
+
           const response =
-            await invokeCatalogue({
-              network_code: code,
-              biller_code:
-                billerCode ||
-                undefined,
-            });
+            await invokeCatalogue(
+              payload
+            );
 
           const nextItems =
-            extractCatalogueArray(
-              response,
-              "items"
-            ).map(
-              (item, index) =>
-                normalizeItem(
-                  item,
-                  index
-                )
+            extractItems(
+              response
             );
 
           const nextPlans =
-            extractCatalogueArray(
-              response,
-              "plans"
-            ).map(
-              (item, index) =>
-                normalizeItem(
-                  item,
-                  index
-                )
+            extractPlans(
+              response
             );
 
-          setItems(nextItems);
-          setPlans(nextPlans);
-        } catch (error: any) {
+          setItems(
+            nextItems
+          );
+
+          setPlans(
+            nextPlans
+          );
+        } catch (
+          error: any
+        ) {
           console.error(
             "ClubKonnect network catalogue error:",
             error
@@ -1204,7 +1360,9 @@ function ServicePayment({
 
           toast.error(message);
         } finally {
-          setLoadingCatalogue(false);
+          setLoadingCatalogue(
+            false
+          );
         }
       },
       [
@@ -1213,20 +1371,27 @@ function ServicePayment({
       ]
     );
 
-  /* ------------------------------------------------------------------------ */
-  /* NETWORK CHANGE                                                           */
-  /* ------------------------------------------------------------------------ */
-
   const handleNetworkChange =
     async (
       value: string
     ) => {
-      setSelectedNetwork(value);
-      setSelectedItemCode("");
+      setSelectedNetwork(
+        value
+      );
+
+      setSelectedItemCode(
+        ""
+      );
+
       setAmount("");
 
-      setVerifiedCustomer("");
-      setVerifiedType("none");
+      setVerifiedCustomer(
+        ""
+      );
+
+      setVerifiedType(
+        "none"
+      );
 
       const network =
         networks.find(
@@ -1236,99 +1401,58 @@ function ServicePayment({
 
       await loadNetworkCatalogue(
         value,
-        network?.billerCode ||
-          network?.biller_code ||
+        network?.billerCode ??
+          network?.biller_code ??
           undefined
       );
     };
-
-  /* ------------------------------------------------------------------------ */
-  /* BILLER CHANGE                                                            */
-  /* ------------------------------------------------------------------------ */
 
   const handleBillerChange =
     async (
       value: string
     ) => {
-      setSelectedBiller(value);
-      setSelectedItemCode("");
+      setSelectedBiller(
+        value
+      );
+
+      setSelectedItemCode(
+        ""
+      );
+
       setAmount("");
 
-      setVerifiedCustomer("");
-      setVerifiedType("none");
+      setVerifiedCustomer(
+        ""
+      );
 
-      /*
-       * Cable/electricity use the biller code.
-       * Do not pretend that a biller is a network.
-       */
-      try {
-        setLoadingCatalogue(true);
-        setCatalogueError("");
+      setVerifiedType(
+        "none"
+      );
 
-        const response =
-          await invokeCatalogue({
-            biller_code: value,
-          });
-
-        const nextItems =
-          extractCatalogueArray(
-            response,
-            "items"
-          ).map(
-            (item, index) =>
-              normalizeItem(
-                item,
-                index
-              )
-          );
-
-        const nextPlans =
-          extractCatalogueArray(
-            response,
-            "plans"
-          ).map(
-            (item, index) =>
-              normalizeItem(
-                item,
-                index
-              )
-          );
-
-        setItems(nextItems);
-        setPlans(nextPlans);
-      } catch (error: any) {
-        console.error(
-          "ClubKonnect biller catalogue error:",
-          error
-        );
-
-        const message =
-          error?.message ||
-          "Unable to load packages.";
-
-        setCatalogueError(
-          message
-        );
-
-        toast.error(message);
-      } finally {
-        setLoadingCatalogue(false);
-      }
+      await loadNetworkCatalogue(
+        undefined,
+        value
+      );
     };
 
-  /* ------------------------------------------------------------------------ */
-  /* ITEM CHANGE                                                              */
-  /* ------------------------------------------------------------------------ */
-
   const handleItemChange =
-    (value: string) => {
-      setSelectedItemCode(value);
+    (
+      value: string
+    ) => {
+      setSelectedItemCode(
+        value
+      );
 
-      setVerifiedCustomer("");
-      setVerifiedType("none");
+      setVerifiedCustomer(
+        ""
+      );
+
+      setVerifiedType(
+        "none"
+      );
 
       const source =
-        serviceType === "data"
+        isData
           ? allDataPlans
           : [
               ...items,
@@ -1340,12 +1464,8 @@ function ServicePayment({
           (entry) =>
             getItemCode(entry) ===
             value
-        ) || null;
+        ) ?? null;
 
-      /*
-       * Fixed-price services use the catalogue
-       * selling price.
-       */
       if (
         item &&
         !isAirtime &&
@@ -1364,23 +1484,25 @@ function ServicePayment({
       }
     };
 
-  /* ------------------------------------------------------------------------ */
-  /* ELECTRICITY METER VERIFICATION                                           */
-  /* ------------------------------------------------------------------------ */
-
   const verifyMeter =
     async () => {
-      if (!selectedBiller) {
+      if (
+        !selectedBiller
+      ) {
         toast.error(
           "Please select your electricity company."
         );
+
         return;
       }
 
-      if (!meterNumber.trim()) {
+      if (
+        !meterNumber.trim()
+      ) {
         toast.error(
           "Please enter your meter number."
         );
+
         return;
       }
 
@@ -1388,12 +1510,19 @@ function ServicePayment({
         toast.error(
           "Please select your meter type."
         );
+
         return;
       }
 
       setVerifying(true);
-      setVerifiedCustomer("");
-      setVerifiedType("none");
+
+      setVerifiedCustomer(
+        ""
+      );
+
+      setVerifiedType(
+        "none"
+      );
 
       try {
         const {
@@ -1401,7 +1530,7 @@ function ServicePayment({
           error,
         } =
           await supabase.functions.invoke(
-            CLUBKONNECT_FUNCTION,
+            "clubkonnect-services",
             {
               body: {
                 action:
@@ -1479,7 +1608,9 @@ function ServicePayment({
             ? `Meter verified for ${customerName}.`
             : "Meter verified successfully."
         );
-      } catch (error: any) {
+      } catch (
+        error: any
+      ) {
         console.error(
           "Meter verification error:",
           error
@@ -1490,20 +1621,21 @@ function ServicePayment({
             "Unable to verify meter."
         );
       } finally {
-        setVerifying(false);
+        setVerifying(
+          false
+        );
       }
     };
 
-  /* ------------------------------------------------------------------------ */
-  /* CABLE SMARTCARD VERIFICATION                                             */
-  /* ------------------------------------------------------------------------ */
-
   const verifyCable =
     async () => {
-      if (!selectedBiller) {
+      if (
+        !selectedBiller
+      ) {
         toast.error(
           "Please select your TV service."
         );
+
         return;
       }
 
@@ -1513,12 +1645,19 @@ function ServicePayment({
         toast.error(
           "Please enter your SmartCard/IUC number."
         );
+
         return;
       }
 
       setVerifying(true);
-      setVerifiedCustomer("");
-      setVerifiedType("none");
+
+      setVerifiedCustomer(
+        ""
+      );
+
+      setVerifiedType(
+        "none"
+      );
 
       try {
         const {
@@ -1526,7 +1665,7 @@ function ServicePayment({
           error,
         } =
           await supabase.functions.invoke(
-            CLUBKONNECT_FUNCTION,
+            "clubkonnect-services",
             {
               body: {
                 action:
@@ -1545,6 +1684,9 @@ function ServicePayment({
                   selectedBiller,
 
                 smartcard_number:
+                  smartcardNumber.trim(),
+
+                smartcard_no:
                   smartcardNumber.trim(),
 
                 smartCardNumber:
@@ -1604,7 +1746,9 @@ function ServicePayment({
             ? `SmartCard verified for ${customerName}.`
             : "SmartCard verified successfully."
         );
-      } catch (error: any) {
+      } catch (
+        error: any
+      ) {
         console.error(
           "Cable verification error:",
           error
@@ -1615,103 +1759,11 @@ function ServicePayment({
             "Unable to verify SmartCard."
         );
       } finally {
-        setVerifying(false);
+        setVerifying(
+          false
+        );
       }
     };
-
-  /* ------------------------------------------------------------------------ */
-  /* AMOUNT                                                                   */
-  /* ------------------------------------------------------------------------ */
-
-  const amountNumber =
-    numericValue(amount);
-
-  const quantityNumber =
-    Math.max(
-      1,
-      Math.floor(
-        numericValue(
-          quantity
-        ) || 1
-      )
-    );
-
-  const totalBeforePurchase =
-    useMemo(() => {
-      if (isAirtime) {
-        return amountNumber;
-      }
-
-      if (isElectricity) {
-        return amountNumber;
-      }
-
-      if (isAirtimeCard) {
-        return (
-          selectedProviderPrice *
-          quantityNumber
-        );
-      }
-
-      if (isDataCard) {
-        return (
-          selectedProviderPrice *
-          quantityNumber
-        );
-      }
-
-      if (
-        isData ||
-        isCable ||
-        isSmile ||
-        isWAEC ||
-        isJAMB
-      ) {
-        return selectedProviderPrice;
-      }
-
-      return amountNumber;
-    }, [
-      isAirtime,
-      isElectricity,
-      isAirtimeCard,
-      isDataCard,
-      isData,
-      isCable,
-      isSmile,
-      isWAEC,
-      isJAMB,
-      amountNumber,
-      selectedProviderPrice,
-      quantityNumber,
-    ]);
-
-  /*
-   * This is only a UI estimate.
-   * The Edge Function remains the final
-   * pricing authority.
-   */
-  const markupRate =
-    isAirtimeCard ||
-    isDataCard ||
-    isSmile ||
-    isWAEC ||
-    isJAMB
-      ? 0.2
-      : 0.15;
-
-  const estimatedTotal =
-    totalBeforePurchase > 0
-      ? Math.round(
-          totalBeforePurchase *
-            (1 + markupRate) *
-            100
-        ) / 100
-      : 0;
-
-  /* ------------------------------------------------------------------------ */
-  /* VALIDATION                                                               */
-  /* ------------------------------------------------------------------------ */
 
   const validatePurchase =
     (): string | null => {
@@ -1729,11 +1781,15 @@ function ServicePayment({
       }
 
       if (isAirtime) {
-        if (!selectedNetwork) {
+        if (
+          !selectedNetwork
+        ) {
           return "Please select a network.";
         }
 
-        if (!cleanPhone(phone)) {
+        if (
+          !cleanPhone(phone)
+        ) {
           return "Please enter the recipient phone number.";
         }
 
@@ -1746,28 +1802,46 @@ function ServicePayment({
 
         if (
           amountNumber < 50 ||
-          amountNumber > 200000
+          amountNumber >
+            200000
         ) {
           return "Airtime amount must be between ₦50 and ₦200,000.";
         }
       }
 
       if (isData) {
-        if (!selectedNetwork) {
+        if (
+          !selectedNetwork
+        ) {
           return "Please select a network.";
         }
 
-        if (!selectedItemCode) {
+        if (
+          !selectedItemCode
+        ) {
           return "Please select a data plan.";
         }
 
-        if (!cleanPhone(phone)) {
+        if (
+          !cleanPhone(phone)
+        ) {
           return "Please enter the recipient phone number.";
+        }
+
+        if (
+          cleanPhone(phone)
+            .length < 10
+        ) {
+          return "Please enter a valid Nigerian phone number.";
         }
       }
 
-      if (isElectricity) {
-        if (!selectedBiller) {
+      if (
+        isElectricity
+      ) {
+        if (
+          !selectedBiller
+        ) {
           return "Please select your electricity company.";
         }
 
@@ -1775,7 +1849,9 @@ function ServicePayment({
           return "Please select your meter type.";
         }
 
-        if (!meterNumber.trim()) {
+        if (
+          !meterNumber.trim()
+        ) {
           return "Please enter your meter number.";
         }
 
@@ -1786,17 +1862,23 @@ function ServicePayment({
           return "Please verify your meter before continuing.";
         }
 
-        if (amountNumber <= 0) {
+        if (
+          amountNumber <= 0
+        ) {
           return "Please enter a valid electricity amount.";
         }
       }
 
       if (isCable) {
-        if (!selectedBiller) {
+        if (
+          !selectedBiller
+        ) {
           return "Please select your TV service.";
         }
 
-        if (!selectedItemCode) {
+        if (
+          !selectedItemCode
+        ) {
           return "Please select a package.";
         }
 
@@ -1814,56 +1896,78 @@ function ServicePayment({
         }
       }
 
-      if (isAirtimeCard) {
-        if (!selectedNetwork) {
+      if (
+        isAirtimeCard
+      ) {
+        if (
+          !selectedNetwork
+        ) {
           return "Please select a network.";
         }
 
-        if (!selectedItemCode) {
+        if (
+          !selectedItemCode
+        ) {
           return "Please select an E-Pin value.";
         }
 
         if (
-          quantityNumber < 1 ||
-          quantityNumber > 100
+          quantityNumber <
+            1 ||
+          quantityNumber >
+            100
         ) {
           return "Quantity must be between 1 and 100.";
         }
       }
 
       if (isDataCard) {
-        if (!selectedNetwork) {
+        if (
+          !selectedNetwork
+        ) {
           return "Please select a network.";
         }
 
-        if (!selectedItemCode) {
+        if (
+          !selectedItemCode
+        ) {
           return "Please select a data E-Pin plan.";
         }
 
         if (
-          quantityNumber < 1 ||
-          quantityNumber > 100
+          quantityNumber <
+            1 ||
+          quantityNumber >
+            100
         ) {
           return "Quantity must be between 1 and 100.";
         }
       }
 
       if (isSmile) {
-        if (!accountId.trim()) {
+        if (
+          !accountId.trim()
+        ) {
           return "Please enter your Smile account number.";
         }
 
-        if (!selectedItemCode) {
+        if (
+          !selectedItemCode
+        ) {
           return "Please select a Smile data plan.";
         }
       }
 
       if (isWAEC) {
-        if (!selectedItemCode) {
+        if (
+          !selectedItemCode
+        ) {
           return "Please select a WAEC package.";
         }
 
-        if (!cleanPhone(phone)) {
+        if (
+          !cleanPhone(phone)
+        ) {
           return "Please enter the phone number that should receive the e-PIN.";
         }
       }
@@ -1873,7 +1977,9 @@ function ServicePayment({
           return "Please select the JAMB exam type.";
         }
 
-        if (!cleanPhone(phone)) {
+        if (
+          !cleanPhone(phone)
+        ) {
           return "Please enter the phone number that should receive the e-PIN.";
         }
       }
@@ -1881,12 +1987,11 @@ function ServicePayment({
       return null;
     };
 
-  /* ------------------------------------------------------------------------ */
-  /* BUILD PURCHASE DETAILS                                                   */
-  /* ------------------------------------------------------------------------ */
-
   const buildPurchaseDetails =
-    (): Record<string, any> => {
+    (): Record<
+      string,
+      any
+    > => {
       const requestId =
         `IYANJUPAY-${crypto.randomUUID()}`;
 
@@ -1900,19 +2005,21 @@ function ServicePayment({
           selectedItem
         );
 
-      const providerPrice =
-        selectedProviderPrice;
-
       const details: Record<
         string,
         any
       > = {
-        type: serviceType,
-        service: serviceType,
+        type:
+          serviceType,
+
+        service:
+          serviceType,
 
         country: "NG",
 
-        request_id: requestId,
+        request_id:
+          requestId,
+
         requestId,
 
         customer:
@@ -1928,34 +2035,48 @@ function ServicePayment({
           estimatedTotal,
 
         provider_amount:
-          providerPrice,
+          selectedProviderPrice,
 
         provider_price:
-          providerPrice,
+          selectedProviderPrice,
 
         item_code:
-          itemCode || undefined,
+          itemCode ||
+          undefined,
 
         product_code:
-          itemCode || undefined,
+          itemCode ||
+          undefined,
 
         variation_code:
-          itemCode || undefined,
+          itemCode ||
+          undefined,
 
         plan_code:
-          itemCode || undefined,
+          itemCode ||
+          undefined,
 
         package_code:
-          itemCode || undefined,
+          itemCode ||
+          undefined,
 
         package_name:
-          itemName || undefined,
+          itemName ||
+          undefined,
 
         network_code:
           selectedNetwork ||
           undefined,
 
+        networkCode:
+          selectedNetwork ||
+          undefined,
+
         biller_code:
+          selectedBiller ||
+          undefined,
+
+        billerCode:
           selectedBiller ||
           undefined,
 
@@ -1977,10 +2098,9 @@ function ServicePayment({
         recipient_phone:
           cleanPhone(
             recipientPhone
-          ) || undefined,
+          ) ||
+          undefined,
       };
-
-      /* ------------------------------ Airtime ----------------------------- */
 
       if (isAirtime) {
         details.amount =
@@ -1998,8 +2118,6 @@ function ServicePayment({
         details.phoneNumber =
           cleanPhone(phone);
       }
-
-      /* ------------------------------- Data ------------------------------- */
 
       if (isData) {
         details.data_plan =
@@ -2021,9 +2139,9 @@ function ServicePayment({
           cleanPhone(phone);
       }
 
-      /* ---------------------------- Electricity --------------------------- */
-
-      if (isElectricity) {
+      if (
+        isElectricity
+      ) {
         details.electric_company =
           selectedBiller;
 
@@ -2050,8 +2168,6 @@ function ServicePayment({
           undefined;
       }
 
-      /* ------------------------------- Cable ------------------------------ */
-
       if (isCable) {
         details.cable_tv =
           selectedBiller;
@@ -2071,6 +2187,9 @@ function ServicePayment({
         details.smartcard_number =
           smartcardNumber.trim();
 
+        details.smartcard_no =
+          smartcardNumber.trim();
+
         details.smartCardNumber =
           smartcardNumber.trim();
 
@@ -2079,12 +2198,12 @@ function ServicePayment({
           undefined;
 
         details.amount =
-          providerPrice;
+          selectedProviderPrice;
       }
 
-      /* -------------------------- Airtime E-PIN --------------------------- */
-
-      if (isAirtimeCard) {
+      if (
+        isAirtimeCard
+      ) {
         details.value =
           numericValue(
             selectedItem?.value ??
@@ -2103,8 +2222,6 @@ function ServicePayment({
         delete details.phone;
         delete details.phoneNumber;
       }
-
-      /* --------------------------- Data E-PIN ----------------------------- */
 
       if (isDataCard) {
         details.data_plan =
@@ -2126,8 +2243,6 @@ function ServicePayment({
         delete details.phoneNumber;
       }
 
-      /* ------------------------------- Smile ------------------------------ */
-
       if (isSmile) {
         details.mobile_network =
           "smile-direct";
@@ -2148,8 +2263,6 @@ function ServicePayment({
           itemCode;
       }
 
-      /* -------------------------------- WAEC ------------------------------ */
-
       if (isWAEC) {
         details.exam_type =
           itemCode;
@@ -2163,8 +2276,6 @@ function ServicePayment({
         details.phoneNumber =
           cleanPhone(phone);
       }
-
-      /* -------------------------------- JAMB ------------------------------ */
 
       if (isJAMB) {
         details.exam_type =
@@ -2188,13 +2299,11 @@ function ServicePayment({
       return details;
     };
 
-  /* ------------------------------------------------------------------------ */
-  /* PIN VERIFICATION                                                         */
-  /* ------------------------------------------------------------------------ */
-
   const verifyPaymentPin =
     async (): Promise<boolean> => {
-      if (!paymentPin.trim()) {
+      if (
+        !paymentPin.trim()
+      ) {
         toast.error(
           "Please enter your payment PIN."
         );
@@ -2239,7 +2348,8 @@ function ServicePayment({
           data === false ||
           data?.success ===
             false ||
-          data?.valid === false
+          data?.valid ===
+            false
         ) {
           throw new Error(
             "Incorrect payment PIN."
@@ -2247,7 +2357,9 @@ function ServicePayment({
         }
 
         return true;
-      } catch (error: any) {
+      } catch (
+        error: any
+      ) {
         console.error(
           "Payment PIN verification error:",
           error
@@ -2260,13 +2372,11 @@ function ServicePayment({
 
         return false;
       } finally {
-        setPinLoading(false);
+        setPinLoading(
+          false
+        );
       }
     };
-
-  /* ------------------------------------------------------------------------ */
-  /* PURCHASE                                                                 */
-  /* ------------------------------------------------------------------------ */
 
   const handlePurchase =
     async () => {
@@ -2277,6 +2387,7 @@ function ServicePayment({
         toast.error(
           validation
         );
+
         return;
       }
 
@@ -2292,27 +2403,41 @@ function ServicePayment({
         return;
       }
 
-      setPurchaseLoading(true);
+      setPurchaseLoading(
+        true
+      );
 
       try {
         const details =
           buildPurchaseDetails();
 
+        const purchaseAmount =
+          isAirtime ||
+          isElectricity
+            ? amountNumber
+            : isAirtimeCard ||
+                isDataCard
+            ? selectedProviderPrice *
+              quantityNumber
+            : selectedProviderPrice;
+
         await onPurchase(
-          amountNumber ||
-            selectedProviderPrice ||
-            totalBeforePurchase,
+          purchaseAmount,
           {
             ...details,
-
             payment_pin:
               paymentPin.trim(),
           }
         );
 
-        setShowPinModal(false);
+        setShowPinModal(
+          false
+        );
+
         setPaymentPin("");
-      } catch (error: any) {
+      } catch (
+        error: any
+      ) {
         console.error(
           "Service purchase error:",
           error
@@ -2323,13 +2448,11 @@ function ServicePayment({
             "Unable to complete this purchase."
         );
       } finally {
-        setPurchaseLoading(false);
+        setPurchaseLoading(
+          false
+        );
       }
     };
-
-  /* ------------------------------------------------------------------------ */
-  /* UI HELPERS                                                               */
-  /* ------------------------------------------------------------------------ */
 
   const title =
     service?.title ||
@@ -2347,18 +2470,6 @@ function ServicePayment({
   const showBillerSelector =
     isCable ||
     isElectricity;
-
-  const itemList =
-    isData
-      ? visibleDataPlans
-      : [
-          ...items,
-          ...plans,
-        ];
-
-  /* ------------------------------------------------------------------------ */
-  /* COMING SOON VIEW                                                         */
-  /* ------------------------------------------------------------------------ */
 
   if (isComingSoon) {
     return (
@@ -2382,7 +2493,9 @@ function ServicePayment({
               <Button
                 variant="ghost"
                 size="icon"
-                onClick={onHistory}
+                onClick={
+                  onHistory
+                }
                 className="rounded-full"
               >
                 <History className="h-5 w-5" />
@@ -2403,12 +2516,10 @@ function ServicePayment({
               </h2>
 
               <p className="mt-3 max-w-md text-sm leading-6 text-slate-500">
-                {title} is currently
-                being prepared. You
-                will be able to use
-                this service directly
-                from IyanjuPay when it
-                becomes available.
+                {title} is currently being prepared.
+                You will be able to use this service
+                directly from IyanjuPay when it becomes
+                available.
               </p>
 
               <Button
@@ -2424,15 +2535,9 @@ function ServicePayment({
     );
   }
 
-  /* ------------------------------------------------------------------------ */
-  /* MAIN UI                                                                  */
-  /* ------------------------------------------------------------------------ */
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-indigo-50">
       <div className="mx-auto w-full max-w-2xl px-4 pb-10 pt-5">
-        {/* HEADER ----------------------------------------------------------- */}
-
         <div className="mb-5 flex items-center justify-between">
           <Button
             variant="ghost"
@@ -2457,7 +2562,9 @@ function ServicePayment({
             <Button
               variant="ghost"
               size="icon"
-              onClick={onHistory}
+              onClick={
+                onHistory
+              }
               className="rounded-full hover:bg-white"
             >
               <History className="h-5 w-5" />
@@ -2466,8 +2573,6 @@ function ServicePayment({
             <div className="w-10" />
           )}
         </div>
-
-        {/* SERVICE CARD ---------------------------------------------------- */}
 
         <Card className="overflow-hidden rounded-3xl border-0 shadow-xl">
           <div className="bg-gradient-to-r from-indigo-600 to-purple-600 px-6 py-6 text-white">
@@ -2503,8 +2608,6 @@ function ServicePayment({
           </div>
 
           <CardContent className="space-y-5 p-5 sm:p-6">
-            {/* CATALOGUE ERROR --------------------------------------------- */}
-
             {catalogueError && (
               <div className="rounded-2xl border border-red-100 bg-red-50 p-4">
                 <div className="flex items-start gap-3">
@@ -2512,8 +2615,7 @@ function ServicePayment({
 
                   <div className="flex-1">
                     <p className="text-sm font-semibold text-red-700">
-                      Unable to load
-                      available options
+                      Unable to load available options
                     </p>
 
                     <p className="mt-1 text-xs leading-5 text-red-600">
@@ -2535,8 +2637,6 @@ function ServicePayment({
               </div>
             )}
 
-            {/* LOADING ----------------------------------------------------- */}
-
             {loadingCatalogue &&
               networks.length ===
                 0 &&
@@ -2551,8 +2651,7 @@ function ServicePayment({
                     <Loader2 className="mx-auto h-7 w-7 animate-spin text-indigo-600" />
 
                     <p className="mt-3 text-sm font-medium text-slate-700">
-                      Loading available
-                      options...
+                      Loading available options...
                     </p>
 
                     <p className="mt-1 text-xs text-slate-500">
@@ -2562,29 +2661,51 @@ function ServicePayment({
                 </div>
               )}
 
-            {/* NETWORK LOGO SELECTOR -------------------------------------- */}
-
             {showNetworkSelector && (
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <Label className="text-sm font-semibold text-slate-700">
-                    Network
+                    Select Network
                   </Label>
 
-                  {loadingCatalogue &&
-                    selectedNetwork && (
-                      <Loader2 className="h-4 w-4 animate-spin text-indigo-600" />
-                    )}
+                  {selectedNetwork && (
+                    <span className="text-xs font-medium text-indigo-600">
+                      {
+                        networks.find(
+                          (network) =>
+                            network.code ===
+                            selectedNetwork
+                        )?.name
+                      }
+                    </span>
+                  )}
                 </div>
 
                 {networks.length >
-                0 ? (
-                  <div className="rounded-2xl border border-slate-100 bg-slate-50/70 p-4">
-                    <div className="grid grid-cols-3 gap-4 sm:grid-cols-4">
-                      {networks.map(
-                        (
-                          network
-                        ) => (
+                  0 ? (
+                  <div className="flex gap-4 overflow-x-auto pb-2 pt-1">
+                    {networks.map(
+                      (network) => {
+                        const active =
+                          selectedNetwork ===
+                          network.code;
+
+                        const logo =
+                          getNetworkLogo(
+                            network
+                          );
+
+                        const badge =
+                          getNetworkBadgeText(
+                            network.name
+                          );
+
+                        const accent =
+                          getNetworkAccent(
+                            network.name
+                          );
+
+                        return (
                           <button
                             key={
                               network.code
@@ -2595,47 +2716,82 @@ function ServicePayment({
                                 network.code
                               )
                             }
-                            disabled={
-                              loadingCatalogue
+                            aria-pressed={
+                              active
                             }
-                            className="flex min-w-0 flex-col items-center rounded-2xl p-1 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
-                            aria-label={`Select ${network.name}`}
+                            className="flex min-w-[72px] flex-col items-center gap-2 outline-none"
                           >
-                            <NetworkLogo
-                              network={
-                                network
+                            <div
+                              className={`relative flex h-16 w-16 items-center justify-center rounded-full border-2 bg-white shadow-sm transition-all ${
+                                active
+                                  ? "border-indigo-600 shadow-md ring-4 ring-indigo-100"
+                                  : "border-slate-200 hover:border-indigo-300 hover:shadow-md"
+                              }`}
+                            >
+                              <div
+                                className={`flex h-12 w-12 items-center justify-center overflow-hidden rounded-full text-xs font-extrabold ${accent}`}
+                              >
+                                <span className="absolute inset-0 flex items-center justify-center">
+                                  {
+                                    badge
+                                  }
+                                </span>
+
+                                {logo && (
+                                  <img
+                                    src={
+                                      logo
+                                    }
+                                    alt=""
+                                    className="relative z-10 h-full w-full rounded-full object-cover"
+                                    onError={(
+                                      event
+                                    ) => {
+                                      event.currentTarget.style.display =
+                                        "none";
+                                    }}
+                                  />
+                                )}
+                              </div>
+
+                              {active && (
+                                <span className="absolute -right-0.5 -top-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-indigo-600 text-white">
+                                  <CheckCircle2 className="h-4 w-4" />
+                                </span>
+                              )}
+                            </div>
+
+                            <span
+                              className={`max-w-[72px] truncate text-center text-xs font-semibold ${
+                                active
+                                  ? "text-indigo-700"
+                                  : "text-slate-600"
+                              }`}
+                            >
+                              {
+                                network.name
                               }
-                              selected={
-                                selectedNetwork ===
-                                network.code
-                              }
-                            />
+                            </span>
                           </button>
-                        )
-                      )}
-                    </div>
+                        );
+                      }
+                    )}
                   </div>
                 ) : (
-                  !loadingCatalogue &&
-                  !catalogueError && (
+                  !loadingCatalogue && (
                     <div className="rounded-2xl border border-dashed bg-slate-50 px-4 py-6 text-center">
-                      <Smartphone className="mx-auto h-7 w-7 text-slate-400" />
-
-                      <p className="mt-2 text-sm font-semibold text-slate-700">
-                        No networks available
+                      <p className="text-sm font-medium text-slate-700">
+                        No networks available.
                       </p>
 
                       <p className="mt-1 text-xs text-slate-500">
-                        Please refresh and
-                        try again.
+                        Please refresh and try again.
                       </p>
                     </div>
                   )
                 )}
               </div>
             )}
-
-            {/* CABLE / ELECTRICITY BILLER --------------------------------- */}
 
             {showBillerSelector &&
               billers.length >
@@ -2667,9 +2823,7 @@ function ServicePayment({
 
                     <SelectContent>
                       {billers.map(
-                        (
-                          biller
-                        ) => (
+                        (biller) => (
                           <SelectItem
                             key={
                               biller.code
@@ -2689,16 +2843,13 @@ function ServicePayment({
                 </div>
               )}
 
-            {/* SMILE ------------------------------------------------------- */}
-
             {isSmile &&
               networks.length ===
-                0 &&
-              !loadingCatalogue && (
+                0 && (
                 <div className="rounded-2xl border bg-slate-50 p-4">
                   <div className="flex items-center gap-3">
                     <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-100">
-                      <Smartphone className="h-5 w-5 text-indigo-600" />
+                      <Wifi className="h-5 w-5 text-indigo-600" />
                     </div>
 
                     <div>
@@ -2707,16 +2858,12 @@ function ServicePayment({
                       </p>
 
                       <p className="text-xs text-slate-500">
-                        Select your
-                        Smile data
-                        plan below.
+                        Select your Smile data plan below.
                       </p>
                     </div>
                   </div>
                 </div>
               )}
-
-            {/* DATA TABS -------------------------------------------------- */}
 
             {isData && (
               <div className="space-y-3">
@@ -2761,15 +2908,11 @@ function ServicePayment({
                     0 && (
                     <div className="rounded-2xl border border-dashed bg-slate-50 px-4 py-7 text-center">
                       <p className="text-sm font-medium text-slate-700">
-                        No plans found
-                        in this category.
+                        No plans found in this category.
                       </p>
 
                       <p className="mt-1 text-xs text-slate-500">
-                        Try the HOT
-                        tab to view
-                        all available
-                        plans.
+                        Try the HOT tab to view all available plans.
                       </p>
                     </div>
                   )}
@@ -2778,9 +2921,7 @@ function ServicePayment({
                   0 && (
                   <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                     {visibleDataPlans.map(
-                      (
-                        item
-                      ) => {
+                      (item) => {
                         const code =
                           getItemCode(
                             item
@@ -2840,8 +2981,6 @@ function ServicePayment({
               </div>
             )}
 
-            {/* GENERAL PACKAGE SELECTOR ----------------------------------- */}
-
             {!isData &&
               (isCable ||
                 isAirtimeCard ||
@@ -2886,10 +3025,7 @@ function ServicePayment({
 
                     <SelectContent>
                       {itemList.map(
-                        (
-                          item,
-                          index
-                        ) => {
+                        (item, index) => {
                           const code =
                             getItemCode(
                               item
@@ -2906,7 +3042,7 @@ function ServicePayment({
                           return (
                             <SelectItem
                               key={
-                                code
+                                `${code}-${index}`
                               }
                               value={
                                 code
@@ -2937,36 +3073,99 @@ function ServicePayment({
                 </div>
               )}
 
-            {/* AIRTIME PHONE ---------------------------------------------- */}
-
             {isAirtime && (
-              <div className="space-y-2">
-                <Label className="text-sm font-semibold text-slate-700">
-                  Phone Number
-                </Label>
+              <>
+                <div className="space-y-2">
+                  <Label className="text-sm font-semibold text-slate-700">
+                    Phone Number
+                  </Label>
 
-                <div className="relative">
-                  <Phone className="absolute left-3 top-3.5 h-5 w-5 text-slate-400" />
+                  <div className="relative">
+                    <Phone className="absolute left-3 top-3.5 h-5 w-5 text-slate-400" />
+
+                    <Input
+                      value={
+                        phone
+                      }
+                      onChange={(
+                        event
+                      ) =>
+                        setPhone(
+                          event
+                            .target
+                            .value
+                        )
+                      }
+                      inputMode="tel"
+                      placeholder="08012345678"
+                      className="h-12 rounded-xl pl-11"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  <Label className="text-sm font-semibold text-slate-700">
+                    Amount
+                  </Label>
+
+                  <div className="grid grid-cols-3 gap-2">
+                    {[
+                      100,
+                      200,
+                      500,
+                      1000,
+                      2000,
+                      5000,
+                    ].map(
+                      (value) => (
+                        <button
+                          type="button"
+                          key={
+                            value
+                          }
+                          onClick={() =>
+                            setAmount(
+                              String(
+                                value
+                              )
+                            )
+                          }
+                          className={`rounded-xl border py-3 text-sm font-semibold transition ${
+                            amountNumber ===
+                            value
+                              ? "border-indigo-500 bg-indigo-50 text-indigo-700"
+                              : "border-slate-200 bg-white text-slate-700 hover:border-indigo-200"
+                          }`}
+                        >
+                          {money(
+                            value
+                          )}
+                        </button>
+                      )
+                    )}
+                  </div>
 
                   <Input
-                    value={phone}
+                    value={
+                      amount
+                    }
                     onChange={(
                       event
                     ) =>
-                      setPhone(
-                        event.target
-                          .value
+                      setAmount(
+                        event.target.value.replace(
+                          /[^\d]/g,
+                          ""
+                        )
                       )
                     }
-                    inputMode="tel"
-                    placeholder="08012345678"
-                    className="h-12 rounded-xl pl-11"
+                    inputMode="numeric"
+                    placeholder="Or enter another amount"
+                    className="h-12 rounded-xl"
                   />
                 </div>
-              </div>
+              </>
             )}
-
-            {/* DATA PHONE ------------------------------------------------- */}
 
             {isData && (
               <div className="space-y-2">
@@ -2978,12 +3177,15 @@ function ServicePayment({
                   <Phone className="absolute left-3 top-3.5 h-5 w-5 text-slate-400" />
 
                   <Input
-                    value={phone}
+                    value={
+                      phone
+                    }
                     onChange={(
                       event
                     ) =>
                       setPhone(
-                        event.target
+                        event
+                          .target
                           .value
                       )
                     }
@@ -2994,8 +3196,6 @@ function ServicePayment({
                 </div>
               </div>
             )}
-
-            {/* ELECTRICITY METER ------------------------------------------ */}
 
             {isElectricity && (
               <>
@@ -3014,9 +3214,11 @@ function ServicePayment({
                       setMeterType(
                         value
                       );
+
                       setVerifiedCustomer(
                         ""
                       );
+
                       setVerifiedType(
                         "none"
                       );
@@ -3052,13 +3254,15 @@ function ServicePayment({
                         event
                       ) => {
                         setMeterNumber(
-                          event.target
+                          event
+                            .target
                             .value
                         );
 
                         setVerifiedCustomer(
                           ""
                         );
+
                         setVerifiedType(
                           "none"
                         );
@@ -3093,22 +3297,22 @@ function ServicePayment({
                 {verifiedType ===
                   "meter" &&
                   verifiedCustomer && (
-                    <div className="flex items-center gap-3 rounded-2xl border border-emerald-100 bg-emerald-50 p-4">
-                      <CheckCircle2 className="h-5 w-5 text-emerald-600" />
+                  <div className="flex items-center gap-3 rounded-2xl border border-emerald-100 bg-emerald-50 p-4">
+                    <CheckCircle2 className="h-5 w-5 text-emerald-600" />
 
-                      <div>
-                        <p className="text-sm font-semibold text-emerald-800">
-                          Meter verified
-                        </p>
+                    <div>
+                      <p className="text-sm font-semibold text-emerald-800">
+                        Meter verified
+                      </p>
 
-                        <p className="text-xs text-emerald-700">
-                          {
-                            verifiedCustomer
-                          }
-                        </p>
-                      </div>
+                      <p className="text-xs text-emerald-700">
+                        {
+                          verifiedCustomer
+                        }
+                      </p>
                     </div>
-                  )}
+                  </div>
+                )}
 
                 <div className="space-y-2">
                   <Label className="text-sm font-semibold text-slate-700">
@@ -3144,12 +3348,15 @@ function ServicePayment({
                   </Label>
 
                   <Input
-                    value={phone}
+                    value={
+                      phone
+                    }
                     onChange={(
                       event
                     ) =>
                       setPhone(
-                        event.target
+                        event
+                          .target
                           .value
                       )
                     }
@@ -3160,8 +3367,6 @@ function ServicePayment({
                 </div>
               </>
             )}
-
-            {/* CABLE SMARTCARD -------------------------------------------- */}
 
             {isCable && (
               <>
@@ -3179,13 +3384,15 @@ function ServicePayment({
                         event
                       ) => {
                         setSmartcardNumber(
-                          event.target
+                          event
+                            .target
                             .value
                         );
 
                         setVerifiedCustomer(
                           ""
                         );
+
                         setVerifiedType(
                           "none"
                         );
@@ -3218,22 +3425,22 @@ function ServicePayment({
                 {verifiedType ===
                   "cable" &&
                   verifiedCustomer && (
-                    <div className="flex items-center gap-3 rounded-2xl border border-emerald-100 bg-emerald-50 p-4">
-                      <CheckCircle2 className="h-5 w-5 text-emerald-600" />
+                  <div className="flex items-center gap-3 rounded-2xl border border-emerald-100 bg-emerald-50 p-4">
+                    <CheckCircle2 className="h-5 w-5 text-emerald-600" />
 
-                      <div>
-                        <p className="text-sm font-semibold text-emerald-800">
-                          SmartCard verified
-                        </p>
+                    <div>
+                      <p className="text-sm font-semibold text-emerald-800">
+                        SmartCard verified
+                      </p>
 
-                        <p className="text-xs text-emerald-700">
-                          {
-                            verifiedCustomer
-                          }
-                        </p>
-                      </div>
+                      <p className="text-xs text-emerald-700">
+                        {
+                          verifiedCustomer
+                        }
+                      </p>
                     </div>
-                  )}
+                  </div>
+                )}
 
                 <div className="space-y-2">
                   <Label className="text-sm font-semibold text-slate-700">
@@ -3244,12 +3451,15 @@ function ServicePayment({
                   </Label>
 
                   <Input
-                    value={phone}
+                    value={
+                      phone
+                    }
                     onChange={(
                       event
                     ) =>
                       setPhone(
-                        event.target
+                        event
+                          .target
                           .value
                       )
                     }
@@ -3277,74 +3487,6 @@ function ServicePayment({
                 )}
               </>
             )}
-
-            {/* AIRTIME AMOUNT --------------------------------------------- */}
-
-            {isAirtime && (
-              <div className="space-y-3">
-                <Label className="text-sm font-semibold text-slate-700">
-                  Amount
-                </Label>
-
-                <div className="grid grid-cols-3 gap-2">
-                  {[
-                    100,
-                    200,
-                    500,
-                    1000,
-                    2000,
-                    5000,
-                  ].map(
-                    (value) => (
-                      <button
-                        type="button"
-                        key={
-                          value
-                        }
-                        onClick={() =>
-                          setAmount(
-                            String(
-                              value
-                            )
-                          )
-                        }
-                        className={`rounded-xl border py-3 text-sm font-semibold transition ${
-                          amountNumber ===
-                          value
-                            ? "border-indigo-500 bg-indigo-50 text-indigo-700"
-                            : "border-slate-200 bg-white text-slate-700 hover:border-indigo-200"
-                        }`}
-                      >
-                        {money(
-                          value
-                        )}
-                      </button>
-                    )
-                  )}
-                </div>
-
-                <Input
-                  value={
-                    amount
-                  }
-                  onChange={(
-                    event
-                  ) =>
-                    setAmount(
-                      event.target.value.replace(
-                        /[^\d]/g,
-                        ""
-                      )
-                    )
-                  }
-                  inputMode="numeric"
-                  placeholder="Or enter another amount"
-                  className="h-12 rounded-xl"
-                />
-              </div>
-            )}
-
-            {/* E-PIN QUANTITY ------------------------------------------------ */}
 
             {(isAirtimeCard ||
               isDataCard) && (
@@ -3375,14 +3517,11 @@ function ServicePayment({
                 />
 
                 <p className="text-xs text-slate-500">
-                  You can purchase
-                  between 1 and 100
+                  You can purchase between 1 and 100
                   pins per request.
                 </p>
               </div>
             )}
-
-            {/* SMILE ACCOUNT ------------------------------------------------ */}
 
             {isSmile && (
               <div className="space-y-2">
@@ -3398,7 +3537,8 @@ function ServicePayment({
                     event
                   ) =>
                     setAccountId(
-                      event.target
+                      event
+                        .target
                         .value
                     )
                   }
@@ -3409,8 +3549,6 @@ function ServicePayment({
               </div>
             )}
 
-            {/* WAEC PHONE -------------------------------------------------- */}
-
             {isWAEC && (
               <div className="space-y-2">
                 <Label className="text-sm font-semibold text-slate-700">
@@ -3418,12 +3556,15 @@ function ServicePayment({
                 </Label>
 
                 <Input
-                  value={phone}
+                  value={
+                    phone
+                  }
                   onChange={(
                     event
                   ) =>
                     setPhone(
-                      event.target
+                      event
+                        .target
                         .value
                     )
                   }
@@ -3433,8 +3574,6 @@ function ServicePayment({
                 />
               </div>
             )}
-
-            {/* JAMB EXAM TYPE --------------------------------------------- */}
 
             {isJAMB && (
               <>
@@ -3457,18 +3596,15 @@ function ServicePayment({
 
                     <SelectContent>
                       <SelectItem value="de">
-                        Direct Entry
-                        (DE)
+                        Direct Entry (DE)
                       </SelectItem>
 
                       <SelectItem value="utme-mock">
-                        UTME With
-                        Mock
+                        UTME With Mock
                       </SelectItem>
 
                       <SelectItem value="utme-no-mock">
-                        UTME Without
-                        Mock
+                        UTME Without Mock
                       </SelectItem>
                     </SelectContent>
                   </Select>
@@ -3487,7 +3623,8 @@ function ServicePayment({
                       event
                     ) =>
                       setPhone(
-                        event.target
+                        event
+                          .target
                           .value
                       )
                     }
@@ -3498,8 +3635,6 @@ function ServicePayment({
                 </div>
               </>
             )}
-
-            {/* OPTIONAL RECIPIENT ---------------------------------------- */}
 
             {(isAirtimeCard ||
               isDataCard) && (
@@ -3519,7 +3654,8 @@ function ServicePayment({
                     event
                   ) =>
                     setRecipientPhone(
-                      event.target
+                      event
+                        .target
                         .value
                     )
                   }
@@ -3529,15 +3665,11 @@ function ServicePayment({
                 />
 
                 <p className="text-xs text-slate-500">
-                  This is only for
-                  your record. The
-                  service generates
-                  the E-PIN itself.
+                  This is only for your record. The PIN is
+                  generated by the service.
                 </p>
               </div>
             )}
-
-            {/* SUMMARY ----------------------------------------------------- */}
 
             {(estimatedTotal >
               0 ||
@@ -3557,15 +3689,11 @@ function ServicePayment({
                 </div>
 
                 <p className="mt-2 text-[11px] leading-5 text-slate-500">
-                  Final pricing is
-                  calculated securely
-                  by IyanjuPay on the
-                  server.
+                  Final pricing is calculated securely by
+                  IyanjuPay on the server.
                 </p>
               </div>
             )}
-
-            {/* SECURITY NOTE ------------------------------------------------ */}
 
             <div className="flex items-start gap-3 rounded-2xl bg-slate-50 p-4">
               <LockKeyhole className="mt-0.5 h-5 w-5 shrink-0 text-indigo-600" />
@@ -3576,15 +3704,11 @@ function ServicePayment({
                 </p>
 
                 <p className="mt-1 text-xs leading-5 text-slate-500">
-                  Your payment PIN is
-                  verified securely
-                  before the transaction
-                  is submitted.
+                  Your payment PIN is verified securely
+                  before the transaction is submitted.
                 </p>
               </div>
             </div>
-
-            {/* PURCHASE BUTTON ------------------------------------------- */}
 
             <Button
               type="button"
@@ -3605,16 +3729,13 @@ function ServicePayment({
               ) : (
                 <>
                   <ShieldCheck className="mr-2 h-5 w-5" />
-                  Continue to
-                  Payment
+                  Continue to Payment
                 </>
               )}
             </Button>
           </CardContent>
         </Card>
       </div>
-
-      {/* PAYMENT PIN ------------------------------------------------------- */}
 
       <Dialog
         open={
@@ -3646,10 +3767,8 @@ function ServicePayment({
             </DialogTitle>
 
             <DialogDescription className="text-center">
-              Enter your 4-digit
-              payment PIN to
-              authorize this
-              transaction.
+              Enter your 4-digit payment PIN to
+              authorize this transaction.
             </DialogDescription>
           </DialogHeader>
 
@@ -3662,7 +3781,8 @@ function ServicePayment({
               <p className="mt-1 text-2xl font-bold text-indigo-700">
                 {money(
                   estimatedTotal ||
-                    totalBeforePurchase
+                    selectedSellingPrice ||
+                    amountNumber
                 )}
               </p>
             </div>
@@ -3707,6 +3827,7 @@ function ServicePayment({
                   setShowPinModal(
                     false
                   );
+
                   setPaymentPin(
                     ""
                   );
@@ -3746,6 +3867,6 @@ function ServicePayment({
       </Dialog>
     </div>
   );
-}
+};
 
 export default ServicePayment;

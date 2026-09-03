@@ -918,7 +918,17 @@ Deno.serve(async (req) => {
               ),
             );
 
-            if (providerAmount <= 0 && !isVariableBillItem(item)) {
+            /*
+             * Airtime is an amount-based service. Flutterwave can
+             * return a valid airtime item (for example AT102) with
+             * amount 0 because the customer supplies the amount at
+             * purchase time. Do not discard those items.
+             */
+            if (
+              providerAmount <= 0 &&
+              service !== "airtime" &&
+              !isVariableBillItem(item)
+            ) {
               return null;
             }
 

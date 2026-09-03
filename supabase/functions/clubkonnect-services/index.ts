@@ -1,9 +1,4 @@
-import {
-  corsHeaders,
-  json,
-  adminClient,
-  getUser,
-} from "../_shared/auth.ts";
+import { corsHeaders, json, adminClient, getUser } from "../_shared/auth.ts";
 
 /**
  * IyanjuPay - ClubKonnect service provider
@@ -553,9 +548,7 @@ function recursivelyFindNetworks(
     return;
   }
 
-  if (
-    typeof value !== "object"
-  ) {
+  if (typeof value !== "object") {
     return;
   }
 
@@ -1010,9 +1003,39 @@ function recursivelyFindPlans(
     return;
   }
 
-  if (
-    typeof value !== "object"
-  ) {
+  if (typeof value === "string") {
+    const text = value.trim();
+    if (!text || !fallbackNetwork) return;
+
+    // ClubKonnect can return the plans for a network as a single
+    // human-readable string, e.g. `1000` — 1 GB Weekly @ ₦410.
+    // Parse every plan embedded in that string.
+    const planPattern = /`\s*([^`]+?)\s*`\s*(?:—|-)\s*([^@\n]+?)\s*@\s*₦?\s*([0-9][0-9,]*(?:\.[0-9]+)?)/g;
+    let match: RegExpExecArray | null;
+
+    while ((match = planPattern.exec(text)) !== null) {
+      const id = match[1].trim();
+      const description = match[2].trim();
+      const price = Number(match[3].replace(/,/g, ""));
+
+      if (!id || !Number.isFinite(price) || price <= 0) continue;
+
+      const parsed = planFromRaw(
+        {
+          PRODUCT_ID: id,
+          PRODUCT_NAME: description,
+          PRODUCT_AMOUNT: price,
+        },
+        fallbackNetwork,
+      );
+
+      if (parsed) result.push(parsed);
+    }
+
+    return;
+  }
+
+  if (typeof value !== "object") {
     return;
   }
 
@@ -1058,27 +1081,16 @@ function recursivelyFindPlans(
       child,
     ] of Object.entries(raw)
   ) {
-    if (
-      child === null ||
-      child === undefined
-    ) {
+    if (child === null || child === undefined) {
       continue;
     }
 
-    if (
-      typeof child !== "object"
-    ) {
-      continue;
-    }
-
-    const keyNetwork =
-      networkCode(key);
+    const keyNetwork = networkCode(key);
 
     recursivelyFindPlans(
       child,
       result,
-      keyNetwork ||
-        inheritedNetwork,
+      keyNetwork || inheritedNetwork,
       depth + 1,
     );
   }

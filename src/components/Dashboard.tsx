@@ -58,7 +58,6 @@ type BillService =
   | "electricity"
   | "cable"
   | "internet"
-  | "insurance"
   | "education"
   | "airtime-card"
   | "data-card";
@@ -82,12 +81,6 @@ type SelectedService = {
   type: BillService;
 };
 
-/*
- * ============================================================
- * DASHBOARD STATISTICS TYPES
- * ============================================================
- */
-
 type TransactionStats = {
   monthlySpent: number;
   monthlyTransactions: number;
@@ -105,19 +98,12 @@ type DashboardTransaction = {
   created_at: string;
 };
 
-/*
- * ============================================================
- * SUPPORTED BILL SERVICES
- * ============================================================
- */
-
 const SUPPORTED_BILL_SERVICES: BillService[] = [
   "airtime",
   "data",
   "electricity",
   "cable",
   "internet",
-  "insurance",
   "education",
   "airtime-card",
   "data-card",
@@ -130,12 +116,6 @@ const CLUBKONNECT_SERVICES = new Set<BillService>([
   "data-card",
 ]);
 
-/*
- * ============================================================
- * SUCCESSFUL STATUSES
- * ============================================================
- */
-
 const SUCCESS_STATUSES = new Set([
   "success",
   "successful",
@@ -143,12 +123,6 @@ const SUCCESS_STATUSES = new Set([
   "complete",
   "succeeded",
 ]);
-
-/*
- * ============================================================
- * FAILED STATUSES
- * ============================================================
- */
 
 const FAILED_STATUSES = new Set([
   "failed",
@@ -159,19 +133,6 @@ const FAILED_STATUSES = new Set([
   "canceled",
   "reversed",
 ]);
-
-/*
- * ============================================================
- * MONEY-OUT TRANSACTION TYPES
- *
- * These are the transaction types that should contribute
- * to "Total Spent".
- *
- * The helper also checks metadata/category/description so
- * your existing transaction records remain compatible even
- * if the exact transaction_type naming differs.
- * ============================================================
- */
 
 const MONEY_OUT_TYPES = new Set([
   "debit",
@@ -191,26 +152,12 @@ const MONEY_OUT_TYPES = new Set([
   "payout",
 ]);
 
-/*
- * ============================================================
- * HELPER: NORMALIZE TEXT
- * ============================================================
- */
-
-const normalizeText = (
-  value: unknown
-): string => {
+const normalizeText = (value: unknown): string => {
   return String(value ?? "")
     .trim()
     .toLowerCase()
     .replace(/\s+/g, "_");
 };
-
-/*
- * ============================================================
- * HELPER: IS SUCCESSFUL
- * ============================================================
- */
 
 const isSuccessfulTransaction = (
   transaction: DashboardTransaction
@@ -220,12 +167,6 @@ const isSuccessfulTransaction = (
   );
 };
 
-/*
- * ============================================================
- * HELPER: IS FAILED
- * ============================================================
- */
-
 const isFailedTransaction = (
   transaction: DashboardTransaction
 ): boolean => {
@@ -234,52 +175,19 @@ const isFailedTransaction = (
   );
 };
 
-/*
- * ============================================================
- * HELPER: IS MONEY OUT
- *
- * This prevents wallet funding/deposit transactions from
- * being counted as "Total Spent".
- * ============================================================
- */
-
 const isMoneyOutTransaction = (
   transaction: DashboardTransaction
 ): boolean => {
-  const type = normalizeText(
-    transaction.transaction_type
+  const type = normalizeText(transaction.transaction_type);
+  const category = normalizeText(transaction.category);
+  const description = normalizeText(transaction.description);
+  const metadata = transaction.metadata ?? {};
+
+  const metadataDirection = normalizeText(metadata?.direction);
+  const metadataType = normalizeText(metadata?.type);
+  const metadataTransactionType = normalizeText(
+    metadata?.transaction_type
   );
-
-  const category = normalizeText(
-    transaction.category
-  );
-
-  const description = normalizeText(
-    transaction.description
-  );
-
-  const metadata =
-    transaction.metadata ?? {};
-
-  const metadataDirection =
-    normalizeText(
-      metadata?.direction
-    );
-
-  const metadataType =
-    normalizeText(
-      metadata?.type
-    );
-
-  const metadataTransactionType =
-    normalizeText(
-      metadata?.transaction_type
-    );
-
-  /*
-   * Explicit credit/deposit/funding transactions
-   * should NEVER be considered spending.
-   */
 
   if (
     type === "credit" ||
@@ -295,10 +203,6 @@ const isMoneyOutTransaction = (
     return false;
   }
 
-  /*
-   * Explicit debit/outgoing transactions.
-   */
-
   if (
     type === "debit" ||
     metadataDirection === "debit" ||
@@ -308,24 +212,14 @@ const isMoneyOutTransaction = (
     return true;
   }
 
-  /*
-   * Known money-out transaction types.
-   */
-
   if (
     MONEY_OUT_TYPES.has(type) ||
     MONEY_OUT_TYPES.has(category) ||
     MONEY_OUT_TYPES.has(metadataType) ||
-    MONEY_OUT_TYPES.has(
-      metadataTransactionType
-    )
+    MONEY_OUT_TYPES.has(metadataTransactionType)
   ) {
     return true;
   }
-
-  /*
-   * Fallback based on description.
-   */
 
   const moneyOutWords = [
     "transfer",
@@ -340,17 +234,8 @@ const isMoneyOutTransaction = (
     "debit",
   ];
 
-  return moneyOutWords.some(
-    word =>
-      description.includes(word)
-  );
+  return moneyOutWords.some((word) => description.includes(word));
 };
-
-/*
- * ============================================================
- * DASHBOARD COMPONENT
- * ============================================================
- */
 
 const Dashboard = () => {
   const { user, signOut } = useAuth();
@@ -361,38 +246,20 @@ const Dashboard = () => {
     refreshWallet,
   } = useWallet(user?.id);
 
-  const [
-    fundModalOpen,
-    setFundModalOpen,
-  ] = useState(false);
-
-  const [
-    qrModalOpen,
-    setQrModalOpen,
-  ] = useState(false);
+  const [fundModalOpen, setFundModalOpen] = useState(false);
+  const [qrModalOpen, setQrModalOpen] = useState(false);
 
   const [
     selectedService,
     setSelectedService,
-  ] = useState<SelectedService | null>(
-    null
-  );
+  ] = useState<SelectedService | null>(null);
 
-  const [
-    showBalance,
-    setShowBalance,
-  ] = useState(true);
+  const [showBalance, setShowBalance] = useState(true);
 
   const [
     currentPage,
     setCurrentPage,
   ] = useState<CurrentPage>("home");
-
-  /*
-   * ==========================================================
-   * DASHBOARD STATS STATE
-   * ==========================================================
-   */
 
   const [
     stats,
@@ -403,106 +270,60 @@ const Dashboard = () => {
     successRate: 100,
   });
 
-  const [
-    statsLoading,
-    setStatsLoading,
-  ] = useState(true);
+  const [statsLoading, setStatsLoading] = useState(true);
 
   const { toast } = useToast();
-
-  /*
-   * ==========================================================
-   * EXTRACT EDGE FUNCTION ERROR
-   * ==========================================================
-   */
 
   const extractFunctionError = async (
     error: any,
     fallback = "Unable to process your request."
   ): Promise<string> => {
-    console.error(
-      "Supabase function error:",
-      error
-    );
+    console.error("Supabase function error:", error);
 
     try {
       if (
         error?.context &&
-        typeof error.context.json ===
-          "function"
+        typeof error.context.json === "function"
       ) {
-        const response =
-          error.context;
+        const response = error.context;
 
         let payload: any = null;
 
         try {
-          payload =
-            await response.json();
+          payload = await response.json();
         } catch {
           payload = null;
         }
 
-        console.error(
-          "Edge Function response:",
-          payload
-        );
+        console.error("Edge Function response:", payload);
 
-        if (payload?.error) {
-          return String(
-            payload.error
-          );
-        }
-
-        if (payload?.message) {
-          return String(
-            payload.message
-          );
-        }
-
+        if (payload?.error) return String(payload.error);
+        if (payload?.message) return String(payload.message);
         if (payload?.provider_message) {
+          return String(payload.provider_message);
+        }
+
+        if (payload?.provider_response?.message) {
+          return String(payload.provider_response.message);
+        }
+
+        if (payload?.provider_response?.data?.message) {
           return String(
-            payload.provider_message
+            payload.provider_response.data.message
+          );
+        }
+
+        if (payload?.validation_data?.response_message) {
+          return String(
+            payload.validation_data.response_message
           );
         }
 
         if (
-          payload?.provider_response
-            ?.message
+          payload?.provider_response?.data?.response_message
         ) {
           return String(
-            payload.provider_response
-              .message
-          );
-        }
-
-        if (
-          payload?.provider_response
-            ?.data?.message
-        ) {
-          return String(
-            payload.provider_response
-              .data.message
-          );
-        }
-
-        if (
-          payload?.validation_data
-            ?.response_message
-        ) {
-          return String(
-            payload.validation_data
-              .response_message
-          );
-        }
-
-        if (
-          payload?.provider_response
-            ?.data?.response_message
-        ) {
-          return String(
-            payload.provider_response.data
-              .response_message
+            payload.provider_response.data.response_message
           );
         }
       }
@@ -518,260 +339,49 @@ const Dashboard = () => {
       error.message !==
         "Edge Function returned a non-2xx status code"
     ) {
-      return String(
-        error.message
-      );
+      return String(error.message);
     }
 
     return fallback;
   };
 
-  /*
-   * ==========================================================
-   * LOAD DASHBOARD STATISTICS
-   * ==========================================================
-   */
+  const loadDashboardStats = useCallback(async () => {
+    if (!user?.id) {
+      setStats({
+        monthlySpent: 0,
+        monthlyTransactions: 0,
+        successRate: 100,
+      });
 
-  const loadDashboardStats =
-    useCallback(async () => {
-      if (!user?.id) {
-        setStats({
-          monthlySpent: 0,
-          monthlyTransactions: 0,
-          successRate: 100,
+      setStatsLoading(false);
+      return;
+    }
+
+    try {
+      setStatsLoading(true);
+
+      const { data, error } = await supabase
+        .from("transactions")
+        .select(
+          `
+            id,
+            amount,
+            transaction_type,
+            status,
+            category,
+            description,
+            metadata,
+            created_at
+          `
+        )
+        .eq("user_id", user.id)
+        .order("created_at", {
+          ascending: false,
         });
 
-        setStatsLoading(false);
-
-        return;
-      }
-
-      try {
-        setStatsLoading(true);
-
-        /*
-         * Get all transactions belonging to
-         * the currently authenticated user.
-         *
-         * RLS should restrict this to the user's
-         * own records.
-         */
-
-        const {
-          data,
-          error,
-        } = await supabase
-          .from("transactions")
-          .select(
-            `
-              id,
-              amount,
-              transaction_type,
-              status,
-              category,
-              description,
-              metadata,
-              created_at
-            `
-          )
-          .eq(
-            "user_id",
-            user.id
-          )
-          .order(
-            "created_at",
-            {
-              ascending: false,
-            }
-          );
-
-        if (error) {
-          console.error(
-            "Failed to load dashboard statistics:",
-            error
-          );
-
-          /*
-           * Do not show fake success data when
-           * the database request fails.
-           */
-
-          setStats({
-            monthlySpent: 0,
-            monthlyTransactions: 0,
-            successRate: 0,
-          });
-
-          return;
-        }
-
-        const transactions =
-          (data ??
-            []) as DashboardTransaction[];
-
-        /*
-         * ======================================================
-         * THIS MONTH
-         * ======================================================
-         */
-
-        const now = new Date();
-
-        const monthStart =
-          new Date(
-            now.getFullYear(),
-            now.getMonth(),
-            1,
-            0,
-            0,
-            0,
-            0
-          );
-
-        const monthEnd =
-          new Date(
-            now.getFullYear(),
-            now.getMonth() + 1,
-            1,
-            0,
-            0,
-            0,
-            0
-          );
-
-        const monthlyTransactions =
-          transactions.filter(
-            transaction => {
-              const createdAt =
-                new Date(
-                  transaction.created_at
-                );
-
-              return (
-                createdAt >=
-                  monthStart &&
-                createdAt <
-                  monthEnd
-              );
-            }
-          );
-
-        /*
-         * ======================================================
-         * MONTHLY TOTAL SPENT
-         *
-         * Only successful money-out transactions count.
-         * ======================================================
-         */
-
-        const monthlySpent =
-          monthlyTransactions
-            .filter(
-              transaction =>
-                isSuccessfulTransaction(
-                  transaction
-                ) &&
-                isMoneyOutTransaction(
-                  transaction
-                )
-            )
-            .reduce(
-              (
-                total,
-                transaction
-              ) => {
-                const amount =
-                  Number(
-                    transaction.amount
-                  );
-
-                if (
-                  !Number.isFinite(
-                    amount
-                  )
-                ) {
-                  return total;
-                }
-
-                return (
-                  total + amount
-                );
-              },
-              0
-            );
-
-        /*
-         * ======================================================
-         * MONTHLY TRANSACTION COUNT
-         *
-         * Count every transaction created
-         * during this month.
-         * ======================================================
-         */
-
-        const monthlyTransactionCount =
-          monthlyTransactions.length;
-
-        /*
-         * ======================================================
-         * ALL-TIME SUCCESS RATE
-         *
-         * Pending transactions are excluded.
-         *
-         * Example:
-         *
-         * 90 successful
-         * 10 failed
-         *
-         * = 90 / 100 = 90%
-         * ======================================================
-         */
-
-        const successfulCount =
-          transactions.filter(
-            transaction =>
-              isSuccessfulTransaction(
-                transaction
-              )
-          ).length;
-
-        const failedCount =
-          transactions.filter(
-            transaction =>
-              isFailedTransaction(
-                transaction
-              )
-          ).length;
-
-        const terminalTransactions =
-          successfulCount +
-          failedCount;
-
-        const calculatedSuccessRate =
-          terminalTransactions === 0
-            ? 100
-            : Math.round(
-                (successfulCount /
-                  terminalTransactions) *
-                  100
-              );
-
-        /*
-         * ======================================================
-         * UPDATE STATE
-         * ======================================================
-         */
-
-        setStats({
-          monthlySpent,
-          monthlyTransactions:
-            monthlyTransactionCount,
-          successRate:
-            calculatedSuccessRate,
-        });
-      } catch (error) {
+      if (error) {
         console.error(
-          "Dashboard statistics error:",
+          "Failed to load dashboard statistics:",
           error
         );
 
@@ -780,128 +390,186 @@ const Dashboard = () => {
           monthlyTransactions: 0,
           successRate: 0,
         });
-      } finally {
-        setStatsLoading(false);
-      }
-    }, [user?.id]);
 
-  /*
-   * ==========================================================
-   * LOAD STATS WHEN USER CHANGES
-   * ==========================================================
-   */
+        return;
+      }
+
+      const transactions =
+        (data ?? []) as DashboardTransaction[];
+
+      const now = new Date();
+
+      const monthStart = new Date(
+        now.getFullYear(),
+        now.getMonth(),
+        1,
+        0,
+        0,
+        0,
+        0
+      );
+
+      const monthEnd = new Date(
+        now.getFullYear(),
+        now.getMonth() + 1,
+        1,
+        0,
+        0,
+        0,
+        0
+      );
+
+      const monthlyTransactions = transactions.filter(
+        (transaction) => {
+          const createdAt = new Date(
+            transaction.created_at
+          );
+
+          return (
+            createdAt >= monthStart &&
+            createdAt < monthEnd
+          );
+        }
+      );
+
+      const monthlySpent =
+        monthlyTransactions
+          .filter(
+            (transaction) =>
+              isSuccessfulTransaction(transaction) &&
+              isMoneyOutTransaction(transaction)
+          )
+          .reduce((total, transaction) => {
+            const amount = Number(transaction.amount);
+
+            if (!Number.isFinite(amount)) {
+              return total;
+            }
+
+            return total + amount;
+          }, 0);
+
+      const monthlyTransactionCount =
+        monthlyTransactions.length;
+
+      const successfulCount =
+        transactions.filter((transaction) =>
+          isSuccessfulTransaction(transaction)
+        ).length;
+
+      const failedCount =
+        transactions.filter((transaction) =>
+          isFailedTransaction(transaction)
+        ).length;
+
+      const terminalTransactions =
+        successfulCount + failedCount;
+
+      const calculatedSuccessRate =
+        terminalTransactions === 0
+          ? 100
+          : Math.round(
+              (successfulCount / terminalTransactions) * 100
+            );
+
+      setStats({
+        monthlySpent,
+        monthlyTransactions:
+          monthlyTransactionCount,
+        successRate:
+          calculatedSuccessRate,
+      });
+    } catch (error) {
+      console.error(
+        "Dashboard statistics error:",
+        error
+      );
+
+      setStats({
+        monthlySpent: 0,
+        monthlyTransactions: 0,
+        successRate: 0,
+      });
+    } finally {
+      setStatsLoading(false);
+    }
+  }, [user?.id]);
 
   useEffect(() => {
     loadDashboardStats();
-  }, [
-    loadDashboardStats,
-  ]);
-
-  /*
-   * ==========================================================
-   * REALTIME TRANSACTION REFRESH
-   *
-   * Whenever a transaction is inserted/updated for this
-   * user, refresh the dashboard statistics.
-   * ==========================================================
-   */
+  }, [loadDashboardStats]);
 
   useEffect(() => {
     if (!user?.id) {
       return;
     }
 
-    const channel =
-      supabase
-        .channel(
-          `dashboard-transactions-${user.id}`
-        )
-        .on(
-          "postgres_changes",
-          {
-            event: "*",
-            schema: "public",
-            table: "transactions",
-            filter: `user_id=eq.${user.id}`,
-          },
-          () => {
-            loadDashboardStats();
-          }
-        )
-        .subscribe();
+    const channel = supabase
+      .channel(
+        `dashboard-transactions-${user.id}`
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "transactions",
+          filter: `user_id=eq.${user.id}`,
+        },
+        () => {
+          loadDashboardStats();
+        }
+      )
+      .subscribe();
 
     return () => {
-      supabase.removeChannel(
-        channel
-      );
+      supabase.removeChannel(channel);
     };
-  }, [
-    user?.id,
-    loadDashboardStats,
-  ]);
-
-  /*
-   * ==========================================================
-   * WALLET BOOTSTRAP
-   * ==========================================================
-   */
+  }, [user?.id, loadDashboardStats]);
 
   useEffect(() => {
     if (!user) return;
 
     let cancelled = false;
 
-    const bootstrapWallet =
-      async () => {
-        try {
-          const {
-            data,
-            error,
-          } =
-            await supabase.functions.invoke(
-              "wallet-bootstrap",
-              {
-                body: {},
-              }
-            );
-
-          if (cancelled) {
-            return;
-          }
-
-          if (error) {
-            console.error(
-              "Wallet bootstrap error:",
-              error
-            );
-
-            return;
-          }
-
-          console.log(
-            "Wallet bootstrap:",
-            data
+    const bootstrapWallet = async () => {
+      try {
+        const { data, error } =
+          await supabase.functions.invoke(
+            "wallet-bootstrap",
+            {
+              body: {},
+            }
           );
 
-          await refreshWallet();
+        if (cancelled) {
+          return;
+        }
 
-          /*
-           * Refresh dashboard statistics
-           * after wallet bootstrap.
-           */
-
-          await loadDashboardStats();
-        } catch (error) {
-          if (cancelled) {
-            return;
-          }
-
+        if (error) {
           console.error(
-            "Wallet bootstrap failed:",
+            "Wallet bootstrap error:",
             error
           );
+
+          return;
         }
-      };
+
+        console.log("Wallet bootstrap:", data);
+
+        await refreshWallet();
+        await loadDashboardStats();
+      } catch (error) {
+        if (cancelled) {
+          return;
+        }
+
+        console.error(
+          "Wallet bootstrap failed:",
+          error
+        );
+      }
+    };
 
     bootstrapWallet();
 
@@ -914,12 +582,6 @@ const Dashboard = () => {
     loadDashboardStats,
   ]);
 
-  /*
-   * ==========================================================
-   * OPTIONAL MANUAL DEPOSIT SYNC
-   * ==========================================================
-   */
-
   const syncDeposits = async () => {
     if (!user) return;
 
@@ -928,10 +590,7 @@ const Dashboard = () => {
         "Starting Flutterwave deposit sync..."
       );
 
-      const {
-        data,
-        error,
-      } =
+      const { data, error } =
         await supabase.functions.invoke(
           "flutterwave-sync-deposits",
           {
@@ -939,15 +598,8 @@ const Dashboard = () => {
           }
         );
 
-      console.log(
-        "SYNC DATA:",
-        data
-      );
-
-      console.log(
-        "SYNC ERROR:",
-        error
-      );
+      console.log("SYNC DATA:", data);
+      console.log("SYNC ERROR:", error);
 
       if (error) {
         console.error(
@@ -959,7 +611,6 @@ const Dashboard = () => {
       }
 
       await refreshWallet();
-
       await loadDashboardStats();
     } catch (error) {
       console.error(
@@ -969,30 +620,71 @@ const Dashboard = () => {
     }
   };
 
-  /*
-   * ==========================================================
-   * SERVICES
-   * ==========================================================
-   */
-
   const services = [
-    { title: "Buy Airtime", description: "Recharge your phone", icon: Smartphone, color: "bg-blue-500", type: "airtime" },
-    { title: "Buy Data", description: "Internet data bundles", icon: Wifi, color: "bg-purple-500", type: "data" },
-    { title: "Electricity", description: "Pay electricity bills", icon: Zap, color: "bg-yellow-500", type: "electricity" },
-    { title: "Cable TV", description: "DSTV, GOTV, Startimes", icon: CreditCard, color: "bg-red-500", type: "cable" },
-    { title: "Send Money", description: "Send money securely", icon: Send, color: "bg-green-500", type: "transfer" },
-    { title: "Internet Bills", description: "Pay internet bills", icon: Wifi, color: "bg-indigo-500", type: "internet" },
-    { title: "Insurance", description: "Pay insurance premiums", icon: Shield, color: "bg-teal-500", type: "insurance" },
-    { title: "Education", description: "Buy education PINs", icon: CreditCard, color: "bg-amber-500", type: "education" },
-    { title: "Airtime PIN", description: "Buy recharge PINs", icon: Smartphone, color: "bg-pink-500", type: "airtime-card" },
-    { title: "Data PIN", description: "Buy data PINs", icon: Wifi, color: "bg-cyan-500", type: "data-card" },
+    {
+      title: "Buy Airtime",
+      description: "Recharge your phone",
+      icon: Smartphone,
+      color: "bg-blue-500",
+      type: "airtime",
+    },
+    {
+      title: "Buy Data",
+      description: "Internet data bundles",
+      icon: Wifi,
+      color: "bg-purple-500",
+      type: "data",
+    },
+    {
+      title: "Electricity",
+      description: "Pay electricity bills",
+      icon: Zap,
+      color: "bg-yellow-500",
+      type: "electricity",
+    },
+    {
+      title: "Cable TV",
+      description: "DSTV, GOTV, Startimes",
+      icon: CreditCard,
+      color: "bg-red-500",
+      type: "cable",
+    },
+    {
+      title: "Send Money",
+      description: "Send money securely",
+      icon: Send,
+      color: "bg-green-500",
+      type: "transfer",
+    },
+    {
+      title: "Internet Bills",
+      description: "Pay internet bills",
+      icon: Wifi,
+      color: "bg-indigo-500",
+      type: "internet",
+    },
+    {
+      title: "Education",
+      description: "Buy education PINs",
+      icon: CreditCard,
+      color: "bg-amber-500",
+      type: "education",
+    },
+    {
+      title: "Airtime PIN",
+      description: "Buy recharge PINs",
+      icon: Smartphone,
+      color: "bg-pink-500",
+      type: "airtime-card",
+    },
+    {
+      title: "Data PIN",
+      description: "Buy data PINs",
+      icon: Wifi,
+      color: "bg-cyan-500",
+      type: "data-card",
+    },
   ];
-
-  /*
-   * ==========================================================
-   * SERVICE CLICK
-   * ==========================================================
-   */
 
   const handleServiceClick = (
     service: typeof services[number]
@@ -1008,8 +700,7 @@ const Dashboard = () => {
       )
     ) {
       toast({
-        title:
-          "Service coming soon",
+        title: "Service coming soon",
         description:
           `${service.title} is not yet available.`,
       });
@@ -1019,18 +710,11 @@ const Dashboard = () => {
 
     setSelectedService({
       title: service.title,
-      type:
-        service.type as BillService,
+      type: service.type as BillService,
     });
 
     setCurrentPage("service-payment");
   };
-
-  /*
-   * ==========================================================
-   * BILL PAYMENT
-   * ==========================================================
-   */
 
   const handlePurchase = async (
     amount: number,
@@ -1048,13 +732,10 @@ const Dashboard = () => {
       );
     }
 
-    const service =
-      selectedService.type;
+    const service = selectedService.type;
 
     if (
-      !SUPPORTED_BILL_SERVICES.includes(
-        service
-      )
+      !SUPPORTED_BILL_SERVICES.includes(service)
     ) {
       throw new Error(
         `${selectedService.title} is not currently supported.`
@@ -1071,25 +752,19 @@ const Dashboard = () => {
     }
 
     const currentBalance =
-      Number(
-        wallet?.balance ?? 0
-      );
+      Number(wallet?.balance ?? 0);
 
-    if (
-      amount >
-      currentBalance
-    ) {
+    if (amount > currentBalance) {
       throw new Error(
         "Insufficient wallet balance. Please fund your wallet."
       );
     }
 
-    const billerCode =
-      String(
-        details?.biller_code ??
-          details?.billerCode ??
-          ""
-      ).trim();
+    const billerCode = String(
+      details?.biller_code ??
+        details?.billerCode ??
+        ""
+    ).trim();
 
     if (!billerCode) {
       throw new Error(
@@ -1097,12 +772,11 @@ const Dashboard = () => {
       );
     }
 
-    const itemCode =
-      String(
-        details?.item_code ??
-          details?.itemCode ??
-          ""
-      ).trim();
+    const itemCode = String(
+      details?.item_code ??
+        details?.itemCode ??
+        ""
+    ).trim();
 
     if (!itemCode) {
       throw new Error(
@@ -1110,48 +784,52 @@ const Dashboard = () => {
       );
     }
 
-    const country =
-      String(
-        details?.country ?? "NG"
-      )
-        .trim()
-        .toUpperCase();
+    const country = String(
+      details?.country ?? "NG"
+    )
+      .trim()
+      .toUpperCase();
 
-    if (!CLUBKONNECT_SERVICES.has(service) && country !== "NG") {
+    if (
+      !CLUBKONNECT_SERVICES.has(service) &&
+      country !== "NG"
+    ) {
       throw new Error(
         "This service currently supports Nigeria only."
       );
     }
 
-    let customer =
-      String(
-        details?.customer ??
-          details?.customer_id ??
-          details?.customerId ??
-          details?.phoneNumber ??
-          details?.phone ??
-          details?.meterNumber ??
-          details?.meter_number ??
-          details?.smartCardNumber ??
-          details?.smartcardNumber ??
-          details?.smartcard_number ??
-          details?.accountNumber ??
-          details?.account_number ??
-          ""
-      ).trim();
+    let customer = String(
+      details?.customer ??
+        details?.customer_id ??
+        details?.customerId ??
+        details?.phoneNumber ??
+        details?.phone ??
+        details?.meterNumber ??
+        details?.meter_number ??
+        details?.smartCardNumber ??
+        details?.smartcardNumber ??
+        details?.smartcard_number ??
+        details?.accountNumber ??
+        details?.account_number ??
+        ""
+    ).trim();
 
     if (
       service === "airtime" ||
       service === "data"
     ) {
-      customer =
-        customer.replace(
-          /\s+/g,
-          ""
-        );
+      customer = customer.replace(
+        /\s+/g,
+        ""
+      );
     }
 
-    const requiresCustomer = !["airtime-card", "data-card"].includes(service);
+    const requiresCustomer =
+      ![
+        "airtime-card",
+        "data-card",
+      ].includes(service);
 
     if (requiresCustomer && !customer) {
       throw new Error(
@@ -1182,10 +860,7 @@ const Dashboard = () => {
       }
     }
 
-    if (
-      service ===
-      "electricity"
-    ) {
+    if (service === "electricity") {
       if (!details?.provider) {
         throw new Error(
           "Please select an electricity provider."
@@ -1213,10 +888,7 @@ const Dashboard = () => {
       }
     }
 
-    if (
-      service ===
-      "internet"
-    ) {
+    if (service === "internet") {
       if (!details?.provider) {
         throw new Error(
           "Please select an internet provider."
@@ -1236,10 +908,8 @@ const Dashboard = () => {
       amount,
       country,
       customer,
-      biller_code:
-        billerCode,
-      item_code:
-        itemCode,
+      biller_code: billerCode,
+      item_code: itemCode,
     };
 
     console.log(
@@ -1249,54 +919,52 @@ const Dashboard = () => {
         service,
         amount,
         country,
-        biller_code:
-          billerCode,
-        item_code:
-          itemCode,
+        biller_code: billerCode,
+        item_code: itemCode,
         customer,
       }
     );
 
     toast({
-      title:
-        "Processing payment",
+      title: "Processing payment",
       description:
         `Processing ${selectedService.title.toLowerCase()}...`,
     });
 
     try {
-      const functionName = CLUBKONNECT_SERVICES.has(service)
-        ? "clubkonnect-services"
-        : "flutterwave-bills";
+      const functionName =
+        CLUBKONNECT_SERVICES.has(service)
+          ? "clubkonnect-services"
+          : "flutterwave-bills";
 
-      const requestBody = CLUBKONNECT_SERVICES.has(service)
-        ? {
-            action: "pay",
-            service,
-            amount,
-            biller_code: billerCode,
-            item_code: itemCode,
-            customer,
-            details: paymentDetails,
-          }
-        : {
-            action: "pay",
-            service,
-            amount,
-            biller_code: billerCode,
-            item_code: itemCode,
-            customer,
-            country,
-            details: paymentDetails,
-          };
+      const requestBody =
+        CLUBKONNECT_SERVICES.has(service)
+          ? {
+              action: "pay",
+              service,
+              amount,
+              biller_code: billerCode,
+              item_code: itemCode,
+              customer,
+              details: paymentDetails,
+            }
+          : {
+              action: "pay",
+              service,
+              amount,
+              biller_code: billerCode,
+              item_code: itemCode,
+              customer,
+              country,
+              details: paymentDetails,
+            };
 
-      const {
-        data,
-        error,
-      } =
+      const { data, error } =
         await supabase.functions.invoke(
           functionName,
-          { body: requestBody }
+          {
+            body: requestBody,
+          }
         );
 
       if (error) {
@@ -1310,14 +978,11 @@ const Dashboard = () => {
           "Service payment function error:",
           {
             error,
-            extractedMessage:
-              message,
+            extractedMessage: message,
           }
         );
 
-        throw new Error(
-          message
-        );
+        throw new Error(message);
       }
 
       console.log(
@@ -1338,12 +1003,6 @@ const Dashboard = () => {
       }
 
       await refreshWallet();
-
-      /*
-       * Refresh dashboard statistics
-       * immediately after payment.
-       */
-
       await loadDashboardStats();
 
       const reference =
@@ -1353,14 +1012,12 @@ const Dashboard = () => {
         null;
 
       const isPending =
-        data?.status ===
-        "pending";
+        data?.status === "pending";
 
       toast({
         title: isPending
           ? "Payment Processing"
           : "Payment Successful",
-
         description:
           data?.message ||
           (isPending
@@ -1381,15 +1038,11 @@ const Dashboard = () => {
             data?.transaction_id,
           provider_reference:
             data?.provider_reference,
-          biller_code:
-            billerCode,
-          item_code:
-            itemCode,
+          biller_code: billerCode,
+          item_code: itemCode,
           customer,
-          status:
-            data?.status,
-          provider_data:
-            data?.data,
+          status: data?.status,
+          provider_data: data?.data,
         }
       );
     } catch (error: any) {
@@ -1405,24 +1058,16 @@ const Dashboard = () => {
     }
   };
 
-  /*
-   * ==========================================================
-   * TRANSFER HANDLER
-   * ==========================================================
-   */
-
   const handleTransfer = async (
     amount: number,
     details: any
   ) => {
     if (!user) {
       toast({
-        title:
-          "Authentication required",
+        title: "Authentication required",
         description:
           "Please log in again.",
-        variant:
-          "destructive",
+        variant: "destructive",
       });
 
       return;
@@ -1433,36 +1078,29 @@ const Dashboard = () => {
       amount <= 0
     ) {
       toast({
-        title:
-          "Invalid amount",
+        title: "Invalid amount",
         description:
           "Please enter a valid transfer amount.",
-        variant:
-          "destructive",
+        variant: "destructive",
       });
 
       return;
     }
 
     if (
-      details?.type ===
-        "iyanjupay" ||
-      details?.transferType ===
-        "iyanjupay" ||
-      details?.recipientType ===
-        "iyanjupay"
+      details?.type === "iyanjupay" ||
+      details?.transferType === "iyanjupay" ||
+      details?.recipientType === "iyanjupay"
     ) {
       console.warn(
         "IyanjuPay transfer reached Dashboard bank handler unexpectedly."
       );
 
       toast({
-        title:
-          "Transfer routing error",
+        title: "Transfer routing error",
         description:
           "Please try the IyanjuPay transfer again.",
-        variant:
-          "destructive",
+        variant: "destructive",
       });
 
       return;
@@ -1470,33 +1108,24 @@ const Dashboard = () => {
 
     if (
       wallet &&
-      amount >
-        Number(
-          wallet.balance
-        )
+      amount > Number(wallet.balance)
     ) {
       toast({
-        title:
-          "Insufficient Balance",
+        title: "Insufficient Balance",
         description:
           "Please fund your wallet to continue.",
-        variant:
-          "destructive",
+        variant: "destructive",
       });
 
       return;
     }
 
-    if (
-      !details?.accountNumber
-    ) {
+    if (!details?.accountNumber) {
       toast({
-        title:
-          "Invalid recipient",
+        title: "Invalid recipient",
         description:
           "Recipient bank account is missing.",
-        variant:
-          "destructive",
+        variant: "destructive",
       });
 
       return;
@@ -1504,12 +1133,10 @@ const Dashboard = () => {
 
     if (!details?.bankCode) {
       toast({
-        title:
-          "Invalid bank",
+        title: "Invalid bank",
         description:
           "Recipient bank code is missing.",
-        variant:
-          "destructive",
+        variant: "destructive",
       });
 
       return;
@@ -1517,12 +1144,10 @@ const Dashboard = () => {
 
     if (!details?.recipient) {
       toast({
-        title:
-          "Invalid recipient",
+        title: "Invalid recipient",
         description:
           "Verified recipient name is missing.",
-        variant:
-          "destructive",
+        variant: "destructive",
       });
 
       return;
@@ -1533,35 +1158,26 @@ const Dashboard = () => {
         `transfer_${user.id}_${Date.now()}_${crypto.randomUUID()}`;
 
       toast({
-        title:
-          "Processing transfer",
+        title: "Processing transfer",
         description:
           "Please wait while we send your money.",
       });
 
-      const {
-        data,
-        error,
-      } =
+      const { data, error } =
         await supabase.functions.invoke(
           "flutterwave-transfer",
           {
             body: {
               amount,
-
               account_number:
                 details.accountNumber,
-
               account_bank:
                 details.bankCode,
-
               beneficiary_name:
                 details.recipient,
-
               narration:
                 details.narration ||
                 "IyanjuPay bank transfer",
-
               idempotency_key:
                 idempotencyKey,
             },
@@ -1580,9 +1196,7 @@ const Dashboard = () => {
             "Unable to process bank transfer."
           );
 
-        throw new Error(
-          message
-        );
+        throw new Error(message);
       }
 
       console.log(
@@ -1602,16 +1216,10 @@ const Dashboard = () => {
       }
 
       await refreshWallet();
-
-      /*
-       * Refresh statistics after transfer.
-       */
-
       await loadDashboardStats();
 
       toast({
-        title:
-          "Transfer Processing",
+        title: "Transfer Processing",
         description:
           data?.message ||
           `₦${amount.toLocaleString()} sent to ${details.recipient}.`,
@@ -1622,21 +1230,13 @@ const Dashboard = () => {
         {
           transaction_id:
             data?.transaction_id,
-
           flutterwave_transfer_id:
             data?.flutterwave_transfer_id,
-
-          reference:
-            data?.reference,
-
+          reference: data?.reference,
           amount,
-
           beneficiary:
             details.recipient,
-
-          fee:
-            details?.fee ?? 10,
-
+          fee: details?.fee ?? 10,
           total_charged:
             details?.totalCharged ??
             amount + 10,
@@ -1649,28 +1249,15 @@ const Dashboard = () => {
       );
 
       toast({
-        title:
-          "Transfer Failed",
+        title: "Transfer Failed",
         description:
           error?.message ||
           "Unable to complete the bank transfer.",
-        variant:
-          "destructive",
+        variant: "destructive",
       });
     }
   };
 
-  /*
-   * ==========================================================
-   * PAGE ROUTING
-   * ==========================================================
-   */
-
-  /*
-   * SERVICE PAYMENT PAGE
-   *
-   * Full bill-payment flow.
-   */
   if (currentPage === "service-payment") {
     return (
       <ServicePayment
@@ -1690,17 +1277,18 @@ const Dashboard = () => {
   if (currentPage === "send-money") {
     return (
       <SendMoneyPage
-        onBack={() => setCurrentPage("home")}
-        walletBalance={Number(wallet?.balance ?? 0)}
+        onBack={() =>
+          setCurrentPage("home")
+        }
+        walletBalance={Number(
+          wallet?.balance ?? 0
+        )}
         onTransfer={handleTransfer}
       />
     );
   }
 
-  if (
-    currentPage ===
-    "profile"
-  ) {
+  if (currentPage === "profile") {
     return (
       <ProfilePage
         onBack={() =>
@@ -1710,10 +1298,7 @@ const Dashboard = () => {
     );
   }
 
-  if (
-    currentPage ===
-    "history"
-  ) {
+  if (currentPage === "history") {
     return (
       <TransactionHistory
         onBack={() =>
@@ -1723,10 +1308,7 @@ const Dashboard = () => {
     );
   }
 
-  if (
-    currentPage ===
-    "rewards"
-  ) {
+  if (currentPage === "rewards") {
     return (
       <RewardsPage
         onBack={() =>
@@ -1736,10 +1318,7 @@ const Dashboard = () => {
     );
   }
 
-  if (
-    currentPage ===
-    "cards"
-  ) {
+  if (currentPage === "cards") {
     return (
       <CardsPage
         onBack={() =>
@@ -1749,16 +1328,7 @@ const Dashboard = () => {
     );
   }
 
-  /*
-   * ==========================================================
-   * CUSTOMER SERVICE
-   * ==========================================================
-   */
-
-  if (
-    currentPage ===
-    "customer-service"
-  ) {
+  if (currentPage === "customer-service") {
     return (
       <CustomerServicePage
         onBack={() =>
@@ -1768,16 +1338,7 @@ const Dashboard = () => {
     );
   }
 
-  /*
-   * ==========================================================
-   * SUPPORT
-   * ==========================================================
-   */
-
-  if (
-    currentPage ===
-    "support"
-  ) {
+  if (currentPage === "support") {
     return (
       <SupportPage
         onBack={() =>
@@ -1787,16 +1348,7 @@ const Dashboard = () => {
     );
   }
 
-  /*
-   * ==========================================================
-   * TRANSACTION LIMIT
-   * ==========================================================
-   */
-
-  if (
-    currentPage ===
-    "transaction-limit"
-  ) {
+  if (currentPage === "transaction-limit") {
     return (
       <TransactionLimitPage
         onBack={() =>
@@ -1806,87 +1358,50 @@ const Dashboard = () => {
     );
   }
 
-  /*
-   * ==========================================================
-   * ME
-   * ==========================================================
-   */
-
-  if (
-    currentPage ===
-    "me"
-  ) {
+  if (currentPage === "me") {
     return (
       <MePage
         onBack={() =>
           setCurrentPage("home")
         }
         onProfileClick={() =>
-          setCurrentPage(
-            "profile"
-          )
+          setCurrentPage("profile")
         }
         onHistoryClick={() =>
-          setCurrentPage(
-            "history"
-          )
+          setCurrentPage("history")
         }
         onCustomerServiceClick={() =>
-          setCurrentPage(
-            "customer-service"
-          )
+          setCurrentPage("customer-service")
         }
         onSupportClick={() =>
-          setCurrentPage(
-            "support"
-          )
+          setCurrentPage("support")
         }
         onTransactionLimitClick={() =>
-          setCurrentPage(
-            "transaction-limit"
-          )
+          setCurrentPage("transaction-limit")
         }
       />
     );
   }
 
-  /*
-   * ==========================================================
-   * WALLET LOADING
-   * ==========================================================
-   */
-
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-purple-50 to-blue-50">
         <div className="text-center">
-
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto" />
-
           <p className="mt-4 text-gray-600">
             Loading your wallet...
           </p>
-
         </div>
       </div>
     );
   }
 
-  /*
-   * ==========================================================
-   * BOTTOM NAVIGATION
-   * ==========================================================
-   */
-
   const renderBottomNav = (
     page: CurrentPage
   ) => (
     <div className="fixed bottom-0 left-0 right-0 z-40 bg-white border-t border-gray-200 px-4 py-2">
-
       <div className="max-w-7xl mx-auto">
-
         <div className="flex justify-around">
-
           <Button
             variant={
               page === "home"
@@ -1904,7 +1419,6 @@ const Dashboard = () => {
             }`}
           >
             <Home className="h-4 w-4" />
-
             <span className="text-xs">
               Home
             </span>
@@ -1918,9 +1432,7 @@ const Dashboard = () => {
             }
             size="sm"
             onClick={() =>
-              setCurrentPage(
-                "rewards"
-              )
+              setCurrentPage("rewards")
             }
             className={`flex flex-col items-center gap-1 px-6 py-3 ${
               page === "rewards"
@@ -1929,7 +1441,6 @@ const Dashboard = () => {
             }`}
           >
             <Gift className="h-4 w-4" />
-
             <span className="text-xs">
               Reward
             </span>
@@ -1943,9 +1454,7 @@ const Dashboard = () => {
             }
             size="sm"
             onClick={() =>
-              setCurrentPage(
-                "cards"
-              )
+              setCurrentPage("cards")
             }
             className={`flex flex-col items-center gap-1 px-6 py-3 ${
               page === "cards"
@@ -1954,7 +1463,6 @@ const Dashboard = () => {
             }`}
           >
             <CreditCard className="h-4 w-4" />
-
             <span className="text-xs">
               Card
             </span>
@@ -1977,54 +1485,33 @@ const Dashboard = () => {
             }`}
           >
             <User className="h-4 w-4" />
-
             <span className="text-xs">
               Me
             </span>
           </Button>
-
         </div>
       </div>
     </div>
   );
 
-  /*
-   * ==========================================================
-   * DASHBOARD
-   * ==========================================================
-   */
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-50 pb-20">
-
-      {/* ======================================================
-          HEADER
-      ====================================================== */}
-
       <header className="bg-gradient-to-r from-purple-600 to-blue-600 text-white">
-
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-
           <div className="flex justify-between items-center h-16">
-
             <div className="flex items-center">
-
               <div className="w-8 h-8 bg-white rounded-full flex items-center justify-center mr-3">
-
                 <span className="text-purple-600 font-bold text-sm">
                   IP
                 </span>
-
               </div>
 
               <h1 className="text-xl font-bold">
                 IyanjuPay
               </h1>
-
             </div>
 
             <div className="flex items-center gap-2">
-
               <Button
                 variant="ghost"
                 size="sm"
@@ -2051,9 +1538,7 @@ const Dashboard = () => {
                 variant="ghost"
                 size="sm"
                 onClick={() =>
-                  setCurrentPage(
-                    "history"
-                  )
+                  setCurrentPage("history")
                 }
                 className="text-white hover:bg-white/20"
               >
@@ -2068,23 +1553,13 @@ const Dashboard = () => {
               >
                 <LogOut className="h-4 w-4" />
               </Button>
-
             </div>
-
           </div>
-
         </div>
-
       </header>
 
-      {/* ======================================================
-          MAIN
-      ====================================================== */}
-
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-
         <div className="mb-6">
-
           <h2 className="text-2xl font-bold text-gray-900 mb-1">
             Hello! 👋
           </h2>
@@ -2092,39 +1567,25 @@ const Dashboard = () => {
           <p className="text-gray-600">
             What would you like to do today?
           </p>
-
         </div>
 
-        {/* ====================================================
-            WALLET
-        ==================================================== */}
-
         <div className="mb-6">
-
           <Card className="bg-gradient-to-r from-purple-600 to-blue-600 text-white border-0 shadow-lg">
-
             <CardContent className="p-6">
-
               <div className="flex justify-between items-start mb-4">
-
                 <div>
-
                   <p className="text-purple-100 text-sm mb-1">
                     Total Balance
                   </p>
 
                   <div className="flex items-center gap-2">
-
                     <span className="text-3xl font-bold">
-
                       ₦
                       {showBalance
                         ? Number(
-                            wallet?.balance ??
-                              0
+                            wallet?.balance ?? 0
                           ).toLocaleString()
                         : "****"}
-
                     </span>
 
                     <Button
@@ -2132,7 +1593,7 @@ const Dashboard = () => {
                       size="sm"
                       onClick={() =>
                         setShowBalance(
-                          previous =>
+                          (previous) =>
                             !previous
                         )
                       }
@@ -2144,33 +1605,24 @@ const Dashboard = () => {
                         <Eye className="h-4 w-4" />
                       )}
                     </Button>
-
                   </div>
-
                 </div>
 
                 <div className="text-right">
-
                   <p className="text-purple-100 text-sm">
                     Wallet ID
                   </p>
 
                   <p className="font-mono text-sm font-semibold tracking-wider">
-                    {wallet?.wallet_id ||
-                      "—"}
+                    {wallet?.wallet_id || "—"}
                   </p>
-
                 </div>
-
               </div>
 
               <div className="flex gap-3">
-
                 <Button
                   onClick={() =>
-                    setFundModalOpen(
-                      true
-                    )
+                    setFundModalOpen(true)
                   }
                   className="flex-1 bg-white text-purple-600 hover:bg-gray-100 font-semibold"
                 >
@@ -2180,9 +1632,7 @@ const Dashboard = () => {
 
                 <Button
                   onClick={() =>
-                    setTransferModalOpen(
-                      true
-                    )
+                    setCurrentPage("send-money")
                   }
                   variant="outline"
                   className="flex-1 bg-white text-purple-600 hover:bg-gray-100 font-semibold"
@@ -2190,46 +1640,27 @@ const Dashboard = () => {
                   <Send className="h-4 w-4 mr-2" />
                   Send Money
                 </Button>
-
               </div>
-
             </CardContent>
-
           </Card>
-
         </div>
 
-        {/* ====================================================
-            SERVICES
-        ==================================================== */}
-
         <div className="mb-6">
-
           <h3 className="text-lg font-semibold text-gray-900 mb-4">
             Services
           </h3>
 
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-
             {services.map(
-              (
-                service,
-                index
-              ) => (
+              (service, index) => (
                 <ServiceCard
                   key={`${service.type}-${index}`}
-                  title={
-                    service.title
-                  }
+                  title={service.title}
                   description={
                     service.description
                   }
-                  icon={
-                    service.icon
-                  }
-                  color={
-                    service.color
-                  }
+                  icon={service.icon}
+                  color={service.color}
                   onClick={() =>
                     handleServiceClick(
                       service
@@ -2238,35 +1669,19 @@ const Dashboard = () => {
                 />
               )
             )}
-
           </div>
-
         </div>
 
-        {/* ====================================================
-            LIVE STATS
-        ==================================================== */}
-
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-
-          {/* ==================================================
-              TOTAL SPENT
-          ================================================== */}
-
           <Card className="bg-white shadow-sm">
-
             <CardContent className="p-4">
-
               <div className="flex items-center justify-between">
-
                 <div>
-
                   <p className="text-sm text-gray-600">
                     This Month
                   </p>
 
                   <p className="text-2xl font-bold text-gray-900">
-
                     {statsLoading
                       ? "..."
                       : `₦${stats.monthlySpent.toLocaleString(
@@ -2276,135 +1691,80 @@ const Dashboard = () => {
                             maximumFractionDigits: 2,
                           }
                         )}`}
-
                   </p>
 
                   <p className="text-xs text-gray-500">
                     Total Spent
                   </p>
-
                 </div>
 
                 <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center">
-
                   <Banknote className="h-6 w-6 text-red-600" />
-
                 </div>
-
               </div>
-
             </CardContent>
-
           </Card>
 
-          {/* ==================================================
-              MONTHLY TRANSACTIONS
-          ================================================== */}
-
           <Card className="bg-white shadow-sm">
-
             <CardContent className="p-4">
-
               <div className="flex items-center justify-between">
-
                 <div>
-
                   <p className="text-sm text-gray-600">
                     Transactions
                   </p>
 
                   <p className="text-2xl font-bold text-gray-900">
-
                     {statsLoading
                       ? "..."
                       : stats.monthlyTransactions.toLocaleString()}
-
                   </p>
 
                   <p className="text-xs text-gray-500">
                     This Month
                   </p>
-
                 </div>
 
                 <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
-
                   <History className="h-6 w-6 text-blue-600" />
-
                 </div>
-
               </div>
-
             </CardContent>
-
           </Card>
 
-          {/* ==================================================
-              SUCCESS RATE
-          ================================================== */}
-
           <Card className="bg-white shadow-sm">
-
             <CardContent className="p-4">
-
               <div className="flex items-center justify-between">
-
                 <div>
-
                   <p className="text-sm text-gray-600">
                     Success Rate
                   </p>
 
                   <p className="text-2xl font-bold text-gray-900">
-
                     {statsLoading
                       ? "..."
                       : `${stats.successRate}%`}
-
                   </p>
 
                   <p className="text-xs text-gray-500">
                     All Time
                   </p>
-
                 </div>
 
                 <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center">
-
                   <Shield className="h-6 w-6 text-green-600" />
-
                 </div>
-
               </div>
-
             </CardContent>
-
           </Card>
-
         </div>
-
       </main>
 
-      {/* ======================================================
-          BOTTOM NAVIGATION
-      ====================================================== */}
-
-      {renderBottomNav(
-        currentPage
-      )}
-
-      {/* ======================================================
-          MODALS
-      ====================================================== */}
+      {renderBottomNav(currentPage)}
 
       <FundWalletModal
-        isOpen={
-          fundModalOpen
-        }
+        isOpen={fundModalOpen}
         onClose={() =>
-          setFundModalOpen(
-            false
-          )
+          setFundModalOpen(false)
         }
         onFunded={async () => {
           await refreshWallet();
@@ -2413,23 +1773,17 @@ const Dashboard = () => {
       />
 
       <QRCodeModal
-        isOpen={
-          qrModalOpen
-        }
+        isOpen={qrModalOpen}
         onClose={() =>
-          setQrModalOpen(
-            false
-          )
+          setQrModalOpen(false)
         }
         virtualAccountNumber=""
         userName={
-          user?.email ||
-          "User"
+          user?.email || "User"
         }
       />
 
       <WhatsAppFloat />
-
     </div>
   );
 };

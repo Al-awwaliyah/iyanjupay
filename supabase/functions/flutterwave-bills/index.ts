@@ -10,37 +10,49 @@ import {
 
 type ServiceType =
   | "airtime"
+  | "data"
   | "electricity"
   | "cable"
   | "internet";
 
 const SUPPORTED_SERVICES: ServiceType[] = [
   "airtime",
+  "data",
   "electricity",
   "cable",
   "internet",
 ];
 
-const SERVICE_CATEGORY_MAP: Record<ServiceType, string> = {
+const SERVICE_CATEGORY_MAP: Record<
+  ServiceType,
+  string
+> = {
   airtime: "AIRTIME",
+  data: "MOBILEDATA",
   electricity: "UTILITYBILLS",
   cable: "CABLEBILLS",
   internet: "INTSERVICE",
 };
 
+// ============================================================
+// DATA MARKUP
+// ============================================================
+
+const DATA_MARKUP = 50;
+
+// ============================================================
+// STATUS
+// ============================================================
+
 const SUCCESS_STATUSES = new Set([
   "successful",
   "success",
   "completed",
-  "complete",
-  "succeeded",
 ]);
 
 const FAILED_STATUSES = new Set([
   "failed",
   "failure",
-  "declined",
-  "rejected",
   "reversed",
   "reverse",
   "cancelled",
@@ -56,310 +68,411 @@ const PENDING_STATUSES = new Set([
   "in-progress",
 ]);
 
-function cleanString(value: unknown): string {
-  return String(value ?? "").trim();
+// ============================================================
+// HELPERS
+// ============================================================
+
+function cleanString(
+  value: unknown,
+): string {
+  return String(
+    value ?? "",
+  ).trim();
 }
 
-function normalizeService(value: unknown): ServiceType | null {
-  const service = cleanString(value)
-    .toLowerCase()
-    .replace(/\s+/g, "_");
+function normalizeService(
+  value: unknown,
+): ServiceType | null {
+  const service =
+    cleanString(
+      value,
+    ).toLowerCase();
 
-  if (SUPPORTED_SERVICES.includes(service as ServiceType)) {
-    return service as ServiceType;
+  if (
+    service === "airtime" ||
+    service === "data" ||
+    service === "electricity" ||
+    service === "cable" ||
+    service === "internet"
+  ) {
+    return service;
   }
 
   return null;
 }
 
-function normalizeStatus(value: unknown): string {
-  return cleanString(value)
-    .toLowerCase()
-    .replace(/[\s-]+/g, "_");
-}
-
-function normalizeAmount(value: unknown): number {
-  const amount = Number(value);
-
-  if (!Number.isFinite(amount) || amount < 0) {
-    return 0;
-  }
-
-  return Math.round(amount * 100) / 100;
-}
-
-function roundMoney(value: number): number {
-  return Math.round(value * 100) / 100;
-}
-
-function firstNonEmpty(...values: unknown[]): unknown {
-  for (const value of values) {
-    if (
-      value !== undefined &&
-      value !== null &&
-      String(value).trim() !== ""
-    ) {
-      return value;
-    }
-  }
-
-  return undefined;
-}
-
-function getNested(object: any, paths: string[][]): unknown {
-  for (const path of paths) {
-    let current = object;
-
-    for (const key of path) {
-      if (current === null || current === undefined) {
-        current = undefined;
-        break;
-      }
-
-      current = current[key];
-    }
-
-    if (
-      current !== null &&
-      current !== undefined &&
-      String(current).trim() !== ""
-    ) {
-      return current;
-    }
-  }
-
-  return undefined;
-}
-
-function isSuccessfulStatus(value: unknown): boolean {
-  return SUCCESS_STATUSES.has(normalizeStatus(value));
-}
-
-function isFailedStatus(value: unknown): boolean {
-  return FAILED_STATUSES.has(normalizeStatus(value));
-}
-
-function isPendingStatus(value: unknown): boolean {
-  return PENDING_STATUSES.has(normalizeStatus(value));
-}
-
-function isVariableBillItem(item: any): boolean {
-  const code = cleanString(
-    item?.item_code ?? item?.itemCode ?? item?.code ?? item?.id,
+function normalizeStatus(
+  value: unknown,
+): string {
+  return cleanString(
+    value,
   ).toLowerCase();
-  const name = cleanString(
-    item?.name ?? item?.short_name ?? item?.description,
-  ).toLowerCase();
-
-  return (
-    code === "__variable__" ||
-    code === "variable" ||
-    code === "variable_amount" ||
-    /variable\s*amount/.test(name) ||
-    /enter\s*amount/.test(name) ||
-    /any\s*amount/.test(name)
-  );
 }
 
-function jsonResponse(
-  body: Record<string, unknown>,
-  status = 200,
-) {
-  return json(body, status);
-}
-
-function extractItemCode(body: any, details: any): string {
-  return cleanString(
-    firstNonEmpty(
-      body?.item_code,
-      body?.itemCode,
-      details?.item_code,
-      details?.itemCode,
+function isSuccessfulStatus(
+  value: unknown,
+): boolean {
+  return SUCCESS_STATUSES.has(
+    normalizeStatus(
+      value,
     ),
   );
 }
 
-function extractBillerCode(body: any, details: any): string {
-  return cleanString(
-    firstNonEmpty(
-      body?.biller_code,
-      body?.billerCode,
-      details?.biller_code,
-      details?.billerCode,
+function isFailedStatus(
+  value: unknown,
+): boolean {
+  return FAILED_STATUSES.has(
+    normalizeStatus(
+      value,
     ),
   );
 }
 
-function extractCustomer(body: any, details: any): string {
-  return cleanString(
-    firstNonEmpty(
-      body?.customer,
-      body?.customer_id,
-      body?.customerId,
-      body?.phoneNumber,
-      body?.phone,
-      body?.meterNumber,
-      body?.meter_number,
-      body?.smartCardNumber,
-      body?.smartcardNumber,
-      body?.smartcard_number,
-      body?.accountNumber,
-      body?.account_number,
-      details?.customer,
-      details?.customer_id,
-      details?.customerId,
-      details?.phoneNumber,
-      details?.phone,
-      details?.meterNumber,
-      details?.meter_number,
-      details?.smartCardNumber,
-      details?.smartcardNumber,
-      details?.smartcard_number,
-      details?.accountNumber,
-      details?.account_number,
-    ),
-  );
-}
+function normalizeAmount(
+  value: unknown,
+): number | null {
+  const amount =
+    Number(value);
 
-/*
- * ============================================================
- * OPAQUE CATALOG ROUTES
- * ============================================================
- *
- * The frontend receives opaque biller/item tokens rather than
- * trusting provider routing values supplied by the browser.
- */
-
-async function getRouteTokenSecret(): Promise<CryptoKey> {
-  const secret = cleanString(
-    Deno.env.get("SERVICE_ROUTE_TOKEN_SECRET") ??
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ??
-      "",
-  );
-
-  if (!secret) {
-    throw new Error("Service route secret is not configured.");
-  }
-
-  return crypto.subtle.importKey(
-    "raw",
-    new TextEncoder().encode(secret),
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign", "verify"],
-  );
-}
-
-function base64UrlEncode(bytes: Uint8Array): string {
-  let binary = "";
-
-  for (const byte of bytes) {
-    binary += String.fromCharCode(byte);
-  }
-
-  return btoa(binary)
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/g, "");
-}
-
-function base64UrlDecode(value: string): Uint8Array {
-  const padded =
-    value.replace(/-/g, "+").replace(/_/g, "/") +
-    "=".repeat((4 - (value.length % 4)) % 4);
-
-  const binary = atob(padded);
-
-  return Uint8Array.from(binary, (char) => char.charCodeAt(0));
-}
-
-async function encodeRouteToken(value: unknown): Promise<string> {
-  const payload = base64UrlEncode(
-    new TextEncoder().encode(JSON.stringify(value)),
-  );
-
-  const key = await getRouteTokenSecret();
-
-  const signature = await crypto.subtle.sign(
-    "HMAC",
-    key,
-    new TextEncoder().encode(payload),
-  );
-
-  return `${payload}.${base64UrlEncode(new Uint8Array(signature))}`;
-}
-
-async function decodeRouteToken<T>(value: unknown): Promise<T | null> {
-  const token = cleanString(value);
-  const [payload, signature] = token.split(".");
-
-  if (!payload || !signature) {
+  if (
+    !Number.isFinite(
+      amount,
+    ) ||
+    amount <= 0
+  ) {
     return null;
   }
 
-  try {
-    const key = await getRouteTokenSecret();
+  return Number(
+    amount.toFixed(2),
+  );
+}
 
-    const valid = await crypto.subtle.verify(
-      "HMAC",
-      key,
-      base64UrlDecode(signature),
-      new TextEncoder().encode(payload),
+function extractAmount(
+  item: any,
+): number | null {
+  const candidates = [
+    item?.amount,
+    item?.price,
+    item?.cost,
+    item?.value,
+  ];
+
+  for (
+    const candidate of candidates
+  ) {
+    const amount =
+      normalizeAmount(
+        candidate,
+      );
+
+    if (
+      amount !== null
+    ) {
+      return amount;
+    }
+  }
+
+  return null;
+}
+
+function extractItemCode(
+  item: any,
+): string {
+  return cleanString(
+    item?.item_code ??
+      item?.itemCode ??
+      item?.product_code ??
+      item?.productCode,
+  );
+}
+
+function extractBillerCode(
+  item: any,
+): string {
+  return cleanString(
+    item?.biller_code ??
+      item?.billerCode,
+  );
+}
+
+function extractProviderReference(
+  body: any,
+): string | null {
+  const data =
+    body?.data ?? {};
+
+  const reference =
+    cleanString(
+      data?.flw_ref ??
+        data?.reference ??
+        data?.transaction_reference ??
+        data?.tx_ref ??
+        data?.customer_reference ??
+        body?.flw_ref ??
+        body?.reference ??
+        "",
     );
 
-    if (!valid) {
-      return null;
+  return reference || null;
+}
+
+function extractProviderStatus(
+  body: any,
+): string {
+  const data =
+    body?.data ?? {};
+
+  return (
+    normalizeStatus(
+      data?.status ??
+        data?.transaction_status ??
+        data?.bill_status ??
+        body?.status,
+    ) ||
+    "pending"
+  );
+}
+
+function getProviderData(
+  body: any,
+): any {
+  return body?.data ?? null;
+}
+
+function getProviderMessage(
+  body: any,
+): string {
+  return (
+    cleanString(
+      body?.message ??
+        body?.data?.message ??
+        body?.data?.response_message ??
+        body?.error ??
+        body?.data?.error,
+    ) ||
+    "Flutterwave did not provide a response message."
+  );
+}
+
+function getTransactionMetadata(
+  txn: any,
+): Record<
+  string,
+  unknown
+> {
+  if (
+    txn?.metadata &&
+    typeof txn.metadata ===
+      "object" &&
+    !Array.isArray(
+      txn.metadata,
+    )
+  ) {
+    return {
+      ...txn.metadata,
+    };
+  }
+
+  return {};
+}
+
+function shouldValidateCustomer(
+  service: ServiceType,
+): boolean {
+  return !(
+    service === "airtime" ||
+    service === "data"
+  );
+}
+
+// ============================================================
+// TRANSACTION HELPERS
+// ============================================================
+
+async function updateTransaction(
+  admin: any,
+  userId: string,
+  reference: string,
+  updates: Record<
+    string,
+    unknown
+  >,
+): Promise<boolean> {
+  try {
+    const {
+      data,
+      error,
+    } = await admin
+      .from("transactions")
+      .update(updates)
+      .eq(
+        "user_id",
+        userId,
+      )
+      .eq(
+        "reference_number",
+        reference,
+      )
+      .select("id");
+
+    if (error) {
+      console.error(
+        "Transaction update failed:",
+        error,
+      );
+
+      return false;
     }
 
-    return JSON.parse(
-      new TextDecoder().decode(base64UrlDecode(payload)),
-    ) as T;
+    if (
+      !data ||
+      data.length === 0
+    ) {
+      console.warn(
+        "Transaction update matched no rows:",
+        {
+          userId,
+          reference,
+        },
+      );
+    }
+
+    return true;
   } catch (error) {
-    console.error("Invalid service route token:", error);
-    return null;
+    console.error(
+      "Transaction update exception:",
+      error,
+    );
+
+    return false;
   }
 }
 
-function getSafeProviderLogo(raw: any): string | null {
-  const value = cleanString(
-    raw?.logo ??
-      raw?.logo_url ??
-      raw?.logoUrl,
-  );
+async function getLocalTransaction(
+  admin: any,
+  userId: string,
+  reference: string,
+) {
+  const {
+    data,
+    error,
+  } = await admin
+    .from("transactions")
+    .select(`
+      id,
+      user_id,
+      wallet_id,
+      amount,
+      status,
+      description,
+      reference_number,
+      provider,
+      provider_reference,
+      metadata,
+      created_at
+    `)
+    .eq(
+      "user_id",
+      userId,
+    )
+    .eq(
+      "reference_number",
+      reference,
+    )
+    .maybeSingle();
 
-  if (!value) {
-    return null;
-  }
+  return {
+    data,
+    error,
+  };
+}
+
+async function refundBillTransaction(
+  admin: any,
+  userId: string,
+  amount: number,
+  reference: string,
+  metadata: Record<
+    string,
+    unknown
+  >,
+) {
+  const refundReference =
+    `REFUND_${reference}`;
 
   try {
-    const url = new URL(value);
+    const {
+      error,
+    } = await admin.rpc(
+      "refund_wallet",
+      {
+        _user_id:
+          userId,
 
-    if (url.hostname === "cdn.simpleicons.org") {
-      return null;
-    }
+        _amount:
+          amount,
 
-    if (url.protocol !== "https:" && url.protocol !== "http:") {
-      return null;
-    }
+        _description:
+          "Bill payment reversal",
 
-    return url.toString();
-  } catch {
-    return null;
+        _idempotency_key:
+          refundReference,
+
+        _reference:
+          refundReference,
+
+        _metadata: {
+          ...metadata,
+
+          original_reference:
+            reference,
+
+          refund_reference:
+            refundReference,
+
+          reason:
+            "flutterwave_bill_failed",
+        },
+      },
+    );
+
+    return {
+      success:
+        !error,
+
+      reference:
+        refundReference,
+
+      error,
+    };
+  } catch (error) {
+    console.error(
+      "Refund exception:",
+      error,
+    );
+
+    return {
+      success: false,
+      reference:
+        refundReference,
+      error,
+    };
   }
 }
 
-/*
- * ============================================================
- * FLUTTERWAVE API HELPERS
- * ============================================================
- */
+// ============================================================
+// FLUTTERWAVE HELPERS
+// ============================================================
 
-async function fetchBillItems(billerCode: string) {
-  return flw(
-    `/billers/${encodeURIComponent(billerCode)}/items`,
-    {
-      method: "GET",
-    },
+async function fetchBillItems(
+  billerCode: string,
+) {
+  return await flw(
+    `/billers/${encodeURIComponent(
+      billerCode,
+    )}/items`,
   );
 }
 
@@ -367,1457 +480,1752 @@ async function validateBillCustomer(
   itemCode: string,
   customer: string,
 ) {
-  return flw(
-    `/bill-items/${encodeURIComponent(itemCode)}/validate?customer=${encodeURIComponent(customer)}`,
-    {
-      method: "GET",
-    },
+  return await flw(
+    `/bill-items/${encodeURIComponent(
+      itemCode,
+    )}/validate?customer=${encodeURIComponent(
+      customer,
+    )}`,
   );
 }
 
-async function validateFlutterwaveSelectedItem(
-  billerCode: string,
-  itemCode: string,
+function providerDebug(
+  result: any,
 ) {
-  const response = await fetchBillItems(billerCode);
-
-  if (
-    !response.ok ||
-    response.body?.status !== "success"
-  ) {
-    throw new Error(
-      "Unable to verify the selected bill package.",
-    );
-  }
-
-  const items = Array.isArray(response.body?.data)
-    ? response.body.data
-    : [];
-
-  const selected = items.find(
-    (item: any) =>
-      cleanString(
-        item?.item_code ??
-          item?.itemCode ??
-          item?.code,
-      ) === itemCode,
-  );
-
-  if (!selected) {
-    throw new Error(
-      "The selected bill package is no longer available.",
-    );
-  }
-
   return {
-    selected,
-    response,
+    ok:
+      Boolean(
+        result?.ok,
+      ),
+
+    http_status:
+      result?.status ??
+      null,
+
+    provider_status:
+      extractProviderStatus(
+        result?.body ??
+          {},
+      ),
+
+    message:
+      getProviderMessage(
+        result?.body ??
+          {},
+      ),
+
+    body:
+      result?.body ??
+      null,
   };
 }
 
-async function getFlutterwaveBillStatus(reference: string) {
-  return flw(
-    `/bills/${encodeURIComponent(reference)}?verbose=1`,
-    {
-      method: "GET",
-    },
-  );
-}
+// ============================================================
+// SERVER
+// ============================================================
 
-function extractProviderReference(body: any): string | null {
-  const value = firstNonEmpty(
-    body?.provider_reference,
-    body?.providerReference,
-    body?.provider_response?.data?.flw_ref,
-    body?.provider_response?.data?.reference,
-    body?.provider_response?.data?.id,
-    body?.data?.flw_ref,
-    body?.data?.reference,
-    body?.data?.id,
-  );
+Deno.serve(
+  async (req) => {
+    // ========================================================
+    // CORS
+    // ========================================================
 
-  return value ? cleanString(value) : null;
-}
-
-function getProviderMessage(body: any): string | null {
-  const value = firstNonEmpty(
-    body?.message,
-    body?.error,
-    body?.provider_message,
-    body?.provider_response?.message,
-    body?.provider_response?.data?.message,
-    body?.data?.message,
-  );
-
-  return value ? cleanString(value) : null;
-}
-
-/*
- * ============================================================
- * LOCAL TRANSACTION HELPERS
- * ============================================================
- */
-
-async function getLocalTransaction(
-  admin: any,
-  userId: string,
-  reference: string,
-) {
-  const { data, error } = await admin
-    .from("transactions")
-    .select(
-      `
-        id,
-        user_id,
-        wallet_id,
-        amount,
-        status,
-        description,
-        reference_number,
-        provider,
-        provider_reference,
-        metadata,
-        created_at
-      `,
-    )
-    .eq("user_id", userId)
-    .eq("reference_number", reference)
-    .maybeSingle();
-
-  if (error) {
-    throw error;
-  }
-
-  return data;
-}
-
-async function updateTransaction(
-  admin: any,
-  userId: string,
-  reference: string,
-  updates: Record<string, unknown>,
-) {
-  const { error } = await admin
-    .from("transactions")
-    .update(updates)
-    .eq("user_id", userId)
-    .eq("reference_number", reference);
-
-  if (error) {
-    console.error("Transaction update failed:", error);
-  }
-}
-
-async function refundBillTransaction(
-  admin: any,
-  userId: string,
-  reference: string,
-  amount: number,
-  reason: string,
-  metadata: Record<string, unknown> = {},
-) {
-  const refundReference = `REFUND_${reference}`;
-
-  const { data, error } = await admin.rpc(
-    "refund_wallet",
-    {
-      _user_id: userId,
-      _amount: amount,
-      _description: "Bill payment reversal (flutterwave)",
-      _idempotency_key: refundReference,
-      _reference: refundReference,
-      _metadata: {
-        ...metadata,
-        original_reference: reference,
-        refund_reference: refundReference,
-        provider: "flutterwave",
-        reason,
-      },
-    },
-  );
-
-  if (error) {
-    console.error("Bill refund failed:", error);
-
-    return {
-      success: false,
-      data: null,
-      error,
-    };
-  }
-
-  return {
-    success: true,
-    data,
-    error: null,
-  };
-}
-
-/*
- * ============================================================
- * MAIN HANDLER
- * ============================================================
- */
-
-Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") {
-    return new Response(null, {
-      status: 204,
-      headers: corsHeaders,
-    });
-  }
-
-  if (req.method !== "POST") {
-    return jsonResponse(
-      {
-        success: false,
-        error: "Method not allowed.",
-      },
-      405,
-    );
-  }
-
-  try {
-    const user = await getUser(req);
-
-    if (!user) {
-      return jsonResponse(
+    if (
+      req.method ===
+      "OPTIONS"
+    ) {
+      return new Response(
+        "ok",
         {
-          success: false,
-          error: "Authentication required.",
+          headers:
+            corsHeaders,
         },
-        401,
       );
     }
 
-    let body: any;
+    // ========================================================
+    // METHOD
+    // ========================================================
+
+    if (
+      req.method !==
+      "POST"
+    ) {
+      return json(
+        {
+          success: false,
+          error:
+            "Method not allowed",
+        },
+        405,
+      );
+    }
 
     try {
-      body = await req.json();
-    } catch {
-      return jsonResponse(
-        {
-          success: false,
-          error: "Invalid request.",
-        },
-        400,
-      );
-    }
+      // ======================================================
+      // AUTH
+      // ======================================================
 
-    const action = cleanString(
-      body?.action ?? "service",
-    ).toLowerCase();
-
-    const admin = adminClient();
-
-    console.log(
-      "flutterwave-bills request:",
-      JSON.stringify({
-        action,
-        user_id: user.id,
-        service:
-          body?.service ??
-          body?.details?.service ??
-          null,
-        biller_code:
-          body?.biller_code ??
-          body?.details?.biller_code ??
-          null,
-        item_code:
-          body?.item_code ??
-          body?.details?.item_code ??
-          null,
-      }),
-    );
-
-    /* ========================================================
-     * ACTION: CATEGORIES
-     * ======================================================== */
-
-    if (action === "categories") {
-      const response = await flw(
-        "/bill-categories?country=NG",
-        {
-          method: "GET",
-        },
-      );
-
-      if (!response.ok) {
-        console.error(
-          "Flutterwave categories request failed:",
-          response.body,
+      const user =
+        await getUser(
+          req,
         );
 
-        return jsonResponse(
+      if (!user) {
+        return json(
           {
             success: false,
-            error: "Unable to load bill categories.",
+            error:
+              "Unauthorized",
           },
-          502,
+          401,
         );
       }
 
-      return jsonResponse({
-        success: true,
-        data: response.body?.data ?? [],
-      });
-    }
+      // ======================================================
+      // BODY
+      // ======================================================
 
-    /* ========================================================
-     * ACTION: BILLERS
-     * ========================================================
-     *
-     * Flutterwave only. The returned biller_code is an opaque
-     * signed token containing the real Flutterwave biller code.
-     */
+      const body =
+        await req
+          .json()
+          .catch(
+            () => ({}),
+          );
 
-    if (action === "billers") {
-      const service = normalizeService(
-        body?.service ?? body?.details?.service,
-      );
-
-      if (!service) {
-        return jsonResponse(
+      if (
+        !body ||
+        typeof body !==
+          "object" ||
+        Array.isArray(
+          body,
+        )
+      ) {
+        return json(
           {
             success: false,
-            error: "A valid Flutterwave service is required.",
+            error:
+              "Invalid request body",
           },
           400,
         );
       }
 
-      const category =
+      const action =
         cleanString(
-          body?.category ??
-            body?.details?.category ??
-            SERVICE_CATEGORY_MAP[service],
-        ) || SERVICE_CATEGORY_MAP[service];
+          body?.action ??
+            "service",
+        ).toLowerCase();
 
-      try {
-        const response = await flw(
-          `/bills/${encodeURIComponent(category)}/billers?country=NG`,
-          {
-            method: "GET",
-          },
-        );
+      const admin =
+        adminClient();
 
-        if (
-          !response.ok ||
-          response.body?.status !== "success"
-        ) {
-          console.error(
-            "Flutterwave billers request failed:",
-            response.body,
+      console.log(
+        "Flutterwave bills request:",
+        JSON.stringify({
+          action,
+          user_id:
+            user.id,
+          service:
+            body?.service,
+          amount:
+            body?.amount,
+          biller_code:
+            body?.biller_code ??
+            body?.billerCode,
+          item_code:
+            body?.item_code ??
+            body?.itemCode,
+        }),
+      );
+
+      // ======================================================
+      // CATEGORIES
+      // ======================================================
+
+      if (
+        action ===
+        "categories"
+      ) {
+        const result =
+          await flw(
+            "/bill-categories?country=NG",
           );
 
-          return jsonResponse(
+        if (
+          !result.ok ||
+          result.body?.status !==
+            "success"
+        ) {
+          return json(
             {
               success: false,
-              error: "Unable to load service providers.",
+              error:
+                result.body
+                  ?.message ??
+                "Unable to load bill categories",
+
+              provider_status:
+                result.status,
+
+              provider_response:
+                result.body ??
+                null,
             },
             502,
           );
         }
 
-        const sourceBillers = Array.isArray(
-          response.body?.data,
-        )
-          ? response.body.data
-          : [];
+        return json({
+          success: true,
 
-        const billers = await Promise.all(
-          sourceBillers.map(async (biller: any) => {
-            const realBillerCode = cleanString(
-              biller?.biller_code ??
-                biller?.code ??
-                biller?.id,
-            );
+          categories:
+            Array.isArray(
+              result.body?.data,
+            )
+              ? result.body
+                  .data
+              : [],
+        });
+      }
 
-            if (!realBillerCode) {
-              return null;
-            }
+      // ======================================================
+      // BILLERS
+      // ======================================================
 
-            const name = cleanString(
-              biller?.name ??
-                biller?.short_name ??
-                biller?.biller_name ??
-                realBillerCode,
-            );
+      if (
+        action ===
+        "billers"
+      ) {
+        const category =
+          cleanString(
+            body?.category,
+          ).toUpperCase();
 
-            const publicBiller =
-              biller && typeof biller === "object"
-                ? {
-                    ...biller,
-                  }
-                : {};
+        if (!category) {
+          return json(
+            {
+              success: false,
+              error:
+                "category is required",
+            },
+            400,
+          );
+        }
 
-            delete publicBiller.provider;
-            delete publicBiller.provider_id;
-            delete publicBiller.provider_amount;
-            delete publicBiller.selling_amount;
-            delete publicBiller.markup_rate;
-            delete publicBiller.markup_amount;
-
-            return {
-              ...publicBiller,
-              name,
-              short_name: cleanString(
-                biller?.short_name ?? name,
-              ),
-              logo: getSafeProviderLogo(biller),
-              biller_code: await encodeRouteToken({
-                version: 1,
-                provider: "flutterwave",
-                service,
-                biller_code: realBillerCode,
-              }),
+        const result =
+          await flw(
+            `/bills/${encodeURIComponent(
               category,
-              country: "NG",
-            };
-          }),
-        );
-
-        const validBillers = billers.filter(Boolean);
-
-        if (!validBillers.length) {
-          return jsonResponse(
-            {
-              success: false,
-              error:
-                "No service providers are currently available.",
-            },
-            502,
+            )}/billers?country=NG`,
           );
-        }
-
-        return jsonResponse({
-          success: true,
-          service,
-          billers: validBillers,
-        });
-      } catch (error) {
-        console.error(
-          "Flutterwave billers request exception:",
-          error,
-        );
-
-        return jsonResponse(
-          {
-            success: false,
-            error: "Unable to load service providers.",
-          },
-          502,
-        );
-      }
-    }
-
-    /* ========================================================
-     * ACTION: ITEMS
-     * ======================================================== */
-
-    if (action === "items") {
-      const service = normalizeService(
-        body?.service ?? body?.details?.service,
-      );
-
-      const publicBillerCode = extractBillerCode(
-        body,
-        body?.details ?? {},
-      );
-
-      if (!service) {
-        return jsonResponse(
-          {
-            success: false,
-            error: "A valid service is required.",
-          },
-          400,
-        );
-      }
-
-      if (!publicBillerCode) {
-        return jsonResponse(
-          {
-            success: false,
-            error: "A valid biller is required.",
-          },
-          400,
-        );
-      }
-
-      const route = await decodeRouteToken<{
-        version: number;
-        provider: string;
-        service: ServiceType;
-        biller_code: string;
-      }>(publicBillerCode);
-
-      if (
-        !route ||
-        route.provider !== "flutterwave" ||
-        route.service !== service ||
-        !route.biller_code
-      ) {
-        return jsonResponse(
-          {
-            success: false,
-            error:
-              "The selected service provider is no longer available.",
-          },
-          400,
-        );
-      }
-
-      try {
-        const response = await fetchBillItems(
-          route.biller_code,
-        );
 
         if (
-          !response.ok ||
-          response.body?.status !== "success"
+          !result.ok ||
+          result.body?.status !==
+            "success"
         ) {
-          console.error(
-            "Flutterwave items request failed:",
-            response.body,
-          );
-
-          return jsonResponse(
+          return json(
             {
               success: false,
-              error: "Unable to load service packages.",
+
+              error:
+                result.body
+                  ?.message ??
+                "Unable to load bill providers",
+
+              category,
+
+              provider_status:
+                result.status,
+
+              provider_response:
+                result.body ??
+                null,
             },
             502,
           );
         }
 
-        const sourceItems = Array.isArray(
-          response.body?.data,
-        )
-          ? response.body.data
-          : [];
-
-        const items = await Promise.all(
-          sourceItems.map(async (item: any) => {
-            const realItemCode = cleanString(
-              item?.item_code ??
-                item?.itemCode ??
-                item?.code ??
-                item?.id,
-            );
-
-            if (!realItemCode) {
-              return null;
-            }
-
-            const providerAmount = normalizeAmount(
-              firstNonEmpty(
-                item?.amount,
-                item?.price,
-                item?.selling_price,
-              ),
-            );
-
-            /*
-             * Airtime is an amount-based service. Flutterwave can
-             * return a valid airtime item (for example AT102) with
-             * amount 0 because the customer supplies the amount at
-             * purchase time. Do not discard those items.
-             */
-            if (
-              providerAmount <= 0 &&
-              service !== "airtime" &&
-              !isVariableBillItem(item)
-            ) {
-              return null;
-            }
-
-            const name = cleanString(
-              item?.name ??
-                item?.short_name ??
-                item?.description ??
-                realItemCode,
-            );
-
-            const publicItem = {
-              ...item,
-              name,
-              item_code: await encodeRouteToken({
-                version: 1,
-                provider: "flutterwave",
-                service,
-                biller_code: route.biller_code,
-                item_code: realItemCode,
-              }),
-              amount: providerAmount,
-              selling_price: providerAmount,
-              provider_id: undefined,
-              provider: undefined,
-            };
-
-            return publicItem;
-          }),
-        );
-
-        return jsonResponse({
+        return json({
           success: true,
-          service,
-          biller_code: publicBillerCode,
-          items: items.filter(Boolean),
+
+          category,
+
+          billers:
+            Array.isArray(
+              result.body?.data,
+            )
+              ? result.body
+                  .data
+              : [],
         });
-      } catch (error) {
-        console.error(
-          "Flutterwave item catalog exception:",
-          error,
-        );
-
-        return jsonResponse(
-          {
-            success: false,
-            error: "Unable to load service packages.",
-          },
-          502,
-        );
-      }
-    }
-
-    /* ========================================================
-     * ACTION: VALIDATE
-     * ======================================================== */
-
-    if (action === "validate") {
-      const service = normalizeService(
-        body?.service ?? body?.details?.service,
-      );
-
-      const publicBillerCode = extractBillerCode(
-        body,
-        body?.details ?? {},
-      );
-
-      const publicItemCode = extractItemCode(
-        body,
-        body?.details ?? {},
-      );
-
-      let customer = extractCustomer(
-        body,
-        body?.details ?? {},
-      );
-
-      if (!service) {
-        return jsonResponse(
-          {
-            success: false,
-            error: "A valid service is required.",
-          },
-          400,
-        );
       }
 
-      if (!publicBillerCode || !publicItemCode) {
-        return jsonResponse(
-          {
-            success: false,
-            error: "A valid service package is required.",
-          },
-          400,
-        );
-      }
-
-      if (!customer) {
-        return jsonResponse(
-          {
-            success: false,
-            error: "Customer information is required.",
-          },
-          400,
-        );
-      }
-
-      const billerRoute = await decodeRouteToken<{
-        version: number;
-        provider: string;
-        service: ServiceType;
-        biller_code: string;
-      }>(publicBillerCode);
-
-      const itemRoute = await decodeRouteToken<{
-        version: number;
-        provider: string;
-        service: ServiceType;
-        biller_code: string;
-        item_code: string;
-      }>(publicItemCode);
+      // ======================================================
+      // ITEMS
+      // ======================================================
 
       if (
-        !billerRoute ||
-        billerRoute.provider !== "flutterwave" ||
-        billerRoute.service !== service ||
-        !billerRoute.biller_code ||
-        !itemRoute ||
-        itemRoute.provider !== "flutterwave" ||
-        itemRoute.service !== service ||
-        itemRoute.biller_code !== billerRoute.biller_code ||
-        !itemRoute.item_code
+        action ===
+        "items"
       ) {
-        return jsonResponse(
-          {
-            success: false,
-            error: "The selected service package is invalid.",
-          },
-          400,
-        );
-      }
+        const billerCode =
+          cleanString(
+            body?.biller_code ??
+              body?.billerCode,
+          );
 
-      if (service === "airtime") {
-        customer = customer.replace(/\s+/g, "");
-
-        if (!/^(?:\+?234|0)[0-9]{10}$/.test(customer)) {
-          return jsonResponse(
+        if (!billerCode) {
+          return json(
             {
               success: false,
               error:
-                "Please provide a valid Nigerian phone number.",
+                "biller_code is required",
             },
             400,
           );
         }
-      }
 
-      if (service === "electricity") {
-        if (customer.length < 5) {
-          return jsonResponse(
-            {
-              success: false,
-              error: "Please provide a valid meter number.",
-            },
-            400,
+        const result =
+          await fetchBillItems(
+            billerCode,
           );
-        }
-      }
 
-      if (service === "cable") {
-        if (customer.length < 5) {
-          return jsonResponse(
+        if (
+          !result.ok ||
+          result.body?.status !==
+            "success"
+        ) {
+          return json(
             {
               success: false,
+
               error:
-                "Please provide a valid smartcard or decoder number.",
-            },
-            400,
-          );
-        }
-      }
+                result.body
+                  ?.message ??
+                "Unable to load bill packages",
 
-      if (service === "internet") {
-        if (customer.length < 3) {
-          return jsonResponse(
-            {
-              success: false,
-              error:
-                "Please provide a valid internet account number.",
-            },
-            400,
-          );
-        }
-      }
+              biller_code:
+                billerCode,
 
-      const shouldValidateCustomer =
-        service === "electricity" ||
-        service === "cable" ||
-        service === "internet";
+              provider_status:
+                result.status,
 
-      if (shouldValidateCustomer) {
-        try {
-          const validation = await validateBillCustomer(
-            itemRoute.item_code,
-            customer,
-          );
-
-          if (
-            !validation.ok ||
-            validation.body?.status !== "success"
-          ) {
-            console.error(
-              "Flutterwave customer validation failed:",
-              validation.body,
-            );
-
-            return jsonResponse(
-              {
-                success: false,
-                error:
-                  "Unable to validate the customer account.",
-              },
-              400,
-            );
-          }
-
-          return jsonResponse({
-            success: true,
-            service,
-            validated: true,
-            data: validation.body?.data ?? null,
-          });
-        } catch (error) {
-          console.error(
-            "Flutterwave customer validation error:",
-            error,
-          );
-
-          return jsonResponse(
-            {
-              success: false,
-              error:
-                "Unable to validate the customer account.",
+              provider_response:
+                result.body ??
+                null,
             },
             502,
           );
         }
-      }
 
-      return jsonResponse({
-        success: true,
-        service,
-        validated: true,
-        data: null,
-      });
-    }
-
-    /* ========================================================
-     * ACTION: STATUS
-     * ======================================================== */
-
-    if (action === "status") {
-      const reference = cleanString(
-        body?.reference ??
-          body?.transaction_reference ??
-          body?.details?.reference,
-      );
-
-      if (!reference) {
-        return jsonResponse(
-          {
-            success: false,
-            error: "Transaction reference is required.",
-          },
-          400,
-        );
-      }
-
-      const txn = await getLocalTransaction(
-        admin,
-        user.id,
-        reference,
-      );
-
-      if (!txn) {
-        return jsonResponse(
-          {
-            success: false,
-            error: "Transaction not found.",
-          },
-          404,
-        );
-      }
-
-      const metadata =
-        txn.metadata &&
-        typeof txn.metadata === "object"
-          ? txn.metadata
-          : {};
-
-      const provider = cleanString(
-        txn.provider ??
-          metadata?.provider_id ??
-          "flutterwave",
-      ).toLowerCase();
-
-      if (provider !== "flutterwave") {
-        return jsonResponse(
-          {
-            success: false,
-            error:
-              "This transaction is handled by another service provider.",
-          },
-          409,
-        );
-      }
-
-      const providerReference = cleanString(
-        txn.provider_reference ?? reference,
-      );
-
-      let response;
-
-      try {
-        response = await getFlutterwaveBillStatus(
-          providerReference,
-        );
-      } catch (error) {
-        console.error(
-          "Flutterwave bill status request failed:",
-          error,
-        );
-
-        await updateTransaction(
-          admin,
-          user.id,
-          reference,
-          {
-            status: "pending",
-            provider: "flutterwave",
-            provider_reference: providerReference,
-            metadata: {
-              ...metadata,
-              reconciliation_required: true,
-              status_check_failed: true,
-              status_check_at: new Date().toISOString(),
-            },
-          },
-        );
-
-        return jsonResponse({
+        return json({
           success: true,
-          status: "pending",
-          reference,
-          message:
-            "Your payment is still being verified.",
+
+          biller_code:
+            billerCode,
+
+          items:
+            Array.isArray(
+              result.body?.data,
+            )
+              ? result.body
+                  .data
+              : [],
         });
       }
 
-      const providerStatus = normalizeStatus(
-        getNested(response.body, [
-          ["data", "status"],
-          ["status"],
-        ]),
-      );
-
-      const providerReferenceFromResponse =
-        extractProviderReference({
-          provider_response: response.body,
-        }) ?? providerReference;
+      // ======================================================
+      // MANUAL VALIDATION
+      // ======================================================
 
       if (
-        response.ok &&
-        (providerStatus === "successful" ||
-          providerStatus === "success" ||
-          providerStatus === "completed")
+        action ===
+        "validate"
       ) {
-        await updateTransaction(
-          admin,
-          user.id,
-          reference,
-          {
-            status: "successful",
-            provider: "flutterwave",
-            provider_reference: providerReferenceFromResponse,
-            completed_at: new Date().toISOString(),
-            metadata: {
-              ...metadata,
-              flutterwave_status: providerStatus,
-              flutterwave_response: response.body,
-              reconciliation_required: false,
-              reconciled_at: new Date().toISOString(),
-            },
-          },
-        );
-
-        return jsonResponse({
-          success: true,
-          status: "successful",
-          reference,
-          message: "Payment completed successfully.",
-        });
-      }
-
-      if (
-        response.ok &&
-        (providerStatus === "failed" ||
-          providerStatus === "cancelled" ||
-          providerStatus === "reversed" ||
-          providerStatus === "declined")
-      ) {
-        const refund = await refundBillTransaction(
-          admin,
-          user.id,
-          reference,
-          normalizeAmount(txn.amount),
-          "Flutterwave bill payment failed.",
-          {
-            flutterwave_status: providerStatus,
-            flutterwave_response: response.body,
-            refund_trigger: "status_reconciliation",
-          },
-        );
-
-        await updateTransaction(
-          admin,
-          user.id,
-          reference,
-          {
-            status: "failed",
-            provider: "flutterwave",
-            provider_reference: providerReferenceFromResponse,
-            metadata: {
-              ...metadata,
-              flutterwave_status: providerStatus,
-              flutterwave_response: response.body,
-              refunded: refund.success,
-              refund_pending: !refund.success,
-              refund_error: refund.error?.message ?? null,
-              reconciliation_required: false,
-            },
-          },
-        );
-
-        if (!refund.success) {
-          return jsonResponse(
-            {
-              success: false,
-              status: "failed",
-              reference,
-              error:
-                "The payment failed, but the automatic refund requires retry.",
-            },
-            503,
+        const itemCode =
+          cleanString(
+            body?.item_code ??
+              body?.itemCode,
           );
-        }
 
-        return jsonResponse({
-          success: false,
-          status: "failed",
-          reference,
-          refunded: true,
-          message:
-            "Payment failed. Your wallet has been refunded.",
-        });
-      }
+        const customer =
+          cleanString(
+            body?.customer ??
+              body?.customer_id ??
+              body?.customerId,
+          );
 
-      await updateTransaction(
-        admin,
-        user.id,
-        reference,
-        {
-          status: "pending",
-          provider: "flutterwave",
-          provider_reference: providerReferenceFromResponse,
-          metadata: {
-            ...metadata,
-            flutterwave_status: providerStatus,
-            flutterwave_response: response.body,
-            reconciliation_required: true,
-            pending_since: new Date().toISOString(),
-          },
-        },
-      );
-
-      return jsonResponse({
-        success: true,
-        status: "pending",
-        reference,
-        message: "Your payment is still being verified.",
-      });
-    }
-
-    /* ========================================================
-     * ACTION: PAY / SERVICE
-     * ======================================================== */
-
-    if (action === "pay" || action === "service") {
-      const details = body?.details ?? {};
-
-      const service = normalizeService(
-        body?.service ?? details?.service,
-      );
-
-      if (!service) {
-        return jsonResponse(
-          {
-            success: false,
-            error: "Please select a valid service.",
-          },
-          400,
-        );
-      }
-
-      const country = cleanString(
-        firstNonEmpty(
-          body?.country,
-          details?.country,
-          "NG",
-        ),
-      ).toUpperCase();
-
-      if (country !== "NG") {
-        return jsonResponse(
-          {
-            success: false,
-            error:
-              "Bill payments currently support Nigeria only.",
-          },
-          400,
-        );
-      }
-
-      const publicBillerCode = extractBillerCode(
-        body,
-        details,
-      );
-
-      const publicItemCode = extractItemCode(
-        body,
-        details,
-      );
-
-      const billerRoute = await decodeRouteToken<{
-        version: number;
-        provider: string;
-        service: ServiceType;
-        biller_code: string;
-      }>(publicBillerCode);
-
-      const itemRoute = await decodeRouteToken<{
-        version: number;
-        provider: string;
-        service: ServiceType;
-        biller_code: string;
-        item_code: string;
-      }>(publicItemCode);
-
-      if (
-        !billerRoute ||
-        billerRoute.provider !== "flutterwave" ||
-        billerRoute.service !== service ||
-        !billerRoute.biller_code ||
-        !itemRoute ||
-        itemRoute.provider !== "flutterwave" ||
-        itemRoute.service !== service ||
-        itemRoute.biller_code !== billerRoute.biller_code ||
-        !itemRoute.item_code
-      ) {
-        return jsonResponse(
-          {
-            success: false,
-            error:
-              "The selected service package is no longer available.",
-          },
-          400,
-        );
-      }
-
-      const billerCode = billerRoute.biller_code;
-      const itemCode = itemRoute.item_code;
-
-      let customer = extractCustomer(body, details);
-
-      if (!customer) {
-        return jsonResponse(
-          {
-            success: false,
-            error: "Customer information is required.",
-          },
-          400,
-        );
-      }
-
-      if (service === "airtime") {
-        customer = customer.replace(/\s+/g, "");
-
-        if (!/^(?:\+?234|0)[0-9]{10}$/.test(customer)) {
-          return jsonResponse(
+        if (!itemCode) {
+          return json(
             {
               success: false,
               error:
-                "Please provide a valid Nigerian phone number.",
+                "item_code is required",
             },
             400,
           );
         }
-      }
 
-      if (service === "electricity") {
-        if (customer.length < 5) {
-          return jsonResponse(
-            {
-              success: false,
-              error: "Please provide a valid meter number.",
-            },
-            400,
-          );
-        }
-      }
-
-      if (service === "cable") {
-        if (customer.length < 5) {
-          return jsonResponse(
+        if (!customer) {
+          return json(
             {
               success: false,
               error:
-                "Please provide a valid smartcard or decoder number.",
-            },
-            400,
-          );
-        }
-      }
-
-      if (service === "internet") {
-        if (customer.length < 3) {
-          return jsonResponse(
-            {
-              success: false,
-              error:
-                "Please provide a valid internet account number.",
-            },
-            400,
-          );
-        }
-      }
-
-      /* --------------------------------------------------------
-       * CATALOG VERIFICATION
-       * -------------------------------------------------------- */
-
-      let selectedItem: any = null;
-      let providerAmount = 0;
-
-      const catalog = await validateFlutterwaveSelectedItem(
-        billerCode,
-        itemCode,
-      );
-
-      selectedItem = catalog.selected;
-
-      providerAmount = normalizeAmount(
-        firstNonEmpty(
-          selectedItem?.amount,
-          selectedItem?.price,
-          selectedItem?.selling_price,
-        ),
-      );
-
-      const requestedAmount = normalizeAmount(
-        firstNonEmpty(
-          body?.amount,
-          body?.selling_amount,
-          details?.amount,
-          details?.selling_amount,
-        ),
-      );
-
-      const amountBasedService =
-        service === "airtime" ||
-        service === "electricity";
-
-      if (amountBasedService) {
-        if (requestedAmount <= 0) {
-          return jsonResponse(
-            {
-              success: false,
-              error: "A valid payment amount is required.",
+                "customer is required",
             },
             400,
           );
         }
 
-        const minimum = normalizeAmount(
-          firstNonEmpty(
-            selectedItem?.minimum,
-            selectedItem?.min_amount,
-            selectedItem?.minAmount,
-            selectedItem?.MINIMUM,
-          ),
-        );
-        const maximum = normalizeAmount(
-          firstNonEmpty(
-            selectedItem?.maximum,
-            selectedItem?.max_amount,
-            selectedItem?.maxAmount,
-            selectedItem?.MAXIMUM,
-          ),
-        );
-
-        if (minimum > 0 && requestedAmount < minimum) {
-          return jsonResponse(
-            { success: false, error: `Minimum amount is ${minimum}.` },
-            400,
-          );
-        }
-
-        if (maximum > 0 && requestedAmount > maximum) {
-          return jsonResponse(
-            { success: false, error: `Maximum amount is ${maximum}.` },
-            400,
-          );
-        }
-      } else if (providerAmount <= 0) {
-        return jsonResponse(
-          {
-            success: false,
-            error: "Unable to determine the bill package price.",
-          },
-          400,
-        );
-      }
-
-      const sellingAmount = roundMoney(
-        amountBasedService ? requestedAmount : providerAmount,
-      );
-
-      /* --------------------------------------------------------
-       * SERVICE-SPECIFIC CUSTOMER VALIDATION
-       * -------------------------------------------------------- */
-
-      let validationData: any = null;
-
-      const shouldValidateCustomer =
-        service === "electricity" ||
-        service === "cable" ||
-        service === "internet";
-
-      if (shouldValidateCustomer) {
-        try {
-          const validation = await validateBillCustomer(
+        const validation =
+          await validateBillCustomer(
             itemCode,
             customer,
           );
 
-          if (
-            !validation.ok ||
-            validation.body?.status !== "success"
-          ) {
-            console.error(
-              "Flutterwave bill customer validation failed:",
-              validation.body,
-            );
+        if (
+          !validation.ok ||
+          validation.body?.status !==
+            "success"
+        ) {
+          return json(
+            {
+              success: false,
 
-            return jsonResponse(
-              {
-                success: false,
-                error:
-                  "Unable to validate the customer account.",
-              },
-              400,
-            );
-          }
+              error:
+                validation
+                  .body
+                  ?.message ??
+                "Unable to validate customer details.",
 
-          validationData = validation.body?.data ?? null;
-        } catch (error) {
-          console.error(
-            "Flutterwave customer validation error:",
-            error,
+              provider_status:
+                validation.status,
+
+              data:
+                validation
+                  .body
+                  ?.data ??
+                null,
+
+              provider_response:
+                validation.body ??
+                null,
+            },
+            400,
+          );
+        }
+
+        return json({
+          success: true,
+
+          message:
+            validation
+              .body
+              ?.message ??
+            "Customer validated successfully.",
+
+          data:
+            validation
+              .body
+              ?.data ??
+            null,
+        });
+      }
+
+      // ======================================================
+      // STATUS / RECONCILIATION
+      // ======================================================
+
+      if (
+        action ===
+        "status"
+      ) {
+        const reference =
+          cleanString(
+            body?.reference ??
+              body?.tx_ref,
           );
 
-          return jsonResponse(
+        if (!reference) {
+          return json(
             {
               success: false,
               error:
-                "Unable to validate the customer account.",
+                "reference is required",
             },
-            502,
+            400,
           );
         }
-      }
 
-      /* --------------------------------------------------------
-       * TRANSACTION REFERENCE
-       * -------------------------------------------------------- */
+        const {
+          data: txn,
+          error:
+            txnError,
+        } =
+          await getLocalTransaction(
+            admin,
+            user.id,
+            reference,
+          );
 
-      const reference = `BILL_${crypto.randomUUID()}`;
+        if (txnError) {
+          return json(
+            {
+              success: false,
+              error:
+                "Unable to retrieve transaction",
+            },
+            500,
+          );
+        }
 
-      const transactionMetadata = {
-        service,
-        category: SERVICE_CATEGORY_MAP[service],
-        biller_code: billerCode,
-        item_code: itemCode,
-        customer,
-        country,
-        provider: "flutterwave",
-        provider_id: "flutterwave",
-        provider_amount: providerAmount,
-        selling_amount: sellingAmount,
-        data_markup: 0,
-        markup_rate: 0,
-        markup_amount: 0,
-        selected_item: selectedItem,
-        validation: validationData,
-        reconciliation_required: true,
-      };
+        if (!txn) {
+          return json(
+            {
+              success: false,
+              error:
+                "Transaction not found",
+            },
+            404,
+          );
+        }
 
-      /* --------------------------------------------------------
-       * DEBIT WALLET
-       * -------------------------------------------------------- */
+        if (
+          normalizeStatus(
+            txn.status,
+          ) ===
+          "successful"
+        ) {
+          return json({
+            success: true,
 
-      const {
-        data: debitResult,
-        error: debitError,
-      } = await admin.rpc(
-        "debit_wallet",
-        {
-          _user_id: user.id,
-          _amount: sellingAmount,
-          _description: `Bill payment (${service})`,
-          _idempotency_key: reference,
-          _reference: reference,
-          _category: "bill_payment",
-          _metadata: transactionMetadata,
-        },
-      );
+            reference,
 
-      if (debitError) {
-        console.error(
-          "Flutterwave bill wallet debit failed:",
-          debitError,
+            local_status:
+              txn.status,
+
+            provider_status:
+              "successful",
+
+            transaction:
+              txn,
+          });
+        }
+
+        const providerReference =
+          cleanString(
+            txn.provider_reference ??
+              "",
+          );
+
+        const flutterwaveReference =
+          providerReference ||
+          reference;
+
+        const providerResult =
+          await flw(
+            `/bills/${encodeURIComponent(
+              flutterwaveReference,
+            )}?verbose=1`,
+          );
+
+        if (
+          !providerResult.ok
+        ) {
+          return json({
+            success: true,
+
+            reference,
+
+            local_status:
+              txn.status,
+
+            provider_status:
+              "unavailable",
+
+            reconciliation_required:
+              true,
+
+            transaction:
+              txn,
+
+            provider_response:
+              providerResult
+                .body ??
+              null,
+          });
+        }
+
+        const providerBody =
+          providerResult.body ??
+          {};
+
+        const providerData =
+          getProviderData(
+            providerBody,
+          );
+
+        const providerStatus =
+          extractProviderStatus(
+            providerBody,
+          );
+
+        const newProviderReference =
+          extractProviderReference(
+            providerBody,
+          );
+
+        const metadata =
+          getTransactionMetadata(
+            txn,
+          );
+
+        // ----------------------------------------------------
+        // SUCCESS
+        // ----------------------------------------------------
+
+        if (
+          isSuccessfulStatus(
+            providerStatus,
+          )
+        ) {
+          await updateTransaction(
+            admin,
+            user.id,
+            reference,
+            {
+              status:
+                "successful",
+
+              provider:
+                "flutterwave",
+
+              provider_reference:
+                newProviderReference ||
+                providerReference ||
+                null,
+
+              metadata: {
+                ...metadata,
+
+                flutterwave_status:
+                  providerBody,
+
+                reconciled_at:
+                  new Date()
+                    .toISOString(),
+
+                reconciliation_required:
+                  false,
+              },
+            },
+          );
+
+          return json({
+            success: true,
+
+            reference,
+
+            local_status:
+              "successful",
+
+            provider_status:
+              providerStatus,
+
+            transaction: {
+              ...txn,
+              status:
+                "successful",
+            },
+
+            provider_data:
+              providerData,
+          });
+        }
+
+        // ----------------------------------------------------
+        // FAILED
+        // ----------------------------------------------------
+
+        if (
+          isFailedStatus(
+            providerStatus,
+          )
+        ) {
+          const amount =
+            normalizeAmount(
+              txn.amount,
+            );
+
+          if (
+            amount ===
+            null
+          ) {
+            return json(
+              {
+                success: false,
+
+                error:
+                  "Provider failed the bill payment, but the refund requires manual review.",
+
+                reference,
+
+                refund_required:
+                  true,
+              },
+              500,
+            );
+          }
+
+          const refund =
+            await refundBillTransaction(
+              admin,
+              user.id,
+              amount,
+              reference,
+              {
+                ...metadata,
+
+                flutterwave_status:
+                  providerBody,
+              },
+            );
+
+          if (
+            !refund.success
+          ) {
+            await updateTransaction(
+              admin,
+              user.id,
+              reference,
+              {
+                status:
+                  "failed",
+
+                metadata: {
+                  ...metadata,
+
+                  refund_required:
+                    true,
+
+                  refund_error:
+                    refund.error,
+                },
+              },
+            );
+
+            return json(
+              {
+                success: false,
+
+                error:
+                  "Bill payment failed and automatic refund could not be completed. Please contact support.",
+
+                reference,
+
+                amount,
+
+                refund_required:
+                  true,
+              },
+              500,
+            );
+          }
+
+          await updateTransaction(
+            admin,
+            user.id,
+            reference,
+            {
+              status:
+                "failed",
+
+              provider:
+                "flutterwave",
+
+              provider_reference:
+                newProviderReference ||
+                providerReference ||
+                null,
+
+              metadata: {
+                ...metadata,
+
+                flutterwave_status:
+                  providerBody,
+
+                refunded:
+                  true,
+
+                refund_reference:
+                  refund.reference,
+
+                reconciliation_required:
+                  false,
+
+                reconciled_at:
+                  new Date()
+                    .toISOString(),
+              },
+            },
+          );
+
+          return json({
+            success: true,
+
+            reference,
+
+            local_status:
+              "failed",
+
+            provider_status:
+              providerStatus,
+
+            refunded:
+              true,
+
+            refund_reference:
+              refund.reference,
+
+            transaction: {
+              ...txn,
+              status:
+                "failed",
+            },
+
+            provider_data:
+              providerData,
+          });
+        }
+
+        // ----------------------------------------------------
+        // PENDING
+        // ----------------------------------------------------
+
+        await updateTransaction(
+          admin,
+          user.id,
+          reference,
+          {
+            status:
+              "pending",
+
+            provider:
+              "flutterwave",
+
+            provider_reference:
+              newProviderReference ||
+              providerReference ||
+              null,
+
+            metadata: {
+              ...metadata,
+
+              flutterwave_status:
+                providerBody,
+
+              reconciliation_required:
+                true,
+
+              last_checked_at:
+                new Date()
+                  .toISOString(),
+            },
+          },
         );
 
-        return jsonResponse(
+        return json({
+          success: true,
+
+          reference,
+
+          local_status:
+            "pending",
+
+          provider_status:
+            providerStatus ||
+            "pending",
+
+          reconciliation_required:
+            true,
+
+          transaction: {
+            ...txn,
+            status:
+              "pending",
+          },
+
+          provider_data:
+            providerData,
+        });
+      }
+
+      // ======================================================
+      // PAY / SERVICE
+      // ======================================================
+
+      if (
+        action !==
+          "pay" &&
+        action !==
+          "service"
+      ) {
+        return json(
           {
             success: false,
+
             error:
-              "Unable to process the payment from your wallet.",
+              `Unsupported action: ${action}`,
+
+            supported_actions: [
+              "categories",
+              "billers",
+              "items",
+              "validate",
+              "status",
+              "pay",
+              "service",
+            ],
           },
           400,
         );
       }
 
-      const transactionId = debitResult?.id ?? null;
+      const service =
+        normalizeService(
+          body?.service,
+        );
 
-      /* --------------------------------------------------------
-       * FLUTTERWAVE PAYMENT REQUEST
-       * -------------------------------------------------------- */
-
-      let flutterwaveResponse: any = null;
-
-      try {
-        flutterwaveResponse = await flw(
-          `/billers/${encodeURIComponent(billerCode)}/items/${encodeURIComponent(itemCode)}/payment`,
+      if (!service) {
+        return json(
           {
-            method: "POST",
-            body: JSON.stringify({
-              country: "NG",
-              customer_id: customer,
-              amount: sellingAmount,
-              type: selectedItem?.type ?? service,
-              reference,
-              biller_code: billerCode,
-              item_code: itemCode,
-              phone_number:
-                details?.phone ??
-                details?.phoneNumber ??
-                customer,
-            }),
+            success: false,
+
+            error:
+              `The ${
+                cleanString(
+                  body?.service,
+                ) ||
+                "unknown"
+              } service is not available.`,
+
+            service:
+              cleanString(
+                body?.service,
+              ) ||
+              "unknown",
+
+            supported_services:
+              SUPPORTED_SERVICES,
+          },
+          400,
+        );
+      }
+
+      const details =
+        body?.details &&
+        typeof body.details ===
+          "object" &&
+        !Array.isArray(
+          body.details,
+        )
+          ? body.details
+          : {};
+
+      const country =
+        cleanString(
+          body?.country ??
+            details?.country ??
+            "NG",
+        ).toUpperCase();
+
+      const billerCode =
+        cleanString(
+          body?.biller_code ??
+            body?.billerCode ??
+            details?.biller_code ??
+            details?.billerCode,
+        );
+
+      const itemCode =
+        cleanString(
+          body?.item_code ??
+            body?.itemCode ??
+            details?.item_code ??
+            details?.itemCode,
+        );
+
+      let customer =
+        cleanString(
+          body?.customer ??
+            body?.customer_id ??
+            body?.customerId ??
+            details?.customer ??
+            details?.customer_id ??
+            details?.customerId ??
+            details?.phoneNumber ??
+            details?.phone ??
+            details?.meterNumber ??
+            details?.meter_number ??
+            details?.smartcardNumber ??
+            details?.smartCardNumber ??
+            details?.smartcard_number ??
+            details?.accountNumber ??
+            details?.account_number,
+        );
+
+      // ======================================================
+      // COUNTRY
+      // ======================================================
+
+      if (
+        country !==
+        "NG"
+      ) {
+        return json(
+          {
+            success: false,
+
+            error:
+              "Flutterwave bill payments currently support NG billers only.",
+          },
+          400,
+        );
+      }
+
+      // ======================================================
+      // BILLER
+      // ======================================================
+
+      if (!billerCode) {
+        return json(
+          {
+            success: false,
+
+            error:
+              "Please select a valid bill provider.",
+
+            service,
+
+            category:
+              SERVICE_CATEGORY_MAP[
+                service
+              ],
+          },
+          400,
+        );
+      }
+
+      // ======================================================
+      // ITEM
+      // ======================================================
+
+      if (!itemCode) {
+        return json(
+          {
+            success: false,
+
+            error:
+              "Please select a valid bill package.",
+
+            service,
+
+            category:
+              SERVICE_CATEGORY_MAP[
+                service
+              ],
+
+            biller_code:
+              billerCode,
+          },
+          400,
+        );
+      }
+
+      // ======================================================
+      // CUSTOMER
+      // ======================================================
+
+      if (!customer) {
+        return json(
+          {
+            success: false,
+
+            error:
+              "Customer identifier is required.",
+          },
+          400,
+        );
+      }
+
+      // ======================================================
+      // CUSTOMER FORMAT
+      // ======================================================
+
+      if (
+        service ===
+          "airtime" ||
+        service ===
+          "data"
+      ) {
+        customer =
+          customer.replace(
+            /\s+/g,
+            "",
+          );
+
+        if (
+          !/^(?:\+?234|0)[0-9]{10}$/.test(
+            customer,
+          )
+        ) {
+          return json(
+            {
+              success: false,
+
+              error:
+                "Please provide a valid Nigerian phone number.",
+            },
+            400,
+          );
+        }
+      }
+
+      if (
+        service ===
+          "electricity" &&
+        customer.length <
+          5
+      ) {
+        return json(
+          {
+            success: false,
+
+            error:
+              "Please provide a valid meter number.",
+          },
+          400,
+        );
+      }
+
+      if (
+        service ===
+          "cable" &&
+        customer.length <
+          5
+      ) {
+        return json(
+          {
+            success: false,
+
+            error:
+              "Please provide a valid smartcard or decoder number.",
+          },
+          400,
+        );
+      }
+
+      if (
+        service ===
+          "internet" &&
+        customer.length <
+          3
+      ) {
+        return json(
+          {
+            success: false,
+
+            error:
+              "Please provide a valid internet account number.",
+          },
+          400,
+        );
+      }
+
+      // ======================================================
+      // FETCH ITEMS
+      // ======================================================
+
+      const itemsResult =
+        await fetchBillItems(
+          billerCode,
+        );
+
+      if (
+        !itemsResult.ok ||
+        itemsResult.body?.status !==
+          "success"
+      ) {
+        return json(
+          {
+            success: false,
+
+            error:
+              itemsResult.body
+                ?.message ??
+              "Unable to verify selected bill package.",
+
+            provider_status:
+              itemsResult.status,
+
+            provider_response:
+              itemsResult.body ??
+              null,
+          },
+          502,
+        );
+      }
+
+      const billItems =
+        Array.isArray(
+          itemsResult.body?.data,
+        )
+          ? itemsResult.body
+              .data
+          : [];
+
+      const selectedItem =
+        billItems.find(
+          (item: any) =>
+            extractItemCode(
+              item,
+            ) ===
+            itemCode,
+        );
+
+      if (!selectedItem) {
+        return json(
+          {
+            success: false,
+
+            error:
+              "The selected bill package is not available for this provider.",
+
+            biller_code:
+              billerCode,
+
+            item_code:
+              itemCode,
+          },
+          400,
+        );
+      }
+
+      // ======================================================
+      // VERIFY ITEM BILLER
+      // ======================================================
+
+      const itemBiller =
+        extractBillerCode(
+          selectedItem,
+        );
+
+      if (
+        itemBiller &&
+        itemBiller !==
+          billerCode
+      ) {
+        return json(
+          {
+            success: false,
+
+            error:
+              "The selected bill package does not belong to the selected provider.",
+
+            biller_code:
+              billerCode,
+
+            item_code:
+              itemCode,
+
+            item_biller_code:
+              itemBiller,
+          },
+          400,
+        );
+      }
+
+      // ======================================================
+      // PROVIDER AMOUNT
+      // ======================================================
+
+      const itemAmount =
+        extractAmount(
+          selectedItem,
+        );
+
+      // ======================================================
+      // PRICING
+      // ======================================================
+
+      let providerAmount:
+        number | null =
+        null;
+
+      let sellingAmount:
+        number | null =
+        null;
+
+      /**
+       * DATA:
+       *
+       * Flutterwave item amount is the provider cost.
+       *
+       * Customer pays:
+       *
+       * provider cost + ₦50
+       */
+      if (
+        service ===
+        "data"
+      ) {
+        if (
+          itemAmount ===
+          null
+        ) {
+          return json(
+            {
+              success: false,
+
+              error:
+                "The selected data plan does not have a valid provider price.",
+
+              item_code:
+                itemCode,
+            },
+            400,
+          );
+        }
+
+        providerAmount =
+          itemAmount;
+
+        sellingAmount =
+          Number(
+            (
+              providerAmount +
+              DATA_MARKUP
+            ).toFixed(2),
+          );
+
+        console.log(
+          "Data pricing:",
+          {
+            provider_amount:
+              providerAmount,
+
+            markup:
+              DATA_MARKUP,
+
+            selling_amount:
+              sellingAmount,
           },
         );
-      } catch (error) {
-        /*
-         * Do NOT refund immediately. The request may have reached
-         * Flutterwave even when the transport call throws.
+      } else {
+        /**
+         * ALL OTHER SERVICES:
+         *
+         * No markup.
+         *
+         * The customer's entered amount is exactly
+         * what gets sent to Flutterwave.
+         */
+
+        const suppliedAmount =
+          normalizeAmount(
+            body?.amount ??
+              details?.amount,
+          );
+
+        if (
+          suppliedAmount ===
+          null
+        ) {
+          return json(
+            {
+              success: false,
+
+              error:
+                "A valid amount is required.",
+            },
+            400,
+          );
+        }
+
+        providerAmount =
+          suppliedAmount;
+
+        sellingAmount =
+          suppliedAmount;
+      }
+
+      // ======================================================
+      // NON-DATA MIN/MAX
+      // ======================================================
+
+      if (
+        service !==
+        "data"
+      ) {
+        const minimum =
+          Number(
+            selectedItem?.minimum ??
+              0,
+          );
+
+        const maximum =
+          Number(
+            selectedItem?.maximum ??
+              0,
+          );
+
+        if (
+          minimum >
+            0 &&
+          sellingAmount <
+            minimum
+        ) {
+          return json(
+            {
+              success: false,
+
+              error:
+                `Minimum amount is ₦${minimum.toLocaleString()}.`,
+
+              minimum,
+            },
+            400,
+          );
+        }
+
+        if (
+          maximum >
+            0 &&
+          sellingAmount >
+            maximum
+        ) {
+          return json(
+            {
+              success: false,
+
+              error:
+                `Maximum amount is ₦${maximum.toLocaleString()}.`,
+
+              maximum,
+            },
+            400,
+          );
+        }
+      }
+
+      // ======================================================
+      // CUSTOMER VALIDATION
+      // ======================================================
+
+      let validationData:
+        any = null;
+
+      if (
+        shouldValidateCustomer(
+          service,
+        )
+      ) {
+        const validation =
+          await validateBillCustomer(
+            itemCode,
+            customer,
+          );
+
+        if (
+          !validation.ok ||
+          validation.body?.status !==
+            "success"
+        ) {
+          return json(
+            {
+              success: false,
+
+              error:
+                validation
+                  .body
+                  ?.message ??
+                "Unable to validate customer details.",
+
+              provider_status:
+                validation.status,
+
+              validation_data:
+                validation
+                  .body
+                  ?.data ??
+                null,
+
+              provider_response:
+                validation.body ??
+                null,
+            },
+            400,
+          );
+        }
+
+        validationData =
+          validation.body
+            ?.data ??
+          null;
+      } else {
+        console.log(
+          "Skipping customer validation:",
+          {
+            service,
+            itemCode,
+            customer,
+          },
+        );
+      }
+
+      // ======================================================
+      // UNIQUE REFERENCE
+      // ======================================================
+
+      const reference =
+        `BILL_${crypto
+          .randomUUID()
+          .replace(
+            /-/g,
+            "",
+          )}`;
+
+      // ======================================================
+      // DEBIT CUSTOMER WALLET
+      // ======================================================
+
+      const {
+        data: debit,
+        error:
+          debitError,
+      } =
+        await admin.rpc(
+          "debit_wallet",
+          {
+            _user_id:
+              user.id,
+
+            /**
+             * IMPORTANT:
+             *
+             * This is the customer selling price.
+             *
+             * For data:
+             * provider + ₦50.
+             *
+             * For everything else:
+             * exact entered amount.
+             */
+            _amount:
+              sellingAmount,
+
+            _description:
+              `Bill payment (${service})`,
+
+            _idempotency_key:
+              reference,
+
+            _reference:
+              reference,
+
+            _category:
+              "bill_payment",
+
+            _metadata: {
+              service,
+
+              category:
+                SERVICE_CATEGORY_MAP[
+                  service
+                ],
+
+              biller_code:
+                billerCode,
+
+              item_code:
+                itemCode,
+
+              customer,
+
+              country,
+
+              provider_amount:
+                providerAmount,
+
+              selling_amount:
+                sellingAmount,
+
+              data_markup:
+                service ===
+                "data"
+                  ? DATA_MARKUP
+                  : 0,
+
+              validation:
+                validationData,
+            },
+          },
+        );
+
+      if (debitError) {
+        console.error(
+          "debit_wallet failed:",
+          debitError,
+        );
+
+        const message =
+          String(
+            debitError.message ??
+              "",
+          ).toLowerCase();
+
+        return json(
+          {
+            success: false,
+
+            error:
+              message.includes(
+                "insufficient",
+              )
+                ? "Insufficient wallet balance"
+                : "Unable to debit your wallet",
+
+            details:
+              debitError.message ??
+              null,
+          },
+          400,
+        );
+      }
+
+      console.log(
+        "Wallet debited:",
+        {
+          reference,
+
+          selling_amount:
+            sellingAmount,
+
+          provider_amount:
+            providerAmount,
+
+          service,
+        },
+      );
+
+      // ======================================================
+      // PROVIDER PAYMENT BODY
+      // ======================================================
+
+      const providerPath =
+        `/billers/${encodeURIComponent(
+          billerCode,
+        )}/items/${encodeURIComponent(
+          itemCode,
+        )}/payment`;
+
+      /**
+       * IMPORTANT:
+       *
+       * For DATA:
+       *   customer pays ₦550
+       *   Flutterwave receives ₦500
+       *
+       * For OTHER:
+       *   customer pays ₦500
+       *   Flutterwave receives ₦500
+       */
+      const paymentBody:
+        Record<
+          string,
+          unknown
+        > = {
+        country,
+
+        customer_id:
+          customer,
+
+        amount:
+          providerAmount,
+
+        reference,
+      };
+
+      const callbackUrl =
+        Deno.env.get(
+          "FLUTTERWAVE_BILL_CALLBACK_URL",
+        );
+
+      if (
+        callbackUrl
+      ) {
+        paymentBody.callback_url =
+          callbackUrl;
+      }
+
+      console.log(
+        "Sending Flutterwave bill payment:",
+        JSON.stringify({
+          path:
+            providerPath,
+
+          body:
+            paymentBody,
+
+          customer_selling_amount:
+            sellingAmount,
+
+          provider_amount:
+            providerAmount,
+
+          data_markup:
+            service ===
+            "data"
+              ? DATA_MARKUP
+              : 0,
+        }),
+      );
+
+      // ======================================================
+      // CALL FLUTTERWAVE
+      // ======================================================
+
+      let providerResult:
+        any = null;
+
+      try {
+        providerResult =
+          await flw(
+            providerPath,
+            {
+              method:
+                "POST",
+
+              body:
+                JSON.stringify(
+                  paymentBody,
+                ),
+            },
+          );
+      } catch (
+        providerError
+      ) {
+        /**
+         * Network failure is ambiguous.
+         *
+         * DO NOT refund.
          */
 
         console.error(
-          "Flutterwave bill request failed:",
-          error,
+          "Flutterwave payment exception:",
+          providerError,
         );
 
         await updateTransaction(
@@ -1825,223 +2233,661 @@ Deno.serve(async (req) => {
           user.id,
           reference,
           {
-            status: "pending",
-            provider: "flutterwave",
+            status:
+              "pending",
+
+            provider:
+              "flutterwave",
+
             metadata: {
-              ...transactionMetadata,
-              provider_request_failed: true,
-              provider_request_error:
-                error instanceof Error
-                  ? error.message
-                  : String(error),
-              reconciliation_required: true,
+              service,
+
+              biller_code:
+                billerCode,
+
+              item_code:
+                itemCode,
+
+              customer,
+
+              provider_amount:
+                providerAmount,
+
+              selling_amount:
+                sellingAmount,
+
+              data_markup:
+                service ===
+                "data"
+                  ? DATA_MARKUP
+                  : 0,
+
+              provider_error:
+                providerError instanceof
+                Error
+                  ? providerError.message
+                  : String(
+                      providerError,
+                    ),
+
+              reconciliation_required:
+                true,
             },
           },
         );
 
-        return jsonResponse({
-          success: true,
-          status: "pending",
-          reference,
-          transaction_id: transactionId,
-          message: "Your payment is being verified.",
-        });
+        return json(
+          {
+            success: true,
+
+            message:
+              "Bill payment is being verified. Your wallet has been debited and the transaction will be reconciled.",
+
+            reference,
+
+            transaction_id:
+              debit?.id ??
+              null,
+
+            amount:
+              sellingAmount,
+
+            provider_amount:
+              providerAmount,
+
+            currency:
+              "NGN",
+
+            service,
+
+            status:
+              "pending",
+
+            reconciliation_required:
+              true,
+          },
+          202,
+        );
       }
 
-      const flutterwaveData =
-        flutterwaveResponse?.body ?? null;
+      // ======================================================
+      // PROVIDER RESPONSE
+      // ======================================================
+
+      const providerBody =
+        providerResult?.body ??
+        {};
+
+      const providerData =
+        getProviderData(
+          providerBody,
+        );
+
+      const providerStatus =
+        extractProviderStatus(
+          providerBody,
+        );
+
+      const providerReference =
+        extractProviderReference(
+          providerBody,
+        );
 
       console.log(
-        "Flutterwave bill payment response:",
+        "Flutterwave response:",
         JSON.stringify({
-          http_status: flutterwaveResponse?.status,
-          ok: flutterwaveResponse?.ok,
-          body: flutterwaveData,
+          reference,
+
+          provider_status:
+            providerStatus,
+
+          provider_http_status:
+            providerResult?.status ??
+            null,
+
+          provider_amount:
+            providerAmount,
+
+          selling_amount:
+            sellingAmount,
+
+          ...providerDebug(
+            providerResult,
+          ),
         }),
       );
 
-      const flutterwaveStatus = normalizeStatus(
-        firstNonEmpty(
-          flutterwaveData?.data?.status,
-          flutterwaveData?.status,
-        ),
-      );
-
-      const providerReference =
-        extractProviderReference({
-          provider_response: flutterwaveData,
-        });
-
-      /* --------------------------------------------------------
-       * SUCCESS
-       * -------------------------------------------------------- */
+      // ======================================================
+      // SUCCESS
+      // ======================================================
 
       if (
-        flutterwaveResponse?.ok &&
-        flutterwaveData?.status === "success" &&
-        (!flutterwaveData?.data?.status ||
-          isSuccessfulStatus(flutterwaveData?.data?.status))
+        providerResult?.ok &&
+        isSuccessfulStatus(
+          providerStatus,
+        )
       ) {
         await updateTransaction(
           admin,
           user.id,
           reference,
           {
-            status: "successful",
-            provider: "flutterwave",
-            provider_reference: providerReference,
-            completed_at: new Date().toISOString(),
+            status:
+              "successful",
+
+            provider:
+              "flutterwave",
+
+            provider_reference:
+              providerReference,
+
             metadata: {
-              ...transactionMetadata,
-              flutterwave_status: flutterwaveStatus,
-              flutterwave_response: flutterwaveData,
-              reconciliation_required: false,
-              reconciled_at: new Date().toISOString(),
+              service,
+
+              category:
+                SERVICE_CATEGORY_MAP[
+                  service
+                ],
+
+              biller_code:
+                billerCode,
+
+              item_code:
+                itemCode,
+
+              customer,
+
+              provider_amount:
+                providerAmount,
+
+              selling_amount:
+                sellingAmount,
+
+              data_markup:
+                service ===
+                "data"
+                  ? DATA_MARKUP
+                  : 0,
+
+              flutterwave:
+                providerBody,
+
+              reconciliation_required:
+                false,
+
+              completed_at:
+                new Date()
+                  .toISOString(),
             },
           },
         );
 
-        return jsonResponse({
+        return json({
           success: true,
-          status: "successful",
+
+          message:
+            getProviderMessage(
+              providerBody,
+            ) ||
+            "Bill payment successful.",
+
           reference,
-          transaction_id: transactionId,
-          message: "Payment completed successfully.",
+
+          transaction_id:
+            debit?.id ??
+            null,
+
+          provider_reference:
+            providerReference,
+
+          amount:
+            sellingAmount,
+
+          provider_amount:
+            providerAmount,
+
+          currency:
+            "NGN",
+
+          service,
+
+          biller_code:
+            billerCode,
+
+          item_code:
+            itemCode,
+
+          customer,
+
+          status:
+            "successful",
+
+          data:
+            providerData,
         });
       }
 
-      /* --------------------------------------------------------
-       * DEFINITIVE FAILURE
-       * -------------------------------------------------------- */
+      // ======================================================
+      // DEFINITIVE FAILURE
+      // ======================================================
 
-      const flutterwaveFailure =
-        !flutterwaveResponse?.ok ||
-        isFailedStatus(flutterwaveStatus);
-
-      if (flutterwaveFailure) {
-        const providerMessage = getProviderMessage({
-          provider_response: flutterwaveData,
-        });
-
-        console.error(
-          "Flutterwave bill payment failed:",
-          JSON.stringify({
-            status: flutterwaveStatus,
-            message: providerMessage,
-            response: flutterwaveData,
-          }),
+      const providerHttpStatus =
+        Number(
+          providerResult?.status ??
+            0,
         );
 
-        const refund = await refundBillTransaction(
-          admin,
-          user.id,
-          reference,
-          sellingAmount,
-          "Flutterwave bill payment failed.",
+      const definitiveHttpFailure =
+        providerHttpStatus >=
+          400 &&
+        providerHttpStatus <
+          500;
+
+      if (
+        isFailedStatus(
+          providerStatus,
+        ) ||
+        definitiveHttpFailure
+      ) {
+        console.error(
+          "Definitive Flutterwave failure:",
           {
-            ...transactionMetadata,
-            flutterwave_status: flutterwaveStatus,
-            flutterwave_response: flutterwaveData,
+            reference,
+
+            provider_status:
+              providerStatus,
+
+            provider_http_status:
+              providerHttpStatus,
           },
         );
+
+        /**
+         * IMPORTANT:
+         *
+         * Refund the amount actually debited from
+         * the customer.
+         *
+         * For DATA this is:
+         *
+         *   provider price + ₦50
+         */
+        const refund =
+          await refundBillTransaction(
+            admin,
+            user.id,
+            sellingAmount,
+            reference,
+            {
+              service,
+
+              category:
+                SERVICE_CATEGORY_MAP[
+                  service
+                ],
+
+              biller_code:
+                billerCode,
+
+              item_code:
+                itemCode,
+
+              customer,
+
+              provider_amount:
+                providerAmount,
+
+              selling_amount:
+                sellingAmount,
+
+              data_markup:
+                service ===
+                "data"
+                  ? DATA_MARKUP
+                  : 0,
+
+              flutterwave:
+                providerBody,
+            },
+          );
+
+        if (
+          !refund.success
+        ) {
+          console.error(
+            "CRITICAL: automatic refund failed:",
+            refund.error,
+          );
+
+          await updateTransaction(
+            admin,
+            user.id,
+            reference,
+            {
+              status:
+                "failed",
+
+              provider:
+                "flutterwave",
+
+              provider_reference:
+                providerReference,
+
+              metadata: {
+                service,
+
+                biller_code:
+                  billerCode,
+
+                item_code:
+                  itemCode,
+
+                customer,
+
+                provider_amount:
+                  providerAmount,
+
+                selling_amount:
+                  sellingAmount,
+
+                data_markup:
+                  service ===
+                  "data"
+                    ? DATA_MARKUP
+                    : 0,
+
+                flutterwave:
+                  providerBody,
+
+                refund_required:
+                  true,
+
+                refund_error:
+                  refund.error,
+
+                reconciliation_required:
+                  false,
+              },
+            },
+          );
+
+          return json(
+            {
+              success: false,
+
+              error:
+                "Bill payment failed and automatic refund could not be completed. Please contact support.",
+
+              reference,
+
+              amount:
+                sellingAmount,
+
+              refund_required:
+                true,
+
+              provider_status:
+                providerStatus,
+
+              provider_http_status:
+                providerHttpStatus,
+            },
+            500,
+          );
+        }
 
         await updateTransaction(
           admin,
           user.id,
           reference,
           {
-            status: "failed",
-            provider: "flutterwave",
-            provider_reference: providerReference,
+            status:
+              "failed",
+
+            provider:
+              "flutterwave",
+
+            provider_reference:
+              providerReference,
+
             metadata: {
-              ...transactionMetadata,
-              flutterwave_status: flutterwaveStatus,
-              flutterwave_response: flutterwaveData,
-              refunded: refund.success,
-              refund_pending: !refund.success,
-              refund_error: refund.error?.message ?? null,
-              reconciliation_required: false,
+              service,
+
+              category:
+                SERVICE_CATEGORY_MAP[
+                  service
+                ],
+
+              biller_code:
+                billerCode,
+
+              item_code:
+                itemCode,
+
+              customer,
+
+              provider_amount:
+                providerAmount,
+
+              selling_amount:
+                sellingAmount,
+
+              data_markup:
+                service ===
+                "data"
+                  ? DATA_MARKUP
+                  : 0,
+
+              flutterwave:
+                providerBody,
+
+              refunded:
+                true,
+
+              refund_reference:
+                refund.reference,
+
+              reconciliation_required:
+                false,
+
+              completed_at:
+                new Date()
+                  .toISOString(),
             },
           },
         );
 
-        if (!refund.success) {
-          return jsonResponse(
-            {
-              success: false,
-              status: "failed",
-              reference,
-              transaction_id: transactionId,
-              error:
-                "The payment failed, but the automatic refund requires retry.",
-            },
-            503,
-          );
-        }
+        return json(
+          {
+            success: false,
 
-        return jsonResponse({
-          success: false,
-          status: "failed",
-          reference,
-          transaction_id: transactionId,
-          refunded: true,
-          message:
-            "Payment failed. Your wallet has been refunded.",
-        });
+            error:
+              getProviderMessage(
+                providerBody,
+              ) ||
+              "Bill payment failed. Your wallet has been refunded.",
+
+            refunded:
+              true,
+
+            refund_reference:
+              refund.reference,
+
+            reference,
+
+            amount:
+              sellingAmount,
+
+            provider_amount:
+              providerAmount,
+
+            service,
+
+            biller_code:
+              billerCode,
+
+            item_code:
+              itemCode,
+
+            customer,
+
+            status:
+              "failed",
+
+            provider_status:
+              providerStatus,
+
+            provider_http_status:
+              providerHttpStatus,
+          },
+          400,
+        );
       }
 
-      /* --------------------------------------------------------
-       * PENDING / UNKNOWN
-       * -------------------------------------------------------- */
+      // ======================================================
+      // PENDING / AMBIGUOUS
+      // ======================================================
+
+      /**
+       * Never refund:
+       *
+       * - HTTP 5xx
+       * - timeout
+       * - processing
+       * - queued
+       * - initiated
+       * - unknown provider state
+       */
 
       await updateTransaction(
         admin,
         user.id,
         reference,
         {
-          status: "pending",
-          provider: "flutterwave",
-          provider_reference: providerReference,
+          status:
+            "pending",
+
+          provider:
+            "flutterwave",
+
+          provider_reference:
+            providerReference,
+
           metadata: {
-            ...transactionMetadata,
-            flutterwave_status: flutterwaveStatus,
-            flutterwave_response: flutterwaveData,
-            reconciliation_required: true,
-            pending_since: new Date().toISOString(),
+            service,
+
+            category:
+              SERVICE_CATEGORY_MAP[
+                service
+              ],
+
+            biller_code:
+              billerCode,
+
+            item_code:
+              itemCode,
+
+            customer,
+
+            provider_amount:
+              providerAmount,
+
+            selling_amount:
+              sellingAmount,
+
+            data_markup:
+              service ===
+              "data"
+                ? DATA_MARKUP
+                : 0,
+
+            flutterwave:
+              providerBody,
+
+            reconciliation_required:
+              true,
+
+            last_provider_status:
+              providerStatus,
+
+            provider_http_status:
+              providerHttpStatus,
+
+            last_checked_at:
+              new Date()
+                .toISOString(),
           },
         },
       );
 
-      return jsonResponse({
-        success: true,
-        status: "pending",
-        reference,
-        transaction_id: transactionId,
-        message:
-          "Your payment has been initiated and is being verified.",
-      });
+      return json(
+        {
+          success: true,
+
+          message:
+            getProviderMessage(
+              providerBody,
+            ) ||
+            "Bill payment is pending verification.",
+
+          reference,
+
+          transaction_id:
+            debit?.id ??
+            null,
+
+          provider_reference:
+            providerReference,
+
+          amount:
+            sellingAmount,
+
+          provider_amount:
+            providerAmount,
+
+          currency:
+            "NGN",
+
+          service,
+
+          biller_code:
+            billerCode,
+
+          item_code:
+            itemCode,
+
+          customer,
+
+          status:
+            "pending",
+
+          reconciliation_required:
+            true,
+
+          provider_http_status:
+            providerHttpStatus,
+
+          data:
+            providerData,
+        },
+        202,
+      );
+    } catch (error: any) {
+      console.error(
+        "Flutterwave bills function error:",
+        error,
+      );
+
+      return json(
+        {
+          success: false,
+
+          error:
+            error?.message ??
+            "Unexpected error",
+        },
+        500,
+      );
     }
-
-    return jsonResponse(
-      {
-        success: false,
-        error: "Unsupported bill payment action.",
-      },
-      400,
-    );
-  } catch (error) {
-    console.error(
-      "FLUTTERWAVE-BILLS INTERNAL ERROR:",
-      error,
-    );
-
-    return jsonResponse(
-      {
-        success: false,
-        error:
-          "Unable to process your bill payment right now. Please try again.",
-      },
-      500,
-    );
-  }
-});
+  },
+);

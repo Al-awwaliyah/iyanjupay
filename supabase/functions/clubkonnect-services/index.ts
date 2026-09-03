@@ -1,5 +1,9 @@
-
-  import { corsHeaders, json, adminClient, getUser } from "../_shared/auth.ts";
+import {
+  corsHeaders,
+  json,
+  adminClient,
+  getUser,
+} from "../_shared/auth.ts";
 
 /**
  * IyanjuPay - ClubKonnect service provider

@@ -47,8 +47,6 @@ interface Biller {
   country?: string;
   country_code?: string;
   logo?: string | null;
-  logo_url?: string | null;
-  logoUrl?: string | null;
   description?: string;
   short_name?: string;
 
@@ -102,13 +100,6 @@ const SERVICE_CATEGORY_MAP: Record<string, string> = {
   internet: "INTSERVICE",
 };
 
-const CLUBKONNECT_SERVICES = new Set([
-  "data",
-  "education",
-  "airtime-card",
-  "data-card",
-]);
-
 const AIRTIME_AMOUNTS = [
   50,
   100,
@@ -146,29 +137,14 @@ function formatNaira(value: number): string {
 function getDataGroup(
   item: BillItem
 ): "Daily" | "Weekly" | "Monthly" | "Other" {
-  const explicit = cleanString(
-    (item as any).plan_period ??
-      (item as any).period ??
-      (item as any).group_name ??
-      (item as any).category
-  ).toLowerCase();
-
-  if (explicit.includes("month")) return "Monthly";
-  if (explicit.includes("week")) return "Weekly";
-  if (explicit.includes("day")) return "Daily";
-
   const text = [
     item.name,
     item.short_name,
     item.description,
     item.validity,
     item.duration,
-    (item as any).plan_type,
-    (item as any).plan_period,
-    (item as any).period_name,
-    (item as any).group_name,
   ]
-    .filter((value) => value !== undefined && value !== null)
+    .filter(Boolean)
     .join(" ")
     .toLowerCase();
 
@@ -178,282 +154,69 @@ function getDataGroup(
     /\b1\s*month\b/.test(text) ||
     /\b2\s*months?\b/.test(text) ||
     /\b3\s*months?\b/.test(text)
-  ) return "Monthly";
+  ) {
+    return "Monthly";
+  }
 
   if (
     /\b(7|14)\s*(day|days)\b/.test(text) ||
     /\bweekly\b/.test(text) ||
     /\b1\s*week\b/.test(text) ||
     /\b2\s*weeks?\b/.test(text)
-  ) return "Weekly";
+  ) {
+    return "Weekly";
+  }
 
   if (
     /\b(1|2|3)\s*(day|days)\b/.test(text) ||
     /\bdaily\b/.test(text) ||
     /\b24\s*hours?\b/.test(text) ||
     /\bday\b/.test(text)
-  ) return "Daily";
+  ) {
+    return "Daily";
+  }
 
   return "Other";
 }
 
-function isHotDeal(item: BillItem): boolean {
-  if (item.is_hot_deal === true) return true;
+function isHotDeal(
+  item: BillItem
+): boolean {
+  if (
+    item.is_hot_deal === true
+  ) {
+    return true;
+  }
 
   const text = [
     item.name,
     item.short_name,
     item.description,
     item.plan_type,
-    (item as any).plan,
-    (item as any).plan_name,
-    (item as any).planName,
-    (item as any).bundle,
-    (item as any).Bundle,
-    (item as any).category,
-    (item as any).data_type,
-    (item as any).dataType,
   ]
     .filter(Boolean)
     .join(" ")
     .toLowerCase();
 
-  return /\bsme\b/.test(text) || /hot\s*deal/.test(text) || /hotdeal/.test(text);
+  return /\bsme\b/.test(text);
 }
 
-function getPlanType(item: BillItem): string {
-  const explicit = cleanString(item.plan_type);
-  if (explicit) return explicit;
-  return isHotDeal(item) ? "SME" : "REGULAR";
-}
-
-function normaliseProviderKey(value: unknown): string {
-  return cleanString(value)
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "");
-}
-
-const PROVIDER_LOGOS: Record<string, string> = {
-  // Mobile networks
-  mtn: "https://upload.wikimedia.org/wikipedia/commons/a/af/MTN_Logo.svg",
-  glo: "https://upload.wikimedia.org/wikipedia/commons/8/86/GloLogo.png",
-  airtel: "https://upload.wikimedia.org/wikipedia/commons/f/fb/Bharti_Airtel_Logo.svg",
-  "9mobile": "https://images.seeklogo.com/logo-png/48/1/9mobile-logo-png_seeklogo-481168.png",
-
-  // Cable TV / entertainment
-  dstv: "https://res.cloudinary.com/paybeta/image/upload/v1714827633/Provider/Cable/dstv.jpg",
-  gotv: "https://res.cloudinary.com/paybeta/image/upload/v1714828100/Provider/Cable/gotv.png",
-  startimes: "https://res.cloudinary.com/paybeta/image/upload/v1714827913/Provider/Cable/startimes.jpg",
-  showmax: "https://commons.wikimedia.org/wiki/Special:Redirect/file/Showmax_Logo.svg",
-
-  // Internet / ISP
-  smile: "https://cdn.jsdelivr.net/gh/PaystackHQ/nigerialogos@master/public/logos/smile/smile.svg",
-  spectranet: "https://cdn.jsdelivr.net/gh/PaystackHQ/nigerialogos@master/public/logos/spectranet/spectranet.svg",
-  ipnx: "https://cdn.jsdelivr.net/gh/PaystackHQ/nigerialogos@master/public/logos/ipnx/ipnx.svg",
-  ntel: "https://cdn.jsdelivr.net/gh/PaystackHQ/nigerialogos@master/public/logos/ntel/ntel.svg",
-};
-
-function getProviderLogo(provider: Biller): string | null {
-  // Prefer a real logo supplied by the backend catalogue.
-  // This is the safest source because it is already tied to the public biller.
-  const backendLogo = cleanString(
-    provider.logo ??
-      provider.logo_url ??
-      provider.logoUrl
-  );
-
-  if (backendLogo) {
-    try {
-      const url = new URL(backendLogo);
-
-      // Never request the old guessed Simple Icons URLs that produced 404s.
-      if (
-        url.hostname !== "cdn.simpleicons.org" &&
-        (url.protocol === "https:" || url.protocol === "http:")
-      ) {
-        return url.toString();
-      }
-    } catch {
-      // Fall through to the public-name mapping below.
-    }
+function getPlanType(
+  item: BillItem
+): string {
+  if (
+    cleanString(
+      item.plan_type
+    )
+  ) {
+    return cleanString(
+      item.plan_type
+    );
   }
 
-  const key = normaliseProviderKey(
-    [
-      provider.short_name,
-      provider.name,
-      (provider as any).display_name,
-      (provider as any).displayName,
-    ]
-      .filter(Boolean)
-      .join(" ")
-  );
-
-  // Mobile networks.
-  if (key.includes("mtn")) return PROVIDER_LOGOS.mtn;
-  if (key.includes("glo") || key.includes("globacom")) return PROVIDER_LOGOS.glo;
-  if (key.includes("airtel")) return PROVIDER_LOGOS.airtel;
-  if (key.includes("9mobile") || key.includes("etisalat")) return PROVIDER_LOGOS["9mobile"];
-
-  // Cable TV / entertainment.
-  if (key.includes("dstv") || key.includes("multichoice")) return PROVIDER_LOGOS.dstv;
-  if (key.includes("gotv")) return PROVIDER_LOGOS.gotv;
-  if (key.includes("startimes") || key.includes("startime")) return PROVIDER_LOGOS.startimes;
-  if (key.includes("showmax")) return PROVIDER_LOGOS.showmax;
-
-  // Internet / ISP.
-  if (key.includes("smile")) return PROVIDER_LOGOS.smile;
-  if (key.includes("spectranet")) return PROVIDER_LOGOS.spectranet;
-  if (key.includes("ipnx")) return PROVIDER_LOGOS.ipnx;
-  if (key.includes("ntel")) return PROVIDER_LOGOS.ntel;
-
-  return null;
-}
-
-
-function getProviderDisplayName(provider: Biller): string {
-  return cleanString(provider.short_name ?? provider.name ?? "Provider");
-}
-
-function isVariableItem(item: BillItem): boolean {
-  const code = cleanString(item.item_code).toLowerCase();
-  const name = cleanString(
-    item.name ?? item.short_name ?? item.description
-  ).toLowerCase();
-
-  return (
-    code === "__variable__" ||
-    code === "variable" ||
-    code === "variable_amount" ||
-    /variable\s*amount/.test(name) ||
-    /enter\s*amount/.test(name) ||
-    /any\s*amount/.test(name)
-  );
-}
-
-function ProviderCard({
-  provider,
-  selected,
-  disabled,
-  onClick,
-}: {
-  provider: Biller;
-  selected: boolean;
-  disabled: boolean;
-  onClick: () => void;
-}) {
-  const logo = getProviderLogo(provider);
-  const name = getProviderDisplayName(provider);
-
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      title={name}
-      aria-label={`Select ${name}`}
-      className={[
-        "relative w-full min-w-0 overflow-hidden rounded-2xl border bg-white p-2.5 transition-all",
-        "hover:-translate-y-0.5 hover:border-[#082A63]/40 hover:shadow-sm",
-        selected
-          ? "border-[#082A63] bg-[#082A63]/[0.03] ring-2 ring-[#082A63]/10"
-          : "border-slate-200",
-        disabled ? "cursor-not-allowed opacity-60" : "",
-      ].join(" ")}
-    >
-      {selected && (
-        <span className="absolute right-1.5 top-1.5 z-10 flex h-5 w-5 items-center justify-center rounded-full bg-[#082A63] text-white">
-          <span className="text-[10px] font-black">✓</span>
-        </span>
-      )}
-
-      <div className="mx-auto flex h-12 w-12 items-center justify-center overflow-hidden rounded-full border border-slate-100 bg-white shadow-sm sm:h-14 sm:w-14">
-        {logo ? (
-          <img
-            src={logo}
-            alt=""
-            aria-hidden="true"
-            className="h-8 w-8 object-contain sm:h-9 sm:w-9"
-            loading="eager"
-            referrerPolicy="no-referrer"
-            onError={(event) => {
-              event.currentTarget.style.display = "none";
-              const fallback = event.currentTarget.nextElementSibling as HTMLElement | null;
-              if (fallback) fallback.style.display = "flex";
-            }}
-          />
-        ) : null}
-        <span
-          className="items-center justify-center text-sm font-extrabold text-[#082A63]"
-          style={{ display: logo ? "none" : "flex" }}
-        >
-          {name.slice(0, 2).toUpperCase()}
-        </span>
-      </div>
-
-      <p className="mt-2 truncate text-center text-[11px] font-bold text-slate-700 sm:text-xs">
-        {name}
-      </p>
-    </button>
-  );
-}
-
-function DataPlanCard({
-  item,
-  selected,
-  onClick,
-  disabled,
-}: {
-  item: BillItem;
-  selected: boolean;
-  onClick: () => void;
-  disabled: boolean;
-}) {
-  const hot = isHotDeal(item);
-  const price = numberValue(item.selling_price ?? item.amount ?? item.price);
-  const name = cleanString(item.name ?? item.short_name ?? item.data_plan ?? "Data Plan");
-  const duration = cleanString(item.validity ?? item.duration ?? (item as any).plan_period);
-
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      className={[
-        "relative min-w-0 overflow-hidden rounded-2xl border bg-white p-3 text-left transition-all sm:p-4",
-        "hover:-translate-y-0.5 hover:shadow-md",
-        selected ? "border-[#082A63] ring-2 ring-[#082A63]/10" : "border-slate-200",
-        disabled ? "cursor-not-allowed opacity-60" : "",
-      ].join(" ")}
-    >
-      {hot && (
-        <span className="absolute right-2 top-2 inline-flex items-center gap-1 rounded-full bg-orange-50 px-2 py-1 text-[9px] font-bold uppercase tracking-wide text-orange-600">
-          <Flame className="h-3 w-3" /> Hot Deal
-        </span>
-      )}
-
-      <div className="pr-14">
-        <p className="line-clamp-2 min-h-[38px] text-sm font-bold text-slate-900">
-          {name}
-        </p>
-        {duration && <p className="mt-1 truncate text-xs text-slate-500">{duration}</p>}
-      </div>
-
-      <div className="mt-4 flex min-w-0 items-end justify-between gap-2">
-        <span className="truncate text-base font-extrabold text-[#082A63] sm:text-lg">
-          {formatNaira(price)}
-        </span>
-        <span
-          className={[
-            "flex h-7 w-7 shrink-0 items-center justify-center rounded-full border",
-            selected ? "border-[#082A63] bg-[#082A63] text-white" : "border-slate-200 text-slate-400",
-          ].join(" ")}
-        >
-          {selected && <span className="text-xs font-black">✓</span>}
-        </span>
-      </div>
-    </button>
-  );
+  return isHotDeal(item)
+    ? "SME"
+    : "REGULAR";
 }
 
 // ============================================================
@@ -523,8 +286,6 @@ const ServicePayment = ({
 
   const [error, setError] = useState("");
 
-  const [dataTab, setDataTab] = useState<"HOT DEALS" | "DAILY" | "WEEKLY" | "MONTHLY" | "OTHER">("HOT DEALS");
-
   const { toast } = useToast();
 
   // ==========================================================
@@ -545,21 +306,11 @@ const ServicePayment = ({
   const isData =
     serviceType === "data";
 
-  const serviceFunction = CLUBKONNECT_SERVICES.has(serviceType)
-    ? "clubkonnect-services"
-    : "flutterwave-bills";
-
   const isAirtime =
     serviceType === "airtime";
 
   const isInternet =
     serviceType === "internet";
-
-  const isElectricity =
-    serviceType === "electricity";
-
-  const isAmountOnly =
-    isAirtime || isElectricity;
 
   // ==========================================================
   // SELECTED BILLER
@@ -602,8 +353,13 @@ const ServicePayment = ({
   // ==========================================================
 
   const dataGroups = useMemo(() => {
-    const groups: Record<"HOT DEALS" | "Daily" | "Weekly" | "Monthly" | "Other", BillItem[]> = {
-      "HOT DEALS": [],
+    const groups: Record<
+      "Daily" |
+        "Weekly" |
+        "Monthly" |
+        "Other",
+      BillItem[]
+    > = {
       Daily: [],
       Weekly: [],
       Monthly: [],
@@ -611,23 +367,13 @@ const ServicePayment = ({
     };
 
     items.forEach((item) => {
-      if (!cleanString(item.item_code) || isVariableItem(item)) return;
+      const group = getDataGroup(item);
 
-      if (isHotDeal(item)) {
-        groups["HOT DEALS"].push(item);
-        return;
-      }
-
-      groups[getDataGroup(item)].push(item);
+      groups[group].push(item);
     });
 
     return groups;
   }, [items]);
-
-  const visibleDataPlans = useMemo(() => {
-    if (dataTab === "HOT DEALS") return dataGroups["HOT DEALS"];
-    return dataGroups[dataTab === "DAILY" ? "Daily" : dataTab === "WEEKLY" ? "Weekly" : dataTab === "MONTHLY" ? "Monthly" : "Other"];
-  }, [dataGroups, dataTab]);
 
   // ==========================================================
   // CUSTOMER LABEL
@@ -709,7 +455,6 @@ const ServicePayment = ({
     setShowPinPrompt(false);
     setPaymentPin("");
     setVerifyingPin(false);
-    setDataTab("HOT DEALS");
   };
 
   // ==========================================================
@@ -725,7 +470,7 @@ const ServicePayment = ({
   // ==========================================================
 
   const loadBillers = async () => {
-    if (!category && !CLUBKONNECT_SERVICES.has(serviceType)) {
+    if (!category) {
       setBillers([]);
       return;
     }
@@ -740,11 +485,11 @@ const ServicePayment = ({
 
     try {
       const { data, error: functionError } =
-        await supabase.functions.invoke(serviceFunction, {
+        await supabase.functions.invoke("flutterwave-bills", {
           body: {
             action: "billers",
             service: serviceType,
-            ...(category ? { category } : {}),
+            category,
             country: "NG",
           },
         });
@@ -761,11 +506,9 @@ const ServicePayment = ({
 
       const loadedBillers = Array.isArray(data?.billers)
         ? data.billers
-        : Array.isArray(data?.data?.billers)
-          ? data.data.billers
-          : Array.isArray(data?.data)
-            ? data.data
-            : [];
+        : Array.isArray(data?.data)
+          ? data.data
+          : [];
 
       setBillers(loadedBillers);
 
@@ -791,10 +534,8 @@ const ServicePayment = ({
   // ==========================================================
 
   useEffect(() => {
-    if (category || CLUBKONNECT_SERVICES.has(serviceType)) {
-      void loadBillers();
-    }
-  }, [category, serviceType, serviceFunction]);
+    if (category) loadBillers();
+  }, [category]);
 
   // ==========================================================
   // LOAD ITEMS
@@ -827,13 +568,13 @@ const ServicePayment = ({
         error: functionError,
       } =
         await supabase.functions.invoke(
-          serviceFunction,
+          "flutterwave-bills",
           {
             body: {
               action: "items",
-              service: serviceType,
-              biller_code: cleanBillerCode,
-              ...(category ? { category } : {}),
+              biller_code:
+                cleanBillerCode,
+              category,
               country: "NG",
             },
           }
@@ -869,83 +610,33 @@ const ServicePayment = ({
       const loadedItems =
         Array.isArray(data?.items)
           ? data.items
-          : Array.isArray(data?.data?.items)
-            ? data.data.items
-            : Array.isArray(data?.data)
-              ? data.data
-              : [];
+          : [];
 
-      const normalizedItems = loadedItems
-        .map((item: BillItem) => {
-          const itemCode = cleanString(
-            item.item_code ??
-              (item as any).PRODUCT_ID ??
-              (item as any).product_id ??
-              (item as any).productId ??
-              (item as any).code ??
-              (item as any).id
-          );
-
-          if (!itemCode) return null;
-
-          const rawPrice =
-            item.selling_price ??
-            item.amount ??
-            (item as any).price ??
-            (item as any).PRODUCT_AMOUNT ??
-            (item as any).product_amount ??
-            (item as any).Amount;
-
-          const price = numberValue(rawPrice);
-          const variable = isVariableItem({
+      const normalizedItems =
+        loadedItems.map(
+          (item: BillItem) => ({
             ...item,
-            item_code: itemCode,
-          });
 
-          const name = cleanString(
-            item.name ??
-              item.short_name ??
-              item.data_plan ??
-              (item as any).PRODUCT_NAME ??
-              (item as any).product_name ??
-              (item as any).productName ??
-              itemCode
-          );
-
-          return {
-            ...item,
-            item_code: itemCode,
-            name,
-            amount: price,
-            selling_price: price,
-            is_variable: variable,
+            item_code:
+              item.item_code !==
+                undefined &&
+              item.item_code !== null
+                ? String(
+                    item.item_code
+                  )
+                : undefined,
 
             plan_type:
               item.plan_type ??
-              (item as any).planType ??
-              (isHotDeal(item) ? "SME" : "REGULAR"),
-            plan_period:
-              item.plan_period ??
-              (item as any).planPeriod ??
-              item.period ??
-              item.group_name ??
-              getDataGroup(item),
+              (isHotDeal(item)
+                ? "SME"
+                : "REGULAR"),
+
             is_hot_deal:
               item.is_hot_deal === true ||
               isHotDeal(item),
-          };
-        })
-        .filter(Boolean) as BillItem[];
-
-      if (isAmountOnly) {
-        const variableItem =
-          normalizedItems.find((item) => isVariableItem(item)) ??
-          normalizedItems[0];
-
-        if (variableItem?.item_code) {
-          setSelectedItemCode(cleanString(variableItem.item_code));
-        }
-      }
+          })
+        );
 
       setItems(
         normalizedItems
@@ -1218,19 +909,10 @@ const ServicePayment = ({
         return false;
       }
 
-      if (!selectedItemCode && !isAmountOnly) {
+      if (!selectedItemCode) {
         toast({
           title: "Select a package",
           description: "Please select a service package.",
-          variant: "destructive",
-        });
-        return false;
-      }
-
-      if (isAmountOnly && !selectedItemCode) {
-        toast({
-          title: "Service not ready",
-          description: "Please wait for the service options to finish loading.",
           variant: "destructive",
         });
         return false;
@@ -1746,7 +1428,7 @@ const ServicePayment = ({
                 </span>
               </div>
 
-              {selectedItem && !isAmountOnly && (
+              {selectedItem && (
                 <div className="flex items-center justify-between gap-4">
                   <span className="text-sm text-gray-600">
                     Package
@@ -1900,145 +1582,359 @@ const ServicePayment = ({
 
           <div className="bg-white rounded-2xl shadow-sm border p-5 sm:p-6">
 
-            {/* PROVIDER */}
+            {/* WALLET */}
 
-            <div className="mb-5 space-y-2">
-              <div className="flex items-center justify-between">
-                <Label>{isAirtime || isData ? "Network" : "Provider"}</Label>
+            <div className="bg-green-50 border border-green-100 p-4 rounded-xl mb-5">
 
-                {!loadingBillers && !processingPayment && !verifyingPin && (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => void loadBillers()}
-                    className="h-7 px-2"
-                  >
-                    <RefreshCw className="mr-1 h-3.5 w-3.5" /> Refresh
-                  </Button>
-                )}
-              </div>
+              <p className="text-sm text-green-700">
+                Wallet Balance:{" "}
+                <strong>
+                  {formatNaira(
+                    Number(
+                      walletBalance
+                    )
+                  )}
+                </strong>
+              </p>
 
-              {loadingBillers ? (
-                <div className="flex items-center justify-center gap-2 rounded-2xl border border-dashed border-slate-200 py-8 text-sm text-slate-500">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Loading providers...
-                </div>
-              ) : billers.length ? (
-                <div className="grid w-full grid-cols-4 gap-2 sm:grid-cols-5 sm:gap-3 md:grid-cols-6">
-                  {billers.map((biller, index) => {
-                    const code = cleanString(biller.biller_code);
-                    if (!code) return null;
-                    return (
-                      <ProviderCard
-                        key={`${code}-${index}`}
-                        provider={biller}
-                        selected={code === selectedBillerCode}
-                        disabled={processingPayment || verifyingPin}
-                        onClick={() => void handleBillerChange(code)}
-                      />
-                    );
-                  })}
-                </div>
-              ) : (
-                <div className="rounded-2xl border border-dashed border-slate-200 p-5 text-center">
-                  <p className="text-sm text-slate-500">No providers are currently available.</p>
-                  <Button type="button" variant="outline" size="sm" className="mt-3" onClick={() => void loadBillers()}>
-                    <RefreshCw className="mr-2 h-4 w-4" /> Retry
-                  </Button>
-                </div>
-              )}
             </div>
 
-            {/* DATA / PACKAGE */}
+            {/* PROVIDER */}
+            {/* LOADING BILLERS */}
 
-            {selectedBillerCode && isData && (
-              <div className="mb-5 space-y-4">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <Label>Data Plan</Label>
-                    <p className="mt-1 text-xs text-gray-500">Choose from Hot Deals, Daily, Weekly, Monthly or Other plans.</p>
-                  </div>
-                  {loadingItems && <Loader2 className="h-4 w-4 animate-spin text-[#082A63]" />}
-                </div>
+            {loadingBillers && (
+              <div className="flex items-center justify-center gap-2 py-4 text-sm text-gray-500">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Loading networks and billers...
+              </div>
+            )}
 
-                <div className="flex max-w-full gap-2 overflow-x-auto pb-1">
-                  {(["HOT DEALS", "DAILY", "WEEKLY", "MONTHLY", "OTHER"] as const).map((tab) => {
-                    const count = dataGroups[tab === "HOT DEALS" ? "HOT DEALS" : tab === "DAILY" ? "Daily" : tab === "WEEKLY" ? "Weekly" : tab === "MONTHLY" ? "Monthly" : "Other"].length;
+            {/* BILLER / NETWORK */}
+
+            <div className="space-y-2 mb-5">
+
+              <div className="flex items-center justify-between">
+
+                <Label>
+                  {isAirtime || isData ? "Network" : "Provider"}
+                </Label>
+
+                {!loadingBillers &&
+                  !processingPayment &&
+                  !verifyingPin && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() =>
+                        loadBillers()
+                      }
+                      className="h-7 px-2"
+                    >
+                      <RefreshCw className="h-3.5 w-3.5 mr-1" />
+                      Refresh
+                    </Button>
+                  )}
+
+              </div>
+
+              <select
+                value={
+                  selectedBillerCode
+                }
+                onChange={(
+                  event
+                ) =>
+                  handleBillerChange(
+                    event.target.value
+                  )
+                }
+                disabled={
+                  loadingBillers ||
+                  processingPayment ||
+                  verifyingPin ||
+                  billers.length ===
+                    0
+                }
+                className="w-full h-11 rounded-md border bg-background px-3 text-sm"
+              >
+
+                <option value="">
+                  {loadingBillers
+                    ? "Loading..."
+                    : "Select network or biller"}
+                </option>
+
+                {billers.map(
+                  (
+                    biller,
+                    index
+                  ) => {
+                    const code =
+                      String(
+                        biller.biller_code ??
+                          ""
+                      );
+
+                    if (!code) {
+                      return null;
+                    }
+
                     return (
-                      <button
-                        key={tab}
-                        type="button"
-                        onClick={() => setDataTab(tab)}
-                        disabled={processingPayment || verifyingPin}
-                        className={[
-                          "shrink-0 whitespace-nowrap rounded-full border px-3 py-2 text-[11px] font-bold transition-colors",
-                          dataTab === tab
-                            ? "border-[#082A63] bg-[#082A63] text-white"
-                            : "border-slate-200 bg-white text-slate-600 hover:border-[#082A63]/30",
-                        ].join(" ")}
+                      <option
+                        key={`${code}-${index}`}
+                        value={code}
                       >
-                        {tab === "HOT DEALS" && <Flame className="mr-1 inline h-3.5 w-3.5" />}
-                        {tab} <span className="ml-1 opacity-70">({count})</span>
-                      </button>
+                        {biller.name ??
+                          biller.short_name ??
+                          code}
+                      </option>
                     );
-                  })}
+                  }
+                )}
+
+              </select>
+
+            </div>
+
+            {/* DATA */}
+
+            {isData ? (
+              <div className="space-y-4 mb-5">
+
+                <div className="flex items-center justify-between">
+
+                  <Label>
+                    Data Plan
+                  </Label>
+
+                  {loadingItems && (
+                    <div className="flex items-center gap-1 text-xs text-gray-500">
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      Loading...
+                    </div>
+                  )}
+
                 </div>
 
-                {loadingItems ? (
-                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                    {[1, 2, 3].map((n) => <div key={n} className="h-28 animate-pulse rounded-2xl bg-slate-100" />)}
-                  </div>
-                ) : visibleDataPlans.length ? (
-                  <div className="grid min-w-0 grid-cols-2 gap-3 sm:grid-cols-3">
-                    {visibleDataPlans.map((item, index) => (
-                      <DataPlanCard
-                        key={`${cleanString(item.item_code)}-${index}`}
-                        item={item}
-                        selected={cleanString(item.item_code) === selectedItemCode}
-                        onClick={() => handleDataPlanSelect(item)}
-                        disabled={processingPayment || verifyingPin}
-                      />
-                    ))}
-                  </div>
-                ) : (
-                  <div className="rounded-2xl border border-dashed p-6 text-center text-sm text-slate-500">
-                    {dataTab === "HOT DEALS" ? "No hot deals are currently available." : "No packages are currently available in this category."}
+                {!selectedBillerCode && (
+                  <div className="rounded-lg border border-dashed p-5 text-center text-sm text-gray-500">
+                    Select a network to view
+                    data plans.
                   </div>
                 )}
-              </div>
-            )}
 
-            {selectedBillerCode && !isData && !isAmountOnly && (
-              <div className="mb-5 space-y-2">
-                <Label>Package</Label>
+                {selectedBillerCode &&
+                  !loadingItems &&
+                  items.length ===
+                    0 && (
+                    <div className="rounded-lg border border-dashed p-5 text-center text-sm text-gray-500">
+                      No data plans are
+                      currently available.
+                    </div>
+                  )}
+
+                {(
+                  [
+                    "Daily",
+                    "Weekly",
+                    "Monthly",
+                    "Other",
+                  ] as const
+                ).map(
+                  (group) => {
+                    const groupItems =
+                      dataGroups[
+                        group
+                      ];
+
+                    if (
+                      groupItems.length ===
+                      0
+                    ) {
+                      return null;
+                    }
+
+                    return (
+                      <div
+                        key={group}
+                        className="space-y-2"
+                      >
+
+                        <h3 className="text-sm font-semibold text-gray-700">
+                          {group}
+                        </h3>
+
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+
+                          {groupItems.map(
+                            (
+                              item,
+                              index
+                            ) => {
+                              const code =
+                                String(
+                                  item.item_code ??
+                                    ""
+                                );
+
+                              if (
+                                !code
+                              ) {
+                                return null;
+                              }
+
+                              const sellingPrice = numberValue(
+                                item.selling_price ??
+                                  item.amount ??
+                                  item.price
+                              );
+
+                              const selected =
+                                selectedItemCode ===
+                                code;
+
+                              const hotDeal =
+                                isHotDeal(
+                                  item
+                                );
+
+                              return (
+                                <button
+                                  type="button"
+                                  key={`${code}-${index}`}
+                                  onClick={() =>
+                                    handleDataPlanSelect(
+                                      item
+                                    )
+                                  }
+                                  disabled={
+                                    processingPayment ||
+                                    verifyingPin
+                                  }
+                                  className={[
+                                    "relative text-left rounded-xl border p-3 transition-all",
+                                    "hover:border-green-500 hover:bg-green-50",
+                                    selected
+                                      ? "border-green-600 bg-green-50 ring-1 ring-green-600"
+                                      : "border-gray-200 bg-white",
+                                  ].join(
+                                    " "
+                                  )}
+                                >
+
+                                  {hotDeal && (
+                                    <span className="absolute -top-2 -right-2 inline-flex items-center gap-1 rounded-full bg-orange-500 text-white px-2 py-1 text-[10px] font-bold shadow-sm">
+                                      <Flame className="h-3 w-3" />
+                                      HOT DEAL
+                                    </span>
+                                  )}
+
+                                  <p className="text-sm font-medium text-gray-900 line-clamp-2">
+                                    {item.name ??
+                                      item.short_name ??
+                                      "Data Plan"}
+                                  </p>
+
+                                  {item.plan_type && (
+                                    <p className="text-[10px] text-gray-500 mt-1 uppercase">
+                                      {item.plan_type}
+                                    </p>
+                                  )}
+
+                                  <p className="text-base font-bold text-green-700 mt-2">
+                                    {formatNaira(
+                                      sellingPrice
+                                    )}
+                                  </p>
+
+                                </button>
+                              );
+                            }
+                          )}
+
+                        </div>
+
+                      </div>
+                    );
+                  }
+                )}
+
+              </div>
+            ) : (
+
+              /* =================================================
+                 NON-DATA PACKAGE
+                 ================================================= */
+
+              <div className="space-y-2 mb-5">
+
+                <Label>
+                  {isAirtime
+                    ? "Airtime Type"
+                    : "Bill Package"}
+                </Label>
+
                 <select
-                  value={selectedItemCode}
-                  onChange={(event) => {
-                    const code = event.target.value;
-                    setSelectedItemCode(code);
-                    const item = items.find((entry) => cleanString(entry.item_code) === code);
-                    setAmount(item ? String(numberValue(item.selling_price ?? item.amount ?? item.price)) : "");
-                    setError("");
-                  }}
-                  disabled={loadingItems || processingPayment || verifyingPin || !items.length}
-                  className="h-11 w-full rounded-md border bg-background px-3 text-sm"
+                  value={
+                    selectedItemCode
+                  }
+                  onChange={(
+                    event
+                  ) =>
+                    handleItemChange(
+                      event.target.value
+                    )
+                  }
+                  disabled={
+                    loadingItems ||
+                    processingPayment ||
+                    verifyingPin ||
+                    !selectedBillerCode ||
+                    items.length ===
+                      0
+                  }
+                  className="w-full h-11 rounded-md border bg-background px-3 text-sm"
                 >
-                  <option value="">{loadingItems ? "Loading packages..." : "Select package"}</option>
-                  {items.filter((item) => !isVariableItem(item)).map((item, index) => {
-                    const code = cleanString(item.item_code);
-                    if (!code) return null;
-                    return <option key={`${code}-${index}`} value={code}>{cleanString(item.name ?? item.short_name ?? code)}</option>;
-                  })}
-                </select>
-              </div>
-            )}
 
-            {selectedBillerCode && isAmountOnly && (
-              <div className="mb-5 rounded-2xl bg-slate-50 p-4 text-sm text-slate-600">
-                {isAirtime
-                  ? "Airtime is amount-based. Choose the network above, then select or enter the amount you want."
-                  : "Electricity is amount-based. Choose the provider above, then select or enter the amount you want."}
+                  <option value="">
+                    {loadingItems
+                      ? "Loading packages..."
+                      : !selectedBillerCode
+                        ? "Select network/provider first"
+                        : "Select package"}
+                  </option>
+
+                  {items.map(
+                    (
+                      item,
+                      index
+                    ) => {
+                      const code =
+                        String(
+                          item.item_code ??
+                            ""
+                        );
+
+                      if (!code) {
+                        return null;
+                      }
+
+                      return (
+                        <option
+                          key={`${code}-${index}`}
+                          value={code}
+                        >
+                          {item.name ??
+                            item.short_name ??
+                            code}
+                        </option>
+                      );
+                    }
+                  )}
+
+                </select>
+
               </div>
             )}
 
@@ -2278,7 +2174,7 @@ const ServicePayment = ({
                 processingPayment ||
                 verifyingPin ||
                 !selectedBillerCode ||
-                (!selectedItemCode && !isAmountOnly) ||
+                !selectedItemCode ||
                 !customer.trim() ||
                 !amount
               }

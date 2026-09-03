@@ -16,7 +16,6 @@ import {
   History,
   Send,
   QrCode,
-  Shield,
   Gift,
   Banknote,
   Home,
@@ -32,6 +31,8 @@ import {
   GraduationCap,
   Receipt,
   Radio,
+  PiggyBank,
+  Shield,
 } from "lucide-react";
 
 import ServiceCard from "./services/ServiceCard";
@@ -81,7 +82,8 @@ type BillService =
   | "waec"
   | "jamb"
   | "internet"
-  | "insurance";
+  | "insurance"
+  | "savings";
 
 type CurrentPage =
   | "home"
@@ -122,13 +124,13 @@ type DashboardTransaction = {
 
 /*
  * ============================================================
- * AVAILABLE CUSTOMER SERVICES
+ * SUPPORTED CUSTOMER SERVICES
  * ============================================================
  *
- * These are the services that can actually be opened.
+ * These are the services that can actually be purchased.
  *
- * Internet and Insurance are deliberately excluded because
- * they are Coming Soon.
+ * Internet, Insurance and Savings are deliberately excluded
+ * because they are Coming Soon.
  */
 
 const SUPPORTED_BILL_SERVICES: BillService[] = [
@@ -141,6 +143,18 @@ const SUPPORTED_BILL_SERVICES: BillService[] = [
   "smile",
   "waec",
   "jamb",
+];
+
+/*
+ * ============================================================
+ * COMING SOON SERVICES
+ * ============================================================
+ */
+
+const COMING_SOON_SERVICES: BillService[] = [
+  "internet",
+  "insurance",
+  "savings",
 ];
 
 /*
@@ -805,12 +819,25 @@ const Dashboard = () => {
    * SERVICES
    * ============================================================
    *
-   * Only actual customer services are displayed here.
+   * LIVE:
+   * Airtime
+   * Data
+   * Electricity
+   * Cable TV
+   * Airtime E-Pin
+   * Data E-Pin
+   * Smile
+   * WAEC
+   * JAMB
    *
-   * Internet and Insurance remain visible as Coming Soon.
+   * COMING SOON:
+   * Internet
+   * Insurance
+   * Savings
    *
-   * Betting, Gift Cards, Flight Booking, Hotel Booking and
-   * Transport have been removed completely.
+   * Other unwanted services such as betting, gift cards,
+   * flight booking, hotel booking and transport are not
+   * included.
    */
 
   const services = [
@@ -897,7 +924,9 @@ const Dashboard = () => {
     },
 
     /*
-     * Coming Soon services.
+     * ========================================================
+     * COMING SOON
+     * ========================================================
      */
 
     {
@@ -918,6 +947,15 @@ const Dashboard = () => {
       type: "insurance" as BillService,
       available: false,
     },
+    {
+      title: "Savings",
+      description:
+        "Save and grow your money",
+      icon: PiggyBank,
+      color: "bg-pink-500",
+      type: "savings" as BillService,
+      available: false,
+    },
   ];
 
   /*
@@ -930,13 +968,13 @@ const Dashboard = () => {
     service: (typeof services)[number]
   ) => {
     /*
-     * Transfer is intentionally handled by the dedicated
-     * SendMoney page and is not part of the service-payment
+     * Coming Soon services must never enter the payment
      * flow.
      */
     if (
-      service.type === "internet" ||
-      service.type === "insurance"
+      COMING_SOON_SERVICES.includes(
+        service.type
+      )
     ) {
       toast({
         title: "Coming soon",
@@ -947,6 +985,10 @@ const Dashboard = () => {
       return;
     }
 
+    /*
+     * Only the explicitly supported customer services can
+     * enter ServicePayment.
+     */
     if (
       !service.available ||
       !SUPPORTED_BILL_SERVICES.includes(
@@ -977,10 +1019,10 @@ const Dashboard = () => {
    * BILL / SERVICE PAYMENT
    * ============================================================
    *
-   * All customer services now go through the unified
+   * All customer service purchases use the unified
    * ClubKonnect service Edge Function.
    *
-   * The provider is deliberately NOT sent from the customer UI.
+   * The provider is never selected by the customer.
    */
 
   const handlePurchase = async (
@@ -1022,7 +1064,7 @@ const Dashboard = () => {
     }
 
     /*
-     * The frontend performs a friendly balance check.
+     * Friendly frontend balance check.
      *
      * The Edge Function remains responsible for the actual
      * atomic wallet debit.
@@ -1041,8 +1083,9 @@ const Dashboard = () => {
     }
 
     /*
-     * Customer details are passed through without exposing
-     * the underlying service provider.
+     * Normalize customer-facing payment details.
+     *
+     * No provider information is added here.
      */
     const paymentDetails = {
       ...details,
@@ -1065,12 +1108,18 @@ const Dashboard = () => {
 
     try {
       /*
-       * IMPORTANT:
+       * ========================================================
+       * CLUBKONNECT SERVICE REQUEST
+       * ========================================================
        *
-       * This is now the standard ClubKonnect service
-       * Edge Function.
+       * The service-specific fields are exposed at the top
+       * level as well as retained inside `details`.
        *
-       * No Flutterwave bill-payment call is made here.
+       * This makes the frontend tolerant of a standard
+       * service-function contract while keeping the complete
+       * customer details available to the Edge Function.
+       *
+       * No Flutterwave bill-payment request is made here.
        */
       const {
         data,
@@ -1081,8 +1130,77 @@ const Dashboard = () => {
           {
             body: {
               action: "purchase",
+
               service,
+
               amount,
+
+              country:
+                paymentDetails.country,
+
+              customer:
+                paymentDetails.customer,
+
+              biller_code:
+                paymentDetails.biller_code,
+
+              network_code:
+                paymentDetails.network_code,
+
+              item_code:
+                paymentDetails.item_code,
+
+              product_code:
+                paymentDetails.product_code,
+
+              variation_code:
+                paymentDetails.variation_code,
+
+              meter_type:
+                paymentDetails.meter_type,
+
+              meter_number:
+                paymentDetails.meter_number,
+
+              meter_no:
+                paymentDetails.meter_no,
+
+              smartcard_no:
+                paymentDetails.smartcard_no,
+
+              phone_no:
+                paymentDetails.phone_no,
+
+              mobile_number:
+                paymentDetails.mobile_number,
+
+              account_id:
+                paymentDetails.account_id,
+
+              data_plan:
+                paymentDetails.data_plan,
+
+              package:
+                paymentDetails.package,
+
+              electric_company:
+                paymentDetails.electric_company,
+
+              cable_tv:
+                paymentDetails.cable_tv,
+
+              exam_type:
+                paymentDetails.exam_type,
+
+              value:
+                paymentDetails.value,
+
+              quantity:
+                Number(
+                  paymentDetails.quantity ??
+                    1
+                ),
+
               details:
                 paymentDetails,
             },
@@ -1114,12 +1232,12 @@ const Dashboard = () => {
       }
 
       /*
-       * Refresh the wallet after the debit.
+       * Refresh wallet after the service transaction.
        */
       await refreshWallet();
 
       /*
-       * Refresh dashboard statistics so the new transaction
+       * Refresh dashboard statistics so the transaction
        * appears immediately.
        */
       await loadDashboardStats();
@@ -1173,7 +1291,7 @@ const Dashboard = () => {
    *
    * This remains completely separate from the service system.
    *
-   * IyanjuPay transfers must continue using SendMoney.tsx.
+   * SendMoney.tsx handles the customer-facing transfer flow.
    */
 
   const handleTransfer = async (
@@ -1449,12 +1567,23 @@ const Dashboard = () => {
         onPurchase={
           handlePurchase
         }
+        onHistory={() => {
+          setSelectedService(
+            null
+          );
+
+          setCurrentPage(
+            "history"
+          );
+        }}
       />
     );
   }
 
   /*
+   * ============================================================
    * SEND MONEY PAGE
+   * ============================================================
    */
 
   if (
@@ -1479,7 +1608,9 @@ const Dashboard = () => {
   }
 
   /*
+   * ============================================================
    * PROFILE
+   * ============================================================
    */
 
   if (
@@ -1498,7 +1629,9 @@ const Dashboard = () => {
   }
 
   /*
+   * ============================================================
    * TRANSACTION HISTORY
+   * ============================================================
    */
 
   if (
@@ -1517,7 +1650,9 @@ const Dashboard = () => {
   }
 
   /*
+   * ============================================================
    * REWARDS
+   * ============================================================
    */
 
   if (
@@ -1536,7 +1671,9 @@ const Dashboard = () => {
   }
 
   /*
+   * ============================================================
    * CARDS
+   * ============================================================
    */
 
   if (
@@ -1555,7 +1692,9 @@ const Dashboard = () => {
   }
 
   /*
+   * ============================================================
    * CUSTOMER SERVICE
+   * ============================================================
    */
 
   if (
@@ -1574,7 +1713,9 @@ const Dashboard = () => {
   }
 
   /*
+   * ============================================================
    * SUPPORT
+   * ============================================================
    */
 
   if (
@@ -1593,7 +1734,9 @@ const Dashboard = () => {
   }
 
   /*
+   * ============================================================
    * TRANSACTION LIMIT
+   * ============================================================
    */
 
   if (
@@ -1612,7 +1755,9 @@ const Dashboard = () => {
   }
 
   /*
+   * ============================================================
    * PAYMENT PIN
+   * ============================================================
    */
 
   if (
@@ -1631,7 +1776,9 @@ const Dashboard = () => {
   }
 
   /*
+   * ============================================================
    * DISPUTES
+   * ============================================================
    */
 
   if (
@@ -1650,7 +1797,9 @@ const Dashboard = () => {
   }
 
   /*
+   * ============================================================
    * ME PAGE
+   * ============================================================
    */
 
   if (

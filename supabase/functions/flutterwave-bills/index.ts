@@ -143,6 +143,24 @@ function isPendingStatus(value: unknown): boolean {
   return PENDING_STATUSES.has(normalizeStatus(value));
 }
 
+function isVariableBillItem(item: any): boolean {
+  const code = cleanString(
+    item?.item_code ?? item?.itemCode ?? item?.code ?? item?.id,
+  ).toLowerCase();
+  const name = cleanString(
+    item?.name ?? item?.short_name ?? item?.description,
+  ).toLowerCase();
+
+  return (
+    code === "__variable__" ||
+    code === "variable" ||
+    code === "variable_amount" ||
+    /variable\s*amount/.test(name) ||
+    /enter\s*amount/.test(name) ||
+    /any\s*amount/.test(name)
+  );
+}
+
 function jsonResponse(
   body: Record<string, unknown>,
   status = 200,
@@ -900,7 +918,7 @@ Deno.serve(async (req) => {
               ),
             );
 
-            if (providerAmount <= 0) {
+            if (providerAmount <= 0 && !isVariableBillItem(item)) {
               return null;
             }
 
@@ -1569,24 +1587,73 @@ Deno.serve(async (req) => {
         ),
       );
 
-      if (providerAmount <= 0) {
+      const requestedAmount = normalizeAmount(
+        firstNonEmpty(
+          body?.amount,
+          body?.selling_amount,
+          details?.amount,
+          details?.selling_amount,
+        ),
+      );
+
+      const amountBasedService =
+        service === "airtime" ||
+        service === "electricity";
+
+      if (amountBasedService) {
+        if (requestedAmount <= 0) {
+          return jsonResponse(
+            {
+              success: false,
+              error: "A valid payment amount is required.",
+            },
+            400,
+          );
+        }
+
+        const minimum = normalizeAmount(
+          firstNonEmpty(
+            selectedItem?.minimum,
+            selectedItem?.min_amount,
+            selectedItem?.minAmount,
+            selectedItem?.MINIMUM,
+          ),
+        );
+        const maximum = normalizeAmount(
+          firstNonEmpty(
+            selectedItem?.maximum,
+            selectedItem?.max_amount,
+            selectedItem?.maxAmount,
+            selectedItem?.MAXIMUM,
+          ),
+        );
+
+        if (minimum > 0 && requestedAmount < minimum) {
+          return jsonResponse(
+            { success: false, error: `Minimum amount is ${minimum}.` },
+            400,
+          );
+        }
+
+        if (maximum > 0 && requestedAmount > maximum) {
+          return jsonResponse(
+            { success: false, error: `Maximum amount is ${maximum}.` },
+            400,
+          );
+        }
+      } else if (providerAmount <= 0) {
         return jsonResponse(
           {
             success: false,
-            error:
-              "Unable to determine the bill package price.",
+            error: "Unable to determine the bill package price.",
           },
           400,
         );
       }
 
-      /*
-       * Flutterwave services handled here use the exact provider
-       * package amount. There is no ClubKonnect pricing logic in
-       * this function.
-       */
-
-      const sellingAmount = roundMoney(providerAmount);
+      const sellingAmount = roundMoney(
+        amountBasedService ? requestedAmount : providerAmount,
+      );
 
       /* --------------------------------------------------------
        * SERVICE-SPECIFIC CUSTOMER VALIDATION
@@ -1720,7 +1787,7 @@ Deno.serve(async (req) => {
             body: JSON.stringify({
               country: "NG",
               customer_id: customer,
-              amount: providerAmount,
+              amount: sellingAmount,
               type: selectedItem?.type ?? service,
               reference,
               biller_code: billerCode,

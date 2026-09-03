@@ -34,12 +34,11 @@ interface ServicePaymentProps {
   } | null;
 
   /*
-   * Kept for compatibility with the existing parent component.
-   * Wallet balance is intentionally NOT displayed or used for
-   * client-side payment authorization.
+   * Kept for parent-component compatibility.
    *
-   * The secure server-side wallet debit remains responsible for
-   * determining whether the user can afford the transaction.
+   * Wallet authorization is handled securely by the backend.
+   * This component intentionally does not display the wallet
+   * balance.
    */
   walletBalance: number;
 
@@ -50,10 +49,6 @@ interface ServicePaymentProps {
     details: Record<string, any>
   ) => Promise<void>;
 
-  /*
-   * Optional history callback. Existing callers do not need to
-   * provide this.
-   */
   onHistory?: () => void;
 }
 
@@ -75,6 +70,10 @@ interface CatalogItem {
   price?: number | string;
   cost?: number | string;
   value?: number | string;
+
+  selling_price?: number | string;
+  customer_price?: number | string;
+  final_price?: number | string;
 
   minimum?: number | string;
   maximum?: number | string;
@@ -99,7 +98,6 @@ interface CatalogItem {
 
 interface CatalogResponse {
   success?: boolean;
-
   message?: string;
   error?: string;
 
@@ -115,31 +113,9 @@ interface CatalogResponse {
 // CONSTANTS
 // ============================================================
 
-const SUPPORTED_SERVICES = new Set([
-  "airtime",
-  "data",
-  "electricity",
-  "cable",
-  "airtime-card",
-  "data-card",
-  "smile",
-  "waec",
-  "jamb",
-  "internet",
-  "insurance",
-]);
-
 const COMING_SOON_SERVICES = new Set([
   "internet",
   "insurance",
-]);
-
-const PREMIUM_SERVICES = new Set([
-  "airtime-card",
-  "data-card",
-  "smile",
-  "waec",
-  "jamb",
 ]);
 
 const DATA_TABS = [
@@ -215,6 +191,7 @@ function getCode(item: CatalogItem | null | undefined): string {
       item.variation_code ??
       item.code ??
       item.biller_code ??
+      item.company_code ??
       ""
   ).trim();
 }
@@ -235,6 +212,24 @@ function getName(item: CatalogItem | null | undefined): string {
 }
 
 function getPrice(item: CatalogItem | null | undefined): number {
+  if (!item) {
+    return 0;
+  }
+
+  return numberValue(
+    item.selling_price ??
+      item.customer_price ??
+      item.final_price ??
+      item.amount ??
+      item.price ??
+      item.cost ??
+      item.value
+  );
+}
+
+function getProviderPrice(
+  item: CatalogItem | null | undefined
+): number {
   if (!item) {
     return 0;
   }
@@ -340,17 +335,23 @@ function classifyDataTab(
     return "Monthly";
   }
 
+  /*
+   * ClubKonnect catalogue data can have plans without an
+   * explicit validity/category. Monthly is the safest
+   * fallback so the plan remains visible.
+   */
   return "Monthly";
 }
 
-function getServiceCustomerLabel(
+function getCustomerLabel(
   serviceType: string
 ): string {
   switch (serviceType) {
     case "airtime":
     case "data":
     case "smile":
-    case "airtime-card":
+    case "waec":
+    case "jamb":
       return "Phone Number";
 
     case "electricity":
@@ -359,15 +360,12 @@ function getServiceCustomerLabel(
     case "cable":
       return "Smart Card / Decoder Number";
 
-    case "waec":
-    case "jamb":
-      return "Phone Number";
-
-    case "data-card":
-      return "Phone Number";
-
     case "internet":
       return "Account Number";
+
+    case "airtime-card":
+    case "data-card":
+      return "Recipient Phone Number (Optional)";
 
     case "insurance":
       return "Customer Information";
@@ -377,15 +375,13 @@ function getServiceCustomerLabel(
   }
 }
 
-function getServiceCustomerPlaceholder(
+function getCustomerPlaceholder(
   serviceType: string
 ): string {
   switch (serviceType) {
     case "airtime":
     case "data":
     case "smile":
-    case "airtime-card":
-    case "data-card":
     case "waec":
     case "jamb":
       return "e.g. 08012345678";
@@ -396,6 +392,10 @@ function getServiceCustomerPlaceholder(
     case "cable":
       return "Enter smart card number";
 
+    case "airtime-card":
+    case "data-card":
+      return "Optional";
+
     case "internet":
       return "Enter account number";
 
@@ -404,7 +404,7 @@ function getServiceCustomerPlaceholder(
   }
 }
 
-function getServiceCustomerInputMode(
+function getCustomerInputMode(
   serviceType: string
 ): "numeric" | "text" {
   switch (serviceType) {
@@ -453,6 +453,9 @@ const ServicePayment = ({
 
   const [selectedMeterType, setSelectedMeterType] =
     useState("");
+
+  const [quantity, setQuantity] =
+    useState("1");
 
   const [dataTab, setDataTab] =
     useState<DataTab>("HOT");
@@ -511,7 +514,7 @@ const ServicePayment = ({
   const { toast } = useToast();
 
   // ==========================================================
-  // SERVICE
+  // SERVICE FLAGS
   // ==========================================================
 
   const serviceType =
@@ -549,27 +552,37 @@ const ServicePayment = ({
   const isJAMB =
     serviceType === "jamb";
 
+  /*
+   * E-PIN services do not require a customer phone number
+   * for the ClubKonnect purchase API.
+   */
+  const isEpin =
+    isAirtimeCard ||
+    isDataCard;
+
   const isPhoneService =
     isAirtime ||
     isData ||
     isSmile ||
-    isAirtimeCard ||
-    isDataCard ||
     isWAEC ||
     isJAMB;
 
+  const customerRequired =
+    !isEpin &&
+    !isComingSoon;
+
   const customerLabel =
-    getServiceCustomerLabel(
+    getCustomerLabel(
       serviceType
     );
 
   const customerPlaceholder =
-    getServiceCustomerPlaceholder(
+    getCustomerPlaceholder(
       serviceType
     );
 
   // ==========================================================
-  // SELECTED NETWORK / BILLER
+  // SELECTED NETWORK
   // ==========================================================
 
   const selectedNetwork = useMemo(
@@ -619,10 +632,9 @@ const ServicePayment = ({
     };
 
     items.forEach((item) => {
-      const group =
-        classifyDataTab(item);
-
-      groups[group].push(item);
+      groups[
+        classifyDataTab(item)
+      ].push(item);
     });
 
     return groups;
@@ -635,12 +647,13 @@ const ServicePayment = ({
   const resetForm = useCallback(() => {
     setCustomer("");
     setAmount("");
-
     setCustomAmountMode(false);
 
     setSelectedNetworkCode("");
     setSelectedItemCode("");
     setSelectedMeterType("");
+
+    setQuantity("1");
 
     setDataTab("HOT");
 
@@ -774,30 +787,18 @@ const ServicePayment = ({
               ? response.plans
               : [];
 
-        /*
-         * Airtime has no package catalogue.
-         * Its network catalogue is still useful, while the
-         * amount is selected separately.
-         */
-        if (
-          isAirtime ||
-          isAirtimeCard
-        ) {
-          setNetworks(
-            loadedNetworks
-          );
-          setItems(
-            loadedItems
-          );
-        } else {
-          setNetworks(
-            loadedNetworks
-          );
-          setItems(
-            loadedItems
-          );
-        }
+        setNetworks(
+          loadedNetworks
+        );
 
+        setItems(
+          loadedItems
+        );
+
+        /*
+         * Some services such as electricity may have their
+         * catalogue handled dynamically by the backend.
+         */
         if (
           loadedNetworks.length === 0 &&
           loadedItems.length === 0 &&
@@ -817,7 +818,9 @@ const ServicePayment = ({
           err?.message ||
           "Unable to load service options.";
 
-        setCatalogError(message);
+        setCatalogError(
+          message
+        );
 
         toast({
           title:
@@ -835,8 +838,6 @@ const ServicePayment = ({
       service,
       serviceType,
       isComingSoon,
-      isAirtime,
-      isAirtimeCard,
       isElectricity,
       toast,
     ]);
@@ -862,7 +863,7 @@ const ServicePayment = ({
   ]);
 
   // ==========================================================
-  // LOAD ITEMS FOR NETWORK / BILLER
+  // LOAD ITEMS FOR NETWORK
   // ==========================================================
 
   const loadItemsForNetwork =
@@ -886,28 +887,25 @@ const ServicePayment = ({
         setMeterName("");
         setMeterVerified(false);
 
-        if (
-          !code
-        ) {
+        if (!code) {
           setItems([]);
           return;
         }
 
         /*
-         * Electricity and Airtime don't need the same
-         * package-loading behaviour as Data/Cable/etc.
+         * Airtime is amount-based and does not require a
+         * package catalogue.
          */
-        if (
-          isAirtime
-        ) {
+        if (isAirtime) {
           setItems([]);
           return;
         }
 
-        if (
-          isElectricity &&
-          items.length > 0
-        ) {
+        /*
+         * Electricity company selection does not require
+         * loading a package list here.
+         */
+        if (isElectricity) {
           return;
         }
 
@@ -919,10 +917,8 @@ const ServicePayment = ({
             await invokeService({
               action: "catalog",
               service: serviceType,
-              network_code:
-                code,
-              biller_code:
-                code,
+              network_code: code,
+              biller_code: code,
             });
 
           const loadedItems =
@@ -936,17 +932,23 @@ const ServicePayment = ({
                 ? response.plans
                 : [];
 
-          /*
-           * Some catalogues are returned with their network
-           * already embedded. Only replace the current list
-           * when the function actually supplied items.
-           */
           if (
             loadedItems.length > 0
           ) {
             setItems(
               loadedItems
             );
+          } else {
+            /*
+             * Do not erase an already-loaded catalogue if
+             * the backend returned no filtered list.
+             */
+            toast({
+              title:
+                "No packages found",
+              description:
+                "No packages are currently available for this selection.",
+            });
           }
         } catch (err: any) {
           console.error(
@@ -979,7 +981,6 @@ const ServicePayment = ({
         serviceType,
         isAirtime,
         isElectricity,
-        items.length,
         toast,
       ]
     );
@@ -993,7 +994,8 @@ const ServicePayment = ({
   ) => {
     if (
       processingPayment ||
-      verifyingPin
+      verifyingPin ||
+      verifyingMeter
     ) {
       return;
     }
@@ -1002,6 +1004,32 @@ const ServicePayment = ({
       value
     );
   };
+
+  // ==========================================================
+  // ITEM PRICE
+  // ==========================================================
+
+  const getSellingPriceForItem =
+    useCallback(
+      (
+        item: CatalogItem | null
+      ): number => {
+        if (!item) {
+          return 0;
+        }
+
+        return numberValue(
+          item.selling_price ??
+            item.customer_price ??
+            item.final_price ??
+            item.amount ??
+            item.price ??
+            item.cost ??
+            item.value
+        );
+      },
+      []
+    );
 
   // ==========================================================
   // DATA PLAN
@@ -1033,11 +1061,13 @@ const ServicePayment = ({
       return;
     }
 
-    const providerPrice =
-      getPrice(item);
+    const sellingPrice =
+      getSellingPriceForItem(
+        item
+      );
 
     if (
-      providerPrice <= 0
+      sellingPrice <= 0
     ) {
       toast({
         title:
@@ -1054,20 +1084,6 @@ const ServicePayment = ({
     setSelectedItemCode(
       code
     );
-
-    /*
-     * The Edge Function is the authoritative pricing layer.
-     * If the catalogue exposes selling_price, use it.
-     * Otherwise fall back to provider price because the
-     * server will still validate the actual amount.
-     */
-    const sellingPrice =
-      numberValue(
-        item.selling_price ??
-          item.customer_price ??
-          item.final_price ??
-          providerPrice
-      );
 
     setAmount(
       String(
@@ -1100,12 +1116,44 @@ const ServicePayment = ({
       value
     );
 
-    setAmount("");
     setCustomAmountMode(
       false
     );
 
     setError("");
+
+    const item =
+      items.find(
+        (entry) =>
+          getCode(entry) ===
+          value
+      );
+
+    /*
+     * Fixed-price ClubKonnect products such as Smile,
+     * WAEC, JAMB and Data E-PIN must automatically populate
+     * the payment amount.
+     */
+    if (
+      item
+    ) {
+      const price =
+        getSellingPriceForItem(
+          item
+        );
+
+      if (
+        price > 0
+      ) {
+        setAmount(
+          String(price)
+        );
+      } else {
+        setAmount("");
+      }
+    } else {
+      setAmount("");
+    }
   };
 
   // ==========================================================
@@ -1216,16 +1264,22 @@ const ServicePayment = ({
           await invokeService({
             action:
               "verify_meter",
+
             service:
               "electricity",
+
             electric_company:
               selectedNetworkCode,
+
             biller_code:
               selectedNetworkCode,
+
             meter_type:
               selectedMeterType,
+
             meter_number:
               meter,
+
             meter_no:
               meter,
           });
@@ -1299,7 +1353,7 @@ const ServicePayment = ({
     Number(amount);
 
   const selectedProviderPrice =
-    getPrice(
+    getProviderPrice(
       selectedItem
     );
 
@@ -1314,11 +1368,14 @@ const ServicePayment = ({
     );
 
   const selectedSellingPrice =
-    numberValue(
-      selectedItem?.selling_price ??
-        selectedItem?.customer_price ??
-        selectedItem?.final_price ??
-        selectedProviderPrice
+    getSellingPriceForItem(
+      selectedItem
+    );
+
+  const quantityNumber =
+    Math.max(
+      1,
+      Number(quantity) || 1
     );
 
   // ==========================================================
@@ -1333,7 +1390,7 @@ const ServicePayment = ({
       : customer.trim();
 
   // ==========================================================
-  // SERVICE REQUIRES ITEM
+  // SERVICE REQUIREMENTS
   // ==========================================================
 
   const requiresItem =
@@ -1359,9 +1416,7 @@ const ServicePayment = ({
 
   const validateForm =
     (): boolean => {
-      if (
-        !service
-      ) {
+      if (!service) {
         return false;
       }
 
@@ -1409,7 +1464,11 @@ const ServicePayment = ({
         return false;
       }
 
+      /*
+       * E-PIN services do not require a customer number.
+       */
       if (
+        customerRequired &&
         !finalCustomer
       ) {
         toast({
@@ -1477,21 +1536,28 @@ const ServicePayment = ({
       }
 
       /*
-       * Fixed-price catalogue products must match the
-       * server-provided selling price.
+       * Fixed-price services must use the catalogue price.
        */
+      const fixedPriceService =
+        isData ||
+        isDataCard ||
+        isSmile ||
+        isCable ||
+        isWAEC ||
+        isJAMB;
+
       if (
-        isData &&
+        fixedPriceService &&
         selectedItem
       ) {
         if (
-          selectedProviderPrice <= 0
+          selectedSellingPrice <= 0
         ) {
           toast({
             title:
-              "Invalid data plan",
+              "Invalid service price",
             description:
-              "The selected plan has no valid provider price.",
+              "The selected service option has no valid price.",
             variant:
               "destructive",
           });
@@ -1500,7 +1566,6 @@ const ServicePayment = ({
         }
 
         if (
-          selectedSellingPrice > 0 &&
           Math.abs(
             amountNumber -
               selectedSellingPrice
@@ -1508,9 +1573,9 @@ const ServicePayment = ({
         ) {
           toast({
             title:
-              "Invalid data price",
+              "Invalid service price",
             description:
-              `This plan costs ${formatNaira(
+              `This service costs ${formatNaira(
                 selectedSellingPrice
               )}.`,
             variant:
@@ -1523,6 +1588,7 @@ const ServicePayment = ({
 
       if (
         !isData &&
+        !fixedPriceService &&
         selectedMinimum > 0 &&
         amountNumber <
           selectedMinimum
@@ -1543,6 +1609,7 @@ const ServicePayment = ({
 
       if (
         !isData &&
+        !fixedPriceService &&
         selectedMaximum > 0 &&
         amountNumber >
           selectedMaximum
@@ -1554,6 +1621,24 @@ const ServicePayment = ({
             `Maximum amount is ${formatNaira(
               selectedMaximum
             )}.`,
+          variant:
+            "destructive",
+        });
+
+        return false;
+      }
+
+      if (
+        (isAirtimeCard ||
+          isDataCard) &&
+        (quantityNumber < 1 ||
+          quantityNumber > 100)
+      ) {
+        toast({
+          title:
+            "Invalid quantity",
+          description:
+            "E-PIN quantity must be between 1 and 100.",
           variant:
             "destructive",
         });
@@ -1589,9 +1674,6 @@ const ServicePayment = ({
         customer_id:
           finalCustomer,
 
-        customerLabel:
-          customerLabel,
-
         selling_amount:
           amountNumber,
 
@@ -1602,6 +1684,9 @@ const ServicePayment = ({
           selectedItemCode,
 
         product_code:
+          selectedItemCode,
+
+        variation_code:
           selectedItemCode,
 
         network_code:
@@ -1653,12 +1738,15 @@ const ServicePayment = ({
           getName(
             selectedItem
           ),
+
+        quantity:
+          quantityNumber,
       };
 
-      /*
-       * Airtime is an amount-based service rather than a
-       * package-based service.
-       */
+      // --------------------------------------------------------
+      // AIRTIME
+      // --------------------------------------------------------
+
       if (
         isAirtime
       ) {
@@ -1666,38 +1754,181 @@ const ServicePayment = ({
           amountNumber;
       }
 
-      /*
-       * E-PIN quantity defaults to one.
-       */
+      // --------------------------------------------------------
+      // AIRTIME E-PIN
+      // --------------------------------------------------------
+
       if (
-        isAirtimeCard ||
-        isDataCard
+        isAirtimeCard
       ) {
-        details.quantity = 1;
+        details.value =
+          amountNumber;
+
+        details.quantity =
+          quantityNumber;
+
+        details.network_code =
+          selectedNetworkCode;
+
+        details.mobile_network =
+          selectedNetworkCode;
       }
 
-      /*
-       * Smile uses its service account / phone identifier.
-       */
+      // --------------------------------------------------------
+      // DATA E-PIN
+      // --------------------------------------------------------
+
+      if (
+        isDataCard
+      ) {
+        details.data_plan =
+          selectedItemCode;
+
+        details.quantity =
+          quantityNumber;
+
+        details.network_code =
+          selectedNetworkCode;
+
+        details.mobile_network =
+          selectedNetworkCode;
+      }
+
+      // --------------------------------------------------------
+      // DATA
+      // --------------------------------------------------------
+
+      if (
+        isData
+      ) {
+        details.data_plan =
+          selectedItemCode;
+
+        details.dataPlan =
+          selectedItemCode;
+
+        details.mobile_network =
+          selectedNetworkCode;
+      }
+
+      // --------------------------------------------------------
+      // SMILE
+      // --------------------------------------------------------
+
       if (
         isSmile
       ) {
+        /*
+         * ClubKonnect uses smile-direct for the Smile
+         * MobileNetwork parameter.
+         */
+        details.network_code =
+          "smile-direct";
+
+        details.mobile_network =
+          "smile-direct";
+
         details.account_id =
           finalCustomer;
+
         details.mobile_number =
+          finalCustomer;
+
+        details.data_plan =
+          selectedItemCode;
+      }
+
+      // --------------------------------------------------------
+      // ELECTRICITY
+      // --------------------------------------------------------
+
+      if (
+        isElectricity
+      ) {
+        details.electric_company =
+          selectedNetworkCode;
+
+        details.company_code =
+          selectedNetworkCode;
+
+        details.meter_type =
+          selectedMeterType;
+
+        details.meter_number =
+          finalCustomer;
+
+        details.meter_no =
+          finalCustomer;
+
+        details.amount =
+          amountNumber;
+      }
+
+      // --------------------------------------------------------
+      // CABLE TV
+      // --------------------------------------------------------
+
+      if (
+        isCable
+      ) {
+        details.cable_tv =
+          selectedNetworkCode;
+
+        details.cable_code =
+          selectedNetworkCode;
+
+        details.package =
+          selectedItemCode;
+
+        details.package_code =
+          selectedItemCode;
+
+        details.smartcard_number =
+          finalCustomer;
+
+        details.smartCardNumber =
+          finalCustomer;
+
+        details.amount =
+          amountNumber;
+      }
+
+      // --------------------------------------------------------
+      // WAEC
+      // --------------------------------------------------------
+
+      if (
+        isWAEC
+      ) {
+        details.exam_type =
+          selectedItemCode;
+
+        details.examType =
+          selectedItemCode;
+
+        details.phone =
+          finalCustomer;
+
+        details.phoneNumber =
           finalCustomer;
       }
 
-      /*
-       * WAEC/JAMB use the supplied phone number for
-       * notification and service purchase.
-       */
+      // --------------------------------------------------------
+      // JAMB
+      // --------------------------------------------------------
+
       if (
-        isWAEC ||
         isJAMB
       ) {
+        details.exam_type =
+          selectedItemCode;
+
+        details.examType =
+          selectedItemCode;
+
         details.phone =
           finalCustomer;
+
         details.phoneNumber =
           finalCustomer;
       }
@@ -1838,7 +2069,7 @@ const ServicePayment = ({
             service:
               serviceType,
 
-            selling_amount:
+            amount:
               amountNumber,
 
             network_code:
@@ -1849,12 +2080,16 @@ const ServicePayment = ({
 
             customer:
               finalCustomer,
+
+            quantity:
+              quantityNumber,
           }
         );
 
         /*
-         * The parent payment flow remains responsible for
-         * invoking the secure service-payment transaction.
+         * Dashboard owns the actual service-payment
+         * invocation. This keeps ServicePayment focused on
+         * UI, validation and secure PIN confirmation.
          */
         await onPurchase(
           amountNumber,
@@ -2058,6 +2293,7 @@ const ServicePayment = ({
                 className="text-white hover:bg-white/20 shrink-0"
               >
                 <History className="h-4 w-4 mr-1.5" />
+
                 <span className="hidden sm:inline">
                   History
                 </span>
@@ -2149,15 +2385,29 @@ const ServicePayment = ({
                 </div>
               )}
 
-              <div className="flex items-center justify-between gap-4">
-                <span className="text-sm text-gray-600">
-                  {customerLabel}
-                </span>
+              {quantityNumber > 1 && (
+                <div className="flex items-center justify-between gap-4">
+                  <span className="text-sm text-gray-600">
+                    Quantity
+                  </span>
 
-                <span className="text-sm font-medium text-gray-900 text-right break-all">
-                  {finalCustomer}
-                </span>
-              </div>
+                  <span className="text-sm font-medium text-gray-900">
+                    {quantityNumber}
+                  </span>
+                </div>
+              )}
+
+              {customerRequired && (
+                <div className="flex items-center justify-between gap-4">
+                  <span className="text-sm text-gray-600">
+                    {customerLabel}
+                  </span>
+
+                  <span className="text-sm font-medium text-gray-900 text-right break-all">
+                    {finalCustomer}
+                  </span>
+                </div>
+              )}
 
               {meterVerified &&
                 meterName && (
@@ -2356,8 +2606,7 @@ const ServicePayment = ({
                   }
                   onChange={(event) =>
                     handleNetworkChange(
-                      event.target
-                        .value
+                      event.target.value
                     )
                   }
                   disabled={
@@ -2366,8 +2615,7 @@ const ServicePayment = ({
                     processingPayment ||
                     verifyingPin ||
                     verifyingMeter ||
-                    networks.length ===
-                      0
+                    networks.length === 0
                   }
                   className="w-full h-11 rounded-md border bg-background px-3 text-sm"
                 >
@@ -2375,7 +2623,11 @@ const ServicePayment = ({
                   <option value="">
                     {catalogLoading
                       ? "Loading..."
-                      : "Select option"}
+                      : isElectricity
+                        ? "Select electricity company"
+                        : isCable
+                          ? "Select TV service"
+                          : "Select network"}
                   </option>
 
                   {networks.map(
@@ -2427,8 +2679,7 @@ const ServicePayment = ({
                   }
                   onChange={(event) => {
                     setSelectedMeterType(
-                      event.target
-                        .value
+                      event.target.value
                     );
 
                     setMeterVerified(
@@ -2537,7 +2788,8 @@ const ServicePayment = ({
                   dataGroups[
                     dataTab
                   ].length === 0 &&
-                  !itemsLoading && (
+                  !itemsLoading &&
+                  items.length > 0 && (
                     <div className="rounded-lg border border-dashed p-5 text-center text-sm text-gray-500">
                       No {dataTab.toLowerCase()} plans
                       are currently available.
@@ -2562,17 +2814,9 @@ const ServicePayment = ({
                         return null;
                       }
 
-                      const providerPrice =
-                        getPrice(
-                          item
-                        );
-
                       const sellingPrice =
-                        numberValue(
-                          item.selling_price ??
-                            item.customer_price ??
-                            item.final_price ??
-                            providerPrice
+                        getSellingPriceForItem(
+                          item
                         );
 
                       const selected =
@@ -2646,11 +2890,13 @@ const ServicePayment = ({
                         ? "Package"
                         : isSmile
                           ? "Data Package"
-                          : isWAEC
-                            ? "WAEC Service"
-                            : isJAMB
-                              ? "JAMB Service"
-                              : "Service Option"}
+                          : isDataCard
+                            ? "Data E-PIN"
+                            : isWAEC
+                              ? "WAEC Service"
+                              : isJAMB
+                                ? "JAMB Service"
+                                : "Service Option"}
                     </Label>
 
                     {itemsLoading && (
@@ -2668,8 +2914,7 @@ const ServicePayment = ({
                     }
                     onChange={(event) =>
                       handleItemChange(
-                        event.target
-                          .value
+                        event.target.value
                       )
                     }
                     disabled={
@@ -2680,8 +2925,7 @@ const ServicePayment = ({
                         requiresNetwork &&
                         !selectedNetworkCode
                       ) ||
-                      items.length ===
-                        0
+                      items.length === 0
                     }
                     className="w-full h-11 rounded-md border bg-background px-3 text-sm"
                   >
@@ -2711,6 +2955,11 @@ const ServicePayment = ({
                           return null;
                         }
 
+                        const price =
+                          getSellingPriceForItem(
+                            item
+                          );
+
                         return (
                           <option
                             key={`${code}-${index}`}
@@ -2719,13 +2968,9 @@ const ServicePayment = ({
                             {getName(
                               item
                             )}
-                            {getPrice(
-                              item
-                            ) > 0
+                            {price > 0
                               ? ` — ${formatNaira(
-                                  getPrice(
-                                    item
-                                  )
+                                  price
                                 )}`
                               : ""}
                           </option>
@@ -2739,7 +2984,7 @@ const ServicePayment = ({
               )}
 
             {/* =================================================
-                AIRTIME / E-PIN AMOUNT
+                AIRTIME / AIRTIME E-PIN AMOUNT
             ================================================== */}
 
             {(isAirtime ||
@@ -2821,8 +3066,7 @@ const ServicePayment = ({
                     value={amount}
                     onChange={(event) =>
                       setAmount(
-                        event.target
-                          .value
+                        event.target.value
                       )
                     }
                     placeholder="Enter amount"
@@ -2838,7 +3082,44 @@ const ServicePayment = ({
             )}
 
             {/* =================================================
-                DATA E-PIN
+                E-PIN QUANTITY
+            ================================================== */}
+
+            {isEpin && (
+              <div className="space-y-2 mb-5">
+
+                <Label>
+                  Quantity
+                </Label>
+
+                <Input
+                  type="number"
+                  min="1"
+                  max="100"
+                  step="1"
+                  value={quantity}
+                  onChange={(event) => {
+                    setQuantity(
+                      event.target.value
+                    );
+                  }}
+                  disabled={
+                    processingPayment ||
+                    verifyingPin
+                  }
+                  placeholder="1"
+                />
+
+                <p className="text-xs text-gray-500">
+                  Enter the number of E-PINs you want
+                  to purchase. Maximum quantity is 100.
+                </p>
+
+              </div>
+            )}
+
+            {/* =================================================
+                DATA E-PIN INFORMATION
             ================================================== */}
 
             {isDataCard && (
@@ -2849,9 +3130,9 @@ const ServicePayment = ({
                 </p>
 
                 <p className="text-xs text-gray-600 mt-1">
-                  Select the E-PIN package above.
-                  The applicable price is determined
-                  from the service catalogue.
+                  Select the network and E-PIN package.
+                  The applicable price comes from the
+                  service catalogue.
                 </p>
 
               </div>
@@ -2861,57 +3142,92 @@ const ServicePayment = ({
                 CUSTOMER
             ================================================== */}
 
-            <div className="space-y-2 mb-5">
+            {customerRequired && (
+              <div className="space-y-2 mb-5">
 
-              <Label htmlFor="serviceCustomer">
-                {customerLabel}
-              </Label>
+                <Label htmlFor="serviceCustomer">
+                  {customerLabel}
+                </Label>
 
-              <Input
-                id="serviceCustomer"
-                value={customer}
-                onChange={(event) => {
-                  setCustomer(
-                    event.target
-                      .value
-                  );
-
-                  if (
-                    isElectricity
-                  ) {
-                    setMeterVerified(
-                      false
+                <Input
+                  id="serviceCustomer"
+                  value={customer}
+                  onChange={(event) => {
+                    setCustomer(
+                      event.target.value
                     );
 
-                    setMeterName(
-                      ""
-                    );
+                    if (
+                      isElectricity
+                    ) {
+                      setMeterVerified(
+                        false
+                      );
+
+                      setMeterName(
+                        ""
+                      );
+                    }
+                  }}
+                  placeholder={
+                    customerPlaceholder
                   }
-                }}
-                placeholder={
-                  customerPlaceholder
-                }
-                disabled={
-                  processingPayment ||
-                  verifyingPin ||
-                  verifyingMeter
-                }
-                inputMode={
-                  getServiceCustomerInputMode(
-                    serviceType
-                  )
-                }
-              />
+                  disabled={
+                    processingPayment ||
+                    verifyingPin ||
+                    verifyingMeter
+                  }
+                  inputMode={
+                    getCustomerInputMode(
+                      serviceType
+                    )}
+                />
 
-              {isPhoneService && (
+                {isPhoneService && (
+                  <p className="text-xs text-gray-500">
+                    Nigerian numbers are accepted
+                    in 080..., 234... or +234...
+                    format.
+                  </p>
+                )}
+
+              </div>
+            )}
+
+            {/* =================================================
+                E-PIN OPTIONAL RECIPIENT
+            ================================================== */}
+
+            {isEpin && (
+              <div className="space-y-2 mb-5">
+
+                <Label htmlFor="epinRecipient">
+                  Recipient Phone Number (Optional)
+                </Label>
+
+                <Input
+                  id="epinRecipient"
+                  value={customer}
+                  onChange={(event) => {
+                    setCustomer(
+                      event.target.value
+                    );
+                  }}
+                  placeholder="e.g. 08012345678"
+                  disabled={
+                    processingPayment ||
+                    verifyingPin
+                  }
+                  inputMode="numeric"
+                />
+
                 <p className="text-xs text-gray-500">
-                  Nigerian numbers are accepted
-                  in 080..., 234... or +234...
-                  format.
+                  This is optional. The E-PIN will be
+                  generated even if you leave this blank.
                 </p>
-              )}
 
-            </div>
+              </div>
+            )}
 
             {/* =================================================
                 ELECTRICITY VERIFY
@@ -3025,7 +3341,7 @@ const ServicePayment = ({
               )}
 
             {/* =================================================
-                BILL / ELECTRICITY AMOUNT
+                BILL / ELECTRICITY / CABLE AMOUNT
             ================================================== */}
 
             {(isElectricity ||
@@ -3099,8 +3415,7 @@ const ServicePayment = ({
                     value={amount}
                     onChange={(event) =>
                       setAmount(
-                        event.target
-                          .value
+                        event.target.value
                       )
                     }
                     placeholder="Enter amount"
@@ -3210,7 +3525,10 @@ const ServicePayment = ({
                 processingPayment ||
                 verifyingPin ||
                 verifyingMeter ||
-                !customer.trim() ||
+                (
+                  customerRequired &&
+                  !customer.trim()
+                ) ||
                 !amount ||
                 (
                   requiresNetwork &&

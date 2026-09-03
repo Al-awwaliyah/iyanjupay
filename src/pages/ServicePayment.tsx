@@ -8,7 +8,6 @@ import React, {
 import {
   ArrowLeft,
   CheckCircle2,
-  ChevronDown,
   Clock3,
   History,
   Loader2,
@@ -24,11 +23,10 @@ import {
 import { supabase } from "@/integrations/supabase/client";
 
 import { Button } from "@/components/ui/button";
+
 import {
   Card,
   CardContent,
-  CardHeader,
-  CardTitle,
 } from "@/components/ui/card";
 
 import { Input } from "@/components/ui/input";
@@ -66,8 +64,8 @@ interface ServicePaymentProps {
   service: Service | null;
 
   /*
-   * Kept for compatibility with Dashboard.
-   * The wallet balance is deliberately NOT displayed in this UI.
+   * Kept for Dashboard compatibility.
+   * The wallet balance is intentionally not displayed here.
    */
   walletBalance: number;
 
@@ -96,10 +94,23 @@ interface CatalogueItem {
   code: string;
   name: string;
 
-  provider_price?: number;
+  /*
+   * Backend contract:
+   *
+   * providerPrice = actual ClubKonnect/provider cost
+   * price         = customer-facing selling price
+   */
+  providerPrice?: number;
   price?: number;
-  amount?: number;
+
+  /*
+   * Legacy/alternate response names retained for compatibility.
+   */
+  provider_price?: number;
+  provider_amount?: number;
   selling_price?: number;
+  sellingPrice?: number;
+  amount?: number;
 
   value?: number | string;
   quantity?: number;
@@ -108,9 +119,21 @@ interface CatalogueItem {
   biller_code?: string;
   code2?: string;
 
+  product_code?: string;
+  variation_code?: string;
+  plan_code?: string;
+  package_code?: string;
+
   category?: string;
+  category_name?: string;
   tab?: string;
+  type?: string;
   validity?: string;
+
+  title?: string;
+  plan_name?: string;
+  package_name?: string;
+  label?: string;
 
   [key: string]: any;
 }
@@ -146,6 +169,8 @@ interface VerificationResponse {
 /* -------------------------------------------------------------------------- */
 /* CONSTANTS                                                                  */
 /* -------------------------------------------------------------------------- */
+
+const CLUBKONNECT_FUNCTION = "clubkonnect-services";
 
 const COMING_SOON_SERVICES = new Set([
   "internet",
@@ -253,7 +278,9 @@ function cleanPhone(value: string): string {
 }
 
 function getItemCode(item: CatalogueItem | null): string {
-  if (!item) return "";
+  if (!item) {
+    return "";
+  }
 
   return String(
     item.code ??
@@ -262,12 +289,15 @@ function getItemCode(item: CatalogueItem | null): string {
       item.product_code ??
       item.variation_code ??
       item.plan_code ??
+      item.package_code ??
       ""
   ).trim();
 }
 
 function getItemName(item: CatalogueItem | null): string {
-  if (!item) return "";
+  if (!item) {
+    return "";
+  }
 
   return String(
     item.name ??
@@ -279,40 +309,76 @@ function getItemName(item: CatalogueItem | null): string {
   ).trim();
 }
 
-function getItemProviderPrice(item: CatalogueItem | null): number {
-  if (!item) return 0;
+/*
+ * IMPORTANT:
+ *
+ * The current clubkonnect-services backend returns:
+ *
+ * providerPrice = provider cost
+ * price         = IyanjuPay/customer selling price
+ *
+ * Therefore we must NOT interpret price as provider cost.
+ */
+function getItemProviderPrice(
+  item: CatalogueItem | null
+): number {
+  if (!item) {
+    return 0;
+  }
 
+  const providerPrice = numericValue(
+    item.providerPrice ??
+      item.provider_price ??
+      item.provider_amount
+  );
+
+  if (providerPrice > 0) {
+    return providerPrice;
+  }
+
+  /*
+   * Older catalogue responses may not contain a separate
+   * provider price. In that case amount/value can be used.
+   *
+   * Do NOT use `price` here because current backend `price`
+   * represents the customer selling price.
+   */
   return numericValue(
-    item.provider_price ??
-      item.provider_amount ??
-      item.price ??
-      item.amount ??
+    item.amount ??
       item.value ??
       0
   );
 }
 
-function getItemSellingPrice(item: CatalogueItem | null): number {
-  if (!item) return 0;
-
-  const selling = numericValue(item.selling_price);
-
-  if (selling > 0) {
-    return selling;
-  }
-
-  const provider = getItemProviderPrice(item);
-
-  if (provider <= 0) {
+function getItemSellingPrice(
+  item: CatalogueItem | null
+): number {
+  if (!item) {
     return 0;
   }
 
-  return provider;
+  const sellingPrice = numericValue(
+    item.price ??
+      item.selling_price ??
+      item.sellingPrice
+  );
+
+  if (sellingPrice > 0) {
+    return sellingPrice;
+  }
+
+  /*
+   * If backend does not return a selling price,
+   * fall back to provider price for compatibility.
+   *
+   * The normal production response should contain `price`.
+   */
+  return getItemProviderPrice(item);
 }
 
 function normalizeNetwork(
   network: CatalogueNetwork,
-  index: number
+  index = 0
 ): CatalogueNetwork {
   const code = String(
     network.code ??
@@ -341,11 +407,15 @@ function normalizeNetwork(
 
 function normalizeItem(
   item: CatalogueItem,
-  index: number
+  index = 0
 ): CatalogueItem {
-  const code = getItemCode(item) || String(index);
+  const code =
+    getItemCode(item) ||
+    String(index);
 
-  const name = getItemName(item) || code;
+  const name =
+    getItemName(item) ||
+    code;
 
   return {
     ...item,
@@ -354,18 +424,26 @@ function normalizeItem(
   };
 }
 
-function isInvalidCustomerName(name?: string): boolean {
-  if (!name) return false;
+function isInvalidCustomerName(
+  name?: string
+): boolean {
+  if (!name) {
+    return false;
+  }
 
   return [
     "INVALID_METERNO",
     "INVALID_SMARTCARDNO",
     "INVALID_ACCOUNTNO",
     "INVALID_PROFILEID",
-  ].includes(name.trim().toUpperCase());
+  ].includes(
+    name.trim().toUpperCase()
+  );
 }
 
-function getDataTab(item: CatalogueItem): DataTab {
+function getDataTab(
+  item: CatalogueItem
+): DataTab {
   const raw = String(
     item.tab ??
       item.category ??
@@ -399,16 +477,17 @@ function getDataTab(item: CatalogueItem): DataTab {
   }
 
   /*
-   * Important:
-   * Anything that doesn't have a reliable category belongs to HOT.
-   * HOT is intentionally not a subset — it represents ALL available
-   * ClubKonnect data plans for the selected network.
+   * HOT intentionally means ALL available plans.
    */
   return "HOT";
 }
 
-function isSuccessfulResponse(response: any): boolean {
-  if (!response) return false;
+function isSuccessfulResponse(
+  response: any
+): boolean {
+  if (!response) {
+    return false;
+  }
 
   if (response.success === true) {
     return true;
@@ -438,7 +517,7 @@ function isSuccessfulResponse(response: any): boolean {
 /* COMPONENT                                                                  */
 /* -------------------------------------------------------------------------- */
 
-export default function ServicePayment({
+function ServicePayment({
   service,
   walletBalance: _walletBalance,
   onBack,
@@ -446,7 +525,10 @@ export default function ServicePayment({
   onHistory,
 }: ServicePaymentProps) {
   const serviceType = useMemo(
-    () => normalizeServiceType(service?.type),
+    () =>
+      normalizeServiceType(
+        service?.type
+      ),
     [service?.type]
   );
 
@@ -460,21 +542,17 @@ export default function ServicePayment({
   const [catalogueError, setCatalogueError] =
     useState("");
 
-  const [networks, setNetworks] = useState<
-    CatalogueNetwork[]
-  >([]);
+  const [networks, setNetworks] =
+    useState<CatalogueNetwork[]>([]);
 
-  const [billers, setBillers] = useState<
-    CatalogueNetwork[]
-  >([]);
+  const [billers, setBillers] =
+    useState<CatalogueNetwork[]>([]);
 
-  const [items, setItems] = useState<CatalogueItem[]>(
-    []
-  );
+  const [items, setItems] =
+    useState<CatalogueItem[]>([]);
 
-  const [plans, setPlans] = useState<CatalogueItem[]>(
-    []
-  );
+  const [plans, setPlans] =
+    useState<CatalogueItem[]>([]);
 
   const [selectedNetwork, setSelectedNetwork] =
     useState("");
@@ -488,24 +566,32 @@ export default function ServicePayment({
   const [dataTab, setDataTab] =
     useState<DataTab>("HOT");
 
-  const [phone, setPhone] = useState("");
+  const [phone, setPhone] =
+    useState("");
 
-  const [amount, setAmount] = useState("");
+  const [amount, setAmount] =
+    useState("");
 
-  const [quantity, setQuantity] = useState("1");
+  const [quantity, setQuantity] =
+    useState("1");
 
-  const [meterType, setMeterType] = useState("");
+  const [meterType, setMeterType] =
+    useState("");
 
-  const [meterNumber, setMeterNumber] = useState("");
+  const [meterNumber, setMeterNumber] =
+    useState("");
 
   const [smartcardNumber, setSmartcardNumber] =
     useState("");
 
-  const [examType, setExamType] = useState("");
+  const [examType, setExamType] =
+    useState("");
 
-  const [accountId, setAccountId] = useState("");
+  const [accountId, setAccountId] =
+    useState("");
 
-  const [verifying, setVerifying] = useState(false);
+  const [verifying, setVerifying] =
+    useState(false);
 
   const [verifiedCustomer, setVerifiedCustomer] =
     useState("");
@@ -519,7 +605,8 @@ export default function ServicePayment({
   const [showPinModal, setShowPinModal] =
     useState(false);
 
-  const [paymentPin, setPaymentPin] = useState("");
+  const [paymentPin, setPaymentPin] =
+    useState("");
 
   const [pinLoading, setPinLoading] =
     useState(false);
@@ -531,46 +618,78 @@ export default function ServicePayment({
   /* SERVICE FLAGS                                                            */
   /* ------------------------------------------------------------------------ */
 
-  const isAirtime = serviceType === "airtime";
-  const isData = serviceType === "data";
+  const isAirtime =
+    serviceType === "airtime";
+
+  const isData =
+    serviceType === "data";
+
   const isElectricity =
     serviceType === "electricity";
-  const isCable = serviceType === "cable";
+
+  const isCable =
+    serviceType === "cable";
+
   const isAirtimeCard =
     serviceType === "airtime-card";
+
   const isDataCard =
     serviceType === "data-card";
-  const isSmile = serviceType === "smile";
-  const isWAEC = serviceType === "waec";
-  const isJAMB = serviceType === "jamb";
+
+  const isSmile =
+    serviceType === "smile";
+
+  const isWAEC =
+    serviceType === "waec";
+
+  const isJAMB =
+    serviceType === "jamb";
 
   const isComingSoon =
-    COMING_SOON_SERVICES.has(serviceType);
+    COMING_SOON_SERVICES.has(
+      serviceType
+    );
 
   /* ------------------------------------------------------------------------ */
   /* SELECTED ITEM                                                            */
   /* ------------------------------------------------------------------------ */
 
   const selectedItem = useMemo(() => {
-    const source = [...items, ...plans];
+    const source = [
+      ...items,
+      ...plans,
+    ];
 
     return (
       source.find(
         (item) =>
-          getItemCode(item) === selectedItemCode
+          getItemCode(item) ===
+          selectedItemCode
       ) || null
     );
-  }, [items, plans, selectedItemCode]);
+  }, [
+    items,
+    plans,
+    selectedItemCode,
+  ]);
 
-  const selectedProviderPrice = useMemo(
-    () => getItemProviderPrice(selectedItem),
-    [selectedItem]
-  );
+  const selectedProviderPrice =
+    useMemo(
+      () =>
+        getItemProviderPrice(
+          selectedItem
+        ),
+      [selectedItem]
+    );
 
-  const selectedSellingPrice = useMemo(
-    () => getItemSellingPrice(selectedItem),
-    [selectedItem]
-  );
+  const selectedSellingPrice =
+    useMemo(
+      () =>
+        getItemSellingPrice(
+          selectedItem
+        ),
+      [selectedItem]
+    );
 
   /* ------------------------------------------------------------------------ */
   /* DATA PLANS                                                               */
@@ -582,14 +701,24 @@ export default function ServicePayment({
         ? plans
         : items;
 
-    const seen = new Set<string>();
+    const seen =
+      new Set<string>();
 
     return source
-      .map(normalizeItem)
+      .map((item, index) =>
+        normalizeItem(
+          item,
+          index
+        )
+      )
       .filter((item) => {
-        const code = getItemCode(item);
+        const code =
+          getItemCode(item);
 
-        if (!code || seen.has(code)) {
+        if (
+          !code ||
+          seen.has(code)
+        ) {
           return false;
         }
 
@@ -597,626 +726,831 @@ export default function ServicePayment({
 
         return true;
       });
-  }, [plans, items]);
+  }, [
+    plans,
+    items,
+  ]);
 
-  const visibleDataPlans = useMemo(() => {
-    /*
-     * HOT = every available ClubKonnect plan.
-     */
-    if (dataTab === "HOT") {
-      return allDataPlans;
-    }
+  const visibleDataPlans =
+    useMemo(() => {
+      /*
+       * HOT = every available ClubKonnect
+       * data plan for the selected network.
+       */
+      if (
+        dataTab === "HOT"
+      ) {
+        return allDataPlans;
+      }
 
-    return allDataPlans.filter(
-      (item) => getDataTab(item) === dataTab
-    );
-  }, [allDataPlans, dataTab]);
+      return allDataPlans.filter(
+        (item) =>
+          getDataTab(item) ===
+          dataTab
+      );
+    }, [
+      allDataPlans,
+      dataTab,
+    ]);
 
   /* ------------------------------------------------------------------------ */
   /* CATALOGUE REQUEST                                                        */
   /* ------------------------------------------------------------------------ */
 
-  const invokeCatalogue = useCallback(
-    async (
-      extra: Record<string, any> = {}
-    ): Promise<CatalogueResponse> => {
-      const { data, error } =
-        await supabase.functions.invoke(
-          "clubkonnect-service",
-          {
-            body: {
-              action: "catalog",
-              service: serviceType,
-              ...extra,
-            },
-          }
-        );
+  const invokeCatalogue =
+    useCallback(
+      async (
+        extra: Record<string, any> = {}
+      ): Promise<CatalogueResponse> => {
+        const {
+          data,
+          error,
+        } =
+          await supabase.functions.invoke(
+            CLUBKONNECT_FUNCTION,
+            {
+              body: {
+                action: "catalog",
+                service: serviceType,
+                ...extra,
+              },
+            }
+          );
 
-      if (error) {
-        throw new Error(
-          error.message ||
-            "Unable to load service catalogue."
-        );
-      }
+        if (error) {
+          throw new Error(
+            error.message ||
+              "Unable to load service catalogue."
+          );
+        }
 
-      if (!data) {
-        throw new Error(
-          "No catalogue response was received."
-        );
-      }
+        if (!data) {
+          throw new Error(
+            "No catalogue response was received."
+          );
+        }
 
-      if (data.success === false) {
-        throw new Error(
-          data.error ||
-            data.message ||
-            "Unable to load service catalogue."
-        );
-      }
+        if (
+          data.success === false
+        ) {
+          throw new Error(
+            data.error ||
+              data.message ||
+              "Unable to load service catalogue."
+          );
+        }
 
-      return data as CatalogueResponse;
-    },
-    [serviceType]
-  );
+        return data as CatalogueResponse;
+      },
+      [serviceType]
+    );
 
   /* ------------------------------------------------------------------------ */
   /* LOAD INITIAL CATALOGUE                                                   */
   /* ------------------------------------------------------------------------ */
 
-  const loadCatalogue = useCallback(
-    async () => {
-      if (!serviceType || isComingSoon) {
-        return;
-      }
+  const loadCatalogue =
+    useCallback(
+      async () => {
+        if (
+          !serviceType ||
+          isComingSoon
+        ) {
+          return;
+        }
 
-      setLoadingCatalogue(true);
-      setCatalogueError("");
+        setLoadingCatalogue(true);
+        setCatalogueError("");
 
-      try {
-        setNetworks([]);
-        setBillers([]);
-        setItems([]);
-        setPlans([]);
+        try {
+          setNetworks([]);
+          setBillers([]);
+          setItems([]);
+          setPlans([]);
 
-        setSelectedNetwork("");
-        setSelectedBiller("");
-        setSelectedItemCode("");
+          setSelectedNetwork("");
+          setSelectedBiller("");
+          setSelectedItemCode("");
 
-        const response =
-          await invokeCatalogue();
+          const response =
+            await invokeCatalogue();
 
-        const rawNetworks =
-          response.networks ||
-          [];
+          const rawNetworks =
+            Array.isArray(
+              response.networks
+            )
+              ? response.networks
+              : [];
 
-        const rawBillers =
-          response.billers ||
-          [];
+          const rawBillers =
+            Array.isArray(
+              response.billers
+            )
+              ? response.billers
+              : [];
 
-        const rawItems =
-          response.items ||
-          [];
+          const rawItems =
+            Array.isArray(
+              response.items
+            )
+              ? response.items
+              : [];
 
-        const rawPlans =
-          response.plans ||
-          [];
+          const rawPlans =
+            Array.isArray(
+              response.plans
+            )
+              ? response.plans
+              : [];
 
-        const normalizedNetworks =
-          rawNetworks.map(normalizeNetwork);
+          const normalizedNetworks =
+            rawNetworks.map(
+              (network, index) =>
+                normalizeNetwork(
+                  network,
+                  index
+                )
+            );
 
-        const normalizedBillers =
-          rawBillers.map(normalizeNetwork);
+          const normalizedBillers =
+            rawBillers.map(
+              (biller, index) =>
+                normalizeNetwork(
+                  biller,
+                  index
+                )
+            );
 
-        const normalizedItems =
-          rawItems.map(normalizeItem);
+          const normalizedItems =
+            rawItems.map(
+              (item, index) =>
+                normalizeItem(
+                  item,
+                  index
+                )
+            );
 
-        const normalizedPlans =
-          rawPlans.map(normalizeItem);
+          const normalizedPlans =
+            rawPlans.map(
+              (item, index) =>
+                normalizeItem(
+                  item,
+                  index
+                )
+            );
 
-        setNetworks(normalizedNetworks);
-        setBillers(normalizedBillers);
-        setItems(normalizedItems);
-        setPlans(normalizedPlans);
+          setNetworks(
+            normalizedNetworks
+          );
 
-        /*
-         * Smile is a special service.
-         * It does not need a customer-visible provider selection.
-         */
-        if (isSmile) {
-          const smileNetwork =
-            normalizedNetworks[0];
+          setBillers(
+            normalizedBillers
+          );
 
-          if (smileNetwork) {
+          setItems(
+            normalizedItems
+          );
+
+          setPlans(
+            normalizedPlans
+          );
+
+          /*
+           * Smile is treated as a direct service.
+           */
+          if (
+            isSmile &&
+            normalizedNetworks.length > 0
+          ) {
             setSelectedNetwork(
-              smileNetwork.code
+              normalizedNetworks[0].code
             );
           }
-        }
 
-        if (
-          isElectricity &&
-          normalizedBillers.length === 1
-        ) {
-          setSelectedBiller(
-            normalizedBillers[0].code
+          /*
+           * If the backend returns one electricity
+           * company, select it automatically.
+           */
+          if (
+            isElectricity &&
+            normalizedBillers.length === 1
+          ) {
+            setSelectedBiller(
+              normalizedBillers[0].code
+            );
+          }
+
+          /*
+           * Same for Cable TV.
+           */
+          if (
+            isCable &&
+            normalizedBillers.length === 1
+          ) {
+            setSelectedBiller(
+              normalizedBillers[0].code
+            );
+          }
+
+          /*
+           * If a non-data service already returned
+           * exactly one item, select it automatically.
+           */
+          if (
+            !isData &&
+            !isCable &&
+            normalizedPlans.length === 1
+          ) {
+            setSelectedItemCode(
+              getItemCode(
+                normalizedPlans[0]
+              )
+            );
+          }
+        } catch (error: any) {
+          console.error(
+            "ClubKonnect catalogue error:",
+            error
+          );
+
+          const message =
+            error?.message ||
+            "Unable to load available services.";
+
+          setCatalogueError(
+            message
+          );
+
+          toast.error(
+            message
+          );
+        } finally {
+          setLoadingCatalogue(
+            false
           );
         }
-
-        if (
-          isCable &&
-          normalizedBillers.length === 1
-        ) {
-          setSelectedBiller(
-            normalizedBillers[0].code
-          );
-        }
-
-        /*
-         * If a service returns plans immediately,
-         * don't force another request.
-         */
-        if (
-          !isData &&
-          !isCable &&
-          normalizedPlans.length > 0 &&
-          normalizedPlans.length === 1
-        ) {
-          setSelectedItemCode(
-            getItemCode(normalizedPlans[0])
-          );
-        }
-      } catch (error: any) {
-        console.error(
-          "ClubKonnect catalogue error:",
-          error
-        );
-
-        const message =
-          error?.message ||
-          "Unable to load available services.";
-
-        setCatalogueError(message);
-
-        toast.error(message);
-      } finally {
-        setLoadingCatalogue(false);
-      }
-    },
-    [
-      serviceType,
-      isComingSoon,
-      isSmile,
-      isElectricity,
-      isCable,
-      isData,
-      invokeCatalogue,
-    ]
-  );
+      },
+      [
+        serviceType,
+        isComingSoon,
+        isSmile,
+        isElectricity,
+        isCable,
+        isData,
+        invokeCatalogue,
+      ]
+    );
 
   useEffect(() => {
     void loadCatalogue();
-  }, [loadCatalogue]);
+  }, [
+    loadCatalogue,
+  ]);
 
   /* ------------------------------------------------------------------------ */
   /* LOAD NETWORK-SPECIFIC CATALOGUE                                          */
   /* ------------------------------------------------------------------------ */
 
-  const loadNetworkCatalogue = useCallback(
-    async (
-      code: string,
-      billerCode?: string
-    ) => {
-      if (!code || !serviceType) {
-        return;
-      }
+  const loadNetworkCatalogue =
+    useCallback(
+      async (
+        code: string,
+        billerCode?: string
+      ) => {
+        if (
+          !code ||
+          !serviceType
+        ) {
+          return;
+        }
 
-      setLoadingCatalogue(true);
-      setCatalogueError("");
-      setSelectedItemCode("");
+        setLoadingCatalogue(true);
+        setCatalogueError("");
+        setSelectedItemCode("");
 
-      try {
-        const response =
-          await invokeCatalogue({
-            network_code: code,
-            biller_code:
-              billerCode || undefined,
-          });
+        try {
+          const response =
+            await invokeCatalogue({
+              network_code: code,
+              ...(billerCode
+                ? {
+                    biller_code:
+                      billerCode,
+                  }
+                : {}),
+            });
 
-        const nextItems = (
-          response.items ||
-          []
-        ).map(normalizeItem);
+          const nextItems =
+            Array.isArray(
+              response.items
+            )
+              ? response.items.map(
+                  (item, index) =>
+                    normalizeItem(
+                      item,
+                      index
+                    )
+                )
+              : [];
 
-        const nextPlans = (
-          response.plans ||
-          []
-        ).map(normalizeItem);
+          const nextPlans =
+            Array.isArray(
+              response.plans
+            )
+              ? response.plans.map(
+                  (item, index) =>
+                    normalizeItem(
+                      item,
+                      index
+                    )
+                )
+              : [];
 
-        setItems(nextItems);
-        setPlans(nextPlans);
-      } catch (error: any) {
-        console.error(
-          "ClubKonnect network catalogue error:",
-          error
-        );
+          setItems(
+            nextItems
+          );
 
-        const message =
-          error?.message ||
-          "Unable to load packages.";
+          setPlans(
+            nextPlans
+          );
+        } catch (error: any) {
+          console.error(
+            "ClubKonnect network catalogue error:",
+            error
+          );
 
-        setCatalogueError(message);
+          const message =
+            error?.message ||
+            "Unable to load packages.";
 
-        toast.error(message);
-      } finally {
-        setLoadingCatalogue(false);
-      }
-    },
-    [serviceType, invokeCatalogue]
-  );
+          setCatalogueError(
+            message
+          );
+
+          toast.error(
+            message
+          );
+        } finally {
+          setLoadingCatalogue(
+            false
+          );
+        }
+      },
+      [
+        serviceType,
+        invokeCatalogue,
+      ]
+    );
 
   /* ------------------------------------------------------------------------ */
   /* NETWORK CHANGE                                                           */
   /* ------------------------------------------------------------------------ */
 
-  const handleNetworkChange = async (
-    value: string
-  ) => {
-    setSelectedNetwork(value);
-    setSelectedItemCode("");
-
-    setAmount("");
-
-    setVerifiedCustomer("");
-    setVerifiedType("none");
-
-    const network =
-      networks.find(
-        (item) => item.code === value
+  const handleNetworkChange =
+    async (
+      value: string
+    ) => {
+      setSelectedNetwork(
+        value
       );
 
-    await loadNetworkCatalogue(
-      value,
-      network?.biller_code ||
-        selectedBiller ||
-        undefined
-    );
-  };
+      setSelectedItemCode("");
+      setAmount("");
+
+      setVerifiedCustomer("");
+      setVerifiedType(
+        "none"
+      );
+
+      const network =
+        networks.find(
+          (item) =>
+            item.code === value
+        );
+
+      await loadNetworkCatalogue(
+        value,
+        network?.biller_code ||
+          undefined
+      );
+    };
 
   /* ------------------------------------------------------------------------ */
   /* BILLER CHANGE                                                            */
   /* ------------------------------------------------------------------------ */
 
-  const handleBillerChange = async (
-    value: string
-  ) => {
-    setSelectedBiller(value);
-    setSelectedItemCode("");
+  const handleBillerChange =
+    async (
+      value: string
+    ) => {
+      setSelectedBiller(
+        value
+      );
 
-    setAmount("");
+      setSelectedItemCode("");
+      setAmount("");
 
-    setVerifiedCustomer("");
-    setVerifiedType("none");
+      setVerifiedCustomer("");
+      setVerifiedType(
+        "none"
+      );
 
-    await loadNetworkCatalogue(
-      value,
-      value
-    );
-  };
+      /*
+       * For electricity and cable, the selected
+       * biller is the service code.
+       */
+      await loadNetworkCatalogue(
+        value,
+        value
+      );
+    };
 
   /* ------------------------------------------------------------------------ */
   /* ITEM CHANGE                                                              */
   /* ------------------------------------------------------------------------ */
 
-  const handleItemChange = (
-    value: string
-  ) => {
-    setSelectedItemCode(value);
+  const handleItemChange =
+    (
+      value: string
+    ) => {
+      setSelectedItemCode(
+        value
+      );
 
-    setVerifiedCustomer("");
-    setVerifiedType("none");
+      setVerifiedCustomer("");
+      setVerifiedType(
+        "none"
+      );
 
-    const source =
-      serviceType === "data"
-        ? allDataPlans
-        : [...items, ...plans];
+      const source =
+        serviceType === "data"
+          ? allDataPlans
+          : [
+              ...items,
+              ...plans,
+            ];
 
-    const item =
-      source.find(
-        (entry) =>
-          getItemCode(entry) === value
-      ) || null;
+      const item =
+        source.find(
+          (entry) =>
+            getItemCode(entry) ===
+            value
+        ) || null;
 
-    /*
-     * Fixed-price services must use the catalogue
-     * price. The customer cannot type a different
-     * provider amount.
-     */
-    if (
-      item &&
-      !isAirtime &&
-      !isElectricity
-    ) {
-      const price =
-        getItemSellingPrice(item);
+      /*
+       * Fixed-price services use the catalogue
+       * selling price.
+       */
+      if (
+        item &&
+        !isAirtime &&
+        !isElectricity
+      ) {
+        const price =
+          getItemSellingPrice(
+            item
+          );
 
-      if (price > 0) {
-        setAmount(String(price));
+        if (price > 0) {
+          setAmount(
+            String(price)
+          );
+        }
       }
-    }
-  };
+    };
 
   /* ------------------------------------------------------------------------ */
   /* ELECTRICITY METER VERIFICATION                                           */
   /* ------------------------------------------------------------------------ */
 
-  const verifyMeter = async () => {
-    if (!selectedBiller) {
-      toast.error(
-        "Please select your electricity company."
-      );
-      return;
-    }
-
-    if (!meterNumber.trim()) {
-      toast.error(
-        "Please enter your meter number."
-      );
-      return;
-    }
-
-    if (!meterType) {
-      toast.error(
-        "Please select your meter type."
-      );
-      return;
-    }
-
-    setVerifying(true);
-    setVerifiedCustomer("");
-    setVerifiedType("none");
-
-    try {
-      const { data, error } =
-        await supabase.functions.invoke(
-          "clubkonnect-service",
-          {
-            body: {
-              action: "verify_meter",
-              service: "electricity",
-              electric_company:
-                selectedBiller,
-              biller_code:
-                selectedBiller,
-              meter_type: meterType,
-              meter_number:
-                meterNumber.trim(),
-              meter_no:
-                meterNumber.trim(),
-            },
-          }
+  const verifyMeter =
+    async () => {
+      if (!selectedBiller) {
+        toast.error(
+          "Please select your electricity company."
         );
-
-      if (error) {
-        throw new Error(
-          error.message ||
-            "Meter verification failed."
-        );
+        return;
       }
-
-      const response =
-        data as VerificationResponse;
 
       if (
-        response.success === false ||
-        response.error
+        !meterNumber.trim()
       ) {
-        throw new Error(
-          response.error ||
-            response.message ||
-            "Invalid meter number."
+        toast.error(
+          "Please enter your meter number."
         );
+        return;
       }
 
-      const customerName =
-        response.customer_name ||
-        response.customerName ||
-        "";
-
-      if (isInvalidCustomerName(customerName)) {
-        throw new Error(
-          "The meter number could not be verified."
+      if (!meterType) {
+        toast.error(
+          "Please select your meter type."
         );
+        return;
       }
 
-      setVerifiedCustomer(
-        customerName || "Meter verified"
+      setVerifying(true);
+      setVerifiedCustomer("");
+      setVerifiedType(
+        "none"
       );
 
-      setVerifiedType("meter");
+      try {
+        const {
+          data,
+          error,
+        } =
+          await supabase.functions.invoke(
+            CLUBKONNECT_FUNCTION,
+            {
+              body: {
+                action:
+                  "verify_meter",
+                service:
+                  "electricity",
 
-      toast.success(
-        customerName
-          ? `Meter verified for ${customerName}.`
-          : "Meter verified successfully."
-      );
-    } catch (error: any) {
-      console.error(
-        "Meter verification error:",
-        error
-      );
+                electric_company:
+                  selectedBiller,
 
-      toast.error(
-        error?.message ||
-          "Unable to verify meter."
-      );
-    } finally {
-      setVerifying(false);
-    }
-  };
+                biller_code:
+                  selectedBiller,
+
+                meter_type:
+                  meterType,
+
+                meter_number:
+                  meterNumber.trim(),
+
+                meter_no:
+                  meterNumber.trim(),
+              },
+            }
+          );
+
+        if (error) {
+          throw new Error(
+            error.message ||
+              "Meter verification failed."
+          );
+        }
+
+        const response =
+          data as VerificationResponse;
+
+        if (
+          response.success ===
+            false ||
+          response.error
+        ) {
+          throw new Error(
+            response.error ||
+              response.message ||
+              "Invalid meter number."
+          );
+        }
+
+        const customerName =
+          response.customer_name ||
+          response.customerName ||
+          "";
+
+        if (
+          isInvalidCustomerName(
+            customerName
+          )
+        ) {
+          throw new Error(
+            "The meter number could not be verified."
+          );
+        }
+
+        setVerifiedCustomer(
+          customerName ||
+            "Meter verified"
+        );
+
+        setVerifiedType(
+          "meter"
+        );
+
+        toast.success(
+          customerName
+            ? `Meter verified for ${customerName}.`
+            : "Meter verified successfully."
+        );
+      } catch (error: any) {
+        console.error(
+          "Meter verification error:",
+          error
+        );
+
+        toast.error(
+          error?.message ||
+            "Unable to verify meter."
+        );
+      } finally {
+        setVerifying(
+          false
+        );
+      }
+    };
 
   /* ------------------------------------------------------------------------ */
   /* CABLE SMARTCARD VERIFICATION                                             */
   /* ------------------------------------------------------------------------ */
 
-  const verifyCable = async () => {
-    if (!selectedBiller) {
-      toast.error(
-        "Please select your TV service."
-      );
-      return;
-    }
-
-    if (!smartcardNumber.trim()) {
-      toast.error(
-        "Please enter your SmartCard/IUC number."
-      );
-      return;
-    }
-
-    setVerifying(true);
-    setVerifiedCustomer("");
-    setVerifiedType("none");
-
-    try {
-      const { data, error } =
-        await supabase.functions.invoke(
-          "clubkonnect-service",
-          {
-            body: {
-              action: "verify_cable",
-              service: "cable",
-              cable_tv:
-                selectedBiller,
-              cable_code:
-                selectedBiller,
-              smartcard_number:
-                smartcardNumber.trim(),
-              smartCardNumber:
-                smartcardNumber.trim(),
-            },
-          }
+  const verifyCable =
+    async () => {
+      if (!selectedBiller) {
+        toast.error(
+          "Please select your TV service."
         );
-
-      if (error) {
-        throw new Error(
-          error.message ||
-            "SmartCard verification failed."
-        );
+        return;
       }
-
-      const response =
-        data as VerificationResponse;
 
       if (
-        response.success === false ||
-        response.error
+        !smartcardNumber.trim()
       ) {
-        throw new Error(
-          response.error ||
-            response.message ||
-            "Invalid SmartCard/IUC number."
+        toast.error(
+          "Please enter your SmartCard/IUC number."
+        );
+        return;
+      }
+
+      setVerifying(true);
+      setVerifiedCustomer("");
+      setVerifiedType(
+        "none"
+      );
+
+      try {
+        const {
+          data,
+          error,
+        } =
+          await supabase.functions.invoke(
+            CLUBKONNECT_FUNCTION,
+            {
+              body: {
+                action:
+                  "verify_cable",
+
+                service:
+                  "cable",
+
+                cable_tv:
+                  selectedBiller,
+
+                cable_code:
+                  selectedBiller,
+
+                smartcard_number:
+                  smartcardNumber.trim(),
+
+                smartCardNumber:
+                  smartcardNumber.trim(),
+              },
+            }
+          );
+
+        if (error) {
+          throw new Error(
+            error.message ||
+              "SmartCard verification failed."
+          );
+        }
+
+        const response =
+          data as VerificationResponse;
+
+        if (
+          response.success ===
+            false ||
+          response.error
+        ) {
+          throw new Error(
+            response.error ||
+              response.message ||
+              "Invalid SmartCard/IUC number."
+          );
+        }
+
+        const customerName =
+          response.customer_name ||
+          response.customerName ||
+          "";
+
+        if (
+          isInvalidCustomerName(
+            customerName
+          )
+        ) {
+          throw new Error(
+            "The SmartCard/IUC number could not be verified."
+          );
+        }
+
+        setVerifiedCustomer(
+          customerName ||
+            "SmartCard verified"
+        );
+
+        setVerifiedType(
+          "cable"
+        );
+
+        toast.success(
+          customerName
+            ? `SmartCard verified for ${customerName}.`
+            : "SmartCard verified successfully."
+        );
+      } catch (error: any) {
+        console.error(
+          "Cable verification error:",
+          error
+        );
+
+        toast.error(
+          error?.message ||
+            "Unable to verify SmartCard."
+        );
+      } finally {
+        setVerifying(
+          false
+        );
+      }
+    };
+
+  /* ------------------------------------------------------------------------ */
+  /* AMOUNTS                                                                  */
+  /* ------------------------------------------------------------------------ */
+
+  const amountNumber =
+    numericValue(amount);
+
+  const quantityNumber =
+    Math.max(
+      1,
+      Math.floor(
+        numericValue(
+          quantity
+        ) || 1
+      )
+    );
+
+  const totalBeforePurchase =
+    useMemo(() => {
+      if (isAirtime) {
+        return amountNumber;
+      }
+
+      if (isElectricity) {
+        return amountNumber;
+      }
+
+      if (isAirtimeCard) {
+        return (
+          selectedProviderPrice *
+          quantityNumber
         );
       }
 
-      const customerName =
-        response.customer_name ||
-        response.customerName ||
-        "";
-
-      if (isInvalidCustomerName(customerName)) {
-        throw new Error(
-          "The SmartCard/IUC number could not be verified."
+      if (isDataCard) {
+        return (
+          selectedProviderPrice *
+          quantityNumber
         );
       }
 
-      setVerifiedCustomer(
-        customerName || "SmartCard verified"
-      );
+      if (
+        isData ||
+        isCable ||
+        isSmile ||
+        isWAEC ||
+        isJAMB
+      ) {
+        return selectedProviderPrice;
+      }
 
-      setVerifiedType("cable");
-
-      toast.success(
-        customerName
-          ? `SmartCard verified for ${customerName}.`
-          : "SmartCard verified successfully."
-      );
-    } catch (error: any) {
-      console.error(
-        "Cable verification error:",
-        error
-      );
-
-      toast.error(
-        error?.message ||
-          "Unable to verify SmartCard."
-      );
-    } finally {
-      setVerifying(false);
-    }
-  };
-
-  /* ------------------------------------------------------------------------ */
-  /* AMOUNT                                                                   */
-  /* ------------------------------------------------------------------------ */
-
-  const amountNumber = numericValue(amount);
-
-  const quantityNumber = Math.max(
-    1,
-    Math.floor(numericValue(quantity) || 1)
-  );
-
-  const totalBeforePurchase = useMemo(() => {
-    if (isAirtime) {
       return amountNumber;
-    }
-
-    if (isElectricity) {
-      return amountNumber;
-    }
-
-    if (isAirtimeCard) {
-      return (
-        selectedProviderPrice *
-        quantityNumber
-      );
-    }
-
-    if (isDataCard) {
-      return (
-        selectedProviderPrice *
-        quantityNumber
-      );
-    }
-
-    if (
-      isData ||
-      isCable ||
-      isSmile ||
-      isWAEC ||
-      isJAMB
-    ) {
-      return selectedProviderPrice;
-    }
-
-    return amountNumber;
-  }, [
-    isAirtime,
-    isElectricity,
-    isAirtimeCard,
-    isDataCard,
-    isData,
-    isCable,
-    isSmile,
-    isWAEC,
-    isJAMB,
-    amountNumber,
-    selectedProviderPrice,
-    quantityNumber,
-  ]);
+    }, [
+      isAirtime,
+      isElectricity,
+      isAirtimeCard,
+      isDataCard,
+      isData,
+      isCable,
+      isSmile,
+      isWAEC,
+      isJAMB,
+      amountNumber,
+      selectedProviderPrice,
+      quantityNumber,
+    ]);
 
   /*
-   * The Edge Function is the final pricing authority.
-   * This is only a preview for the customer.
+   * Customer-facing preview only.
+   *
+   * Backend remains the final pricing authority.
    */
   const markupRate =
     isAirtimeCard ||
@@ -1240,160 +1574,206 @@ export default function ServicePayment({
   /* VALIDATION                                                               */
   /* ------------------------------------------------------------------------ */
 
-  const validatePurchase = (): string | null => {
-    if (!serviceType) {
-      return "Please select a service.";
-    }
-
-    if (isComingSoon) {
-      return `${SERVICE_LABELS[serviceType] || "This service"} is coming soon.`;
-    }
-
-    if (isAirtime) {
-      if (!selectedNetwork) {
-        return "Please select a network.";
+  const validatePurchase =
+    (): string | null => {
+      if (!serviceType) {
+        return "Please select a service.";
       }
 
-      if (!cleanPhone(phone)) {
-        return "Please enter the recipient phone number.";
+      if (isComingSoon) {
+        return `${
+          SERVICE_LABELS[
+            serviceType
+          ] ||
+          "This service"
+        } is coming soon.`;
       }
 
-      if (
-        cleanPhone(phone).length < 10
-      ) {
-        return "Please enter a valid Nigerian phone number.";
+      if (isAirtime) {
+        if (!selectedNetwork) {
+          return "Please select a network.";
+        }
+
+        if (
+          !cleanPhone(phone)
+        ) {
+          return "Please enter the recipient phone number.";
+        }
+
+        if (
+          cleanPhone(phone)
+            .length < 10
+        ) {
+          return "Please enter a valid Nigerian phone number.";
+        }
+
+        if (
+          amountNumber < 50 ||
+          amountNumber > 200000
+        ) {
+          return "Airtime amount must be between ₦50 and ₦200,000.";
+        }
       }
 
-      if (
-        amountNumber < 50 ||
-        amountNumber > 200000
-      ) {
-        return "Airtime amount must be between ₦50 and ₦200,000.";
-      }
-    }
+      if (isData) {
+        if (!selectedNetwork) {
+          return "Please select a network.";
+        }
 
-    if (isData) {
-      if (!selectedNetwork) {
-        return "Please select a network.";
-      }
+        if (
+          !selectedItemCode
+        ) {
+          return "Please select a data plan.";
+        }
 
-      if (!selectedItemCode) {
-        return "Please select a data plan.";
-      }
+        if (
+          !cleanPhone(phone)
+        ) {
+          return "Please enter the recipient phone number.";
+        }
 
-      if (!cleanPhone(phone)) {
-        return "Please enter the recipient phone number.";
-      }
-    }
-
-    if (isElectricity) {
-      if (!selectedBiller) {
-        return "Please select your electricity company.";
+        if (
+          cleanPhone(phone)
+            .length < 10
+        ) {
+          return "Please enter a valid Nigerian phone number.";
+        }
       }
 
-      if (!meterType) {
-        return "Please select your meter type.";
+      if (isElectricity) {
+        if (!selectedBiller) {
+          return "Please select your electricity company.";
+        }
+
+        if (!meterType) {
+          return "Please select your meter type.";
+        }
+
+        if (
+          !meterNumber.trim()
+        ) {
+          return "Please enter your meter number.";
+        }
+
+        if (
+          verifiedType !==
+          "meter"
+        ) {
+          return "Please verify your meter before continuing.";
+        }
+
+        if (
+          amountNumber <= 0
+        ) {
+          return "Please enter a valid electricity amount.";
+        }
       }
 
-      if (!meterNumber.trim()) {
-        return "Please enter your meter number.";
+      if (isCable) {
+        if (!selectedBiller) {
+          return "Please select your TV service.";
+        }
+
+        if (
+          !selectedItemCode
+        ) {
+          return "Please select a package.";
+        }
+
+        if (
+          !smartcardNumber.trim()
+        ) {
+          return "Please enter your SmartCard/IUC number.";
+        }
+
+        if (
+          verifiedType !==
+          "cable"
+        ) {
+          return "Please verify your SmartCard before continuing.";
+        }
       }
 
-      if (verifiedType !== "meter") {
-        return "Please verify your meter before continuing.";
+      if (isAirtimeCard) {
+        if (!selectedNetwork) {
+          return "Please select a network.";
+        }
+
+        if (
+          !selectedItemCode
+        ) {
+          return "Please select an E-Pin value.";
+        }
+
+        if (
+          quantityNumber < 1 ||
+          quantityNumber > 100
+        ) {
+          return "Quantity must be between 1 and 100.";
+        }
       }
 
-      if (
-        amountNumber <= 0
-      ) {
-        return "Please enter a valid electricity amount.";
-      }
-    }
+      if (isDataCard) {
+        if (!selectedNetwork) {
+          return "Please select a network.";
+        }
 
-    if (isCable) {
-      if (!selectedBiller) {
-        return "Please select your TV service.";
-      }
+        if (
+          !selectedItemCode
+        ) {
+          return "Please select a data E-Pin plan.";
+        }
 
-      if (!selectedItemCode) {
-        return "Please select a package.";
-      }
-
-      if (!smartcardNumber.trim()) {
-        return "Please enter your SmartCard/IUC number.";
-      }
-
-      if (verifiedType !== "cable") {
-        return "Please verify your SmartCard before continuing.";
-      }
-    }
-
-    if (isAirtimeCard) {
-      if (!selectedNetwork) {
-        return "Please select a network.";
+        if (
+          quantityNumber < 1 ||
+          quantityNumber > 100
+        ) {
+          return "Quantity must be between 1 and 100.";
+        }
       }
 
-      if (!selectedItemCode) {
-        return "Please select an E-Pin value.";
+      if (isSmile) {
+        if (
+          !accountId.trim()
+        ) {
+          return "Please enter your Smile account number.";
+        }
+
+        if (
+          !selectedItemCode
+        ) {
+          return "Please select a Smile data plan.";
+        }
       }
 
-      if (
-        quantityNumber < 1 ||
-        quantityNumber > 100
-      ) {
-        return "Quantity must be between 1 and 100.";
-      }
-    }
+      if (isWAEC) {
+        if (
+          !selectedItemCode
+        ) {
+          return "Please select a WAEC package.";
+        }
 
-    if (isDataCard) {
-      if (!selectedNetwork) {
-        return "Please select a network.";
-      }
-
-      if (!selectedItemCode) {
-        return "Please select a data E-Pin plan.";
+        if (
+          !cleanPhone(phone)
+        ) {
+          return "Please enter the phone number that should receive the e-PIN.";
+        }
       }
 
-      if (
-        quantityNumber < 1 ||
-        quantityNumber > 100
-      ) {
-        return "Quantity must be between 1 and 100.";
-      }
-    }
+      if (isJAMB) {
+        if (!examType) {
+          return "Please select the JAMB exam type.";
+        }
 
-    if (isSmile) {
-      if (!accountId.trim()) {
-        return "Please enter your Smile account number.";
-      }
-
-      if (!selectedItemCode) {
-        return "Please select a Smile data plan.";
-      }
-    }
-
-    if (isWAEC) {
-      if (!selectedItemCode) {
-        return "Please select a WAEC package.";
+        if (
+          !cleanPhone(phone)
+        ) {
+          return "Please enter the phone number that should receive the e-PIN.";
+        }
       }
 
-      if (!cleanPhone(phone)) {
-        return "Please enter the phone number that should receive the e-PIN.";
-      }
-    }
-
-    if (isJAMB) {
-      if (!examType) {
-        return "Please select the JAMB exam type.";
-      }
-
-      if (!cleanPhone(phone)) {
-        return "Please enter the phone number that should receive the e-PIN.";
-      }
-    }
-
-    return null;
-  };
+      return null;
+    };
 
   /* ------------------------------------------------------------------------ */
   /* BUILD PURCHASE DETAILS                                                   */
@@ -1405,21 +1785,34 @@ export default function ServicePayment({
         `IYANJUPAY-${crypto.randomUUID()}`;
 
       const itemCode =
-        getItemCode(selectedItem);
+        getItemCode(
+          selectedItem
+        );
 
       const itemName =
-        getItemName(selectedItem);
+        getItemName(
+          selectedItem
+        );
 
       const providerPrice =
         selectedProviderPrice;
 
-      const details: Record<string, any> = {
-        type: serviceType,
-        service: serviceType,
+      const details: Record<
+        string,
+        any
+      > = {
+        type:
+          serviceType,
 
-        country: "NG",
+        service:
+          serviceType,
 
-        request_id: requestId,
+        country:
+          "NG",
+
+        request_id:
+          requestId,
+
         requestId,
 
         customer:
@@ -1428,7 +1821,8 @@ export default function ServicePayment({
           recipientPhone.trim(),
 
         customer_id:
-          accountId.trim() || undefined,
+          accountId.trim() ||
+          undefined,
 
         selling_amount:
           estimatedTotal,
@@ -1439,47 +1833,64 @@ export default function ServicePayment({
         provider_price:
           providerPrice,
 
+        providerPrice:
+          providerPrice,
+
         item_code:
-          itemCode || undefined,
+          itemCode ||
+          undefined,
 
         product_code:
-          itemCode || undefined,
+          itemCode ||
+          undefined,
 
         variation_code:
-          itemCode || undefined,
+          itemCode ||
+          undefined,
 
         plan_code:
-          itemCode || undefined,
+          itemCode ||
+          undefined,
 
         package_code:
-          itemCode || undefined,
+          itemCode ||
+          undefined,
 
         package_name:
-          itemName || undefined,
+          itemName ||
+          undefined,
 
         network_code:
-          selectedNetwork || undefined,
+          selectedNetwork ||
+          undefined,
 
         biller_code:
-          selectedBiller || undefined,
+          selectedBiller ||
+          undefined,
 
         mobile_network:
-          selectedNetwork || undefined,
+          selectedNetwork ||
+          undefined,
 
         quantity:
           quantityNumber,
 
         phone:
-          cleanPhone(phone) || undefined,
+          cleanPhone(phone) ||
+          undefined,
 
         phoneNumber:
-          cleanPhone(phone) || undefined,
+          cleanPhone(phone) ||
+          undefined,
 
         recipient_phone:
-          cleanPhone(recipientPhone) || undefined,
+          cleanPhone(
+            recipientPhone
+          ) ||
+          undefined,
       };
 
-      /* ------------------------------ Airtime ----------------------------- */
+      /* ------------------------------ AIRTIME ---------------------------- */
 
       if (isAirtime) {
         details.amount =
@@ -1498,7 +1909,7 @@ export default function ServicePayment({
           cleanPhone(phone);
       }
 
-      /* ------------------------------- Data ------------------------------- */
+      /* ------------------------------- DATA ------------------------------ */
 
       if (isData) {
         details.data_plan =
@@ -1520,7 +1931,7 @@ export default function ServicePayment({
           cleanPhone(phone);
       }
 
-      /* ---------------------------- Electricity --------------------------- */
+      /* ---------------------------- ELECTRICITY -------------------------- */
 
       if (isElectricity) {
         details.electric_company =
@@ -1545,10 +1956,11 @@ export default function ServicePayment({
           amountNumber;
 
         details.phone =
-          cleanPhone(phone) || undefined;
+          cleanPhone(phone) ||
+          undefined;
       }
 
-      /* ------------------------------- Cable ------------------------------ */
+      /* ------------------------------- CABLE ----------------------------- */
 
       if (isCable) {
         details.cable_tv =
@@ -1573,13 +1985,14 @@ export default function ServicePayment({
           smartcardNumber.trim();
 
         details.phone =
-          cleanPhone(phone) || undefined;
+          cleanPhone(phone) ||
+          undefined;
 
         details.amount =
           providerPrice;
       }
 
-      /* -------------------------- Airtime E-PIN --------------------------- */
+      /* -------------------------- AIRTIME E-PIN -------------------------- */
 
       if (isAirtimeCard) {
         details.value =
@@ -1597,15 +2010,11 @@ export default function ServicePayment({
         details.mobile_network =
           selectedNetwork;
 
-        /*
-         * ClubKonnect prints the PINs; a recipient
-         * phone is not required by the provider.
-         */
         delete details.phone;
         delete details.phoneNumber;
       }
 
-      /* --------------------------- Data E-PIN ----------------------------- */
+      /* --------------------------- DATA E-PIN ---------------------------- */
 
       if (isDataCard) {
         details.data_plan =
@@ -1627,7 +2036,7 @@ export default function ServicePayment({
         delete details.phoneNumber;
       }
 
-      /* ------------------------------- Smile ------------------------------ */
+      /* ------------------------------- SMILE ----------------------------- */
 
       if (isSmile) {
         details.mobile_network =
@@ -1649,7 +2058,7 @@ export default function ServicePayment({
           itemCode;
       }
 
-      /* -------------------------------- WAEC ------------------------------ */
+      /* -------------------------------- WAEC ----------------------------- */
 
       if (isWAEC) {
         details.exam_type =
@@ -1665,7 +2074,7 @@ export default function ServicePayment({
           cleanPhone(phone);
       }
 
-      /* -------------------------------- JAMB ------------------------------ */
+      /* -------------------------------- JAMB ----------------------------- */
 
       if (isJAMB) {
         details.exam_type =
@@ -1680,10 +2089,6 @@ export default function ServicePayment({
         details.phoneNumber =
           cleanPhone(phone);
 
-        /*
-         * If the selected package itself represents
-         * the exam type, retain it as the package too.
-         */
         if (itemCode) {
           details.package_code =
             itemCode;
@@ -1694,139 +2099,167 @@ export default function ServicePayment({
     };
 
   /* ------------------------------------------------------------------------ */
-  /* PIN VERIFICATION                                                         */
+  /* PAYMENT PIN VERIFICATION                                                 */
   /* ------------------------------------------------------------------------ */
 
-  const verifyPaymentPin = async (): Promise<boolean> => {
-    if (!paymentPin.trim()) {
-      toast.error(
-        "Please enter your payment PIN."
-      );
-
-      return false;
-    }
-
-    if (paymentPin.trim().length !== 4) {
-      toast.error(
-        "Payment PIN must be 4 digits."
-      );
-
-      return false;
-    }
-
-    setPinLoading(true);
-
-    try {
-      const { data, error } =
-        await supabase.rpc(
-          "verify_payment_pin",
-          {
-            p_pin:
-              paymentPin.trim(),
-          }
+  const verifyPaymentPin =
+    async (): Promise<boolean> => {
+      if (
+        !paymentPin.trim()
+      ) {
+        toast.error(
+          "Please enter your payment PIN."
         );
 
-      if (error) {
-        throw new Error(
-          error.message ||
+        return false;
+      }
+
+      if (
+        paymentPin.trim()
+          .length !== 4
+      ) {
+        toast.error(
+          "Payment PIN must be 4 digits."
+        );
+
+        return false;
+      }
+
+      setPinLoading(true);
+
+      try {
+        const {
+          data,
+          error,
+        } =
+          await supabase.rpc(
+            "verify_payment_pin",
+            {
+              p_pin:
+                paymentPin.trim(),
+            }
+          );
+
+        if (error) {
+          throw new Error(
+            error.message ||
+              "Unable to verify payment PIN."
+          );
+        }
+
+        if (
+          data === false ||
+          data?.success ===
+            false ||
+          data?.valid ===
+            false
+        ) {
+          throw new Error(
+            "Incorrect payment PIN."
+          );
+        }
+
+        return true;
+      } catch (error: any) {
+        console.error(
+          "Payment PIN verification error:",
+          error
+        );
+
+        toast.error(
+          error?.message ||
             "Unable to verify payment PIN."
         );
-      }
 
-      /*
-       * Different versions of the RPC may return
-       * boolean or an object.
-       */
-      if (
-        data === false ||
-        data?.success === false ||
-        data?.valid === false
-      ) {
-        throw new Error(
-          "Incorrect payment PIN."
+        return false;
+      } finally {
+        setPinLoading(
+          false
         );
       }
-
-      return true;
-    } catch (error: any) {
-      console.error(
-        "Payment PIN verification error:",
-        error
-      );
-
-      toast.error(
-        error?.message ||
-          "Unable to verify payment PIN."
-      );
-
-      return false;
-    } finally {
-      setPinLoading(false);
-    }
-  };
+    };
 
   /* ------------------------------------------------------------------------ */
   /* PURCHASE                                                                 */
   /* ------------------------------------------------------------------------ */
 
-  const handlePurchase = async () => {
-    const validation =
-      validatePurchase();
+  const handlePurchase =
+    async () => {
+      const validation =
+        validatePurchase();
 
-    if (validation) {
-      toast.error(validation);
-      return;
-    }
+      if (validation) {
+        toast.error(
+          validation
+        );
+        return;
+      }
 
-    setShowPinModal(true);
-  };
+      setShowPinModal(
+        true
+      );
+    };
 
-  const confirmPurchase = async () => {
-    const pinValid =
-      await verifyPaymentPin();
+  const confirmPurchase =
+    async () => {
+      const pinValid =
+        await verifyPaymentPin();
 
-    if (!pinValid) {
-      return;
-    }
+      if (!pinValid) {
+        return;
+      }
 
-    setPurchaseLoading(true);
-
-    try {
-      const details =
-        buildPurchaseDetails();
-
-      /*
-       * The backend calculates the authoritative
-       * provider cost and selling amount again.
-       */
-      await onPurchase(
-        amountNumber ||
-          selectedProviderPrice ||
-          totalBeforePurchase,
-        {
-          ...details,
-
-          payment_pin:
-            paymentPin.trim(),
-        }
+      setPurchaseLoading(
+        true
       );
 
-      setShowPinModal(false);
-      setPaymentPin("");
-    } catch (error: any) {
-      console.error(
-        "Service purchase error:",
-        error
-      );
+      try {
+        const details =
+          buildPurchaseDetails();
 
-      toast.error(
-        error?.message ||
-          "Unable to complete this purchase."
-      );
-    } finally {
-      setPurchaseLoading(false);
-    }
-  };
+        /*
+         * The parent Dashboard handles the purchase.
+         *
+         * The backend remains the final authority for:
+         * - provider cost
+         * - markup
+         * - wallet debit
+         * - transaction creation
+         * - ClubKonnect submission
+         */
+        await onPurchase(
+          amountNumber ||
+            selectedProviderPrice ||
+            totalBeforePurchase,
+          {
+            ...details,
+
+            payment_pin:
+              paymentPin.trim(),
+          }
+        );
+
+        setShowPinModal(
+          false
+        );
+
+        setPaymentPin("");
+      } catch (error: any) {
+        console.error(
+          "Service purchase error:",
+          error
+        );
+
+        toast.error(
+          error?.message ||
+            "Unable to complete this purchase."
+        );
+      } finally {
+        setPurchaseLoading(
+          false
+        );
+      }
+    };
 
   /* ------------------------------------------------------------------------ */
   /* UI HELPERS                                                               */
@@ -1834,7 +2267,9 @@ export default function ServicePayment({
 
   const title =
     service?.title ||
-    SERVICE_LABELS[serviceType] ||
+    SERVICE_LABELS[
+      serviceType
+    ] ||
     "Service";
 
   const showNetworkSelector =
@@ -1850,19 +2285,10 @@ export default function ServicePayment({
   const itemList =
     isData
       ? visibleDataPlans
-      : [...items, ...plans];
-
-  const selectedNetworkObject =
-    networks.find(
-      (item) =>
-        item.code === selectedNetwork
-    ) || null;
-
-  const selectedBillerObject =
-    billers.find(
-      (item) =>
-        item.code === selectedBiller
-    ) || null;
+      : [
+          ...items,
+          ...plans,
+        ];
 
   /* ------------------------------------------------------------------------ */
   /* COMING SOON VIEW                                                         */
@@ -1890,7 +2316,9 @@ export default function ServicePayment({
               <Button
                 variant="ghost"
                 size="icon"
-                onClick={onHistory}
+                onClick={
+                  onHistory
+                }
                 className="rounded-full"
               >
                 <History className="h-5 w-5" />
@@ -1911,9 +2339,11 @@ export default function ServicePayment({
               </h2>
 
               <p className="mt-3 max-w-md text-sm leading-6 text-slate-500">
-                {title} is currently being prepared.
-                You will be able to use this service
-                directly from IyanjuPay when it becomes
+                {title} is currently
+                being prepared. You
+                will be able to use this
+                service directly from
+                IyanjuPay when it becomes
                 available.
               </p>
 
@@ -1963,7 +2393,9 @@ export default function ServicePayment({
             <Button
               variant="ghost"
               size="icon"
-              onClick={onHistory}
+              onClick={
+                onHistory
+              }
               className="rounded-full hover:bg-white"
             >
               <History className="h-5 w-5" />
@@ -2000,8 +2432,9 @@ export default function ServicePayment({
                 </h2>
 
                 <p className="text-xs text-indigo-100">
-                  Complete your {title.toLowerCase()} purchase
-                  securely.
+                  Complete your{" "}
+                  {title.toLowerCase()}{" "}
+                  purchase securely.
                 </p>
               </div>
             </div>
@@ -2013,9 +2446,7 @@ export default function ServicePayment({
             {catalogueError && (
               <div className="rounded-2xl border border-red-100 bg-red-50 p-4">
                 <div className="flex items-start gap-3">
-                  <div className="mt-0.5">
-                    <RefreshCw className="h-5 w-5 text-red-500" />
-                  </div>
+                  <RefreshCw className="mt-0.5 h-5 w-5 text-red-500" />
 
                   <div className="flex-1">
                     <p className="text-sm font-semibold text-red-700">
@@ -2053,7 +2484,8 @@ export default function ServicePayment({
                     <Loader2 className="mx-auto h-7 w-7 animate-spin text-indigo-600" />
 
                     <p className="mt-3 text-sm font-medium text-slate-700">
-                      Loading available options...
+                      Loading available
+                      options...
                     </p>
 
                     <p className="mt-1 text-xs text-slate-500">
@@ -2069,14 +2501,13 @@ export default function ServicePayment({
               networks.length > 0 && (
                 <div className="space-y-2">
                   <Label className="text-sm font-semibold text-slate-700">
-                    {isAirtimeCard ||
-                    isDataCard
-                      ? "Network"
-                      : "Network"}
+                    Network
                   </Label>
 
                   <Select
-                    value={selectedNetwork}
+                    value={
+                      selectedNetwork
+                    }
                     onValueChange={
                       handleNetworkChange
                     }
@@ -2087,12 +2518,20 @@ export default function ServicePayment({
 
                     <SelectContent>
                       {networks.map(
-                        (network) => (
+                        (
+                          network
+                        ) => (
                           <SelectItem
-                            key={network.code}
-                            value={network.code}
+                            key={
+                              network.code
+                            }
+                            value={
+                              network.code
+                            }
                           >
-                            {network.name}
+                            {
+                              network.name
+                            }
                           </SelectItem>
                         )
                       )}
@@ -2101,7 +2540,7 @@ export default function ServicePayment({
                 </div>
               )}
 
-            {/* CABLE / ELECTRICITY BILLER --------------------------------- */}
+            {/* CABLE / ELECTRICITY BILLER ------------------------------- */}
 
             {showBillerSelector &&
               billers.length > 0 && (
@@ -2113,7 +2552,9 @@ export default function ServicePayment({
                   </Label>
 
                   <Select
-                    value={selectedBiller}
+                    value={
+                      selectedBiller
+                    }
                     onValueChange={
                       handleBillerChange
                     }
@@ -2130,12 +2571,20 @@ export default function ServicePayment({
 
                     <SelectContent>
                       {billers.map(
-                        (biller) => (
+                        (
+                          biller
+                        ) => (
                           <SelectItem
-                            key={biller.code}
-                            value={biller.code}
+                            key={
+                              biller.code
+                            }
+                            value={
+                              biller.code
+                            }
                           >
-                            {biller.name}
+                            {
+                              biller.name
+                            }
                           </SelectItem>
                         )
                       )}
@@ -2144,7 +2593,7 @@ export default function ServicePayment({
                 </div>
               )}
 
-            {/* SMILE SINGLE SERVICE --------------------------------------- */}
+            {/* SMILE ------------------------------------------------------- */}
 
             {isSmile &&
               networks.length === 0 && (
@@ -2160,7 +2609,8 @@ export default function ServicePayment({
                       </p>
 
                       <p className="text-xs text-slate-500">
-                        Select your Smile data plan below.
+                        Select your Smile
+                        data plan below.
                       </p>
                     </div>
                   </div>
@@ -2182,10 +2632,13 @@ export default function ServicePayment({
                         key={tab}
                         type="button"
                         onClick={() =>
-                          setDataTab(tab)
+                          setDataTab(
+                            tab
+                          )
                         }
                         className={`rounded-xl px-1 py-2 text-[10px] font-semibold transition sm:text-xs ${
-                          dataTab === tab
+                          dataTab ===
+                          tab
                             ? "bg-white text-indigo-600 shadow-sm"
                             : "text-slate-500"
                         }`}
@@ -2209,11 +2662,14 @@ export default function ServicePayment({
                     0 && (
                     <div className="rounded-2xl border border-dashed bg-slate-50 px-4 py-7 text-center">
                       <p className="text-sm font-medium text-slate-700">
-                        No plans found in this category.
+                        No plans found in
+                        this category.
                       </p>
 
                       <p className="mt-1 text-xs text-slate-500">
-                        Try the HOT tab to view all available plans.
+                        Try the HOT tab to
+                        view all available
+                        plans.
                       </p>
                     </div>
                   )}
@@ -2224,7 +2680,9 @@ export default function ServicePayment({
                     {visibleDataPlans.map(
                       (item) => {
                         const code =
-                          getItemCode(item);
+                          getItemCode(
+                            item
+                          );
 
                         const price =
                           getItemSellingPrice(
@@ -2265,7 +2723,9 @@ export default function ServicePayment({
                             )}
 
                             <p className="mt-3 text-base font-bold text-indigo-600">
-                              {money(price)}
+                              {money(
+                                price
+                              )}
                             </p>
                           </button>
                         );
@@ -2276,7 +2736,7 @@ export default function ServicePayment({
               </div>
             )}
 
-            {/* GENERAL PACKAGE SELECTOR ----------------------------------- */}
+            {/* GENERAL PACKAGE SELECTOR ------------------------------- */}
 
             {!isData &&
               (isCable ||
@@ -2302,7 +2762,9 @@ export default function ServicePayment({
                   </Label>
 
                   <Select
-                    value={selectedItemCode}
+                    value={
+                      selectedItemCode
+                    }
                     onValueChange={
                       handleItemChange
                     }
@@ -2319,9 +2781,17 @@ export default function ServicePayment({
 
                     <SelectContent>
                       {itemList.map(
-                        (item) => {
+                        (
+                          item,
+                          index
+                        ) => {
                           const code =
-                            getItemCode(item);
+                            getItemCode(
+                              item
+                            ) ||
+                            String(
+                              index
+                            );
 
                           const price =
                             getItemSellingPrice(
@@ -2340,7 +2810,8 @@ export default function ServicePayment({
                                   )}
                                 </span>
 
-                                {price > 0 && (
+                                {price >
+                                  0 && (
                                   <span className="text-xs text-slate-500">
                                     {money(
                                       price
@@ -2357,7 +2828,7 @@ export default function ServicePayment({
                 </div>
               )}
 
-            {/* AIRTIME PHONE ---------------------------------------------- */}
+            {/* AIRTIME PHONE --------------------------------------------- */}
 
             {isAirtime && (
               <div className="space-y-2">
@@ -2369,10 +2840,15 @@ export default function ServicePayment({
                   <Phone className="absolute left-3 top-3.5 h-5 w-5 text-slate-400" />
 
                   <Input
-                    value={phone}
-                    onChange={(event) =>
+                    value={
+                      phone
+                    }
+                    onChange={(
+                      event
+                    ) =>
                       setPhone(
-                        event.target.value
+                        event.target
+                          .value
                       )
                     }
                     inputMode="tel"
@@ -2383,7 +2859,7 @@ export default function ServicePayment({
               </div>
             )}
 
-            {/* DATA PHONE ------------------------------------------------- */}
+            {/* DATA PHONE ------------------------------------------------ */}
 
             {isData && (
               <div className="space-y-2">
@@ -2395,10 +2871,15 @@ export default function ServicePayment({
                   <Phone className="absolute left-3 top-3.5 h-5 w-5 text-slate-400" />
 
                   <Input
-                    value={phone}
-                    onChange={(event) =>
+                    value={
+                      phone
+                    }
+                    onChange={(
+                      event
+                    ) =>
                       setPhone(
-                        event.target.value
+                        event.target
+                          .value
                       )
                     }
                     inputMode="tel"
@@ -2409,7 +2890,7 @@ export default function ServicePayment({
               </div>
             )}
 
-            {/* ELECTRICITY METER ------------------------------------------ */}
+            {/* ELECTRICITY ---------------------------------------------- */}
 
             {isElectricity && (
               <>
@@ -2419,11 +2900,23 @@ export default function ServicePayment({
                   </Label>
 
                   <Select
-                    value={meterType}
-                    onValueChange={(value) => {
-                      setMeterType(value);
-                      setVerifiedCustomer("");
-                      setVerifiedType("none");
+                    value={
+                      meterType
+                    }
+                    onValueChange={(
+                      value
+                    ) => {
+                      setMeterType(
+                        value
+                      );
+
+                      setVerifiedCustomer(
+                        ""
+                      );
+
+                      setVerifiedType(
+                        "none"
+                      );
                     }}
                   >
                     <SelectTrigger className="h-12 rounded-xl">
@@ -2449,14 +2942,24 @@ export default function ServicePayment({
 
                   <div className="flex gap-2">
                     <Input
-                      value={meterNumber}
-                      onChange={(event) => {
+                      value={
+                        meterNumber
+                      }
+                      onChange={(
+                        event
+                      ) => {
                         setMeterNumber(
-                          event.target.value
+                          event.target
+                            .value
                         );
 
-                        setVerifiedCustomer("");
-                        setVerifiedType("none");
+                        setVerifiedCustomer(
+                          ""
+                        );
+
+                        setVerifiedType(
+                          "none"
+                        );
                       }}
                       inputMode="numeric"
                       placeholder="Enter meter number"
@@ -2497,7 +3000,9 @@ export default function ServicePayment({
                         </p>
 
                         <p className="text-xs text-emerald-700">
-                          {verifiedCustomer}
+                          {
+                            verifiedCustomer
+                          }
                         </p>
                       </div>
                     </div>
@@ -2509,8 +3014,12 @@ export default function ServicePayment({
                   </Label>
 
                   <Input
-                    value={amount}
-                    onChange={(event) =>
+                    value={
+                      amount
+                    }
+                    onChange={(
+                      event
+                    ) =>
                       setAmount(
                         event.target.value.replace(
                           /[^\d]/g,
@@ -2533,10 +3042,15 @@ export default function ServicePayment({
                   </Label>
 
                   <Input
-                    value={phone}
-                    onChange={(event) =>
+                    value={
+                      phone
+                    }
+                    onChange={(
+                      event
+                    ) =>
                       setPhone(
-                        event.target.value
+                        event.target
+                          .value
                       )
                     }
                     inputMode="tel"
@@ -2547,7 +3061,7 @@ export default function ServicePayment({
               </>
             )}
 
-            {/* CABLE SMARTCARD -------------------------------------------- */}
+            {/* CABLE ----------------------------------------------------- */}
 
             {isCable && (
               <>
@@ -2558,14 +3072,24 @@ export default function ServicePayment({
 
                   <div className="flex gap-2">
                     <Input
-                      value={smartcardNumber}
-                      onChange={(event) => {
+                      value={
+                        smartcardNumber
+                      }
+                      onChange={(
+                        event
+                      ) => {
                         setSmartcardNumber(
-                          event.target.value
+                          event.target
+                            .value
                         );
 
-                        setVerifiedCustomer("");
-                        setVerifiedType("none");
+                        setVerifiedCustomer(
+                          ""
+                        );
+
+                        setVerifiedType(
+                          "none"
+                        );
                       }}
                       inputMode="numeric"
                       placeholder="Enter SmartCard/IUC number"
@@ -2604,7 +3128,9 @@ export default function ServicePayment({
                         </p>
 
                         <p className="text-xs text-emerald-700">
-                          {verifiedCustomer}
+                          {
+                            verifiedCustomer
+                          }
                         </p>
                       </div>
                     </div>
@@ -2619,10 +3145,15 @@ export default function ServicePayment({
                   </Label>
 
                   <Input
-                    value={phone}
-                    onChange={(event) =>
+                    value={
+                      phone
+                    }
+                    onChange={(
+                      event
+                    ) =>
                       setPhone(
-                        event.target.value
+                        event.target
+                          .value
                       )
                     }
                     inputMode="tel"
@@ -2650,7 +3181,7 @@ export default function ServicePayment({
               </>
             )}
 
-            {/* AIRTIME AMOUNT --------------------------------------------- */}
+            {/* AIRTIME AMOUNT -------------------------------------------- */}
 
             {isAirtime && (
               <div className="space-y-3">
@@ -2667,13 +3198,17 @@ export default function ServicePayment({
                     2000,
                     5000,
                   ].map(
-                    (value) => (
+                    (
+                      value
+                    ) => (
                       <button
                         type="button"
                         key={value}
                         onClick={() =>
                           setAmount(
-                            String(value)
+                            String(
+                              value
+                            )
                           )
                         }
                         className={`rounded-xl border py-3 text-sm font-semibold transition ${
@@ -2683,15 +3218,21 @@ export default function ServicePayment({
                             : "border-slate-200 bg-white text-slate-700 hover:border-indigo-200"
                         }`}
                       >
-                        {money(value)}
+                        {money(
+                          value
+                        )}
                       </button>
                     )
                   )}
                 </div>
 
                 <Input
-                  value={amount}
-                  onChange={(event) =>
+                  value={
+                    amount
+                  }
+                  onChange={(
+                    event
+                  ) =>
                     setAmount(
                       event.target.value.replace(
                         /[^\d]/g,
@@ -2706,7 +3247,7 @@ export default function ServicePayment({
               </div>
             )}
 
-            {/* E-PIN QUANTITY ------------------------------------------------ */}
+            {/* E-PIN QUANTITY -------------------------------------------- */}
 
             {(isAirtimeCard ||
               isDataCard) && (
@@ -2716,8 +3257,12 @@ export default function ServicePayment({
                 </Label>
 
                 <Input
-                  value={quantity}
-                  onChange={(event) =>
+                  value={
+                    quantity
+                  }
+                  onChange={(
+                    event
+                  ) =>
                     setQuantity(
                       event.target.value.replace(
                         /[^\d]/g,
@@ -2733,13 +3278,14 @@ export default function ServicePayment({
                 />
 
                 <p className="text-xs text-slate-500">
-                  You can purchase between 1 and 100
+                  You can purchase
+                  between 1 and 100
                   pins per request.
                 </p>
               </div>
             )}
 
-            {/* SMILE ACCOUNT ------------------------------------------------ */}
+            {/* SMILE ACCOUNT --------------------------------------------- */}
 
             {isSmile && (
               <div className="space-y-2">
@@ -2748,10 +3294,15 @@ export default function ServicePayment({
                 </Label>
 
                 <Input
-                  value={accountId}
-                  onChange={(event) =>
+                  value={
+                    accountId
+                  }
+                  onChange={(
+                    event
+                  ) =>
                     setAccountId(
-                      event.target.value
+                      event.target
+                        .value
                     )
                   }
                   inputMode="numeric"
@@ -2761,7 +3312,7 @@ export default function ServicePayment({
               </div>
             )}
 
-            {/* WAEC PHONE -------------------------------------------------- */}
+            {/* WAEC PHONE ------------------------------------------------- */}
 
             {isWAEC && (
               <div className="space-y-2">
@@ -2770,10 +3321,15 @@ export default function ServicePayment({
                 </Label>
 
                 <Input
-                  value={phone}
-                  onChange={(event) =>
+                  value={
+                    phone
+                  }
+                  onChange={(
+                    event
+                  ) =>
                     setPhone(
-                      event.target.value
+                      event.target
+                        .value
                     )
                   }
                   inputMode="tel"
@@ -2783,7 +3339,7 @@ export default function ServicePayment({
               </div>
             )}
 
-            {/* JAMB EXAM TYPE --------------------------------------------- */}
+            {/* JAMB ------------------------------------------------------- */}
 
             {isJAMB && (
               <>
@@ -2793,7 +3349,9 @@ export default function ServicePayment({
                   </Label>
 
                   <Select
-                    value={examType}
+                    value={
+                      examType
+                    }
                     onValueChange={
                       setExamType
                     }
@@ -2824,10 +3382,15 @@ export default function ServicePayment({
                   </Label>
 
                   <Input
-                    value={phone}
-                    onChange={(event) =>
+                    value={
+                      phone
+                    }
+                    onChange={(
+                      event
+                    ) =>
                       setPhone(
-                        event.target.value
+                        event.target
+                          .value
                       )
                     }
                     inputMode="tel"
@@ -2838,7 +3401,7 @@ export default function ServicePayment({
               </>
             )}
 
-            {/* OPTIONAL RECIPIENT ---------------------------------------- */}
+            {/* OPTIONAL RECIPIENT --------------------------------------- */}
 
             {(isAirtimeCard ||
               isDataCard) && (
@@ -2851,10 +3414,15 @@ export default function ServicePayment({
                 </Label>
 
                 <Input
-                  value={recipientPhone}
-                  onChange={(event) =>
+                  value={
+                    recipientPhone
+                  }
+                  onChange={(
+                    event
+                  ) =>
                     setRecipientPhone(
-                      event.target.value
+                      event.target
+                        .value
                     )
                   }
                   inputMode="tel"
@@ -2863,16 +3431,20 @@ export default function ServicePayment({
                 />
 
                 <p className="text-xs text-slate-500">
-                  This is only for your record. The
-                  provider generates the E-PIN itself.
+                  This is only for
+                  your record. The
+                  service generates
+                  the E-PIN itself.
                 </p>
               </div>
             )}
 
-            {/* SUMMARY ----------------------------------------------------- */}
+            {/* SUMMARY ---------------------------------------------------- */}
 
-            {(estimatedTotal > 0 ||
-              selectedSellingPrice > 0) && (
+            {(estimatedTotal >
+              0 ||
+              selectedSellingPrice >
+                0) && (
               <div className="rounded-2xl border border-indigo-100 bg-indigo-50 p-4">
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-slate-600">
@@ -2887,13 +3459,15 @@ export default function ServicePayment({
                 </div>
 
                 <p className="mt-2 text-[11px] leading-5 text-slate-500">
-                  Final pricing is calculated securely
-                  by IyanjuPay on the server.
+                  Final pricing is
+                  calculated securely
+                  by IyanjuPay on the
+                  server.
                 </p>
               </div>
             )}
 
-            {/* SECURITY NOTE ------------------------------------------------ */}
+            {/* SECURITY NOTE -------------------------------------------- */}
 
             <div className="flex items-start gap-3 rounded-2xl bg-slate-50 p-4">
               <LockKeyhole className="mt-0.5 h-5 w-5 shrink-0 text-indigo-600" />
@@ -2904,17 +3478,21 @@ export default function ServicePayment({
                 </p>
 
                 <p className="mt-1 text-xs leading-5 text-slate-500">
-                  Your payment PIN is verified securely
-                  before the transaction is submitted.
+                  Your payment PIN is
+                  verified securely
+                  before the transaction
+                  is submitted.
                 </p>
               </div>
             </div>
 
-            {/* PURCHASE BUTTON ------------------------------------------- */}
+            {/* PURCHASE BUTTON ------------------------------------------ */}
 
             <Button
               type="button"
-              onClick={handlePurchase}
+              onClick={
+                handlePurchase
+              }
               disabled={
                 purchaseLoading ||
                 loadingCatalogue
@@ -2940,16 +3518,24 @@ export default function ServicePayment({
       {/* PAYMENT PIN ------------------------------------------------------- */}
 
       <Dialog
-        open={showPinModal}
-        onOpenChange={(open) => {
+        open={
+          showPinModal
+        }
+        onOpenChange={(
+          open
+        ) => {
           if (
             !purchaseLoading &&
             !pinLoading
           ) {
-            setShowPinModal(open);
+            setShowPinModal(
+              open
+            );
 
             if (!open) {
-              setPaymentPin("");
+              setPaymentPin(
+                ""
+              );
             }
           }
         }}
@@ -2961,8 +3547,10 @@ export default function ServicePayment({
             </DialogTitle>
 
             <DialogDescription className="text-center">
-              Enter your 4-digit payment PIN to
-              authorize this transaction.
+              Enter your 4-digit
+              payment PIN to
+              authorize this
+              transaction.
             </DialogDescription>
           </DialogHeader>
 
@@ -2993,8 +3581,12 @@ export default function ServicePayment({
                 type="password"
                 inputMode="numeric"
                 maxLength={4}
-                value={paymentPin}
-                onChange={(event) =>
+                value={
+                  paymentPin
+                }
+                onChange={(
+                  event
+                ) =>
                   setPaymentPin(
                     event.target.value.replace(
                       /\D/g,
@@ -3013,8 +3605,13 @@ export default function ServicePayment({
                 type="button"
                 variant="outline"
                 onClick={() => {
-                  setShowPinModal(false);
-                  setPaymentPin("");
+                  setShowPinModal(
+                    false
+                  );
+
+                  setPaymentPin(
+                    ""
+                  );
                 }}
                 disabled={
                   purchaseLoading ||
@@ -3033,7 +3630,8 @@ export default function ServicePayment({
                 disabled={
                   purchaseLoading ||
                   pinLoading ||
-                  paymentPin.length !== 4
+                  paymentPin.length !==
+                    4
                 }
                 className="h-12 flex-1 rounded-xl bg-indigo-600 hover:bg-indigo-700"
               >
@@ -3051,3 +3649,5 @@ export default function ServicePayment({
     </div>
   );
 }
+
+export default ServicePayment;

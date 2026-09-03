@@ -1,25 +1,30 @@
 import React, {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
 
 import {
   ArrowLeft,
+  ArrowUpRight,
+  Check,
   CheckCircle2,
-  XCircle,
   Clock3,
+  Copy,
   Loader2,
+  LockKeyhole,
+  Receipt,
   RefreshCw,
   Send,
-  Receipt,
+  ShieldCheck,
+  Sparkles,
+  XCircle,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-
 import { useToast } from "@/hooks/use-toast";
-
 import { supabase } from "@/integrations/supabase/client";
 
 // ============================================================
@@ -48,28 +53,8 @@ type TransactionStatus =
   | "pending"
   | "failed";
 
-// ============================================================
-// PROPS
-// ============================================================
-
 interface TransactionProcessingPageProps {
-  /**
-   * New unified transaction type.
-   *
-   * Preferred:
-   *
-   * "iyanjupay"
-   * "bank"
-   * "bill"
-   */
   transactionType?: TransactionType;
-
-  /**
-   * Kept temporarily so the existing Dashboard
-   * transfer flow does not break while we migrate it.
-   *
-   * This can be removed after Dashboard is updated.
-   */
   transferType?: LegacyTransferType;
 
   amount: number;
@@ -87,109 +72,106 @@ interface TransactionProcessingPageProps {
     | void;
 }
 
-// ============================================================
-// RESULT
-// ============================================================
-
 interface TransactionResult {
   success?: boolean;
-
   status?: string;
-
   message?: string;
-
   error?: string;
 
   reference?: string;
 
   transaction_id?: string;
-
   transactionId?: string;
 
   transfer_id?: string;
-
   transferId?: string;
 
   bill_payment_id?: string;
-
   billPaymentId?: string;
 
   credit_transaction_id?: string;
 
   amount?: number;
-
   fee?: number;
-
   total_charged?: number;
 
   recipient_name?: string;
-
   recipient_wallet_id?: string;
 
   customer?: string;
 
   biller_code?: string;
-
   item_code?: string;
 
   provider?: string;
 
   data?: any;
-
   metadata?: any;
 
   [key: string]: any;
 }
 
 // ============================================================
+// CONSTANTS
+// ============================================================
+
+const NAVY = "#082A63";
+const GOLD = "#F4B400";
+
+// ============================================================
+// HELPERS
+// ============================================================
+
+const formatNaira = (
+  value: number
+): string =>
+  `₦${Number(value || 0).toLocaleString(
+    "en-NG",
+    {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }
+  )}`;
+
+const maskAccountNumber = (
+  value: string
+): string => {
+  const clean = String(value || "").trim();
+
+  if (!clean) {
+    return "";
+  }
+
+  if (clean.length <= 4) {
+    return clean;
+  }
+
+  return `•••• ${clean.slice(-4)}`;
+};
+
+const getInitials = (
+  value: string
+): string => {
+  const words = String(value || "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+
+  if (!words.length) {
+    return "IP";
+  }
+
+  if (words.length === 1) {
+    return words[0].slice(0, 2).toUpperCase();
+  }
+
+  return `${words[0][0]}${words[words.length - 1][0]}`.toUpperCase();
+};
+
+// ============================================================
 // COMPONENT
 // ============================================================
 
-/**
- * ============================================================
- * TRANSACTION PROCESSING PAGE
- * ============================================================
- *
- * This page executes an already PIN-authorized transaction.
- *
- * Transfer:
- *
- * Review
- *   ↓
- * Payment PIN
- *   ↓
- * THIS PAGE
- *   ↓
- * Transfer Edge Function
- *
- * Bill:
- *
- * Review
- *   ↓
- * Payment PIN
- *   ↓
- * THIS PAGE
- *   ↓
- * flutterwave-bills
- *
- * IMPORTANT:
- *
- * This page does NOT collect or verify the Payment PIN.
- *
- * PIN authorization happens before this page.
- *
- * BANK TRANSFER CONFIRMATION:
- *
- * If Flutterwave initially returns NEW / PENDING /
- * QUEUED, the page waits 5 seconds before deciding
- * whether to display Pending.
- *
- * During those 5 seconds, the page remains on the
- * Processing screen.
- *
- * After 5 seconds, the existing transaction record
- * is checked.
- */
 const TransactionProcessingPage = ({
   transactionType,
   transferType,
@@ -202,15 +184,9 @@ const TransactionProcessingPage = ({
   const { toast } = useToast();
 
   // ==========================================================
-  // RESOLVE TRANSACTION TYPE
+  // TRANSACTION TYPE
   // ==========================================================
 
-  /**
-   * Prefer the new transactionType.
-   *
-   * Fall back to transferType temporarily so
-   * existing transfer callers continue working.
-   */
   const resolvedTransactionType: TransactionType =
     transactionType ??
     transferType ??
@@ -220,8 +196,7 @@ const TransactionProcessingPage = ({
     resolvedTransactionType === "bill";
 
   const isIyanjuPay =
-    resolvedTransactionType ===
-    "iyanjupay";
+    resolvedTransactionType === "iyanjupay";
 
   const isBank =
     resolvedTransactionType === "bank";
@@ -231,14 +206,10 @@ const TransactionProcessingPage = ({
   // ==========================================================
 
   const [status, setStatus] =
-    useState<TransactionStatus>(
-      "processing"
-    );
+    useState<TransactionStatus>("processing");
 
   const [result, setResult] =
-    useState<TransactionResult | null>(
-      null
-    );
+    useState<TransactionResult | null>(null);
 
   const [errorMessage, setErrorMessage] =
     useState("");
@@ -246,8 +217,11 @@ const TransactionProcessingPage = ({
   const [retrying, setRetrying] =
     useState(false);
 
+  const [copied, setCopied] =
+    useState(false);
+
   // ==========================================================
-  // DUPLICATE EXECUTION PROTECTION
+  // REFS
   // ==========================================================
 
   const executionStartedRef =
@@ -256,11 +230,146 @@ const TransactionProcessingPage = ({
   const mountedRef =
     useRef(true);
 
+  // ==========================================================
+  // MOUNT STATE
+  // ==========================================================
+
   useEffect(() => {
     return () => {
       mountedRef.current = false;
     };
   }, []);
+
+  // ==========================================================
+  // BILL SERVICE
+  // ==========================================================
+
+  const billServiceName = useMemo(() => {
+    const service = String(
+      details?.service ??
+        details?.type ??
+        ""
+    )
+      .toLowerCase()
+      .trim();
+
+    switch (service) {
+      case "airtime":
+        return "Airtime";
+
+      case "data":
+        return "Data";
+
+      case "electricity":
+        return "Electricity";
+
+      case "cable":
+        return "Cable TV";
+
+      case "internet":
+        return "Internet";
+
+      default:
+        return "Bill Payment";
+    }
+  }, [details]);
+
+  const transactionName = isBill
+    ? billServiceName
+    : "Transfer";
+
+  // ==========================================================
+  // DISPLAY VALUES
+  // ==========================================================
+
+  const recipient =
+    details?.recipient ||
+    details?.recipientName ||
+    result?.recipient_name ||
+    result?.data?.recipient_name ||
+    "Recipient";
+
+  const bank =
+    details?.bank ||
+    details?.bankName ||
+    "";
+
+  const accountNumber =
+    details?.accountNumber ||
+    details?.account_number ||
+    "";
+
+  const billCustomer =
+    details?.customer ||
+    details?.customerNumber ||
+    details?.phone ||
+    "";
+
+  const billPackage =
+    details?.item?.name ||
+    details?.item?.short_name ||
+    details?.packageName ||
+    details?.package_name ||
+    details?.package ||
+    "";
+
+  const billCustomerLabel =
+    details?.customerLabel ||
+    (() => {
+      const service = String(
+        details?.service ??
+          details?.type ??
+          ""
+      ).toLowerCase();
+
+      if (
+        service === "airtime" ||
+        service === "data"
+      ) {
+        return "Phone Number";
+      }
+
+      if (service === "electricity") {
+        return "Meter Number";
+      }
+
+      if (service === "cable") {
+        return "Smart Card";
+      }
+
+      if (service === "internet") {
+        return "Account Number";
+      }
+
+      return "Customer";
+    })();
+
+  // ==========================================================
+  // REFERENCE
+  // ==========================================================
+
+  const reference =
+    result?.reference ||
+    result?.data?.reference ||
+    result?.transaction_id ||
+    result?.transactionId ||
+    result?.transfer_id ||
+    result?.transferId ||
+    result?.bill_payment_id ||
+    result?.billPaymentId ||
+    result?.data?.transaction_id ||
+    result?.data?.transfer_id ||
+    result?.data?.bill_payment_id ||
+    "";
+
+  const transactionId =
+    result?.transaction_id ||
+    result?.transactionId ||
+    result?.data?.transaction_id ||
+    result?.credit_transaction_id ||
+    result?.bill_payment_id ||
+    result?.billPaymentId ||
+    "";
 
   // ==========================================================
   // EXTRACT FUNCTION ERROR
@@ -278,8 +387,8 @@ const TransactionProcessingPage = ({
       try {
         if (
           error?.context &&
-          typeof error.context
-            .json === "function"
+          typeof error.context.json ===
+            "function"
         ) {
           const payload =
             await error.context.json();
@@ -291,53 +400,11 @@ const TransactionProcessingPage = ({
             message;
         }
       } catch {
-        // Keep original message.
+        // Keep original error.
       }
 
       return message;
     };
-
-  // ==========================================================
-  // DISPLAY NAMES
-  // ==========================================================
-
-  const getBillServiceName =
-    (): string => {
-      const service =
-        String(
-          details?.service ??
-            details?.type ??
-            ""
-        ).toLowerCase();
-
-      switch (service) {
-        case "airtime":
-          return "Airtime";
-
-        case "data":
-          return "Data";
-
-        case "electricity":
-          return "Electricity";
-
-        case "cable":
-          return "Cable TV";
-
-        case "internet":
-          return "Internet";
-
-        default:
-          return "Bill Payment";
-      }
-    };
-
-  const billServiceName =
-    getBillServiceName();
-
-  const transactionName =
-    isBill
-      ? billServiceName
-      : "Transfer";
 
   // ==========================================================
   // NORMALIZE STATUS
@@ -356,10 +423,6 @@ const TransactionProcessingPage = ({
         .trim()
         .toLowerCase();
 
-    // --------------------------------------------------------
-    // SUCCESS
-    // --------------------------------------------------------
-
     if (
       [
         "success",
@@ -374,10 +437,6 @@ const TransactionProcessingPage = ({
     ) {
       return "success";
     }
-
-    // --------------------------------------------------------
-    // PENDING
-    // --------------------------------------------------------
 
     if (
       [
@@ -394,10 +453,6 @@ const TransactionProcessingPage = ({
       return "pending";
     }
 
-    // --------------------------------------------------------
-    // FAILED
-    // --------------------------------------------------------
-
     if (
       [
         "failed",
@@ -413,65 +468,31 @@ const TransactionProcessingPage = ({
       return "failed";
     }
 
-    // --------------------------------------------------------
-    // SUCCESS BOOLEAN
-    // --------------------------------------------------------
-
-    if (
-      response?.success === true
-    ) {
+    if (response?.success === true) {
       return "success";
     }
 
-    // --------------------------------------------------------
-    // FAILURE BOOLEAN
-    // --------------------------------------------------------
-
-    if (
-      response?.success === false
-    ) {
+    if (response?.success === false) {
       return "failed";
     }
 
-    // --------------------------------------------------------
-    // UNKNOWN
-    // --------------------------------------------------------
-
-    /*
-     * Never falsely display success.
-     *
-     * If the backend did not provide a definitive
-     * status, treat it as pending.
-     */
     return "pending";
   };
 
   // ==========================================================
-  // CHECK BANK TRANSFER STATUS AFTER 5 SECONDS
-  // ==========================================================
-  //
-  // Flutterwave may initially return NEW / PENDING /
-  // QUEUED even when the transfer completes shortly
-  // afterwards.
-  //
-  // We therefore wait 5 seconds before deciding whether
-  // to display Pending.
-  //
-  // IMPORTANT:
-  //
-  // This function does NOT call flutterwave-transfer again.
-  //
-  // It only checks the existing transaction record.
+  // BANK TRANSFER CONFIRMATION
   // ==========================================================
 
   const checkBankTransferStatus =
     useCallback(
       async (
-        transactionId: string,
+        transactionIdToCheck: string,
         initialResponse: TransactionResult
       ): Promise<TransactionResult> => {
         /*
-         * Wait exactly 6 seconds.
+         * Keep the user on the premium processing
+         * screen while the transaction gets its first
+         * database confirmation.
          */
         await new Promise<void>(
           (resolve) => {
@@ -482,19 +503,11 @@ const TransactionProcessingPage = ({
           }
         );
 
-        /*
-         * Component may have been unmounted
-         * while waiting.
-         */
         if (!mountedRef.current) {
           return initialResponse;
         }
 
-        /*
-         * Without a transaction ID we cannot
-         * safely check the transaction.
-         */
-        if (!transactionId) {
+        if (!transactionIdToCheck) {
           console.warn(
             "Bank transfer status check skipped: transaction ID missing."
           );
@@ -503,11 +516,6 @@ const TransactionProcessingPage = ({
         }
 
         try {
-          console.log(
-            "Checking bank transfer status after 5 seconds:",
-            transactionId
-          );
-
           const {
             data: transaction,
             error,
@@ -525,7 +533,7 @@ const TransactionProcessingPage = ({
             )
             .eq(
               "id",
-              transactionId
+              transactionIdToCheck
             )
             .maybeSingle();
 
@@ -535,32 +543,50 @@ const TransactionProcessingPage = ({
               error
             );
 
-            /*
-             * Never falsely display success.
-             *
-             * If the database check fails,
-             * retain the original provider response.
-             */
             return initialResponse;
           }
 
           if (!transaction) {
             console.warn(
               "Bank transfer transaction was not found:",
-              transactionId
+              transactionIdToCheck
             );
 
             return initialResponse;
           }
 
-          /*
-           * Preserve the original Flutterwave response
-           * while overriding the status with the latest
-           * transaction status from our database.
-           */
-          const databaseResponse:
-            TransactionResult = {
-              ...initialResponse,
+          return {
+            ...initialResponse,
+
+            transaction_id:
+              transaction.id,
+
+            reference:
+              transaction.reference_number ||
+              initialResponse.reference,
+
+            transfer_id:
+              transaction.provider_reference ||
+              initialResponse.transfer_id,
+
+            status:
+              transaction.status,
+
+            amount:
+              Number(
+                transaction.amount ??
+                  initialResponse.amount ??
+                  amount
+              ),
+
+            metadata:
+              transaction.metadata,
+
+            data: {
+              ...(initialResponse.data || {}),
+
+              status:
+                transaction.status,
 
               transaction_id:
                 transaction.id,
@@ -569,51 +595,13 @@ const TransactionProcessingPage = ({
                 transaction.reference_number ||
                 initialResponse.reference,
 
-              transfer_id:
-                transaction.provider_reference ||
-                initialResponse.transfer_id,
-
-              status:
-                transaction.status,
-
-              amount:
-                Number(
-                  transaction.amount ??
-                    initialResponse.amount ??
-                    amount
-                ),
+              provider_reference:
+                transaction.provider_reference,
 
               metadata:
                 transaction.metadata,
-
-              data: {
-                ...(initialResponse.data ||
-                  {}),
-
-                status:
-                  transaction.status,
-
-                transaction_id:
-                  transaction.id,
-
-                reference:
-                  transaction.reference_number ||
-                  initialResponse.reference,
-
-                provider_reference:
-                  transaction.provider_reference,
-
-                metadata:
-                  transaction.metadata,
-              },
-            };
-
-          console.log(
-            "Bank transfer status after 5-second check:",
-            databaseResponse
-          );
-
-          return databaseResponse;
+            },
+          };
         } catch (error) {
           console.error(
             "Unexpected bank transfer status check error:",
@@ -635,10 +623,6 @@ const TransactionProcessingPage = ({
       async (
         allowDuplicateGuard = false
       ) => {
-        // ----------------------------------------------------
-        // DUPLICATE PROTECTION
-        // ----------------------------------------------------
-
         if (
           executionStartedRef.current &&
           !allowDuplicateGuard
@@ -707,23 +691,9 @@ const TransactionProcessingPage = ({
               bank_code:
                 details?.bankCode,
 
-              /*
-               * Keep account_name for compatibility
-               * with existing callers.
-               */
               account_name:
                 details?.recipient,
 
-              /*
-               * IMPORTANT:
-               *
-               * flutterwave-transfer expects
-               * beneficiary_name.
-               *
-               * This fixes:
-               *
-               * "Beneficiary name is required."
-               */
               beneficiary_name:
                 details?.recipient,
 
@@ -775,24 +745,6 @@ const TransactionProcessingPage = ({
               details?.country ||
               "NG";
 
-            /*
-             * IMPORTANT:
-             *
-             * The Payment PIN is deliberately NOT
-             * included anywhere in this request.
-             *
-             * PIN authorization has already happened.
-             *
-             * The backend must independently:
-             *
-             * - authenticate the user
-             * - validate the bill
-             * - calculate the real provider price
-             * - enforce wallet balance
-             * - debit the wallet safely
-             * - call Flutterwave
-             * - maintain idempotency
-             */
             body = {
               action: "pay",
 
@@ -813,11 +765,6 @@ const TransactionProcessingPage = ({
               details: {
                 ...details,
 
-                /*
-                 * Explicitly prevent accidental PIN
-                 * propagation if a caller ever attaches
-                 * it to details.
-                 */
                 paymentPin:
                   undefined,
 
@@ -830,56 +777,26 @@ const TransactionProcessingPage = ({
             };
           }
 
-          // ==================================================
-          // VALIDATE FUNCTION
-          // ==================================================
-
           if (!functionName) {
             throw new Error(
               "Invalid transaction type."
             );
           }
 
-          // ==================================================
-          // LOG SAFE TRANSACTION INFORMATION
-          // ==================================================
-
           console.log(
             "Executing authorized transaction:",
             {
               functionName,
-
               transactionType:
                 resolvedTransactionType,
-
               amount,
-
               idempotencyKey,
-
               service:
                 isBill
                   ? details?.service
                   : undefined,
-
-              biller_code:
-                isBill
-                  ? details?.biller_code
-                  : undefined,
-
-              item_code:
-                isBill
-                  ? details?.item_code
-                  : undefined,
-
-              /*
-               * Do NOT log payment PIN.
-               */
             }
           );
-
-          // ==================================================
-          // CALL EDGE FUNCTION
-          // ==================================================
 
           const {
             data,
@@ -891,19 +808,6 @@ const TransactionProcessingPage = ({
                 body,
               }
             );
-
-          // ==================================================
-          // RESPONSE LOG
-          // ==================================================
-
-          console.log(
-            "Transaction Edge Function response:",
-            data
-          );
-
-          // ==================================================
-          // FUNCTION ERROR
-          // ==================================================
 
           if (error) {
             const message =
@@ -917,26 +821,14 @@ const TransactionProcessingPage = ({
             );
           }
 
-          // ==================================================
-          // EMPTY RESPONSE
-          // ==================================================
-
           if (!data) {
             throw new Error(
               `No response was received from the ${transactionName.toLowerCase()} service.`
             );
           }
 
-          // ==================================================
-          // NORMALIZED RESPONSE
-          // ==================================================
-
           const response =
             data as TransactionResult;
-
-          // ==================================================
-          // EXPLICIT BACKEND ERROR
-          // ==================================================
 
           if (
             response.success ===
@@ -951,10 +843,6 @@ const TransactionProcessingPage = ({
             );
           }
 
-          // ==================================================
-          // DETERMINE INITIAL STATUS
-          // ==================================================
-
           let finalResponse =
             response;
 
@@ -964,15 +852,7 @@ const TransactionProcessingPage = ({
             );
 
           // ==================================================
-          // BANK TRANSFER 5-SECOND CONFIRMATION
-          // ==================================================
-          //
-          // If Flutterwave says NEW/PENDING/QUEUED,
-          // remain on Processing for 5 seconds.
-          //
-          // Then check the existing transaction.
-          //
-          // No second transfer is created.
+          // BANK TRANSFER CONFIRMATION
           // ==================================================
 
           if (
@@ -980,18 +860,6 @@ const TransactionProcessingPage = ({
             normalizedStatus ===
               "pending"
           ) {
-            console.log(
-              "Flutterwave bank transfer is pending."
-            );
-
-            console.log(
-              "Waiting 5 seconds before displaying final status..."
-            );
-
-            /*
-             * Keep the Processing screen visible
-             * during the 5-second confirmation period.
-             */
             if (
               mountedRef.current
             ) {
@@ -1004,9 +872,6 @@ const TransactionProcessingPage = ({
               );
             }
 
-            /*
-             * Get the existing transaction ID.
-             */
             const existingTransactionId =
               response.transaction_id ||
               response.transactionId ||
@@ -1014,10 +879,6 @@ const TransactionProcessingPage = ({
                 ?.transaction_id ||
               "";
 
-            /*
-             * Wait 5 seconds and then check
-             * the existing transaction.
-             */
             finalResponse =
               await checkBankTransferStatus(
                 existingTransactionId,
@@ -1030,34 +891,17 @@ const TransactionProcessingPage = ({
               return;
             }
 
-            /*
-             * Recalculate the status using the
-             * latest database information.
-             */
             normalizedStatus =
               normalizeStatus(
                 finalResponse
               );
-
-            console.log(
-              "Bank transfer final status after 5 seconds:",
-              normalizedStatus
-            );
           }
-
-          // ==================================================
-          // COMPONENT STILL MOUNTED
-          // ==================================================
 
           if (
             !mountedRef.current
           ) {
             return;
           }
-
-          // ==================================================
-          // SAVE FINAL RESULT
-          // ==================================================
 
           setResult(
             finalResponse
@@ -1083,13 +927,7 @@ const TransactionProcessingPage = ({
 
               description:
                 finalResponse.message ||
-                `₦${amount.toLocaleString(
-                  "en-NG"
-                )} ${
-                  isBill
-                    ? `${billServiceName.toLowerCase()} payment`
-                    : "transfer"
-                } completed successfully.`,
+                `Your ${isBill ? billServiceName.toLowerCase() : "transfer"} has been completed successfully.`,
             });
 
             return;
@@ -1111,11 +949,7 @@ const TransactionProcessingPage = ({
 
               description:
                 finalResponse.message ||
-                `Your ${
-                  isBill
-                    ? billServiceName.toLowerCase()
-                    : "transfer"
-                } has been submitted and is awaiting final confirmation.`,
+                `Your ${isBill ? billServiceName.toLowerCase() : "transfer"} is awaiting final confirmation.`,
             });
 
             return;
@@ -1212,11 +1046,7 @@ const TransactionProcessingPage = ({
       setRetrying(true);
 
       /*
-       * IMPORTANT:
-       *
        * Reuse the SAME idempotency key.
-       *
-       * Never create a new key for retry.
        */
       executionStartedRef.current =
         false;
@@ -1231,846 +1061,855 @@ const TransactionProcessingPage = ({
     };
 
   // ==========================================================
-  // DISPLAY HELPERS
+  // COPY REFERENCE
   // ==========================================================
 
-  const reference =
-    result?.reference ||
-    result?.data?.reference ||
-    result?.transaction_id ||
-    result?.transactionId ||
-    result?.transfer_id ||
-    result?.transferId ||
-    result?.bill_payment_id ||
-    result?.billPaymentId ||
-    result?.data?.transaction_id ||
-    result?.data?.transfer_id ||
-    result?.data?.bill_payment_id ||
-    "";
+  const handleCopyReference =
+    async () => {
+      if (!reference) {
+        return;
+      }
 
-  const transactionId =
-    result?.transaction_id ||
-    result?.transactionId ||
-    result?.data?.transaction_id ||
-    result?.credit_transaction_id ||
-    result?.bill_payment_id ||
-    result?.billPaymentId ||
-    "";
+      try {
+        await navigator.clipboard.writeText(
+          reference
+        );
 
-  // ==========================================================
-  // TRANSFER DISPLAY
-  // ==========================================================
+        setCopied(true);
 
-  const recipient =
-    details?.recipient ||
-    details?.recipientName ||
-    result?.recipient_name ||
-    result?.data?.recipient_name ||
-    "Recipient";
+        toast({
+          title:
+            "Reference copied",
+          description:
+            "Transaction reference copied to your clipboard.",
+        });
 
-  const bank =
-    details?.bank ||
-    "";
-
-  const accountNumber =
-    details?.accountNumber ||
-    "";
+        window.setTimeout(() => {
+          if (mountedRef.current) {
+            setCopied(false);
+          }
+        }, 1800);
+      } catch {
+        toast({
+          title:
+            "Unable to copy",
+          description:
+            "Please copy the reference manually.",
+          variant:
+            "destructive",
+        });
+      }
+    };
 
   // ==========================================================
-  // BILL DISPLAY
+  // STATUS CONFIG
   // ==========================================================
 
-  const billProvider =
-    details?.provider ||
-    details?.biller?.name ||
-    details?.biller?.short_name ||
-    result?.provider ||
-    result?.data?.provider ||
-    "Provider";
+  const statusConfig = {
+    processing: {
+      eyebrow:
+        "SECURE PROCESSING",
+      title:
+        isBill
+          ? `Processing ${billServiceName}`
+          : "Processing Transfer",
+      description:
+        isBill
+          ? `We're securely processing your ${billServiceName.toLowerCase()} payment.`
+          : "We're securely processing your transfer.",
+    },
 
-  const billCustomer =
-    details?.customer ||
-    "";
+    success: {
+      eyebrow:
+        "TRANSACTION COMPLETE",
+      title:
+        isBill
+          ? `${billServiceName} Successful`
+          : "Transfer Successful",
+      description:
+        isBill
+          ? `Your ${billServiceName.toLowerCase()} payment was completed successfully.`
+          : "Your transfer was completed successfully.",
+    },
 
-  const billPackage =
-    details?.item?.name ||
-    details?.item?.short_name ||
-    details?.packageName ||
-    "";
+    pending: {
+      eyebrow:
+        "AWAITING CONFIRMATION",
+      title:
+        isBill
+          ? `${billServiceName} Pending`
+          : "Transfer Pending",
+      description:
+        isBill
+          ? `Your ${billServiceName.toLowerCase()} payment has been submitted and is awaiting final confirmation.`
+          : "Your transfer has been submitted and is awaiting final confirmation.",
+    },
 
-  const billCustomerLabel =
-    details?.customerLabel ||
-    (
-      details?.service ===
-        "airtime" ||
-      details?.service ===
-        "data"
-        ? "Phone Number"
-        : details?.service ===
-            "electricity"
-          ? "Meter Number"
-          : details?.service ===
-              "cable"
-            ? "Smart Card / Decoder"
-            : details?.service ===
-                "internet"
-              ? "Account Number"
-              : "Customer"
-    );
-
-  // ==========================================================
-  // PAGE TITLE
-  // ==========================================================
-
-  const processingTitle =
-    isBill
-      ? `Processing ${billServiceName}`
-      : "Processing Transfer";
-
-  const successTitle =
-    isBill
-      ? `${billServiceName} Successful`
-      : "Transfer Successful";
-
-  const pendingTitle =
-    isBill
-      ? `${billServiceName} Pending`
-      : "Transfer Pending";
-
-  const failedTitle =
-    isBill
-      ? `${billServiceName} Failed`
-      : "Transfer Failed";
+    failed: {
+      eyebrow:
+        "TRANSACTION UNSUCCESSFUL",
+      title:
+        isBill
+          ? `${billServiceName} Failed`
+          : "Transfer Failed",
+      description:
+        isBill
+          ? `We could not complete your ${billServiceName.toLowerCase()} payment.`
+          : "We could not complete your transfer.",
+    },
+  }[status];
 
   // ==========================================================
-  // PROCESSING UI
+  // STATUS ICON
   // ==========================================================
 
-  if (
-    status === "processing"
-  ) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-50">
-
-        <header className="bg-gradient-to-r from-purple-600 to-blue-600 text-white sticky top-0 z-30 shadow-md">
-
-          <div className="max-w-3xl mx-auto px-4 sm:px-6">
-
-            <div className="flex items-center h-16">
-
-              <div className="flex items-center gap-2">
-
-                {isBill ? (
-                  <Receipt className="h-5 w-5" />
-                ) : (
-                  <Send className="h-5 w-5" />
-                )}
-
-                <h1 className="text-lg sm:text-xl font-bold">
-                  {processingTitle}
-                </h1>
-
-              </div>
-
-            </div>
-
-          </div>
-
-        </header>
-
-        <main className="max-w-2xl mx-auto px-4 py-10">
-
-          <div className="bg-white rounded-2xl shadow-sm border p-6 sm:p-8 text-center">
-
-            <div className="mx-auto w-16 h-16 rounded-full bg-blue-50 flex items-center justify-center mb-5">
-
-              <Loader2 className="h-8 w-8 text-blue-600 animate-spin" />
-
-            </div>
-
-            <h2 className="text-2xl font-bold text-gray-900">
-              {processingTitle}
-            </h2>
-
-            <p className="text-gray-600 mt-2">
-              Please wait while we securely process your{" "}
-              {isBill
-                ? `${billServiceName.toLowerCase()} payment`
-                : "transfer"}.
-            </p>
-
-            <p className="text-sm text-gray-500 mt-5">
-              Do not close this page or submit the transaction again.
-            </p>
-
-            <div className="mt-7 rounded-xl bg-gray-50 border p-4 text-left space-y-3">
-
-              {isBill ? (
-                <>
-                  <div className="flex justify-between gap-4">
-
-                    <span className="text-gray-500">
-                      Service
-                    </span>
-
-                    <span className="font-semibold text-gray-900 text-right">
-                      {billServiceName}
-                    </span>
-
-                  </div>
-
-                  <div className="flex justify-between gap-4">
-
-                    <span className="text-gray-500">
-                      Provider
-                    </span>
-
-                    <span className="font-semibold text-gray-900 text-right">
-                      {billProvider}
-                    </span>
-
-                  </div>
-
-                  {billCustomer && (
-                    <div className="flex justify-between gap-4">
-
-                      <span className="text-gray-500">
-                        {billCustomerLabel}
-                      </span>
-
-                      <span className="font-semibold text-gray-900 text-right break-all">
-                        {billCustomer}
-                      </span>
-
-                    </div>
-                  )}
-
-                  {billPackage && (
-                    <div className="flex justify-between gap-4">
-
-                      <span className="text-gray-500">
-                        Package
-                      </span>
-
-                      <span className="font-semibold text-gray-900 text-right">
-                        {billPackage}
-                      </span>
-
-                    </div>
-                  )}
-                </>
-              ) : (
-                <>
-                  <div className="flex justify-between gap-4">
-
-                    <span className="text-gray-500">
-                      Recipient
-                    </span>
-
-                    <span className="font-semibold text-gray-900 text-right">
-                      {recipient}
-                    </span>
-
-                  </div>
-
-                  {isBank && (
-                    <>
-                      <div className="flex justify-between gap-4">
-
-                        <span className="text-gray-500">
-                          Bank
-                        </span>
-
-                        <span className="font-semibold text-gray-900 text-right">
-                          {bank}
-                        </span>
-
-                      </div>
-
-                      <div className="flex justify-between gap-4">
-
-                        <span className="text-gray-500">
-                          Account
-                        </span>
-
-                        <span className="font-semibold text-gray-900">
-                          {accountNumber}
-                        </span>
-
-                      </div>
-                    </>
-                  )}
-                </>
-              )}
-
-              <div className="border-t pt-3 flex justify-between gap-4">
-
-                <span className="font-semibold">
-                  Amount
-                </span>
-
-                <span className="font-bold text-green-700">
-                  ₦
-                  {amount.toLocaleString(
-                    "en-NG",
-                    {
-                      minimumFractionDigits: 2,
-                      maximumFractionDigits: 2,
-                    }
-                  )}
-                </span>
-
-              </div>
-
-            </div>
-
-          </div>
-
-        </main>
-      </div>
-    );
-  }
-
-  // ==========================================================
-  // SUCCESS UI
-  // ==========================================================
-
-  if (
-    status === "success"
-  ) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-green-50 via-blue-50 to-indigo-50">
-
-        <header className="bg-gradient-to-r from-green-600 to-blue-600 text-white sticky top-0 z-30 shadow-md">
-
-          <div className="max-w-3xl mx-auto px-4 sm:px-6">
-
-            <div className="flex items-center h-16">
-
-              <div className="flex items-center gap-2">
-
-                <CheckCircle2 className="h-5 w-5" />
-
-                <h1 className="text-lg sm:text-xl font-bold">
-                  {successTitle}
-                </h1>
-
-              </div>
-
-            </div>
-
-          </div>
-
-        </header>
-
-        <main className="max-w-2xl mx-auto px-4 py-10">
-
-          <div className="bg-white rounded-2xl shadow-sm border p-6 sm:p-8">
-
-            <div className="text-center">
-
-              <div className="mx-auto w-20 h-20 rounded-full bg-green-100 flex items-center justify-center mb-5">
-
-                <CheckCircle2 className="h-11 w-11 text-green-600" />
-
-              </div>
-
-              <h2 className="text-2xl font-bold text-gray-900">
-                {successTitle}
-              </h2>
-
-              <p className="text-gray-600 mt-2">
-                Your{" "}
-                {isBill
-                  ? `${billServiceName.toLowerCase()} payment`
-                  : "transfer"}{" "}
-                has been completed successfully.
-              </p>
-
-              <p className="text-4xl font-bold text-green-700 mt-6">
-                ₦
-                {amount.toLocaleString(
-                  "en-NG",
-                  {
-                    minimumFractionDigits: 2,
-                    maximumFractionDigits: 2,
-                  }
-                )}
-              </p>
-
-            </div>
-
-            <div className="mt-8 rounded-xl bg-gray-50 border p-4 space-y-4">
-
-              {isBill ? (
-                <>
-                  <div className="flex justify-between gap-4">
-
-                    <span className="text-gray-500">
-                      Service
-                    </span>
-
-                    <span className="font-semibold text-gray-900 text-right">
-                      {billServiceName}
-                    </span>
-
-                  </div>
-
-                  <div className="flex justify-between gap-4">
-
-                    <span className="text-gray-500">
-                      Provider
-                    </span>
-
-                    <span className="font-semibold text-gray-900 text-right">
-                      {billProvider}
-                    </span>
-
-                  </div>
-
-                  {billCustomer && (
-                    <div className="flex justify-between gap-4">
-
-                      <span className="text-gray-500">
-                        {billCustomerLabel}
-                      </span>
-
-                      <span className="font-semibold text-gray-900 text-right break-all">
-                        {billCustomer}
-                      </span>
-
-                    </div>
-                  )}
-
-                  {billPackage && (
-                    <div className="flex justify-between gap-4">
-
-                      <span className="text-gray-500">
-                        Package
-                      </span>
-
-                      <span className="font-semibold text-gray-900 text-right">
-                        {billPackage}
-                      </span>
-
-                    </div>
-                  )}
-                </>
-              ) : (
-                <>
-                  <div className="flex justify-between gap-4">
-
-                    <span className="text-gray-500">
-                      Recipient
-                    </span>
-
-                    <span className="font-semibold text-gray-900 text-right">
-                      {recipient}
-                    </span>
-
-                  </div>
-
-                  {isBank && (
-                    <>
-                      <div className="flex justify-between gap-4">
-
-                        <span className="text-gray-500">
-                          Bank
-                        </span>
-
-                        <span className="font-semibold text-gray-900 text-right">
-                          {bank}
-                        </span>
-
-                      </div>
-
-                      <div className="flex justify-between gap-4">
-
-                        <span className="text-gray-500">
-                          Account
-                        </span>
-
-                        <span className="font-semibold text-gray-900">
-                          {accountNumber}
-                        </span>
-
-                      </div>
-                    </>
-                  )}
-                </>
-              )}
-
-              {reference && (
-                <div className="border-t pt-4 flex justify-between gap-4">
-
-                  <span className="text-gray-500">
-                    Reference
-                  </span>
-
-                  <span className="font-mono text-sm font-semibold text-gray-900 text-right break-all">
-                    {reference}
-                  </span>
-
-                </div>
-              )}
-
-              {transactionId && (
-                <div className="flex justify-between gap-4">
-
-                  <span className="text-gray-500">
-                    Transaction ID
-                  </span>
-
-                  <span className="font-mono text-xs text-gray-700 text-right break-all">
-                    {transactionId}
-                  </span>
-
-                </div>
-              )}
-
-            </div>
-
-            <Button
-              type="button"
-              onClick={() =>
-                void onDone()
-              }
-              className="w-full h-12 mt-7 bg-green-600 hover:bg-green-700 text-base font-semibold"
+  const renderStatusIcon =
+    () => {
+      if (
+        status ===
+        "processing"
+      ) {
+        return (
+          <div className="relative flex h-24 w-24 items-center justify-center">
+            <div
+              className="absolute inset-0 rounded-full border-4 border-slate-100"
+              aria-hidden="true"
+            />
+
+            <div
+              className="absolute inset-0 animate-spin rounded-full border-4 border-transparent border-t-[#F4B400]"
+              aria-hidden="true"
+            />
+
+            <div
+              className="flex h-16 w-16 items-center justify-center rounded-full bg-[#082A63]"
             >
-              Done
-            </Button>
-
+              <Loader2 className="h-7 w-7 animate-spin text-white" />
+            </div>
           </div>
+        );
+      }
 
-        </main>
+      if (
+        status ===
+        "success"
+      ) {
+        return (
+          <div className="relative flex h-24 w-24 items-center justify-center">
+            <div className="absolute inset-0 rounded-full bg-emerald-50" />
 
-      </div>
-    );
-  }
+            <div className="relative flex h-16 w-16 items-center justify-center rounded-full bg-emerald-600 shadow-lg shadow-emerald-600/20">
+              <Check className="h-8 w-8 text-white" strokeWidth={3} />
+            </div>
+          </div>
+        );
+      }
+
+      if (
+        status ===
+        "pending"
+      ) {
+        return (
+          <div className="relative flex h-24 w-24 items-center justify-center">
+            <div className="absolute inset-0 rounded-full bg-amber-50" />
+
+            <div className="relative flex h-16 w-16 items-center justify-center rounded-full bg-amber-500 shadow-lg shadow-amber-500/20">
+              <Clock3 className="h-8 w-8 text-white" />
+            </div>
+          </div>
+        );
+      }
+
+      return (
+        <div className="relative flex h-24 w-24 items-center justify-center">
+          <div className="absolute inset-0 rounded-full bg-red-50" />
+
+          <div className="relative flex h-16 w-16 items-center justify-center rounded-full bg-red-600 shadow-lg shadow-red-600/20">
+            <XCircle className="h-8 w-8 text-white" />
+          </div>
+        </div>
+      );
+    };
 
   // ==========================================================
-  // PENDING UI
+  // TRANSACTION SUMMARY
   // ==========================================================
 
-  if (
-    status === "pending"
-  ) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-yellow-50 via-blue-50 to-indigo-50">
+  const renderTransactionSummary =
+    () => {
+      if (isBill) {
+        return (
+          <div className="space-y-0">
+            <SummaryRow
+              label="Service"
+              value={billServiceName}
+            />
 
-        <header className="bg-gradient-to-r from-yellow-600 to-blue-600 text-white sticky top-0 z-30 shadow-md">
-
-          <div className="max-w-3xl mx-auto px-4 sm:px-6">
-
-            <div className="flex items-center h-16">
-
-              <div className="flex items-center gap-2">
-
-                <Clock3 className="h-5 w-5" />
-
-                <h1 className="text-lg sm:text-xl font-bold">
-                  {pendingTitle}
-                </h1>
-
-              </div>
-
-            </div>
-
-          </div>
-
-        </header>
-
-        <main className="max-w-2xl mx-auto px-4 py-10">
-
-          <div className="bg-white rounded-2xl shadow-sm border p-6 sm:p-8">
-
-            <div className="text-center">
-
-              <div className="mx-auto w-20 h-20 rounded-full bg-yellow-100 flex items-center justify-center mb-5">
-
-                <Clock3 className="h-11 w-11 text-yellow-600" />
-
-              </div>
-
-              <h2 className="text-2xl font-bold text-gray-900">
-                {pendingTitle}
-              </h2>
-
-              <p className="text-gray-600 mt-2">
-                Your{" "}
-                {isBill
-                  ? `${billServiceName.toLowerCase()} payment`
-                  : "transfer"}{" "}
-                has been submitted but is still awaiting final confirmation.
-              </p>
-
-              <p className="text-4xl font-bold text-gray-900 mt-6">
-                ₦
-                {amount.toLocaleString(
-                  "en-NG",
-                  {
-                    minimumFractionDigits: 2,
-                    maximumFractionDigits: 2,
-                  }
-                )}
-              </p>
-
-            </div>
-
-            <div className="mt-8 rounded-xl bg-yellow-50 border border-yellow-200 p-4">
-
-              <p className="text-sm text-yellow-800">
-
-                Please do not submit the same{" "}
-                {isBill
-                  ? "payment"
-                  : "transfer"}{" "}
-                again. The existing transaction is being processed using the same transaction reference.
-
-              </p>
-
-            </div>
-
-            {reference && (
-              <div className="mt-5 rounded-xl bg-gray-50 border p-4">
-
-                <p className="text-xs text-gray-500">
-                  Transaction Reference
-                </p>
-
-                <p className="font-mono text-sm font-semibold text-gray-900 mt-1 break-all">
-                  {reference}
-                </p>
-
-              </div>
+            {billCustomer && (
+              <SummaryRow
+                label={
+                  billCustomerLabel
+                }
+                value={
+                  billCustomer
+                }
+              />
             )}
 
-            <Button
-              type="button"
-              onClick={() =>
-                void onDone()
-              }
-              className="w-full h-12 mt-7 bg-green-600 hover:bg-green-700 text-base font-semibold"
-            >
-              Done
-            </Button>
+            {billPackage && (
+              <SummaryRow
+                label="Package"
+                value={
+                  billPackage
+                }
+              />
+            )}
 
+            <SummaryRow
+              label="Amount"
+              value={formatNaira(
+                amount
+              )}
+              strong
+            />
           </div>
+        );
+      }
 
-        </main>
+      return (
+        <div className="space-y-0">
+          <SummaryRow
+            label="Recipient"
+            value={recipient}
+          />
 
-      </div>
-    );
-  }
+          {isBank &&
+            bank && (
+              <SummaryRow
+                label="Bank"
+                value={bank}
+              />
+            )}
+
+          {isBank &&
+            accountNumber && (
+              <SummaryRow
+                label="Account"
+                value={maskAccountNumber(
+                  accountNumber
+                )}
+              />
+            )}
+
+          <SummaryRow
+            label="Amount"
+            value={formatNaira(
+              amount
+            )}
+            strong
+          />
+        </div>
+      );
+    };
 
   // ==========================================================
-  // FAILED UI
+  // MAIN PAGE
   // ==========================================================
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-red-50 via-blue-50 to-indigo-50">
+    <div className="min-h-screen bg-[#F6F8FC] text-slate-900">
+      {/* ======================================================
+          PREMIUM TOP BAR
+      ====================================================== */}
 
-      <header className="bg-gradient-to-r from-red-600 to-blue-600 text-white sticky top-0 z-30 shadow-md">
+      <header className="sticky top-0 z-40 border-b border-slate-200/80 bg-white/95 backdrop-blur-xl">
+        <div className="mx-auto flex h-16 max-w-5xl items-center justify-between px-4 sm:px-6">
+          <button
+            type="button"
+            onClick={() =>
+              void onBack()
+            }
+            disabled={
+              status ===
+                "processing" ||
+              retrying
+            }
+            className="group inline-flex items-center gap-2 rounded-xl px-2 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-100 hover:text-[#082A63] disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <ArrowLeft className="h-4 w-4 transition-transform group-hover:-translate-x-0.5" />
 
-        <div className="max-w-3xl mx-auto px-4 sm:px-6">
-
-          <div className="flex items-center h-16">
-
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={() =>
-                void onBack()
-              }
-              className="text-white hover:bg-white/20 mr-2"
-            >
-              <ArrowLeft className="h-5 w-5 mr-2" />
+            <span className="hidden sm:inline">
               Back
-            </Button>
+            </span>
+          </button>
 
-            <div className="flex items-center gap-2">
-
-              <XCircle className="h-5 w-5" />
-
-              <h1 className="text-lg sm:text-xl font-bold">
-                {failedTitle}
-              </h1>
-
+          <div className="flex items-center gap-2">
+            <div
+              className="flex h-9 w-9 items-center justify-center rounded-xl text-white shadow-sm"
+              style={{
+                backgroundColor:
+                  NAVY,
+              }}
+            >
+              {isBill ? (
+                <Receipt className="h-4 w-4" />
+              ) : (
+                <Send className="h-4 w-4" />
+              )}
             </div>
 
+            <div className="hidden text-left sm:block">
+              <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">
+                IyanjuPay
+              </p>
+
+              <p className="text-sm font-bold text-slate-900">
+                {transactionName}
+              </p>
+            </div>
           </div>
 
-        </div>
+          <div className="flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5">
+            <ShieldCheck className="h-3.5 w-3.5 text-emerald-600" />
 
+            <span className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
+              Secure
+            </span>
+          </div>
+        </div>
       </header>
 
-      <main className="max-w-2xl mx-auto px-4 py-10">
+      {/* ======================================================
+          CONTENT
+      ====================================================== */}
 
-        <div className="bg-white rounded-2xl shadow-sm border p-6 sm:p-8">
+      <main className="mx-auto w-full max-w-5xl px-4 py-8 sm:px-6 sm:py-12">
+        {/* ====================================================
+            STATUS HERO
+        ==================================================== */}
 
-          <div className="text-center">
+        <section className="relative overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-[0_20px_60px_-30px_rgba(8,42,99,0.25)]">
+          {/* Decorative premium background */}
+          <div
+            className="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full opacity-[0.06] blur-3xl"
+            style={{
+              backgroundColor:
+                NAVY,
+            }}
+          />
 
-            <div className="mx-auto w-20 h-20 rounded-full bg-red-100 flex items-center justify-center mb-5">
+          <div
+            className="pointer-events-none absolute -bottom-32 -left-20 h-72 w-72 rounded-full opacity-[0.07] blur-3xl"
+            style={{
+              backgroundColor:
+                GOLD,
+            }}
+          />
 
-              <XCircle className="h-11 w-11 text-red-600" />
-
+          <div className="relative px-5 py-10 text-center sm:px-10 sm:py-14">
+            <div className="mb-7 flex justify-center">
+              {renderStatusIcon()}
             </div>
 
-            <h2 className="text-2xl font-bold text-gray-900">
-              {failedTitle}
-            </h2>
-
-            <p className="text-gray-600 mt-2">
-              We could not complete this{" "}
-              {isBill
-                ? `${billServiceName.toLowerCase()} payment`
-                : "transfer"}.
-            </p>
-
-          </div>
-
-          <div className="mt-7 rounded-xl border border-red-200 bg-red-50 p-4">
-
-            <p className="text-sm font-medium text-red-800">
-              {errorMessage ||
-                `The ${isBill ? billServiceName.toLowerCase() : "transfer"} could not be completed.`}
-            </p>
-
-          </div>
-
-          <div className="mt-5 rounded-xl bg-gray-50 border p-4 space-y-3">
-
-            {isBill ? (
-              <>
-                <div className="flex justify-between gap-4">
-
-                  <span className="text-gray-500">
-                    Service
-                  </span>
-
-                  <span className="font-semibold text-gray-900 text-right">
-                    {billServiceName}
-                  </span>
-
-                </div>
-
-                <div className="flex justify-between gap-4">
-
-                  <span className="text-gray-500">
-                    Provider
-                  </span>
-
-                  <span className="font-semibold text-gray-900 text-right">
-                    {billProvider}
-                  </span>
-
-                </div>
-
-                {billCustomer && (
-                  <div className="flex justify-between gap-4">
-
-                    <span className="text-gray-500">
-                      {billCustomerLabel}
-                    </span>
-
-                    <span className="font-semibold text-gray-900 text-right break-all">
-                      {billCustomer}
-                    </span>
-
-                  </div>
-                )}
-              </>
-            ) : (
-              <div className="flex justify-between gap-4">
-
-                <span className="text-gray-500">
-                  Recipient
-                </span>
-
-                <span className="font-semibold text-gray-900 text-right">
-                  {recipient}
-                </span>
-
-              </div>
-            )}
-
-            <div className="flex justify-between gap-4">
-
-              <span className="text-gray-500">
-                Amount
-              </span>
-
-              <span className="font-bold text-gray-900">
-                ₦
-                {amount.toLocaleString(
-                  "en-NG",
-                  {
-                    minimumFractionDigits: 2,
-                    maximumFractionDigits: 2,
-                  }
-                )}
-              </span>
-
-            </div>
-
-            {reference && (
-              <div className="border-t pt-3 flex justify-between gap-4">
-
-                <span className="text-gray-500">
-                  Reference
-                </span>
-
-                <span className="font-mono text-xs text-gray-700 text-right break-all">
-                  {reference}
-                </span>
-
-              </div>
-            )}
-
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-7">
-
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() =>
-                void onBack()
-              }
-              className="h-12"
-              disabled={retrying}
-            >
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Back
-            </Button>
-
-            <Button
-              type="button"
-              onClick={
-                handleRetry
-              }
-              disabled={retrying}
-              className="h-12 bg-green-600 hover:bg-green-700"
-            >
-              {retrying ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Retrying...
-                </>
+            <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5">
+              {status ===
+              "processing" ? (
+                <Loader2 className="h-3 w-3 animate-spin text-[#082A63]" />
+              ) : status ===
+                "success" ? (
+                <Sparkles className="h-3 w-3 text-[#F4B400]" />
+              ) : status ===
+                "pending" ? (
+                <Clock3 className="h-3 w-3 text-amber-500" />
               ) : (
-                <>
-                  <RefreshCw className="h-4 w-4 mr-2" />
-                  Retry
-                </>
+                <XCircle className="h-3 w-3 text-red-500" />
               )}
-            </Button>
 
+              <span className="text-[10px] font-extrabold uppercase tracking-[0.18em] text-slate-500">
+                {statusConfig.eyebrow}
+              </span>
+            </div>
+
+            <h1 className="text-2xl font-black tracking-tight text-slate-950 sm:text-4xl">
+              {statusConfig.title}
+            </h1>
+
+            <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-slate-500 sm:text-base">
+              {statusConfig.description}
+            </p>
+
+            {/* Amount */}
+            {status !==
+              "failed" && (
+              <div className="mt-8">
+                <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">
+                  Transaction Amount
+                </p>
+
+                <p
+                  className="mt-1 text-4xl font-black tracking-tight sm:text-5xl"
+                  style={{
+                    color:
+                      NAVY,
+                  }}
+                >
+                  {formatNaira(
+                    amount
+                  )}
+                </p>
+              </div>
+            )}
+          </div>
+        </section>
+
+        {/* ====================================================
+            TRANSACTION DETAILS
+        ==================================================== */}
+
+        <section className="mt-5 overflow-hidden rounded-[1.75rem] border border-slate-200 bg-white shadow-[0_12px_40px_-28px_rgba(15,23,42,0.3)]">
+          {/* Receipt header */}
+          <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4 sm:px-7">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#082A63]/[0.07]">
+                <Receipt
+                  className="h-5 w-5"
+                  style={{
+                    color:
+                      NAVY,
+                  }}
+                />
+              </div>
+
+              <div>
+                <p className="text-sm font-bold text-slate-900">
+                  Transaction Details
+                </p>
+
+                <p className="text-xs text-slate-400">
+                  {status ===
+                  "processing"
+                    ? "Transaction in progress"
+                    : "Transaction summary"}
+                </p>
+              </div>
+            </div>
+
+            <div className="hidden items-center gap-1.5 text-xs font-semibold text-slate-400 sm:flex">
+              <LockKeyhole className="h-3.5 w-3.5" />
+              Protected
+            </div>
           </div>
 
+          {/* Receipt body */}
+          <div className="px-5 py-2 sm:px-7">
+            {isBill ? (
+              <BillIdentity
+                service={
+                  billServiceName
+                }
+                customer={
+                  billCustomer
+                }
+                customerLabel={
+                  billCustomerLabel
+                }
+                packageName={
+                  billPackage
+                }
+              />
+            ) : (
+              <TransferIdentity
+                recipient={
+                  recipient
+                }
+                bank={bank}
+                accountNumber={
+                  accountNumber
+                }
+                isBank={
+                  isBank
+                }
+              />
+            )}
+
+            <div className="mt-2 border-t border-dashed border-slate-200 pt-2">
+              {renderTransactionSummary()}
+            </div>
+          </div>
+        </section>
+
+        {/* ====================================================
+            REFERENCE
+        ==================================================== */}
+
+        {reference && (
+          <section className="mt-5 rounded-[1.5rem] border border-slate-200 bg-white p-5 shadow-[0_12px_40px_-28px_rgba(15,23,42,0.3)] sm:p-6">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-slate-400">
+                  Transaction Reference
+                </p>
+
+                <p className="mt-2 break-all font-mono text-sm font-bold text-slate-800">
+                  {reference}
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={
+                  handleCopyReference
+                }
+                className="flex h-10 shrink-0 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-600 transition hover:border-slate-300 hover:bg-slate-50 hover:text-[#082A63]"
+              >
+                {copied ? (
+                  <>
+                    <Check className="h-4 w-4 text-emerald-600" />
+                    Copied
+                  </>
+                ) : (
+                  <>
+                    <Copy className="h-4 w-4" />
+                    Copy
+                  </>
+                )}
+              </button>
+            </div>
+          </section>
+        )}
+
+        {/* ====================================================
+            PENDING NOTICE
+        ==================================================== */}
+
+        {status ===
+          "pending" && (
+          <section className="mt-5 rounded-[1.5rem] border border-amber-200 bg-amber-50 p-5 sm:p-6">
+            <div className="flex gap-4">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-100">
+                <Clock3 className="h-5 w-5 text-amber-600" />
+              </div>
+
+              <div>
+                <h2 className="text-sm font-bold text-amber-950">
+                  Your transaction is still being confirmed
+                </h2>
+
+                <p className="mt-1 text-sm leading-6 text-amber-800">
+                  Please do not submit the same{" "}
+                  {isBill
+                    ? "payment"
+                    : "transfer"}{" "}
+                  again. Your existing transaction is already being processed using its original reference.
+                </p>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {/* ====================================================
+            FAILED MESSAGE
+        ==================================================== */}
+
+        {status ===
+          "failed" && (
+          <section className="mt-5 overflow-hidden rounded-[1.5rem] border border-red-200 bg-white shadow-[0_12px_40px_-28px_rgba(15,23,42,0.3)]">
+            <div className="border-b border-red-100 bg-red-50 px-5 py-4">
+              <div className="flex items-center gap-3">
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-red-100">
+                  <XCircle className="h-5 w-5 text-red-600" />
+                </div>
+
+                <p className="text-sm font-bold text-red-900">
+                  What happened?
+                </p>
+              </div>
+            </div>
+
+            <div className="px-5 py-5">
+              <p className="text-sm leading-6 text-red-800">
+                {errorMessage ||
+                  `The ${isBill ? billServiceName.toLowerCase() : "transfer"} could not be completed.`}
+              </p>
+            </div>
+          </section>
+        )}
+
+        {/* ====================================================
+            SECURITY NOTE
+        ==================================================== */}
+
+        {status ===
+          "processing" && (
+          <section className="mt-5 flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-5 py-4">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-emerald-50">
+              <ShieldCheck className="h-5 w-5 text-emerald-600" />
+            </div>
+
+            <div>
+              <p className="text-xs font-bold text-slate-800">
+                Secure transaction
+              </p>
+
+              <p className="mt-0.5 text-xs leading-5 text-slate-500">
+                Your transaction is protected by IyanjuPay's secure processing system.
+              </p>
+            </div>
+          </section>
+        )}
+
+        {/* ====================================================
+            ACTIONS
+        ==================================================== */}
+
+        {status !==
+          "processing" && (
+          <div className="mt-7">
+            {status ===
+            "failed" ? (
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() =>
+                    void onBack()
+                  }
+                  disabled={
+                    retrying
+                  }
+                  className="h-12 rounded-xl border-slate-200 bg-white text-sm font-bold text-slate-700 hover:bg-slate-50"
+                >
+                  <ArrowLeft className="mr-2 h-4 w-4" />
+                  Back
+                </Button>
+
+                <Button
+                  type="button"
+                  onClick={
+                    handleRetry
+                  }
+                  disabled={
+                    retrying
+                  }
+                  className="h-12 rounded-xl text-sm font-bold text-white shadow-lg shadow-[#082A63]/20 hover:opacity-95"
+                  style={{
+                    backgroundColor:
+                      NAVY,
+                  }}
+                >
+                  {retrying ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Retrying...
+                    </>
+                  ) : (
+                    <>
+                      <RefreshCw className="mr-2 h-4 w-4" />
+                      Try Again
+                    </>
+                  )}
+                </Button>
+              </div>
+            ) : (
+              <Button
+                type="button"
+                onClick={() =>
+                  void onDone()
+                }
+                className="h-13 w-full rounded-2xl text-sm font-bold text-white shadow-xl shadow-[#082A63]/20 transition hover:-translate-y-0.5 hover:opacity-95"
+                style={{
+                  backgroundColor:
+                    NAVY,
+                }}
+              >
+                {status ===
+                "success" ? (
+                  <>
+                    <CheckCircle2 className="mr-2 h-5 w-5" />
+                    Done
+                  </>
+                ) : (
+                  <>
+                    Continue to Dashboard
+                    <ArrowUpRight className="ml-2 h-4 w-4" />
+                  </>
+                )}
+              </Button>
+            )}
+          </div>
+        )}
+
+        {/* ====================================================
+            FOOTER
+        ==================================================== */}
+
+        <div className="flex items-center justify-center gap-2 pb-5 pt-8 text-center">
+          <ShieldCheck className="h-3.5 w-3.5 text-emerald-600" />
+
+          <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+            Securely processed by IyanjuPay
+          </p>
         </div>
-
       </main>
+    </div>
+  );
+};
 
+// ============================================================
+// SUMMARY ROW
+// ============================================================
+
+interface SummaryRowProps {
+  label: string;
+  value: string;
+  strong?: boolean;
+}
+
+const SummaryRow = ({
+  label,
+  value,
+  strong = false,
+}: SummaryRowProps) => (
+  <div className="flex min-h-[54px] items-center justify-between gap-6 border-b border-slate-100 last:border-b-0">
+    <span className="text-xs font-medium text-slate-400">
+      {label}
+    </span>
+
+    <span
+      className={[
+        "max-w-[65%] break-words text-right",
+        strong
+          ? "text-base font-black text-[#082A63]"
+          : "text-sm font-bold text-slate-800",
+      ].join(" ")}
+    >
+      {value}
+    </span>
+  </div>
+);
+
+// ============================================================
+// TRANSFER IDENTITY
+// ============================================================
+
+interface TransferIdentityProps {
+  recipient: string;
+  bank: string;
+  accountNumber: string;
+  isBank: boolean;
+}
+
+const TransferIdentity = ({
+  recipient,
+  bank,
+  accountNumber,
+  isBank,
+}: TransferIdentityProps) => {
+  const initials =
+    getInitials(recipient);
+
+  return (
+    <div className="flex items-center gap-4 py-5">
+      <div className="relative flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-[#082A63] text-base font-black text-white shadow-lg shadow-[#082A63]/15">
+        {initials}
+
+        <div className="absolute -bottom-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full border-2 border-white bg-emerald-500">
+          <Check className="h-2.5 w-2.5 text-white" strokeWidth={3} />
+        </div>
+      </div>
+
+      <div className="min-w-0 flex-1">
+        <p className="text-[10px] font-extrabold uppercase tracking-[0.15em] text-slate-400">
+          Sending to
+        </p>
+
+        <p className="mt-1 truncate text-base font-black text-slate-900 sm:text-lg">
+          {recipient}
+        </p>
+
+        {isBank ? (
+          <p className="mt-0.5 truncate text-xs font-medium text-slate-500">
+            {bank
+              ? `${bank} • `
+              : ""}
+            {maskAccountNumber(
+              accountNumber
+            )}
+          </p>
+        ) : (
+          <p className="mt-0.5 text-xs font-medium text-slate-500">
+            IyanjuPay wallet
+          </p>
+        )}
+      </div>
+
+      <div className="hidden h-10 w-10 items-center justify-center rounded-full bg-slate-50 sm:flex">
+        <ArrowUpRight className="h-4 w-4 text-slate-400" />
+      </div>
+    </div>
+  );
+};
+
+// ============================================================
+// BILL IDENTITY
+// ============================================================
+
+interface BillIdentityProps {
+  service: string;
+  customer: string;
+  customerLabel: string;
+  packageName: string;
+}
+
+const BillIdentity = ({
+  service,
+  customer,
+  customerLabel,
+  packageName,
+}: BillIdentityProps) => {
+  const initials =
+    getInitials(service);
+
+  return (
+    <div className="flex items-center gap-4 py-5">
+      <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-[#082A63] text-sm font-black text-white shadow-lg shadow-[#082A63]/15">
+        {initials}
+      </div>
+
+      <div className="min-w-0 flex-1">
+        <p className="text-[10px] font-extrabold uppercase tracking-[0.15em] text-slate-400">
+          Service
+        </p>
+
+        <p className="mt-1 truncate text-base font-black text-slate-900 sm:text-lg">
+          {service}
+        </p>
+
+        <div className="mt-0.5 flex flex-wrap gap-x-2 gap-y-0.5 text-xs font-medium text-slate-500">
+          {customer && (
+            <span>
+              {customerLabel}:{" "}
+              <span className="font-semibold text-slate-700">
+                {customer}
+              </span>
+            </span>
+          )}
+
+          {packageName && (
+            <>
+              {customer && (
+                <span className="text-slate-300">
+                  •
+                </span>
+              )}
+
+              <span>
+                {packageName}
+              </span>
+            </>
+          )}
+        </div>
+      </div>
     </div>
   );
 };

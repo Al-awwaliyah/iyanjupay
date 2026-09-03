@@ -1,4 +1,4 @@
-import {
+
   corsHeaders,
   json,
   adminClient,
@@ -1782,6 +1782,17 @@ function quantity(
     : 0;
 }
 
+function airtimePinValue(item: CatalogItem): number {
+  const raw = obj(item.raw);
+  return n(
+    first(
+      pick(raw, "value", "Value", "denomination", "Denomination"),
+      pick(raw, "amount", "Amount"),
+      item.id.split("-").pop(),
+    ),
+  );
+}
+
 function publicReference(
   body: JsonObject,
   details: JsonObject,
@@ -2756,7 +2767,7 @@ Deno.serve(
                     biller,
                   ),
                 Value:
-                  selected.id,
+                  airtimePinValue(selected),
                 Quantity:
                   qty,
                 RequestID:

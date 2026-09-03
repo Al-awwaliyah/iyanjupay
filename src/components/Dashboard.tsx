@@ -19,9 +19,6 @@ import {
   Shield,
   Gift,
   Banknote,
-  Car,
-  Gamepad2,
-  Plane,
   Home,
   Plus,
   Eye,
@@ -32,6 +29,9 @@ import {
   CreditCard,
   Loader2,
   Headphones,
+  GraduationCap,
+  Receipt,
+  Radio,
 } from "lucide-react";
 
 import ServiceCard from "./services/ServiceCard";
@@ -59,12 +59,29 @@ import { useWallet } from "@/hooks/useWallet";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 
+/*
+ * ============================================================
+ * SERVICE TYPES
+ * ============================================================
+ *
+ * These are customer-facing services.
+ *
+ * The customer must never need to know which backend provider
+ * is being used.
+ */
+
 type BillService =
   | "airtime"
   | "data"
   | "electricity"
   | "cable"
-  | "internet";
+  | "airtime-card"
+  | "data-card"
+  | "smile"
+  | "waec"
+  | "jamb"
+  | "internet"
+  | "insurance";
 
 type CurrentPage =
   | "home"
@@ -103,13 +120,34 @@ type DashboardTransaction = {
   created_at: string;
 };
 
+/*
+ * ============================================================
+ * AVAILABLE CUSTOMER SERVICES
+ * ============================================================
+ *
+ * These are the services that can actually be opened.
+ *
+ * Internet and Insurance are deliberately excluded because
+ * they are Coming Soon.
+ */
+
 const SUPPORTED_BILL_SERVICES: BillService[] = [
   "airtime",
   "data",
   "electricity",
   "cable",
-  "internet",
+  "airtime-card",
+  "data-card",
+  "smile",
+  "waec",
+  "jamb",
 ];
+
+/*
+ * ============================================================
+ * TRANSACTION STATUS HELPERS
+ * ============================================================
+ */
 
 const SUCCESS_STATUSES = new Set([
   "success",
@@ -145,6 +183,15 @@ const MONEY_OUT_TYPES = new Set([
   "withdrawal",
   "withdraw",
   "payout",
+  "service_payment",
+  "service-payment",
+  "airtime_card",
+  "airtime-card",
+  "data_card",
+  "data-card",
+  "smile",
+  "waec",
+  "jamb",
 ]);
 
 const normalizeText = (
@@ -259,6 +306,10 @@ const isMoneyOutTransaction = (
     "withdraw",
     "payout",
     "debit",
+    "service",
+    "smile",
+    "waec",
+    "jamb",
   ];
 
   return moneyOutWords.some(
@@ -266,6 +317,12 @@ const isMoneyOutTransaction = (
       description.includes(word)
   );
 };
+
+/*
+ * ============================================================
+ * DASHBOARD
+ * ============================================================
+ */
 
 const Dashboard = () => {
   const {
@@ -747,6 +804,13 @@ const Dashboard = () => {
    * ============================================================
    * SERVICES
    * ============================================================
+   *
+   * Only actual customer services are displayed here.
+   *
+   * Internet and Insurance remain visible as Coming Soon.
+   *
+   * Betting, Gift Cards, Flight Booking, Hotel Booking and
+   * Transport have been removed completely.
    */
 
   const services = [
@@ -756,7 +820,8 @@ const Dashboard = () => {
         "Recharge your phone",
       icon: Smartphone,
       color: "bg-blue-500",
-      type: "airtime",
+      type: "airtime" as BillService,
+      available: true,
     },
     {
       title: "Buy Data",
@@ -764,7 +829,8 @@ const Dashboard = () => {
         "Internet data bundles",
       icon: Wifi,
       color: "bg-purple-500",
-      type: "data",
+      type: "data" as BillService,
+      available: true,
     },
     {
       title: "Electricity",
@@ -772,7 +838,8 @@ const Dashboard = () => {
         "Pay electricity bills",
       icon: Zap,
       color: "bg-yellow-500",
-      type: "electricity",
+      type: "electricity" as BillService,
+      available: true,
     },
     {
       title: "Cable TV",
@@ -780,71 +847,76 @@ const Dashboard = () => {
         "DSTV, GOTV, Startimes",
       icon: CreditCard,
       color: "bg-red-500",
-      type: "cable",
+      type: "cable" as BillService,
+      available: true,
     },
     {
-      title: "Transfer Money",
+      title: "Airtime E-Pin",
       description:
-        "Send money to others",
-      icon: Send,
+        "Buy airtime recharge PINs",
+      icon: Receipt,
       color: "bg-green-500",
-      type: "transfer",
+      type: "airtime-card" as BillService,
+      available: true,
     },
+    {
+      title: "Data E-Pin",
+      description:
+        "Buy data recharge PINs",
+      icon: Radio,
+      color: "bg-indigo-500",
+      type: "data-card" as BillService,
+      available: true,
+    },
+    {
+      title: "Smile",
+      description:
+        "Smile data bundles",
+      icon: Wifi,
+      color: "bg-cyan-500",
+      type: "smile" as BillService,
+      available: true,
+    },
+    {
+      title: "WAEC",
+      description:
+        "Purchase WAEC services",
+      icon: GraduationCap,
+      color: "bg-orange-500",
+      type: "waec" as BillService,
+      available: true,
+    },
+    {
+      title: "JAMB",
+      description:
+        "Purchase JAMB services",
+      icon: GraduationCap,
+      color: "bg-emerald-500",
+      type: "jamb" as BillService,
+      available: true,
+    },
+
+    /*
+     * Coming Soon services.
+     */
+
     {
       title: "Internet Bills",
       description:
-        "Pay internet bills",
+        "Internet bill payments",
       icon: Wifi,
-      color: "bg-indigo-500",
-      type: "internet",
+      color: "bg-gray-500",
+      type: "internet" as BillService,
+      available: false,
     },
     {
       title: "Insurance",
       description:
-        "Pay insurance premiums",
+        "Insurance services",
       icon: Shield,
       color: "bg-teal-500",
-      type: "insurance",
-    },
-    {
-      title: "Gift Cards",
-      description:
-        "Buy digital gift cards",
-      icon: Gift,
-      color: "bg-pink-500",
-      type: "giftcards",
-    },
-    {
-      title: "Betting",
-      description:
-        "Fund betting accounts",
-      icon: Gamepad2,
-      color: "bg-orange-500",
-      type: "betting",
-    },
-    {
-      title: "Flight Booking",
-      description:
-        "Book domestic flights",
-      icon: Plane,
-      color: "bg-sky-500",
-      type: "flight",
-    },
-    {
-      title: "Hotel Booking",
-      description:
-        "Book hotel rooms",
-      icon: Home,
-      color: "bg-emerald-500",
-      type: "hotel",
-    },
-    {
-      title: "Transport",
-      description:
-        "Book bus tickets",
-      icon: Car,
-      color: "bg-gray-500",
-      type: "transport",
+      type: "insurance" as BillService,
+      available: false,
     },
   ];
 
@@ -857,24 +929,17 @@ const Dashboard = () => {
   const handleServiceClick = (
     service: (typeof services)[number]
   ) => {
+    /*
+     * Transfer is intentionally handled by the dedicated
+     * SendMoney page and is not part of the service-payment
+     * flow.
+     */
     if (
-      service.type === "transfer"
-    ) {
-      setCurrentPage(
-        "send-money"
-      );
-
-      return;
-    }
-
-    if (
-      !SUPPORTED_BILL_SERVICES.includes(
-        service.type as BillService
-      )
+      service.type === "internet" ||
+      service.type === "insurance"
     ) {
       toast({
-        title:
-          "Service coming soon",
+        title: "Coming soon",
         description:
           `${service.title} is not yet available.`,
       });
@@ -882,10 +947,24 @@ const Dashboard = () => {
       return;
     }
 
+    if (
+      !service.available ||
+      !SUPPORTED_BILL_SERVICES.includes(
+        service.type
+      )
+    ) {
+      toast({
+        title: "Service unavailable",
+        description:
+          `${service.title} is not currently available.`,
+      });
+
+      return;
+    }
+
     setSelectedService({
       title: service.title,
-      type:
-        service.type as BillService,
+      type: service.type,
     });
 
     setCurrentPage(
@@ -895,8 +974,13 @@ const Dashboard = () => {
 
   /*
    * ============================================================
-   * BILL PAYMENT
+   * BILL / SERVICE PAYMENT
    * ============================================================
+   *
+   * All customer services now go through the unified
+   * ClubKonnect service Edge Function.
+   *
+   * The provider is deliberately NOT sent from the customer UI.
    */
 
   const handlePurchase = async (
@@ -924,7 +1008,7 @@ const Dashboard = () => {
       )
     ) {
       throw new Error(
-        `${selectedService.title} is not currently supported.`
+        `${selectedService.title} is not currently available.`
       );
     }
 
@@ -937,6 +1021,12 @@ const Dashboard = () => {
       );
     }
 
+    /*
+     * The frontend performs a friendly balance check.
+     *
+     * The Edge Function remains responsible for the actual
+     * atomic wallet debit.
+     */
     const currentBalance =
       Number(
         wallet?.balance ?? 0
@@ -950,162 +1040,20 @@ const Dashboard = () => {
       );
     }
 
-    const billerCode =
-      String(
-        details?.biller_code ??
-          details?.billerCode ??
-          ""
-      ).trim();
-
-    if (!billerCode) {
-      throw new Error(
-        "Please select a valid bill provider."
-      );
-    }
-
-    const itemCode =
-      String(
-        details?.item_code ??
-          details?.itemCode ??
-          ""
-      ).trim();
-
-    if (!itemCode) {
-      throw new Error(
-        "Please select a valid bill package."
-      );
-    }
-
-    const country =
-      String(
-        details?.country ?? "NG"
-      )
-        .trim()
-        .toUpperCase();
-
-    if (country !== "NG") {
-      throw new Error(
-        "Flutterwave bill payments currently support Nigeria only."
-      );
-    }
-
-    let customer =
-      String(
-        details?.customer ??
-          details?.customer_id ??
-          details?.customerId ??
-          details?.phoneNumber ??
-          details?.phone ??
-          details?.meterNumber ??
-          details?.meter_number ??
-          details?.smartCardNumber ??
-          details?.smartcardNumber ??
-          details?.smartcard_number ??
-          details?.accountNumber ??
-          details?.account_number ??
-          ""
-      ).trim();
-
-    if (
-      service === "airtime" ||
-      service === "data"
-    ) {
-      customer =
-        customer.replace(
-          /\s+/g,
-          ""
-        );
-    }
-
-    if (!customer) {
-      throw new Error(
-        "Customer information is required."
-      );
-    }
-
-    if (
-      service === "airtime" ||
-      service === "data"
-    ) {
-      if (!details?.provider) {
-        throw new Error(
-          "Please select a network provider."
-        );
-      }
-
-      if (
-        !/^(?:\+?234|0)[0-9]{10}$/.test(
-          customer
-        )
-      ) {
-        throw new Error(
-          "Please provide a valid Nigerian phone number."
-        );
-      }
-    }
-
-    if (
-      service === "electricity"
-    ) {
-      if (!details?.provider) {
-        throw new Error(
-          "Please select an electricity provider."
-        );
-      }
-
-      if (
-        customer.length < 5
-      ) {
-        throw new Error(
-          "Please provide a valid meter number."
-        );
-      }
-    }
-
-    if (service === "cable") {
-      if (!details?.provider) {
-        throw new Error(
-          "Please select a cable provider."
-        );
-      }
-
-      if (
-        customer.length < 5
-      ) {
-        throw new Error(
-          "Please provide a valid smartcard or decoder number."
-        );
-      }
-    }
-
-    if (
-      service === "internet"
-    ) {
-      if (!details?.provider) {
-        throw new Error(
-          "Please select an internet provider."
-        );
-      }
-
-      if (
-        customer.length < 3
-      ) {
-        throw new Error(
-          "Please provide a valid internet account number."
-        );
-      }
-    }
-
+    /*
+     * Customer details are passed through without exposing
+     * the underlying service provider.
+     */
     const paymentDetails = {
       ...details,
       service,
       amount,
-      country,
-      customer,
-      biller_code:
-        billerCode,
-      item_code:
-        itemCode,
+      country:
+        String(
+          details?.country ?? "NG"
+        )
+          .trim()
+          .toUpperCase() || "NG",
     };
 
     toast({
@@ -1116,23 +1064,25 @@ const Dashboard = () => {
     });
 
     try {
+      /*
+       * IMPORTANT:
+       *
+       * This is now the standard ClubKonnect service
+       * Edge Function.
+       *
+       * No Flutterwave bill-payment call is made here.
+       */
       const {
         data,
         error,
       } =
         await supabase.functions.invoke(
-          "flutterwave-bills",
+          "clubkonnect-service",
           {
             body: {
-              action: "pay",
+              action: "purchase",
               service,
               amount,
-              biller_code:
-                billerCode,
-              item_code:
-                itemCode,
-              customer,
-              country,
               details:
                 paymentDetails,
             },
@@ -1143,7 +1093,7 @@ const Dashboard = () => {
         const message =
           await extractFunctionError(
             error,
-            "Unable to process bill payment."
+            "Unable to process this service payment."
           );
 
         throw new Error(
@@ -1159,16 +1109,39 @@ const Dashboard = () => {
           data?.error ||
             data?.message ||
             data?.provider_message ||
-            "Bill payment failed."
+            "Service payment failed."
         );
       }
 
+      /*
+       * Refresh the wallet after the debit.
+       */
       await refreshWallet();
+
+      /*
+       * Refresh dashboard statistics so the new transaction
+       * appears immediately.
+       */
       await loadDashboardStats();
 
+      const normalizedStatus =
+        String(
+          data?.status ?? ""
+        )
+          .trim()
+          .toLowerCase();
+
       const isPending =
-        data?.status ===
-        "pending";
+        normalizedStatus ===
+          "pending" ||
+        normalizedStatus ===
+          "processing" ||
+        normalizedStatus ===
+          "order_received" ||
+        normalizedStatus ===
+          "order_processed" ||
+        normalizedStatus ===
+          "on_hold";
 
       toast({
         title: isPending
@@ -1177,18 +1150,18 @@ const Dashboard = () => {
         description:
           data?.message ||
           (isPending
-            ? `${selectedService.title} payment is being verified.`
+            ? `${selectedService.title} payment is being processed.`
             : `${selectedService.title} payment was completed successfully.`),
       });
     } catch (error: any) {
       console.error(
-        "Bill payment failed:",
+        "Service payment failed:",
         error
       );
 
       throw new Error(
         error?.message ||
-          "Unable to complete bill payment."
+          "Unable to complete this service payment."
       );
     }
   };
@@ -1197,6 +1170,10 @@ const Dashboard = () => {
    * ============================================================
    * BANK TRANSFER
    * ============================================================
+   *
+   * This remains completely separate from the service system.
+   *
+   * IyanjuPay transfers must continue using SendMoney.tsx.
    */
 
   const handleTransfer = async (
@@ -1233,8 +1210,7 @@ const Dashboard = () => {
     }
 
     /*
-     * IyanjuPay transfers must
-     * not reach this handler.
+     * IyanjuPay transfers must not reach this handler.
      */
     if (
       details?.type ===
@@ -1655,9 +1631,7 @@ const Dashboard = () => {
   }
 
   /*
-   * ============================================================
    * DISPUTES
-   * ============================================================
    */
 
   if (

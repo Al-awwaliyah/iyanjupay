@@ -293,6 +293,7 @@ function cleanPhone(
     .trim();
 }
 
+
 function toCatalogueArray(
   value: any
 ): any[] {
@@ -315,21 +316,20 @@ function toCatalogueArray(
             ...(entry as Record<
               string,
               any
-            >
-          },
+            >),
             code:
               (entry as any).code ??
-              (entry as any)
-                .networkCode ??
-              (entry as any)
-                .network_code ??
+              (entry as any).networkCode ??
+              (entry as any).network_code ??
               key,
           };
         }
 
         return {
           code: key,
-          name: String(entry ?? key),
+          name: String(
+            entry ?? key
+          ),
         };
       }
     );

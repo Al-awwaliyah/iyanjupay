@@ -4,37 +4,37 @@ import React, {
   useState,
 } from "react";
 
+import {
+  Banknote,
+  CreditCard,
+  Eye,
+  EyeOff,
+  Gift,
+  GraduationCap,
+  Headphones,
+  History,
+  Home,
+  Loader2,
+  LogOut,
+  Plus,
+  PiggyBank,
+  QrCode,
+  Receipt,
+  Radio,
+  Send,
+  Shield,
+  Smartphone,
+  User,
+  Wifi,
+  Zap,
+} from "lucide-react";
+
 import { Button } from "@/components/ui/button";
 
 import {
   Card,
   CardContent,
 } from "@/components/ui/card";
-
-import {
-  LogOut,
-  User,
-  History,
-  Send,
-  QrCode,
-  Gift,
-  Banknote,
-  Home,
-  Plus,
-  Eye,
-  EyeOff,
-  Smartphone,
-  Wifi,
-  Zap,
-  CreditCard,
-  Loader2,
-  Headphones,
-  GraduationCap,
-  Receipt,
-  Radio,
-  PiggyBank,
-  Shield,
-} from "lucide-react";
 
 import ServiceCard from "./services/ServiceCard";
 import FundWalletModal from "./modals/FundWalletModal";
@@ -65,11 +65,6 @@ import { useToast } from "@/hooks/use-toast";
  * ============================================================
  * SERVICE TYPES
  * ============================================================
- *
- * These are customer-facing services.
- *
- * The customer does not select or see the underlying service
- * provider. Provider routing is handled by the backend.
  */
 
 type BillService =
@@ -125,17 +120,8 @@ type DashboardTransaction = {
 
 /*
  * ============================================================
- * SUPPORTED CUSTOMER SERVICES
+ * SUPPORTED SERVICES
  * ============================================================
- *
- * These services are currently allowed to enter the unified
- * ServicePayment flow.
- *
- * All of these services are handled by:
- *
- * clubkonnect-services
- *
- * Internet, Insurance and Savings remain Coming Soon.
  */
 
 const SUPPORTED_BILL_SERVICES: BillService[] = [
@@ -150,12 +136,6 @@ const SUPPORTED_BILL_SERVICES: BillService[] = [
   "jamb",
 ];
 
-/*
- * ============================================================
- * COMING SOON SERVICES
- * ============================================================
- */
-
 const COMING_SOON_SERVICES: BillService[] = [
   "internet",
   "insurance",
@@ -164,7 +144,7 @@ const COMING_SOON_SERVICES: BillService[] = [
 
 /*
  * ============================================================
- * TRANSACTION STATUS HELPERS
+ * TRANSACTION HELPERS
  * ============================================================
  */
 
@@ -271,9 +251,6 @@ const isMoneyOutTransaction = (
       metadata?.transaction_type
     );
 
-  /*
-   * Explicit incoming transactions.
-   */
   if (
     type === "credit" ||
     type === "funding" ||
@@ -288,9 +265,6 @@ const isMoneyOutTransaction = (
     return false;
   }
 
-  /*
-   * Explicit outgoing transactions.
-   */
   if (
     type === "debit" ||
     metadataDirection === "debit" ||
@@ -300,9 +274,6 @@ const isMoneyOutTransaction = (
     return true;
   }
 
-  /*
-   * Known outgoing transaction types.
-   */
   if (
     MONEY_OUT_TYPES.has(type) ||
     MONEY_OUT_TYPES.has(category) ||
@@ -430,7 +401,7 @@ const Dashboard = () => {
 
   /*
    * ============================================================
-   * EDGE FUNCTION ERROR EXTRACTION
+   * EDGE FUNCTION ERROR
    * ============================================================
    */
 
@@ -519,7 +490,9 @@ const Dashboard = () => {
         error.message !==
           "Edge Function returned a non-2xx status code"
       ) {
-        return String(error.message);
+        return String(
+          error.message
+        );
       }
 
       return fallback;
@@ -703,7 +676,7 @@ const Dashboard = () => {
       return;
     }
 
-    loadDashboardStats();
+    void loadDashboardStats();
   }, [
     authLoading,
     user,
@@ -734,13 +707,13 @@ const Dashboard = () => {
           filter: `user_id=eq.${user.id}`,
         },
         () => {
-          loadDashboardStats();
+          void loadDashboardStats();
         }
       )
       .subscribe();
 
     return () => {
-      supabase.removeChannel(
+      void supabase.removeChannel(
         channel
       );
     };
@@ -809,7 +782,7 @@ const Dashboard = () => {
         }
       };
 
-    bootstrapWallet();
+    void bootstrapWallet();
 
     return () => {
       cancelled = true;
@@ -824,37 +797,13 @@ const Dashboard = () => {
    * ============================================================
    * SERVICES
    * ============================================================
-   *
-   * LIVE:
-   * Airtime
-   * Data
-   * Electricity
-   * Cable TV
-   * Airtime E-Pin
-   * Data E-Pin
-   * Smile
-   * WAEC
-   * JAMB
-   *
-   * COMING SOON:
-   * Internet
-   * Insurance
-   * Savings
-   *
-   * Removed:
-   * Betting
-   * Gift Cards
-   * Flight Booking
-   * Hotel Booking
-   * Transport
-   * NECO
    */
 
   const services = [
     {
       title: "Buy Airtime",
       description:
-        "Recharge your phone",
+        "Recharge your phone instantly",
       icon: Smartphone,
       color: "bg-blue-500",
       type: "airtime" as BillService,
@@ -863,7 +812,7 @@ const Dashboard = () => {
     {
       title: "Buy Data",
       description:
-        "Internet data bundles",
+        "Fast data bundles",
       icon: Wifi,
       color: "bg-purple-500",
       type: "data" as BillService,
@@ -872,7 +821,7 @@ const Dashboard = () => {
     {
       title: "Electricity",
       description:
-        "Pay electricity bills",
+        "Pay your power bill",
       icon: Zap,
       color: "bg-yellow-500",
       type: "electricity" as BillService,
@@ -881,7 +830,7 @@ const Dashboard = () => {
     {
       title: "Cable TV",
       description:
-        "DSTV, GOTV, Startimes",
+        "DSTV, GOTV & Startimes",
       icon: CreditCard,
       color: "bg-red-500",
       type: "cable" as BillService,
@@ -890,7 +839,7 @@ const Dashboard = () => {
     {
       title: "Airtime E-Pin",
       description:
-        "Buy airtime recharge PINs",
+        "Buy recharge PINs",
       icon: Receipt,
       color: "bg-green-500",
       type: "airtime-card" as BillService,
@@ -899,7 +848,7 @@ const Dashboard = () => {
     {
       title: "Data E-Pin",
       description:
-        "Buy data recharge PINs",
+        "Buy data PINs",
       icon: Radio,
       color: "bg-indigo-500",
       type: "data-card" as BillService,
@@ -917,7 +866,7 @@ const Dashboard = () => {
     {
       title: "WAEC",
       description:
-        "Purchase WAEC services",
+        "WAEC services",
       icon: GraduationCap,
       color: "bg-orange-500",
       type: "waec" as BillService,
@@ -926,32 +875,25 @@ const Dashboard = () => {
     {
       title: "JAMB",
       description:
-        "Purchase JAMB services",
+        "JAMB services",
       icon: GraduationCap,
       color: "bg-emerald-500",
       type: "jamb" as BillService,
       available: true,
     },
-
-    /*
-     * ========================================================
-     * COMING SOON
-     * ========================================================
-     */
-
     {
       title: "Internet Bills",
       description:
-        "Internet bill payments",
+        "Coming soon",
       icon: Wifi,
-      color: "bg-gray-500",
+      color: "bg-slate-500",
       type: "internet" as BillService,
       available: false,
     },
     {
       title: "Insurance",
       description:
-        "Insurance services",
+        "Coming soon",
       icon: Shield,
       color: "bg-teal-500",
       type: "insurance" as BillService,
@@ -960,7 +902,7 @@ const Dashboard = () => {
     {
       title: "Savings",
       description:
-        "Save and grow your money",
+        "Coming soon",
       icon: PiggyBank,
       color: "bg-pink-500",
       type: "savings" as BillService,
@@ -977,10 +919,6 @@ const Dashboard = () => {
   const handleServiceClick = (
     service: (typeof services)[number]
   ) => {
-    /*
-     * Coming Soon services must never enter the payment flow.
-     */
-
     if (
       COMING_SOON_SERVICES.includes(
         service.type
@@ -995,11 +933,6 @@ const Dashboard = () => {
       return;
     }
 
-    /*
-     * Only explicitly supported customer services may enter
-     * ServicePayment.
-     */
-
     if (
       !service.available ||
       !SUPPORTED_BILL_SERVICES.includes(
@@ -1007,7 +940,8 @@ const Dashboard = () => {
       )
     ) {
       toast({
-        title: "Service unavailable",
+        title:
+          "Service unavailable",
         description:
           `${service.title} is not currently available.`,
       });
@@ -1027,15 +961,17 @@ const Dashboard = () => {
 
   /*
    * ============================================================
-   * BILL / SERVICE PAYMENT
+   * SERVICE PURCHASE
    * ============================================================
    *
-   * Every supported customer service uses the same backend
-   * service Edge Function:
+   * IMPORTANT:
+   * The live Edge Function is:
    *
    * clubkonnect-services
    *
-   * The customer never selects a provider.
+   * NOT:
+   *
+   * clubkonnect-service
    */
 
   const handlePurchase = async (
@@ -1077,12 +1013,11 @@ const Dashboard = () => {
     }
 
     /*
-     * Friendly frontend balance check.
+     * Frontend balance check.
      *
-     * The Edge Function remains responsible for the real
-     * atomic wallet debit and transaction processing.
+     * The Edge Function remains responsible for the
+     * authoritative atomic wallet debit.
      */
-
     const currentBalance =
       Number(
         wallet?.balance ?? 0
@@ -1095,12 +1030,6 @@ const Dashboard = () => {
         "Insufficient wallet balance. Please fund your wallet."
       );
     }
-
-    /*
-     * Normalize customer-facing payment details.
-     *
-     * No provider information is inserted here.
-     */
 
     const paymentDetails = {
       ...details,
@@ -1122,25 +1051,6 @@ const Dashboard = () => {
     });
 
     try {
-      /*
-       * ========================================================
-       * CLUBKONNECT SERVICES REQUEST
-       * ========================================================
-       *
-       * IMPORTANT:
-       *
-       * The deployed Edge Function is named:
-       *
-       * clubkonnect-services
-       *
-       * NOT:
-       *
-       * clubkonnect-service
-       *
-       * ServicePayment and Dashboard must therefore use the
-       * same exact function name.
-       */
-
       const {
         data,
         error,
@@ -1191,9 +1101,6 @@ const Dashboard = () => {
               smartcard_number:
                 paymentDetails.smartcard_number,
 
-              smartCardNumber:
-                paymentDetails.smartCardNumber,
-
               phone_no:
                 paymentDetails.phone_no,
 
@@ -1205,9 +1112,6 @@ const Dashboard = () => {
 
               mobile_number:
                 paymentDetails.mobile_number,
-
-              recipient_phone:
-                paymentDetails.recipient_phone,
 
               account_id:
                 paymentDetails.account_id,
@@ -1245,10 +1149,6 @@ const Dashboard = () => {
           }
         );
 
-      /*
-       * Handle Supabase Edge Function transport errors.
-       */
-
       if (error) {
         const message =
           await extractFunctionError(
@@ -1260,11 +1160,6 @@ const Dashboard = () => {
           message
         );
       }
-
-      /*
-       * The service Edge Function must explicitly return
-       * success: true for a successful request.
-       */
 
       if (
         !data ||
@@ -1278,34 +1173,16 @@ const Dashboard = () => {
         );
       }
 
-      /*
-       * Refresh wallet after the service transaction.
-       */
-
       await refreshWallet();
-
-      /*
-       * Refresh dashboard statistics so the transaction
-       * appears immediately.
-       */
 
       await loadDashboardStats();
 
-      /*
-       * Normalize the returned status so both completed and
-       * pending provider responses can be presented correctly.
-       */
-
       const normalizedStatus =
         String(
-          data?.status ??
-            data?.order_status ??
-            data?.orderStatus ??
-            ""
+          data?.status ?? ""
         )
           .trim()
-          .toLowerCase()
-          .replace(/\s+/g, "_");
+          .toLowerCase();
 
       const isPending =
         normalizedStatus ===
@@ -1317,19 +1194,18 @@ const Dashboard = () => {
         normalizedStatus ===
           "order_processed" ||
         normalizedStatus ===
+          "on_hold" ||
+        normalizedStatus ===
           "300" ||
         normalizedStatus ===
-          "199" ||
+          "399" ||
         normalizedStatus ===
-          "201" ||
-        normalizedStatus ===
-          "on_hold";
+          "201";
 
       toast({
         title: isPending
           ? "Payment Processing"
           : "Payment Successful",
-
         description:
           data?.message ||
           (isPending
@@ -1354,13 +1230,8 @@ const Dashboard = () => {
    * BANK TRANSFER
    * ============================================================
    *
-   * This remains completely separate from the service system.
-   *
-   * SendMoney.tsx handles the customer-facing transfer flow.
-   *
-   * Bank transfers continue using:
-   *
-   * flutterwave-transfer
+   * SendMoney.tsx remains completely separate from the
+   * service-payment system.
    */
 
   const handleTransfer = async (
@@ -1395,10 +1266,6 @@ const Dashboard = () => {
 
       return;
     }
-
-    /*
-     * IyanjuPay transfers must not reach this handler.
-     */
 
     if (
       details?.type ===
@@ -1578,12 +1445,14 @@ const Dashboard = () => {
 
   if (authLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-50">
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
         <div className="text-center">
-          <Loader2 className="h-12 w-12 animate-spin text-purple-600 mx-auto" />
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-white shadow-lg">
+            <Loader2 className="h-8 w-8 animate-spin text-purple-600" />
+          </div>
 
-          <p className="mt-4 text-gray-600">
-            Loading your account...
+          <p className="mt-5 text-sm font-medium text-slate-600">
+            Preparing your IyanjuPay account...
           </p>
         </div>
       </div>
@@ -1598,7 +1467,7 @@ const Dashboard = () => {
 
   if (!user) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
         <Loader2 className="h-8 w-8 animate-spin text-purple-600" />
       </div>
     );
@@ -1606,12 +1475,8 @@ const Dashboard = () => {
 
   /*
    * ============================================================
-   * INTERNAL PAGE ROUTING
+   * SERVICE PAYMENT
    * ============================================================
-   */
-
-  /*
-   * SERVICE PAYMENT PAGE
    */
 
   if (
@@ -1653,7 +1518,7 @@ const Dashboard = () => {
 
   /*
    * ============================================================
-   * SEND MONEY PAGE
+   * SEND MONEY
    * ============================================================
    */
 
@@ -1701,7 +1566,7 @@ const Dashboard = () => {
 
   /*
    * ============================================================
-   * TRANSACTION HISTORY
+   * HISTORY
    * ============================================================
    */
 
@@ -1869,7 +1734,7 @@ const Dashboard = () => {
 
   /*
    * ============================================================
-   * ME PAGE
+   * ME
    * ============================================================
    */
 
@@ -1931,17 +1796,59 @@ const Dashboard = () => {
 
   if (walletLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-purple-50 to-blue-50">
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
         <div className="text-center">
-          <Loader2 className="h-12 w-12 animate-spin text-purple-600 mx-auto" />
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-white shadow-lg">
+            <Loader2 className="h-8 w-8 animate-spin text-purple-600" />
+          </div>
 
-          <p className="mt-4 text-gray-600">
+          <p className="mt-5 text-sm font-medium text-slate-600">
             Loading your wallet...
           </p>
         </div>
       </div>
     );
   }
+
+  /*
+   * ============================================================
+   * BALANCE
+   * ============================================================
+   */
+
+  const balance =
+    Number(
+      wallet?.balance ?? 0
+    );
+
+  const formattedBalance =
+    balance.toLocaleString(
+      "en-NG",
+      {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 2,
+      }
+    );
+
+  /*
+   * ============================================================
+   * USER DISPLAY NAME
+   * ============================================================
+   */
+
+  const displayName =
+    user?.user_metadata
+      ?.full_name ||
+    user?.user_metadata
+      ?.name ||
+    user?.email?.split("@")[0] ||
+    "there";
+
+  const firstName =
+    String(displayName)
+      .trim()
+      .split(/\s+/)[0] ||
+    "there";
 
   /*
    * ============================================================
@@ -1952,114 +1859,98 @@ const Dashboard = () => {
   const renderBottomNav = (
     page: CurrentPage
   ) => (
-    <div className="fixed bottom-0 left-0 right-0 z-40 bg-white border-t border-gray-200 px-4 py-2">
-      <div className="max-w-7xl mx-auto">
-        <div className="flex justify-around">
-          {/* HOME */}
-
+    <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-slate-200/80 bg-white/95 px-3 py-2 shadow-[0_-8px_30px_rgba(15,23,42,0.06)] backdrop-blur-xl">
+      <div className="mx-auto max-w-3xl">
+        <div className="grid grid-cols-4 gap-1">
           <Button
-            variant={
-              page === "home"
-                ? "default"
-                : "ghost"
-            }
+            variant="ghost"
             size="sm"
             onClick={() =>
               setCurrentPage(
                 "home"
               )
             }
-            className={`flex flex-col items-center gap-1 px-6 py-3 ${
+            className={`h-14 rounded-2xl ${
               page === "home"
-                ? "bg-purple-600 text-white"
-                : "text-gray-600"
+                ? "bg-purple-50 text-purple-700"
+                : "text-slate-500 hover:bg-slate-50"
             }`}
           >
-            <Home className="h-4 w-4" />
+            <span className="flex flex-col items-center gap-1">
+              <Home className="h-5 w-5" />
 
-            <span className="text-xs">
-              Home
+              <span className="text-[11px] font-semibold">
+                Home
+              </span>
             </span>
           </Button>
 
-          {/* REWARDS */}
-
           <Button
-            variant={
-              page === "rewards"
-                ? "default"
-                : "ghost"
-            }
+            variant="ghost"
             size="sm"
             onClick={() =>
               setCurrentPage(
                 "rewards"
               )
             }
-            className={`flex flex-col items-center gap-1 px-6 py-3 ${
+            className={`h-14 rounded-2xl ${
               page === "rewards"
-                ? "bg-purple-600 text-white"
-                : "text-gray-600"
+                ? "bg-purple-50 text-purple-700"
+                : "text-slate-500 hover:bg-slate-50"
             }`}
           >
-            <Gift className="h-4 w-4" />
+            <span className="flex flex-col items-center gap-1">
+              <Gift className="h-5 w-5" />
 
-            <span className="text-xs">
-              Reward
+              <span className="text-[11px] font-semibold">
+                Rewards
+              </span>
             </span>
           </Button>
 
-          {/* CARDS */}
-
           <Button
-            variant={
-              page === "cards"
-                ? "default"
-                : "ghost"
-            }
+            variant="ghost"
             size="sm"
             onClick={() =>
               setCurrentPage(
                 "cards"
               )
             }
-            className={`flex flex-col items-center gap-1 px-6 py-3 ${
+            className={`h-14 rounded-2xl ${
               page === "cards"
-                ? "bg-purple-600 text-white"
-                : "text-gray-600"
+                ? "bg-purple-50 text-purple-700"
+                : "text-slate-500 hover:bg-slate-50"
             }`}
           >
-            <CreditCard className="h-4 w-4" />
+            <span className="flex flex-col items-center gap-1">
+              <CreditCard className="h-5 w-5" />
 
-            <span className="text-xs">
-              Card
+              <span className="text-[11px] font-semibold">
+                Cards
+              </span>
             </span>
           </Button>
 
-          {/* ME */}
-
           <Button
-            variant={
-              page === "me"
-                ? "default"
-                : "ghost"
-            }
+            variant="ghost"
             size="sm"
             onClick={() =>
               setCurrentPage(
                 "me"
               )
             }
-            className={`flex flex-col items-center gap-1 px-6 py-3 ${
+            className={`h-14 rounded-2xl ${
               page === "me"
-                ? "bg-purple-600 text-white"
-                : "text-gray-600"
+                ? "bg-purple-50 text-purple-700"
+                : "text-slate-500 hover:bg-slate-50"
             }`}
           >
-            <User className="h-4 w-4" />
+            <span className="flex flex-col items-center gap-1">
+              <User className="h-5 w-5" />
 
-            <span className="text-xs">
-              Me
+              <span className="text-[11px] font-semibold">
+                Me
+              </span>
             </span>
           </Button>
         </div>
@@ -2069,38 +1960,53 @@ const Dashboard = () => {
 
   /*
    * ============================================================
-   * DASHBOARD
+   * MAIN DASHBOARD
    * ============================================================
    */
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-50 pb-20">
+    <div className="min-h-screen bg-[#f7f8fc] pb-24">
+
       {/* ====================================================== */}
-      {/* HEADER */}
+      {/* TOP HEADER                                             */}
       {/* ====================================================== */}
 
-      <header className="bg-gradient-to-r from-purple-600 to-blue-600 text-white">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
-            {/* LOGO */}
+      <header className="sticky top-0 z-30 border-b border-white/10 bg-gradient-to-r from-[#5b21b6] via-[#6d28d9] to-[#2563eb] text-white shadow-lg">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+          <div className="flex h-[72px] items-center justify-between">
 
-            <div className="flex items-center">
-              <div className="w-8 h-8 bg-white rounded-full flex items-center justify-center mr-3">
-                <span className="text-purple-600 font-bold text-sm">
+            {/* BRAND */}
+
+            <button
+              type="button"
+              onClick={() =>
+                setCurrentPage(
+                  "home"
+                )
+              }
+              className="flex items-center gap-3"
+              aria-label="Go to IyanjuPay home"
+            >
+              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-white shadow-md">
+                <span className="text-sm font-black text-purple-700">
                   IP
                 </span>
               </div>
 
-              <h1 className="text-xl font-bold">
-                IyanjuPay
-              </h1>
-            </div>
+              <div className="hidden sm:block">
+                <p className="text-lg font-black tracking-tight">
+                  IyanjuPay
+                </p>
+
+                <p className="text-[10px] font-medium text-purple-100">
+                  Your money. Your control.
+                </p>
+              </div>
+            </button>
 
             {/* HEADER ACTIONS */}
 
-            <div className="flex items-center gap-2">
-              {/* QR */}
-
+            <div className="flex items-center gap-1 sm:gap-2">
               <Button
                 variant="ghost"
                 size="sm"
@@ -2109,29 +2015,11 @@ const Dashboard = () => {
                     true
                   )
                 }
-                className="text-white hover:bg-white/20"
+                className="h-10 w-10 rounded-full p-0 text-white hover:bg-white/15"
                 aria-label="Show QR code"
               >
-                <QrCode className="h-4 w-4" />
+                <QrCode className="h-5 w-5" />
               </Button>
-
-              {/* PROFILE */}
-
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() =>
-                  setCurrentPage(
-                    "me"
-                  )
-                }
-                className="text-white hover:bg-white/20"
-                aria-label="Open profile"
-              >
-                <User className="h-4 w-4" />
-              </Button>
-
-              {/* HISTORY */}
 
               <Button
                 variant="ghost"
@@ -2141,13 +2029,25 @@ const Dashboard = () => {
                     "history"
                   )
                 }
-                className="text-white hover:bg-white/20"
+                className="hidden h-10 w-10 rounded-full p-0 text-white hover:bg-white/15 sm:flex"
                 aria-label="Transaction history"
               >
-                <History className="h-4 w-4" />
+                <History className="h-5 w-5" />
               </Button>
 
-              {/* SIGN OUT */}
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() =>
+                  setCurrentPage(
+                    "me"
+                  )
+                }
+                className="h-10 w-10 rounded-full p-0 text-white hover:bg-white/15"
+                aria-label="Open profile"
+              >
+                <User className="h-5 w-5" />
+              </Button>
 
               <Button
                 variant="ghost"
@@ -2155,10 +2055,10 @@ const Dashboard = () => {
                 onClick={
                   signOut
                 }
-                className="text-white hover:bg-white/20"
+                className="hidden h-10 w-10 rounded-full p-0 text-white hover:bg-white/15 sm:flex"
                 aria-label="Sign out"
               >
-                <LogOut className="h-4 w-4" />
+                <LogOut className="h-5 w-5" />
               </Button>
             </div>
           </div>
@@ -2166,266 +2066,484 @@ const Dashboard = () => {
       </header>
 
       {/* ====================================================== */}
-      {/* MAIN */}
+      {/* MAIN CONTENT                                           */}
       {/* ====================================================== */}
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        {/* GREETING */}
-
-        <div className="mb-6">
-          <h2 className="text-2xl font-bold text-gray-900 mb-1">
-            Hello! 👋
-          </h2>
-
-          <p className="text-gray-600">
-            What would you like to do today?
-          </p>
-        </div>
+      <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
 
         {/* ==================================================== */}
-        {/* WALLET */}
+        {/* GREETING                                             */}
         {/* ==================================================== */}
 
-        <div className="mb-6">
-          <Card className="bg-gradient-to-r from-purple-600 to-blue-600 text-white border-0 shadow-lg">
-            <CardContent className="p-6">
-              <div className="flex justify-between items-start mb-4">
-                {/* BALANCE */}
+        <section className="mb-6">
+          <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
+            <div>
+              <p className="mb-1 text-sm font-medium text-purple-600">
+                Welcome back
+              </p>
 
-                <div>
-                  <p className="text-purple-100 text-sm mb-1">
-                    Total Balance
-                  </p>
+              <h1 className="text-2xl font-black tracking-tight text-slate-950 sm:text-3xl">
+                Hello, {firstName} 👋
+              </h1>
 
-                  <div className="flex items-center gap-2">
-                    <span className="text-3xl font-bold">
-                      ₦
-                      {showBalance
-                        ? Number(
-                            wallet?.balance ??
-                              0
-                          ).toLocaleString(
-                            "en-NG",
-                            {
-                              minimumFractionDigits: 0,
-                              maximumFractionDigits: 2,
-                            }
+              <p className="mt-1 text-sm text-slate-500 sm:text-base">
+                What would you like to do today?
+              </p>
+            </div>
+
+            <div className="hidden rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-500 shadow-sm sm:flex sm:items-center sm:gap-2">
+              <span className="h-2 w-2 rounded-full bg-emerald-500" />
+
+              Account active
+            </div>
+          </div>
+        </section>
+
+        {/* ==================================================== */}
+        {/* WALLET HERO                                          */}
+        {/* ==================================================== */}
+
+        <section className="mb-7">
+          <Card className="relative overflow-hidden rounded-[28px] border-0 bg-gradient-to-br from-[#4c1d95] via-[#6d28d9] to-[#2563eb] text-white shadow-[0_20px_60px_rgba(79,70,229,0.22)]">
+
+            {/* Decorative shapes */}
+
+            <div className="pointer-events-none absolute -right-20 -top-20 h-56 w-56 rounded-full bg-white/10" />
+
+            <div className="pointer-events-none absolute -bottom-24 right-24 h-48 w-48 rounded-full bg-white/5" />
+
+            <CardContent className="relative p-5 sm:p-7">
+
+              <div className="flex flex-col gap-7">
+
+                {/* BALANCE AREA */}
+
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-medium text-purple-100">
+                        Available Balance
+                      </p>
+
+                      <span className="rounded-full bg-white/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-purple-100">
+                        NGN
+                      </span>
+                    </div>
+
+                    <div className="mt-2 flex items-center gap-3">
+                      <span className="text-3xl font-black tracking-tight sm:text-4xl">
+                        ₦
+                        {showBalance
+                          ? formattedBalance
+                          : "••••••"}
+                      </span>
+
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() =>
+                          setShowBalance(
+                            (
+                              previous
+                            ) =>
+                              !previous
                           )
-                        : "****"}
-                    </span>
+                        }
+                        className="h-9 w-9 rounded-full bg-white/10 p-0 text-white hover:bg-white/20"
+                        aria-label={
+                          showBalance
+                            ? "Hide balance"
+                            : "Show balance"
+                        }
+                      >
+                        {showBalance ? (
+                          <EyeOff className="h-4 w-4" />
+                        ) : (
+                          <Eye className="h-4 w-4" />
+                        )}
+                      </Button>
+                    </div>
 
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() =>
-                        setShowBalance(
-                          (previous) =>
-                            !previous
-                        )
-                      }
-                      className="text-white hover:bg-white/20 p-1"
-                      aria-label={
-                        showBalance
-                          ? "Hide balance"
-                          : "Show balance"
-                      }
-                    >
-                      {showBalance ? (
-                        <EyeOff className="h-4 w-4" />
-                      ) : (
-                        <Eye className="h-4 w-4" />
-                      )}
-                    </Button>
+                    <p className="mt-2 text-xs text-purple-100">
+                      Ready to spend securely
+                    </p>
+                  </div>
+
+                  {/* WALLET ID */}
+
+                  <div className="hidden text-right sm:block">
+                    <p className="text-xs font-medium text-purple-100">
+                      Wallet ID
+                    </p>
+
+                    <p className="mt-1 max-w-[180px] truncate font-mono text-sm font-bold tracking-wider">
+                      {wallet?.wallet_id ||
+                        "—"}
+                    </p>
                   </div>
                 </div>
 
-                {/* WALLET ID */}
+                {/* ACTIONS */}
 
-                <div className="text-right">
-                  <p className="text-purple-100 text-sm">
+                <div className="grid grid-cols-2 gap-3">
+                  <Button
+                    onClick={() =>
+                      setFundModalOpen(
+                        true
+                      )
+                    }
+                    className="h-12 rounded-2xl bg-white text-purple-700 shadow-lg hover:bg-purple-50"
+                  >
+                    <Plus className="mr-2 h-5 w-5" />
+
+                    <span className="font-bold">
+                      Add Money
+                    </span>
+                  </Button>
+
+                  <Button
+                    onClick={() =>
+                      setCurrentPage(
+                        "send-money"
+                      )
+                    }
+                    className="h-12 rounded-2xl border border-white/30 bg-white/10 text-white backdrop-blur-sm hover:bg-white/20"
+                  >
+                    <Send className="mr-2 h-5 w-5" />
+
+                    <span className="font-bold">
+                      Send Money
+                    </span>
+                  </Button>
+                </div>
+
+                {/* MOBILE WALLET ID */}
+
+                <div className="flex items-center justify-between border-t border-white/10 pt-4 sm:hidden">
+                  <span className="text-xs text-purple-100">
                     Wallet ID
-                  </p>
+                  </span>
 
-                  <p className="font-mono text-sm font-semibold tracking-wider">
+                  <span className="font-mono text-xs font-bold tracking-wider text-white">
                     {wallet?.wallet_id ||
                       "—"}
-                  </p>
+                  </span>
                 </div>
-              </div>
-
-              {/* WALLET ACTIONS */}
-
-              <div className="flex gap-3">
-                <Button
-                  onClick={() =>
-                    setFundModalOpen(
-                      true
-                    )
-                  }
-                  className="flex-1 bg-white text-purple-600 hover:bg-gray-100 font-semibold"
-                >
-                  <Plus className="h-4 w-4 mr-2" />
-
-                  Add Money
-                </Button>
-
-                <Button
-                  onClick={() =>
-                    setCurrentPage(
-                      "send-money"
-                    )
-                  }
-                  variant="outline"
-                  className="flex-1 bg-white text-purple-600 hover:bg-gray-100 font-semibold"
-                >
-                  <Send className="h-4 w-4 mr-2" />
-
-                  Send Money
-                </Button>
               </div>
             </CardContent>
           </Card>
-        </div>
+        </section>
 
         {/* ==================================================== */}
-        {/* SERVICES */}
+        {/* QUICK ACTIONS                                        */}
         {/* ==================================================== */}
 
-        <div className="mb-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">
-            Services
-          </h3>
+        <section className="mb-8">
+          <div className="mb-3 flex items-center justify-between">
+            <div>
+              <h2 className="text-lg font-black text-slate-950">
+                Quick Actions
+              </h2>
 
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+              <p className="text-xs text-slate-500">
+                Get things done faster
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-4 gap-2 sm:gap-3">
+
+            <button
+              type="button"
+              onClick={() =>
+                handleServiceClick(
+                  services[0]
+                )
+              }
+              className="group rounded-2xl border border-slate-200 bg-white p-3 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-md sm:p-4"
+            >
+              <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-2xl bg-blue-50 text-blue-600 transition group-hover:scale-105">
+                <Smartphone className="h-5 w-5" />
+              </div>
+
+              <p className="mt-2 text-[11px] font-bold text-slate-700 sm:text-xs">
+                Airtime
+              </p>
+            </button>
+
+            <button
+              type="button"
+              onClick={() =>
+                handleServiceClick(
+                  services[1]
+                )
+              }
+              className="group rounded-2xl border border-slate-200 bg-white p-3 shadow-sm transition hover:-translate-y-0.5 hover:border-purple-200 hover:shadow-md sm:p-4"
+            >
+              <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-2xl bg-purple-50 text-purple-600 transition group-hover:scale-105">
+                <Wifi className="h-5 w-5" />
+              </div>
+
+              <p className="mt-2 text-[11px] font-bold text-slate-700 sm:text-xs">
+                Data
+              </p>
+            </button>
+
+            <button
+              type="button"
+              onClick={() =>
+                setCurrentPage(
+                  "send-money"
+                )
+              }
+              className="group rounded-2xl border border-slate-200 bg-white p-3 shadow-sm transition hover:-translate-y-0.5 hover:border-emerald-200 hover:shadow-md sm:p-4"
+            >
+              <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600 transition group-hover:scale-105">
+                <Send className="h-5 w-5" />
+              </div>
+
+              <p className="mt-2 text-[11px] font-bold text-slate-700 sm:text-xs">
+                Transfer
+              </p>
+            </button>
+
+            <button
+              type="button"
+              onClick={() =>
+                setCurrentPage(
+                  "history"
+                )
+              }
+              className="group rounded-2xl border border-slate-200 bg-white p-3 shadow-sm transition hover:-translate-y-0.5 hover:border-orange-200 hover:shadow-md sm:p-4"
+            >
+              <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-2xl bg-orange-50 text-orange-600 transition group-hover:scale-105">
+                <History className="h-5 w-5" />
+              </div>
+
+              <p className="mt-2 text-[11px] font-bold text-slate-700 sm:text-xs">
+                History
+              </p>
+            </button>
+
+          </div>
+        </section>
+
+        {/* ==================================================== */}
+        {/* SERVICES                                             */}
+        {/* ==================================================== */}
+
+        <section className="mb-8">
+          <div className="mb-4 flex items-end justify-between">
+            <div>
+              <h2 className="text-xl font-black tracking-tight text-slate-950">
+                Services
+              </h2>
+
+              <p className="mt-1 text-sm text-slate-500">
+                Everything you need, in one place
+              </p>
+            </div>
+
+            <span className="hidden rounded-full bg-purple-50 px-3 py-1 text-xs font-bold text-purple-700 sm:block">
+              9 available
+            </span>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
             {services.map(
               (
                 service,
                 index
               ) => (
-                <ServiceCard
+                <div
                   key={`${service.type}-${index}`}
-                  title={
-                    service.title
+                  className={
+                    service.available
+                      ? "transition hover:-translate-y-0.5"
+                      : "opacity-80"
                   }
-                  description={
-                    service.description
-                  }
-                  icon={
-                    service.icon
-                  }
-                  color={
-                    service.color
-                  }
-                  onClick={() =>
-                    handleServiceClick(
-                      service
-                    )
-                  }
-                />
+                >
+                  <ServiceCard
+                    title={
+                      service.title
+                    }
+                    description={
+                      service.description
+                    }
+                    icon={
+                      service.icon
+                    }
+                    color={
+                      service.color
+                    }
+                    onClick={() =>
+                      handleServiceClick(
+                        service
+                      )
+                    }
+                  />
+                </div>
               )
             )}
           </div>
-        </div>
+        </section>
 
         {/* ==================================================== */}
-        {/* STATS */}
+        {/* ACCOUNT INSIGHTS                                     */}
         {/* ==================================================== */}
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {/* MONTHLY SPENDING */}
+        <section className="mb-8">
+          <div className="mb-4">
+            <h2 className="text-xl font-black tracking-tight text-slate-950">
+              Account Overview
+            </h2>
 
-          <Card className="bg-white shadow-sm">
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-600">
-                    This Month
-                  </p>
+            <p className="mt-1 text-sm text-slate-500">
+              A quick view of your activity
+            </p>
+          </div>
 
-                  <p className="text-2xl font-bold text-gray-900">
-                    {statsLoading
-                      ? "..."
-                      : `₦${stats.monthlySpent.toLocaleString(
-                          "en-NG",
-                          {
-                            minimumFractionDigits: 0,
-                            maximumFractionDigits: 2,
-                          }
-                        )}`}
-                  </p>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
 
-                  <p className="text-xs text-gray-500">
-                    Total Spent
-                  </p>
+            {/* SPENDING */}
+
+            <Card className="rounded-3xl border-slate-200/80 bg-white shadow-sm transition hover:shadow-md">
+              <CardContent className="p-5">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                      This Month
+                    </p>
+
+                    <p className="mt-2 text-2xl font-black tracking-tight text-slate-950">
+                      {statsLoading
+                        ? "..."
+                        : `₦${stats.monthlySpent.toLocaleString(
+                            "en-NG",
+                            {
+                              minimumFractionDigits: 0,
+                              maximumFractionDigits: 2,
+                            }
+                          )}`}
+                    </p>
+
+                    <p className="mt-1 text-xs text-slate-500">
+                      Total spent
+                    </p>
+                  </div>
+
+                  <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-red-50 text-red-600">
+                    <Banknote className="h-5 w-5" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* TRANSACTIONS */}
+
+            <Card className="rounded-3xl border-slate-200/80 bg-white shadow-sm transition hover:shadow-md">
+              <CardContent className="p-5">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                      Activity
+                    </p>
+
+                    <p className="mt-2 text-2xl font-black tracking-tight text-slate-950">
+                      {statsLoading
+                        ? "..."
+                        : stats.monthlyTransactions.toLocaleString()}
+                    </p>
+
+                    <p className="mt-1 text-xs text-slate-500">
+                      Transactions this month
+                    </p>
+                  </div>
+
+                  <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">
+                    <History className="h-5 w-5" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* SUCCESS RATE */}
+
+            <Card className="rounded-3xl border-slate-200/80 bg-white shadow-sm transition hover:shadow-md">
+              <CardContent className="p-5">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                      Reliability
+                    </p>
+
+                    <p className="mt-2 text-2xl font-black tracking-tight text-slate-950">
+                      {statsLoading
+                        ? "..."
+                        : `${stats.successRate}%`}
+                    </p>
+
+                    <p className="mt-1 text-xs text-slate-500">
+                      Successful transactions
+                    </p>
+                  </div>
+
+                  <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600">
+                    <Shield className="h-5 w-5" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+          </div>
+        </section>
+
+        {/* ==================================================== */}
+        {/* SECURITY / TRUST                                    */}
+        {/* ==================================================== */}
+
+        <section className="mb-4">
+          <Card className="overflow-hidden rounded-3xl border-slate-200/80 bg-white shadow-sm">
+            <CardContent className="p-5 sm:p-6">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+
+                <div className="flex items-start gap-3">
+                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-purple-50 text-purple-600">
+                    <Shield className="h-5 w-5" />
+                  </div>
+
+                  <div>
+                    <p className="text-sm font-bold text-slate-900">
+                      Your account is protected
+                    </p>
+
+                    <p className="mt-1 max-w-xl text-xs leading-5 text-slate-500">
+                      IyanjuPay uses secure authentication and payment authorization to protect your money and transactions.
+                    </p>
+                  </div>
                 </div>
 
-                <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center">
-                  <Banknote className="h-6 w-6 text-red-600" />
-                </div>
+                <Button
+                  variant="outline"
+                  onClick={() =>
+                    setCurrentPage(
+                      "payment-pin"
+                    )
+                  }
+                  className="rounded-xl border-slate-200 font-semibold"
+                >
+                  Security Settings
+                </Button>
+
               </div>
             </CardContent>
           </Card>
+        </section>
 
-          {/* TRANSACTIONS */}
-
-          <Card className="bg-white shadow-sm">
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-600">
-                    Transactions
-                  </p>
-
-                  <p className="text-2xl font-bold text-gray-900">
-                    {statsLoading
-                      ? "..."
-                      : stats.monthlyTransactions.toLocaleString()}
-                  </p>
-
-                  <p className="text-xs text-gray-500">
-                    This Month
-                  </p>
-                </div>
-
-                <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
-                  <History className="h-6 w-6 text-blue-600" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* SUCCESS RATE */}
-
-          <Card className="bg-white shadow-sm">
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-600">
-                    Success Rate
-                  </p>
-
-                  <p className="text-2xl font-bold text-gray-900">
-                    {statsLoading
-                      ? "..."
-                      : `${stats.successRate}%`}
-                  </p>
-
-                  <p className="text-xs text-gray-500">
-                    All Time
-                  </p>
-                </div>
-
-                <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center">
-                  <Shield className="h-6 w-6 text-green-600" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
       </main>
 
       {/* ====================================================== */}
-      {/* BOTTOM NAVIGATION */}
+      {/* BOTTOM NAVIGATION                                     */}
       {/* ====================================================== */}
 
       {renderBottomNav(
@@ -2433,7 +2551,7 @@ const Dashboard = () => {
       )}
 
       {/* ====================================================== */}
-      {/* FUND WALLET */}
+      {/* FUND WALLET                                           */}
       {/* ====================================================== */}
 
       <FundWalletModal
@@ -2452,7 +2570,7 @@ const Dashboard = () => {
       />
 
       {/* ====================================================== */}
-      {/* QR CODE */}
+      {/* QR CODE                                                */}
       {/* ====================================================== */}
 
       <QRCodeModal
@@ -2475,7 +2593,7 @@ const Dashboard = () => {
       />
 
       {/* ====================================================== */}
-      {/* LIVE SUPPORT CHAT */}
+      {/* SUPPORT CHAT                                          */}
       {/* ====================================================== */}
 
       <Button
@@ -2485,7 +2603,7 @@ const Dashboard = () => {
             true
           )
         }
-        className="fixed bottom-24 right-5 z-50 h-14 w-14 rounded-full bg-purple-600 hover:bg-purple-700 shadow-xl p-0"
+        className="fixed bottom-24 right-4 z-50 h-14 w-14 rounded-full bg-purple-600 p-0 shadow-[0_12px_30px_rgba(124,58,237,0.35)] hover:bg-purple-700 sm:bottom-24 sm:right-6"
         aria-label="Open live support chat"
       >
         <Headphones className="h-6 w-6" />
@@ -2503,7 +2621,7 @@ const Dashboard = () => {
       />
 
       {/* ====================================================== */}
-      {/* WHATSAPP */}
+      {/* WHATSAPP                                              */}
       {/* ====================================================== */}
 
       <WhatsAppFloat />

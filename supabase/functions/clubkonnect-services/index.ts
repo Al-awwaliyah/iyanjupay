@@ -5,50 +5,6 @@ import {
   getUser,
 } from "../_shared/auth.ts";
 
-/**
- * IyanjuPay - ClubKonnect Service Gateway
- *
- * CUSTOMER-FACING CONTRACT
- * ------------------------
- * The frontend talks only to this function.
- * ClubKonnect credentials and provider pricing never leave
- * the Edge Function.
- *
- * Supported services:
- *   airtime
- *   data
- *   electricity
- *   cable
- *   airtime-card
- *   data-card
- *   smile
- *   waec
- *   jamb
- *
- * Coming soon:
- *   internet
- *   insurance
- *   savings
- *
- * Actions:
- *   catalog
- *   verify_meter
- *   verify_cable
- *   purchase
- *   status
- *   reconcile
- *
- * IMPORTANT:
- * - Customer price is calculated on the server.
- * - The frontend must never be trusted for provider price.
- * - ClubKonnect transactions can be asynchronous.
- * - ORDER_RECEIVED / pending states are NOT treated as failures.
- */
-
-// ============================================================
-// TYPES
-// ============================================================
-
 type ServiceType =
   | "airtime"
   | "data"
@@ -60,60 +16,66 @@ type ServiceType =
   | "waec"
   | "jamb";
 
-type ProviderState =
-  | "success"
-  | "pending"
-  | "failed";
+type Action =
+  | "catalog"
+  | "get_catalog"
+  | "plans"
+  | "purchase"
+  | "buy"
+  | "pay"
+  | "verify_meter"
+  | "verify_cable"
+  | "status"
+  | "check_status"
+  | "reconcile";
 
-interface ProviderResult {
-  state: ProviderState;
-  statusCode: number | null;
-  status: string;
-  message: string;
-  orderId: string;
-  requestId: string;
-  raw: Record<string, any>;
+interface ProviderResponse {
+  success: boolean;
+  statusCode?: number;
+  status?: string;
+  orderId?: string;
+  requestId?: string;
+  message?: string;
+  raw?: unknown;
 }
 
 interface CatalogItem {
-  id?: string;
+  id: string;
   code: string;
   name: string;
-
-  provider_amount?: number;
-  selling_price?: number;
-
-  amount?: number;
-  price?: number;
-  value?: number;
-
-  network_code?: string;
-  network?: string;
-
-  biller_code?: string;
-  company_code?: string;
-
-  validity?: string;
-  duration?: string;
-
+  label: string;
+  price: number;
+  providerPrice: number;
   category?: string;
-  minimum?: number;
-  maximum?: number;
-
-  logo?: string | null;
-
-  [key: string]: any;
+  validity?: string;
+  network?: string;
+  networkCode?: string;
+  biller?: string;
+  billerCode?: string;
+  metadata?: Record<string, unknown>;
 }
 
-// ============================================================
-// CONSTANTS
-// ============================================================
+interface CatalogResponse {
+  success: boolean;
+  service: ServiceType;
+  markup: number;
+  networks: CatalogItem[];
+  billers: CatalogItem[];
+  plans: CatalogItem[];
+  items: CatalogItem[];
+}
 
-const CLUBKONNECT_BASE_URL =
-  "https://www.nellobytesystems.com";
+const CLUBKONNECT_BASE_URL = "https://www.nellobytesystems.com";
 
 const REGULAR_MARKUP = 0.15;
 const PREMIUM_MARKUP = 0.20;
+
+const REGULAR_SERVICES = new Set<ServiceType>([
+  "airtime",
+  "data",
+  "electricity",
+  "cable",
+]);
 
 const PREMIUM_SERVICES = new Set<ServiceType>([
   "airtime-card",
@@ -124,21 +86,8 @@ const PREMIUM_SERVICES = new Set<ServiceType>([
 ]);
 
 const SUPPORTED_SERVICES = new Set<ServiceType>([
-  "airtime",
-  "data",
-  "electricity",
-  "cable",
-  "airtime-card",
-  "data-card",
-  "smile",
-  "waec",
-  "jamb",
-]);
-
-const COMING_SOON_SERVICES = new Set([
-  "internet",
-  "insurance",
-  "savings",
+  ...REGULAR_SERVICES,
+  ...PREMIUM_SERVICES,
 ]);
 
 const SERVICE_ALIASES: Record<string, ServiceType> = {
@@ -177,2326 +126,1053 @@ const SERVICE_ALIASES: Record<string, ServiceType> = {
   "jamb-epin": "jamb",
 };
 
-// ============================================================
-// ENVIRONMENT
-// ============================================================
+const COMING_SOON_SERVICES = new Set([
+  "internet",
+  "insurance",
+  "savings",
+]);
 
-function getRequiredEnv(name: string): string {
-  const value = Deno.env.get(name)?.trim();
+const CALLBACK_URL =
+  `${Deno.env.get("SUPABASE_URL") ?? ""}/functions/v1/clubkonnect-webhook`;
 
-  if (!value) {
+function getCredentials() {
+  const userId = Deno.env.get("CLUBKONNECT_USER_ID")?.trim();
+  const apiKey = Deno.env.get("CLUBKONNECT_API_KEY")?.trim();
+
+  if (!userId || !apiKey) {
     throw new Error(
-      `Missing required server configuration: ${name}`
+      "ClubKonnect credentials are not configured. Set CLUBKONNECT_USER_ID and CLUBKONNECT_API_KEY.",
     );
   }
 
-  return value;
-}
-
-function getClubKonnectCredentials() {
   return {
-    userId: getRequiredEnv(
-      "CLUBKONNECT_USER_ID"
-    ),
-    apiKey: getRequiredEnv(
-      "CLUBKONNECT_API_KEY"
-    ),
+    userId,
+    apiKey,
   };
 }
 
-function getSupabaseUrl(): string {
-  return (
-    Deno.env.get("SUPABASE_URL")?.trim() ||
-    ""
-  );
-}
-
-function getCallbackUrl(): string {
-  const configured =
-    Deno.env.get(
-      "CLUBKONNECT_CALLBACK_URL"
-    )?.trim();
-
-  if (configured) {
-    return configured;
+function normalizeAction(value: unknown): Action | null {
+  if (typeof value !== "string") {
+    return null;
   }
 
-  const supabaseUrl =
-    getSupabaseUrl();
+  const action = value.trim().toLowerCase();
 
-  if (!supabaseUrl) {
-    return "";
+  const allowed: Action[] = [
+    "catalog",
+    "get_catalog",
+    "plans",
+    "purchase",
+    "buy",
+    "pay",
+    "verify_meter",
+    "verify_cable",
+    "status",
+    "check_status",
+    "reconcile",
+  ];
+
+  return allowed.includes(action as Action)
+    ? (action as Action)
+    : null;
+}
+
+function normalizeService(value: unknown): ServiceType | null {
+  if (typeof value !== "string") {
+    return null;
   }
 
-  return `${supabaseUrl}/functions/v1/clubkonnect-webhook`;
+  return SERVICE_ALIASES[value.trim().toLowerCase()] ?? null;
 }
 
-// ============================================================
-// BASIC HELPERS
-// ============================================================
-
-function asString(
-  value: unknown,
-  fallback = ""
-): string {
-  if (
-    value === undefined ||
-    value === null
-  ) {
-    return fallback;
-  }
-
-  return String(value).trim();
-}
-
-function asNumber(
-  value: unknown,
-  fallback = 0
-): number {
-  const n =
-    typeof value === "number"
-      ? value
-      : Number(value);
-
-  return Number.isFinite(n)
-    ? n
-    : fallback;
-}
-
-function positiveNumber(
-  value: unknown
-): number {
-  const n = asNumber(value);
-
-  return n > 0 ? n : 0;
-}
-
-function roundMoney(
-  value: number
-): number {
-  return Math.round(
-    (value + Number.EPSILON) * 100
-  ) / 100;
-}
-
-function normalizeService(
-  value: unknown
-): ServiceType | null {
-  const raw =
-    asString(value).toLowerCase();
-
-  return (
-    SERVICE_ALIASES[raw] ??
-    null
-  );
-}
-
-function isSupportedService(
-  service: string
-): service is ServiceType {
-  return SUPPORTED_SERVICES.has(
-    service as ServiceType
-  );
-}
-
-function markupFor(
-  service: ServiceType
-): number {
-  return PREMIUM_SERVICES.has(
-    service
-  )
+function markupFor(service: ServiceType): number {
+  return PREMIUM_SERVICES.has(service)
     ? PREMIUM_MARKUP
     : REGULAR_MARKUP;
 }
 
 function sellingPrice(
-  providerAmount: number,
-  service: ServiceType
+  providerPrice: number,
+  service: ServiceType,
 ): number {
-  if (
-    !Number.isFinite(
-      providerAmount
-    ) ||
-    providerAmount <= 0
-  ) {
-    return 0;
+  if (!Number.isFinite(providerPrice) || providerPrice < 0) {
+    throw new Error("Invalid provider price.");
   }
 
-  return roundMoney(
-    providerAmount *
-      (1 + markupFor(service))
-  );
+  return Math.ceil(providerPrice * (1 + markupFor(service)));
 }
 
-function normalizePhone(
-  value: unknown
+function toNumber(value: unknown): number {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : 0;
+  }
+
+  if (typeof value === "string") {
+    const cleaned = value.replace(/[₦,\s]/g, "");
+    const number = Number(cleaned);
+    return Number.isFinite(number) ? number : 0;
+  }
+
+  return 0;
+}
+
+function toStringValue(value: unknown): string {
+  if (value === null || value === undefined) {
+    return "";
+  }
+
+  return String(value).trim();
+}
+
+function firstString(
+  object: Record<string, unknown>,
+  keys: string[],
 ): string {
-  const phone =
-    asString(value)
-      .replace(/\s+/g, "")
-      .trim();
+  for (const key of keys) {
+    const value = object[key];
 
-  if (/^0\d{10}$/.test(phone)) {
-    return `+234${phone.slice(1)}`;
-  }
-
-  if (/^\d{10}$/.test(phone)) {
-    return `+234${phone}`;
-  }
-
-  if (/^234\d{10}$/.test(phone)) {
-    return `+${phone}`;
-  }
-
-  if (/^\+234\d{10}$/.test(phone)) {
-    return phone;
-  }
-
-  return phone;
-}
-
-function isValidPhone(
-  value: unknown
-): boolean {
-  return /^\+234\d{10}$/.test(
-    normalizePhone(value)
-  );
-}
-
-function uniqueStrings(
-  values: string[]
-): string[] {
-  return [
-    ...new Set(
-      values
-        .map((value) =>
-          value.trim()
-        )
-        .filter(Boolean)
-    ),
-  ];
-}
-
-function makeRequestId(
-  userId: string,
-  service: string
-): string {
-  const random =
-    crypto.randomUUID()
-      .replace(/-/g, "")
-      .slice(0, 16);
-
-  return `IYJ-${service.toUpperCase()}-${userId
-    .replace(/-/g, "")
-    .slice(0, 8)}-${Date.now()}-${random}`;
-}
-
-// ============================================================
-// JSON / RESPONSE
-// ============================================================
-
-function response(
-  body: Record<string, any>,
-  status = 200
-): Response {
-  return new Response(
-    JSON.stringify(body),
-    {
-      status,
-      headers: {
-        ...corsHeaders,
-        "Content-Type":
-          "application/json",
-      },
-    }
-  );
-}
-
-function errorResponse(
-  message: string,
-  status = 400,
-  extra: Record<string, any> = {}
-): Response {
-  return response(
-    {
-      success: false,
-      error: message,
-      message,
-      ...extra,
-    },
-    status
-  );
-}
-
-// ============================================================
-// CLUBKONNECT HTTP
-// ============================================================
-
-async function clubKonnectGet(
-  endpoint: string,
-  params: Record<
-    string,
-    string | number | undefined
-  > = {}
-): Promise<Record<string, any>> {
-  const {
-    userId,
-    apiKey,
-  } =
-    getClubKonnectCredentials();
-
-  const url =
-    new URL(
-      `${CLUBKONNECT_BASE_URL}/${endpoint}`
-    );
-
-  url.searchParams.set(
-    "UserID",
-    userId
-  );
-
-  url.searchParams.set(
-    "APIKey",
-    apiKey
-  );
-
-  for (
-    const [
-      key,
-      value,
-    ] of Object.entries(params)
-  ) {
     if (
       value !== undefined &&
       value !== null &&
       String(value).trim() !== ""
     ) {
-      url.searchParams.set(
-        key,
-        String(value)
-      );
+      return String(value).trim();
     }
   }
 
-  const controller =
-    new AbortController();
-
-  const timeout =
-    setTimeout(
-      () =>
-        controller.abort(),
-      30000
-    );
-
-  try {
-    const result =
-      await fetch(
-        url.toString(),
-        {
-          method: "GET",
-          headers: {
-            Accept:
-              "application/json",
-          },
-          signal:
-            controller.signal,
-        }
-      );
-
-    const text =
-      await result.text();
-
-    let parsed: any;
-
-    try {
-      parsed =
-        text
-          ? JSON.parse(text)
-          : {};
-    } catch {
-      throw new Error(
-        "ClubKonnect returned an invalid response."
-      );
-    }
-
-    if (!result.ok) {
-      const providerMessage =
-        extractProviderMessage(
-          parsed
-        );
-
-      throw new Error(
-        providerMessage ||
-          `ClubKonnect HTTP ${result.status}.`
-      );
-    }
-
-    if (
-      !parsed ||
-      typeof parsed !==
-        "object"
-    ) {
-      throw new Error(
-        "ClubKonnect returned an unexpected response."
-      );
-    }
-
-    return parsed;
-  } catch (error) {
-    if (
-      error instanceof DOMException &&
-      error.name ===
-        "AbortError"
-    ) {
-      throw new Error(
-        "ClubKonnect request timed out."
-      );
-    }
-
-    throw error;
-  } finally {
-    clearTimeout(timeout);
-  }
+  return "";
 }
 
-// ============================================================
-// PROVIDER RESPONSE HELPERS
-// ============================================================
+function firstNumber(
+  object: Record<string, unknown>,
+  keys: string[],
+): number {
+  for (const key of keys) {
+    const value = object[key];
+    const number = toNumber(value);
 
-function extractProviderCode(
-  value: any
-): number | null {
-  const candidates = [
-    value?.statuscode,
-    value?.statusCode,
-    value?.code,
-    value?.StatusCode,
-  ];
-
-  for (
-    const candidate of candidates
-  ) {
-    if (
-      candidate !== undefined &&
-      candidate !== null &&
-      String(candidate).trim() !== ""
-    ) {
-      const number =
-        Number(candidate);
-
-      if (
-        Number.isFinite(number)
-      ) {
-        return number;
-      }
+    if (number > 0) {
+      return number;
     }
   }
 
-  return null;
+  return 0;
 }
 
-function extractProviderStatus(
-  value: any
-): string {
-  return asString(
-    value?.status ??
-      value?.Status ??
-      value?.orderstatus ??
-      value?.orderStatus ??
-      value?.OrderStatus ??
-      value?.message ??
-      value?.Message
-  );
-}
-
-function extractProviderMessage(
-  value: any
-): string {
-  return asString(
-    value?.orderremark ??
-      value?.orderRemark ??
-      value?.OrderRemark ??
-      value?.remark ??
-      value?.message ??
-      value?.Message ??
-      value?.error ??
-      value?.Error ??
-      value?.status
-  );
-}
-
-function extractOrderId(
-  value: any
-): string {
-  return asString(
-    value?.orderid ??
-      value?.orderId ??
-      value?.OrderID
-  );
-}
-
-function extractRequestId(
-  value: any
-): string {
-  return asString(
-    value?.requestid ??
-      value?.requestId ??
-      value?.RequestID
-  );
-}
-
-function classifyProviderResponse(
-  value: Record<string, any>
-): ProviderResult {
-  const statusCode =
-    extractProviderCode(value);
-
-  const status =
-    extractProviderStatus(
-      value
-    ).toUpperCase();
-
-  const message =
-    extractProviderMessage(
-      value
-    ) ||
-    "ClubKonnect response received.";
-
-  const orderId =
-    extractOrderId(value);
-
-  const requestId =
-    extractRequestId(value);
-
-  /*
-   * ClubKonnect's normal asynchronous
-   * lifecycle includes:
-   *
-   * 100 ORDER_RECEIVED
-   * 200 ORDER_COMPLETED
-   * 201 network/provider pending
-   * 300 ORDER_PROCESSED
-   *
-   * We deliberately do NOT interpret 100
-   * as failure.
-   */
-
+function asRecord(value: unknown): Record<string, unknown> {
   if (
-    statusCode === 200 ||
-    status ===
-      "ORDER_COMPLETED"
+    typeof value === "object" &&
+    value !== null &&
+    !Array.isArray(value)
   ) {
-    return {
-      state: "success",
-      statusCode,
-      status:
-        status ||
-        "ORDER_COMPLETED",
-      message,
-      orderId,
-      requestId,
-      raw: value,
-    };
+    return value as Record<string, unknown>;
   }
 
-  if (
-    statusCode === 100 ||
-    statusCode === 201 ||
-    statusCode === 300 ||
-    status ===
-      "ORDER_RECEIVED" ||
-    status ===
-      "ORDER_PROCESSED" ||
-    status.includes(
-      "PENDING"
-    ) ||
-    status.includes(
-      "RECEIVED"
-    ) ||
-    status.includes(
-      "ONHOLD"
-    )
-  ) {
-    return {
-      state: "pending",
-      statusCode,
-      status,
-      message,
-      orderId,
-      requestId,
-      raw: value,
-    };
-  }
-
-  /*
-   * Explicit terminal failure.
-   */
-  if (
-    status.includes(
-      "FAILED"
-    ) ||
-    status.includes(
-      "ERROR"
-    ) ||
-    status.includes(
-      "CANCEL"
-    ) ||
-    status.includes(
-      "INVALID"
-    ) ||
-    statusCode === 199 ||
-    statusCode === 299 ||
-    statusCode === 399 ||
-    (statusCode !== null &&
-      statusCode >= 400 &&
-      statusCode < 600)
-  ) {
-    return {
-      state: "failed",
-      statusCode,
-      status,
-      message,
-      orderId,
-      requestId,
-      raw: value,
-    };
-  }
-
-  /*
-   * Unknown provider response:
-   * safest financial behaviour is pending,
-   * not automatic refund.
-   */
-  return {
-    state: "pending",
-    statusCode,
-    status,
-    message,
-    orderId,
-    requestId,
-    raw: value,
-  };
+  return {};
 }
-
-// ============================================================
-// GENERIC CATALOG EXTRACTION
-// ============================================================
 
 function extractArray(
-  value: any
-): any[] {
-  if (
-    Array.isArray(value)
-  ) {
-    return value;
+  payload: unknown,
+  possibleKeys: string[] = [],
+): unknown[] {
+  if (Array.isArray(payload)) {
+    return payload;
   }
 
-  if (
-    !value ||
-    typeof value !==
-      "object"
-  ) {
-    return [];
-  }
+  const root = asRecord(payload);
 
-  const possibleKeys = [
-    "data",
-    "Data",
-    "items",
-    "Items",
-    "plans",
-    "Plans",
-    "networks",
-    "Networks",
-    "billers",
-    "Billers",
-    "packages",
-    "Packages",
-    "result",
-    "Result",
-  ];
-
-  for (
-    const key of possibleKeys
-  ) {
-    if (
-      Array.isArray(
-        value[key]
-      )
-    ) {
-      return value[key];
+  for (const key of possibleKeys) {
+    if (Array.isArray(root[key])) {
+      return root[key] as unknown[];
     }
   }
 
-  /*
-   * Some ClubKonnect catalogue responses
-   * are objects keyed by provider code.
-   */
-  const values =
-    Object.values(value);
+  for (const value of Object.values(root)) {
+    if (Array.isArray(value)) {
+      return value;
+    }
 
-  if (
-    values.length > 0 &&
-    values.every(
-      (entry) =>
-        entry !== null &&
-        typeof entry ===
-          "object"
-    )
-  ) {
-    return values;
+    if (
+      typeof value === "object" &&
+      value !== null &&
+      !Array.isArray(value)
+    ) {
+      const nested = extractArray(value, possibleKeys);
+
+      if (nested.length > 0) {
+        return nested;
+      }
+    }
   }
 
   return [];
 }
 
-function firstValue(
-  item: any,
-  keys: string[]
-): any {
-  for (
-    const key of keys
+function extractProviderCode(payload: unknown): number | undefined {
+  const root = asRecord(payload);
+
+  const raw = firstString(root, [
+    "statuscode",
+    "statusCode",
+    "StatusCode",
+    "code",
+    "Code",
+  ]);
+
+  if (!raw) {
+    return undefined;
+  }
+
+  const number = Number(raw);
+
+  return Number.isFinite(number) ? number : undefined;
+}
+
+function extractProviderStatus(payload: unknown): string {
+  const root = asRecord(payload);
+
+  return firstString(root, [
+    "status",
+    "Status",
+    "orderstatus",
+    "orderStatus",
+    "OrderStatus",
+  ]);
+}
+
+function extractOrderId(payload: unknown): string {
+  const root = asRecord(payload);
+
+  return firstString(root, [
+    "orderid",
+    "orderId",
+    "OrderID",
+    "order_id",
+  ]);
+}
+
+function extractRequestId(payload: unknown): string {
+  const root = asRecord(payload);
+
+  return firstString(root, [
+    "requestid",
+    "requestId",
+    "RequestID",
+    "request_id",
+  ]);
+}
+
+function extractMessage(payload: unknown): string {
+  const root = asRecord(payload);
+
+  return firstString(root, [
+    "message",
+    "Message",
+    "remark",
+    "Remark",
+    "orderremark",
+    "orderRemark",
+    "error",
+    "Error",
+  ]);
+}
+
+function classifyProviderResponse(payload: unknown): ProviderResponse {
+  const statusCode = extractProviderCode(payload);
+  const status = extractProviderStatus(payload).toUpperCase();
+  const orderId = extractOrderId(payload);
+  const requestId = extractRequestId(payload);
+  const message = extractMessage(payload);
+
+  if (
+    statusCode === 200 ||
+    status === "ORDER_COMPLETED"
   ) {
+    return {
+      success: true,
+      statusCode,
+      status,
+      orderId,
+      requestId,
+      message: message || "Transaction completed.",
+      raw: payload,
+    };
+  }
+
+  if (
+    statusCode === 100 ||
+    statusCode === 300 ||
+    statusCode === 201 ||
+    status === "ORDER_RECEIVED" ||
+    status === "ORDER_PROCESSED"
+  ) {
+    return {
+      success: true,
+      statusCode,
+      status,
+      orderId,
+      requestId,
+      message: message || "Transaction is processing.",
+      raw: payload,
+    };
+  }
+
+  if (
+    statusCode === 199 ||
+    statusCode === 299 ||
+    statusCode === 399 ||
+    statusCode === 400 ||
+    statusCode === 401 ||
+    statusCode === 404 ||
+    statusCode === 500 ||
+    status?.includes("FAILED") ||
+    status?.includes("ERROR") ||
+    status?.includes("INVALID")
+  ) {
+    return {
+      success: false,
+      statusCode,
+      status,
+      orderId,
+      requestId,
+      message: message || "ClubKonnect rejected the transaction.",
+      raw: payload,
+    };
+  }
+
+  return {
+    success: false,
+    statusCode,
+    status,
+    orderId,
+    requestId,
+    message: message || "Unknown ClubKonnect response.",
+    raw: payload,
+  };
+}
+
+async function clubKonnectGet(
+  endpoint: string,
+  params: Record<string, string | number | undefined>,
+): Promise<unknown> {
+  const { userId, apiKey } = getCredentials();
+
+  const url = new URL(`${CLUBKONNECT_BASE_URL}/${endpoint}`);
+
+  url.searchParams.set("UserID", userId);
+  url.searchParams.set("APIKey", apiKey);
+
+  for (const [key, value] of Object.entries(params)) {
     if (
-      item?.[key] !==
-        undefined &&
-      item?.[key] !== null &&
-      String(
-        item[key]
-      ).trim() !== ""
+      value !== undefined &&
+      value !== null &&
+      String(value).trim() !== ""
     ) {
-      return item[key];
+      url.searchParams.set(key, String(value));
     }
   }
 
-  return undefined;
-}
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 30_000);
 
-function itemCode(
-  item: any
-): string {
-  return asString(
-    firstValue(
-      item,
-      [
-        "item_code",
-        "ItemCode",
-        "product_code",
-        "ProductCode",
-        "variation_code",
-        "VariationCode",
-        "code",
-        "Code",
-        "plan_code",
-        "PlanCode",
-        "package_code",
-        "PackageCode",
-        "value",
-        "Value",
-        "id",
-        "ID",
-      ]
-    )
-  );
-}
+  try {
+    const response = await fetch(url.toString(), {
+      method: "GET",
+      headers: {
+        Accept: "application/json",
+      },
+      signal: controller.signal,
+    });
 
-function itemName(
-  item: any
-): string {
-  return asString(
-    firstValue(
-      item,
-      [
-        "name",
-        "Name",
-        "product_name",
-        "ProductName",
-        "productname",
-        "Productname",
-        "description",
-        "Description",
-        "plan_name",
-        "PlanName",
-        "package_name",
-        "PackageName",
-        "network_name",
-        "NetworkName",
-        "company_name",
-        "CompanyName",
-        "biller_name",
-        "BillerName",
-      ]
-    ),
-    itemCode(item)
-  );
-}
+    const text = await response.text();
 
-function providerAmount(
-  item: any
-): number {
-  return positiveNumber(
-    firstValue(
-      item,
-      [
-        "amount",
-        "Amount",
-        "price",
-        "Price",
-        "cost",
-        "Cost",
-        "discounted_price",
-        "DiscountedPrice",
-        "discount_price",
-        "DiscountPrice",
-        "value",
-        "Value",
-      ]
-    )
-  );
-}
+    let payload: unknown;
 
-function networkCode(
-  item: any
-): string {
-  return asString(
-    firstValue(
-      item,
-      [
-        "network_code",
-        "NetworkCode",
-        "network",
-        "Network",
-        "mobilenetwork",
-        "MobileNetwork",
-        "mobile_network",
-        "Mobile_Network",
-        "code",
-        "Code",
-        "id",
-        "ID",
-      ]
-    )
-  );
-}
+    try {
+      payload = text ? JSON.parse(text) : {};
+    } catch {
+      payload = {
+        raw: text,
+      };
+    }
 
-function billerCode(
-  item: any
-): string {
-  return asString(
-    firstValue(
-      item,
-      [
-        "biller_code",
-        "BillerCode",
-        "company_code",
-        "CompanyCode",
-        "electric_company",
-        "ElectricCompany",
-        "code",
-        "Code",
-        "id",
-        "ID",
-      ]
-    )
-  );
+    if (!response.ok) {
+      throw new Error(
+        `ClubKonnect HTTP ${response.status}: ${
+          extractMessage(payload) || text || "Request failed."
+        }`,
+      );
+    }
+
+    return payload;
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 function normalizeCatalogItem(
-  item: any,
+  value: unknown,
   service: ServiceType,
-  index: number
+  index: number,
 ): CatalogItem | null {
-  const code =
-    itemCode(item);
+  const object = asRecord(value);
 
-  if (!code) {
+  const code = firstString(object, [
+    "code",
+    "Code",
+    "id",
+    "ID",
+    "plan_code",
+    "planCode",
+    "Package",
+    "package",
+    "package_code",
+    "packageCode",
+    "network_code",
+    "networkCode",
+    "NetworkCode",
+    "ElectricCompany",
+    "electricCompany",
+  ]);
+
+  const name = firstString(object, [
+    "name",
+    "Name",
+    "network",
+    "Network",
+    "network_name",
+    "networkName",
+    "NetworkName",
+    "description",
+    "Description",
+    "package_name",
+    "packageName",
+    "PackageName",
+    "plan_name",
+    "planName",
+  ]);
+
+  const providerPrice = firstNumber(object, [
+    "price",
+    "Price",
+    "amount",
+    "Amount",
+    "selling_price",
+    "sellingPrice",
+    "cost",
+    "Cost",
+    "discounted_price",
+    "discountedPrice",
+    "value",
+    "Value",
+  ]);
+
+  const category = firstString(object, [
+    "category",
+    "Category",
+    "type",
+    "Type",
+    "plan_type",
+    "planType",
+  ]);
+
+  const validity = firstString(object, [
+    "validity",
+    "Validity",
+    "duration",
+    "Duration",
+    "days",
+    "Days",
+  ]);
+
+  const networkCode = firstString(object, [
+    "network_code",
+    "networkCode",
+    "NetworkCode",
+    "MobileNetwork",
+    "mobile_network",
+  ]);
+
+  const billerCode = firstString(object, [
+    "biller_code",
+    "billerCode",
+    "BillerCode",
+    "ElectricCompany",
+    "electricCompany",
+    "CableTV",
+    "cableTV",
+    "cable_code",
+  ]);
+
+  if (
+    !code &&
+    !name &&
+    providerPrice <= 0
+  ) {
     return null;
   }
 
-  const provider =
-    providerAmount(item);
-
-  const name =
-    itemName(item);
-
-  const network =
-    networkCode(item);
-
-  const biller =
-    billerCode(item);
-
-  const validity =
-    asString(
-      firstValue(
-        item,
-        [
-          "validity",
-          "Validity",
-          "duration",
-          "Duration",
-          "days",
-          "Days",
-        ]
-      )
-    );
-
-  const category =
-    asString(
-      firstValue(
-        item,
-        [
-          "category",
-          "Category",
-          "type",
-          "Type",
-        ]
-      )
-    );
-
-  const minimum =
-    positiveNumber(
-      firstValue(
-        item,
-        [
-          "minimum",
-          "Minimum",
-          "min",
-          "Min",
-        ]
-      )
-    );
-
-  const maximum =
-    positiveNumber(
-      firstValue(
-        item,
-        [
-          "maximum",
-          "Maximum",
-          "max",
-          "Max",
-        ]
-      )
-    );
-
-  const result: CatalogItem =
-    {
-      id: `${service}-${index}-${code}`,
-      code,
-      name,
-
-      provider_amount:
-        provider,
-
-      selling_price:
-        provider > 0
-          ? sellingPrice(
-              provider,
-              service
-            )
-          : 0,
-
-      amount:
-        provider,
-
-      price:
-        provider,
-
-      network_code:
-        network || undefined,
-
-      network:
-        network || undefined,
-
-      biller_code:
-        biller || undefined,
-
-      company_code:
-        biller || undefined,
-
-      validity:
-        validity || undefined,
-
-      duration:
-        validity || undefined,
-
-      category:
-        category || undefined,
-
-      minimum:
-        minimum || undefined,
-
-      maximum:
-        maximum || undefined,
-
-      logo:
-        firstValue(
-          item,
-          [
-            "logo",
-            "Logo",
-            "image",
-            "Image",
-          ]
-        ) ??
-        null,
-
-      /*
-       * Preserve original provider fields.
-       * This is useful to the UI without trusting
-       * them during purchase.
-       */
-      provider_item:
-        item,
-    };
-
-  return result;
-}
-
-function deduplicateCatalog(
-  items: CatalogItem[]
-): CatalogItem[] {
-  const map =
-    new Map<
-      string,
-      CatalogItem
-    >();
-
-  for (
-    const item of items
-  ) {
-    const key =
-      `${item.code}|${
-        item.network_code ??
-        item.biller_code ??
-        ""
-      }`;
-
-    if (!map.has(key)) {
-      map.set(
-        key,
-        item
-      );
-    }
-  }
-
-  return [
-    ...map.values(),
-  ];
-}
-
-// ============================================================
-// AIRTIME CATALOG
-// ============================================================
-
-async function getAirtimeNetworks() {
-  const raw =
-    await clubKonnectGet(
-      "APIAirtimeNetworkV2.asp"
-    );
-
-  const source =
-    extractArray(raw);
-
-  const networks =
-    source
-      .map(
-        (
-          item,
-          index
-        ) => {
-          const code =
-            networkCode(item);
-
-          const name =
-            itemName(item);
-
-          if (!code) {
-            return null;
-          }
-
-          return {
-            id:
-              `airtime-network-${index}`,
-            code,
-            network_code:
-              code,
-            network:
-              code,
-            name,
-            logo:
-              firstValue(
-                item,
-                [
-                  "logo",
-                  "Logo",
-                  "image",
-                  "Image",
-                ]
-              ) ??
-              null,
-          };
-        }
-      )
-      .filter(Boolean);
+  const finalCode = code || `${service}-${index + 1}`;
+  const finalName = name || finalCode;
 
   return {
-    networks:
-      networks as any[],
-    raw,
+    id: finalCode,
+    code: finalCode,
+    name: finalName,
+    label: finalName,
+    price:
+      providerPrice > 0
+        ? sellingPrice(providerPrice, service)
+        : 0,
+    providerPrice,
+    category: category || undefined,
+    validity: validity || undefined,
+    network: name || undefined,
+    networkCode: networkCode || undefined,
+    biller: name || undefined,
+    billerCode: billerCode || undefined,
+    metadata: object,
   };
 }
 
-// ============================================================
-// DATA CATALOG
-// ============================================================
-
-async function getDataNetworks() {
-  const raw =
-    await clubKonnectGet(
-      "APIDatabundleNetworkV2.asp"
-    );
-
-  const source =
-    extractArray(raw);
-
-  const networks =
-    source
-      .map(
-        (
-          item,
-          index
-        ) => {
-          const code =
-            networkCode(item);
-
-          const name =
-            itemName(item);
-
-          if (!code) {
-            return null;
-          }
-
-          return {
-            id:
-              `data-network-${index}`,
-            code,
-            network_code:
-              code,
-            network:
-              code,
-            name,
-            logo:
-              firstValue(
-                item,
-                [
-                  "logo",
-                  "Logo",
-                  "image",
-                  "Image",
-                ]
-              ) ??
-              null,
-          };
-        }
-      )
-      .filter(Boolean);
-
-  return {
-    networks:
-      networks as any[],
-    raw,
-  };
-}
-
-function normalizeDataPlans(
-  raw: Record<string, any>
-): any[] {
-  const source =
-    extractArray(raw);
-
-  /*
-   * The API can return either an array
-   * or a network-keyed object.
-   *
-   * We deliberately preserve all plans.
-   */
-  const plans: any[] = [];
-
-  for (
-    const item of source
-  ) {
-    if (
-      item === null ||
-      item === undefined
-    ) {
-      continue;
-    }
-
-    if (
-      typeof item ===
-        "object" &&
-      !Array.isArray(item)
-    ) {
-      const code =
-        itemCode(item);
-
-      const name =
-        itemName(item);
-
-      const provider =
-        providerAmount(item);
-
-      /*
-       * Some catalogue responses contain
-       * nested plans.
-       */
-      const nested =
-        extractArray(
-          firstValue(
-            item,
-            [
-              "plans",
-              "Plans",
-              "data",
-              "Data",
-              "items",
-              "Items",
-            ]
-          )
-        );
-
-      if (
-        nested.length > 0
-      ) {
-        for (
-          const nestedItem of nested
-        ) {
-          plans.push({
-            ...nestedItem,
-
-            network_code:
-              networkCode(
-                nestedItem
-              ) ||
-              networkCode(
-                item
-              ),
-
-            network:
-              networkCode(
-                nestedItem
-              ) ||
-              networkCode(
-                item
-              ),
-          });
-        }
-
-        continue;
-      }
-
-      if (
-        code &&
-        provider > 0
-      ) {
-        plans.push({
-          ...item,
-
-          network_code:
-            networkCode(
-              item
-            ),
-
-          network:
-            networkCode(
-              item
-            ),
-        });
-
-        continue;
-      }
-
-      /*
-       * If the object itself looks like a
-       * network keyed container, flatten it.
-       */
-      for (
-        const [
-          key,
-          nestedValue,
-        ] of Object.entries(
-          item
-        )
-      ) {
-        if (
-          nestedValue &&
-          typeof nestedValue ===
-            "object"
-        ) {
-          const nestedItems =
-            Array.isArray(
-              nestedValue
-            )
-              ? nestedValue
-              : [
-                  nestedValue,
-                ];
-
-          for (
-            const nestedItem of nestedItems
-          ) {
-            plans.push({
-              ...nestedItem,
-
-              network_code:
-                networkCode(
-                  nestedItem
-                ) ||
-                key,
-
-              network:
-                networkCode(
-                  nestedItem
-                ) ||
-                key,
-            });
-          }
-        }
-      }
-    }
-  }
-
-  /*
-   * If extractArray() did not discover
-   * anything useful, recursively inspect
-   * the original response.
-   */
-  if (
-    plans.length === 0
-  ) {
-    const visit = (
-      value: any,
-      inheritedNetwork = ""
-    ) => {
-      if (
-        value === null ||
-        value === undefined
-      ) {
-        return;
-      }
-
-      if (
-        Array.isArray(value)
-      ) {
-        for (
-          const entry of value
-        ) {
-          visit(
-            entry,
-            inheritedNetwork
-          );
-        }
-
-        return;
-      }
-
-      if (
-        typeof value !==
-          "object"
-      ) {
-        return;
-      }
-
-      const code =
-        itemCode(value);
-
-      const provider =
-        providerAmount(value);
-
-      if (
-        code &&
-        provider > 0
-      ) {
-        plans.push({
-          ...value,
-
-          network_code:
-            networkCode(
-              value
-            ) ||
-            inheritedNetwork,
-
-          network:
-            networkCode(
-              value
-            ) ||
-            inheritedNetwork,
-        });
-      }
-
-      for (
-        const [
-          key,
-          child,
-        ] of Object.entries(
-          value
-        )
-      ) {
-        if (
-          child &&
-          typeof child ===
-            "object"
-        ) {
-          visit(
-            child,
-            inheritedNetwork ||
-              key
-          );
-        }
-      }
-    };
-
-    visit(raw);
-  }
-
-  return plans;
-}
-
-async function getDataPlans() {
-  const raw =
-    await clubKonnectGet(
-      "APIDatabundlePlansV2.asp"
-    );
-
-  return {
-    plans:
-      normalizeDataPlans(
-        raw
-      ),
-    raw,
-  };
-}
-
-// ============================================================
-// CABLE CATALOG
-// ============================================================
-
-async function getCableTypes() {
-  const raw =
-    await clubKonnectGet(
-      "APICableTVTypeV2.asp"
-    );
-
-  const source =
-    extractArray(raw);
-
-  const billers =
-    source
-      .map(
-        (
-          item,
-          index
-        ) => {
-          const code =
-            billerCode(item);
-
-          const name =
-            itemName(item);
-
-          if (!code) {
-            return null;
-          }
-
-          return {
-            id:
-              `cable-${index}-${code}`,
-            code,
-            biller_code:
-              code,
-            cable_code:
-              code,
-            network_code:
-              code,
-            name,
-            logo:
-              firstValue(
-                item,
-                [
-                  "logo",
-                  "Logo",
-                  "image",
-                  "Image",
-                ]
-              ) ??
-              null,
-          };
-        }
-      )
-      .filter(Boolean);
-
-  return {
-    billers:
-      billers as any[],
-    raw,
-  };
-}
-
-async function getCablePackages() {
-  const raw =
-    await clubKonnectGet(
-      "APICableTVPackagesV2.asp"
-    );
-
-  const source =
-    extractArray(raw);
-
-  const packages: any[] = [];
-
-  for (
-    const item of source
-  ) {
-    if (
-      !item ||
-      typeof item !==
-        "object"
-    ) {
-      continue;
-    }
-
-    const parentNetwork =
-      networkCode(item) ||
-      billerCode(item);
-
-    const nested =
-      extractArray(
-        firstValue(
-          item,
-          [
-            "packages",
-            "Packages",
-            "data",
-            "Data",
-            "items",
-            "Items",
-          ]
-        )
-      );
-
-    if (
-      nested.length > 0
-    ) {
-      for (
-        const nestedItem of nested
-      ) {
-        packages.push({
-          ...nestedItem,
-
-          network_code:
-            networkCode(
-              nestedItem
-            ) ||
-            parentNetwork,
-
-          biller_code:
-            billerCode(
-              nestedItem
-            ) ||
-            parentNetwork,
-
-          cable_tv:
-            networkCode(
-              nestedItem
-            ) ||
-            parentNetwork,
-        });
-      }
-    } else {
-      packages.push({
-        ...item,
-
-        network_code:
-          networkCode(
-            item
-          ),
-
-        biller_code:
-          billerCode(
-            item
-          ),
-
-        cable_tv:
-          networkCode(
-            item
-          ) ||
-          billerCode(
-            item
-          ),
-      });
-    }
-  }
-
-  return {
-    plans:
-      packages,
-    raw,
-  };
-}
-
-// ============================================================
-// SMILE / WAEC / JAMB
-// ============================================================
-
-async function getSmilePackages() {
-  const raw =
-    await clubKonnectGet(
-      "APISmilePackagesV2.asp"
-    );
-
-  return {
-    plans:
-      extractArray(raw),
-    raw,
-  };
-}
-
-async function getWaecPackages() {
-  const raw =
-    await clubKonnectGet(
-      "APIWAECPackagesV2.asp"
-    );
-
-  return {
-    plans:
-      extractArray(raw),
-    raw,
-  };
-}
-
-async function getJambPackages() {
-  const raw =
-    await clubKonnectGet(
-      "APIJAMBPackagesV2.asp"
-    );
-
-  return {
-    plans:
-      extractArray(raw),
-    raw,
-  };
-}
-
-// ============================================================
-// AIRTIME E-PIN
-// ============================================================
-
-async function getAirtimePinCatalog() {
-  const raw =
-    await clubKonnectGet(
-      "APIEPINDiscountV2.asp"
-    );
-
-  const source =
-    extractArray(raw);
-
-  const items =
-    source
-      .map(
-        (
-          item,
-          index
-        ) => {
-          const code =
-            itemCode(item);
-
-          const value =
-            positiveNumber(
-              firstValue(
-                item,
-                [
-                  "value",
-                  "Value",
-                  "amount",
-                  "Amount",
-                ]
-              )
-            );
-
-          if (
-            value <= 0
-          ) {
-            return null;
-          }
-
-          return {
-            id:
-              `airtime-epin-${index}`,
-            code:
-              code ||
-              String(value),
-            name:
-              itemName(item) ||
-              `₦${value.toLocaleString(
-                "en-NG"
-              )} Airtime E-PIN`,
-
-            value,
-
-            provider_amount:
-              providerAmount(
-                item
-              ) ||
-              value,
-
-            selling_price:
-              sellingPrice(
-                providerAmount(
-                  item
-                ) ||
-                  value,
-                "airtime-card"
-              ),
-
-            network_code:
-              networkCode(
-                item
-              ) ||
-              undefined,
-
-            network:
-              networkCode(
-                item
-              ) ||
-              undefined,
-
-            provider_item:
-              item,
-          };
-        }
-      )
-      .filter(Boolean);
-
-  return {
-    items:
-      items as any[],
-    raw,
-  };
-}
-
-// ============================================================
-// DATA E-PIN
-// ============================================================
-
-async function getDataPinCatalog() {
-  const {
-    plans,
-    raw,
-  } =
-    await getDataPlans();
-
-  /*
-   * Data E-PIN uses the same ClubKonnect
-   * data-plan catalogue, but the purchase
-   * endpoint is different.
-   */
-  const items =
-    plans.map(
-      (
-        item,
-        index
-      ) => {
-        const normalized =
-          normalizeCatalogItem(
-            item,
-            "data-card",
-            index
-          );
-
-        if (!normalized) {
-          return null;
-        }
-
-        return {
-          ...normalized,
-
-          data_plan:
-            normalized.code,
-
-          network_code:
-            normalized.network_code,
-
-          mobile_network:
-            normalized.network_code,
-        };
-      }
-    ).filter(Boolean);
-
-  return {
-    items:
-      items as any[],
-    plans:
-      items as any[],
-    raw,
-  };
-}
-
-// ============================================================
-// ELECTRICITY
-// ============================================================
-
-/**
- * ClubKonnect's current official electricity
- * documentation exposes the purchase and
- * verification APIs, while the published
- * "Available Electricity Companies" section
- * is dynamically loaded and does not expose a
- * usable catalogue URL in the documentation.
- *
- * Therefore we intentionally do not pretend that
- * APIDatabundleNetworkV2 or another unrelated endpoint
- * is the electricity catalogue.
- *
- * These are the commonly supported company codes
- * documented/used by ClubKonnect's electricity flow.
- *
- * The backend still validates the selected code by
- * asking ClubKonnect to verify the meter before debit.
- */
-const ELECTRICITY_BILLERS = [
-  {
-    code: "01",
-    biller_code: "01",
-    company_code: "01",
-    name: "Eko Electricity Distribution Company (EKEDC)",
-  },
-  {
-    code: "02",
-    biller_code: "02",
-    company_code: "02",
-    name: "Ikeja Electricity Distribution Company (IKEDC)",
-  },
-  {
-    code: "03",
-    biller_code: "03",
-    company_code: "03",
-    name: "Abuja Electricity Distribution Company (AEDC)",
-  },
-  {
-    code: "04",
-    biller_code: "04",
-    company_code: "04",
-    name: "Kano Electricity Distribution Company (KEDCO)",
-  },
-  {
-    code: "05",
-    biller_code: "05",
-    company_code: "05",
-    name: "Port Harcourt Electricity Distribution Company (PHEDC)",
-  },
-  {
-    code: "06",
-    biller_code: "06",
-    company_code: "06",
-    name: "Jos Electricity Distribution Company (JED)",
-  },
-  {
-    code: "07",
-    biller_code: "07",
-    company_code: "07",
-    name: "Kaduna Electricity Distribution Company (KAEDCO)",
-  },
-  {
-    code: "08",
-    biller_code: "08",
-    company_code: "08",
-    name: "Ibadan Electricity Distribution Company (IBEDC)",
-  },
-  {
-    code: "09",
-    biller_code: "09",
-    company_code: "09",
-    name: "Benin Electricity Distribution Company (BEDC)",
-  },
-  {
-    code: "10",
-    biller_code: "10",
-    company_code: "10",
-    name: "Yola Electricity Distribution Company (YEDC)",
-  },
-];
-
-function getElectricityCatalog() {
-  return ELECTRICITY_BILLERS.map(
-    (
-      item
-    ) => ({
-      ...item,
-
-      network_code:
-        item.code,
-
-      network:
-        item.code,
-
-      minimum:
-        100,
-
-      maximum:
-        1000000,
-    })
+async function getAirtimeNetworks(): Promise<CatalogItem[]> {
+  const payload = await clubKonnectGet(
+    "APIAirtimeNetworkV2.asp",
+    {},
   );
+
+  const array = extractArray(payload, [
+    "airtime",
+    "airtimeNetworks",
+    "networks",
+    "data",
+    "result",
+  ]);
+
+  return array
+    .map((item, index) =>
+      normalizeCatalogItem(item, "airtime", index)
+    )
+    .filter((item): item is CatalogItem => Boolean(item));
 }
 
-// ============================================================
-// CATALOG NORMALIZATION
-// ============================================================
-
-function normalizeCatalogArray(
-  rawItems: any[],
-  service: ServiceType
-): CatalogItem[] {
-  return deduplicateCatalog(
-    rawItems
-      .map(
-        (
-          item,
-          index
-        ) =>
-          normalizeCatalogItem(
-            item,
-            service,
-            index
-          )
-      )
-      .filter(
-        (
-          item
-        ): item is CatalogItem =>
-          Boolean(item)
-      )
+async function getDataNetworks(): Promise<CatalogItem[]> {
+  const payload = await clubKonnectGet(
+    "APIDatabundleNetworkV2.asp",
+    {},
   );
+
+  const array = extractArray(payload, [
+    "data",
+    "databundle",
+    "databundleNetworks",
+    "networks",
+    "result",
+  ]);
+
+  return array
+    .map((item, index) =>
+      normalizeCatalogItem(item, "data", index)
+    )
+    .filter((item): item is CatalogItem => Boolean(item));
 }
 
-function filterByNetwork(
-  items: CatalogItem[],
-  networkCode: string
-): CatalogItem[] {
-  const code =
+async function getDataPlans(
+  networkCode?: string,
+): Promise<CatalogItem[]> {
+  const payload = await clubKonnectGet(
+    "APIDatabundlePlansV2.asp",
     networkCode
-      .trim()
-      .toLowerCase();
-
-  if (!code) {
-    return items;
-  }
-
-  return items.filter(
-    (
-      item
-    ) => {
-      const candidates =
-        [
-          item.network_code,
-          item.network,
-          item.biller_code,
-          item.company_code,
-          item.cable_tv,
-          item.mobile_network,
-        ]
-          .filter(Boolean)
-          .map(
-            (value) =>
-              String(value)
-                .trim()
-                .toLowerCase()
-          );
-
-      return candidates.includes(
-        code
-      );
-    }
+      ? {
+          MobileNetwork: networkCode,
+        }
+      : {},
   );
+
+  const array = extractArray(payload, [
+    "plans",
+    "dataPlans",
+    "databundle",
+    "databundles",
+    "data",
+    "result",
+  ]);
+
+  return array
+    .map((item, index) =>
+      normalizeCatalogItem(item, "data", index)
+    )
+    .filter((item): item is CatalogItem => Boolean(item));
 }
 
-// ============================================================
-// FULL CATALOG ACTION
-// ============================================================
+async function getCableTypes(): Promise<CatalogItem[]> {
+  const payload = await clubKonnectGet(
+    "APICableTVTypeV2.asp",
+    {},
+  );
+
+  const array = extractArray(payload, [
+    "cabletv",
+    "cableTV",
+    "cableTypes",
+    "types",
+    "networks",
+    "data",
+    "result",
+  ]);
+
+  return array
+    .map((item, index) =>
+      normalizeCatalogItem(item, "cable", index)
+    )
+    .filter((item): item is CatalogItem => Boolean(item));
+}
+
+async function getCablePackages(
+  cableCode?: string,
+): Promise<CatalogItem[]> {
+  const payload = await clubKonnectGet(
+    "APICableTVPackagesV2.asp",
+    cableCode
+      ? {
+          CableTV: cableCode,
+        }
+      : {},
+  );
+
+  const array = extractArray(payload, [
+    "packages",
+    "cablePackages",
+    "cableTVPackages",
+    "data",
+    "result",
+  ]);
+
+  return array
+    .map((item, index) =>
+      normalizeCatalogItem(item, "cable", index)
+    )
+    .filter((item): item is CatalogItem => Boolean(item));
+}
+
+async function getSmilePackages(): Promise<CatalogItem[]> {
+  const payload = await clubKonnectGet(
+    "APISmilePackagesV2.asp",
+    {},
+  );
+
+  const array = extractArray(payload, [
+    "packages",
+    "plans",
+    "smile",
+    "data",
+    "result",
+  ]);
+
+  return array
+    .map((item, index) =>
+      normalizeCatalogItem(item, "smile", index)
+    )
+    .filter((item): item is CatalogItem => Boolean(item));
+}
+
+async function getWaecPackages(): Promise<CatalogItem[]> {
+  const payload = await clubKonnectGet(
+    "APIWAECPackagesV2.asp",
+    {},
+  );
+
+  const array = extractArray(payload, [
+    "packages",
+    "plans",
+    "waec",
+    "data",
+    "result",
+  ]);
+
+  return array
+    .map((item, index) =>
+      normalizeCatalogItem(item, "waec", index)
+    )
+    .filter((item): item is CatalogItem => Boolean(item));
+}
+
+async function getJambPackages(): Promise<CatalogItem[]> {
+  const payload = await clubKonnectGet(
+    "APIJAMBPackagesV2.asp",
+    {},
+  );
+
+  const array = extractArray(payload, [
+    "packages",
+    "plans",
+    "jamb",
+    "data",
+    "result",
+  ]);
+
+  return array
+    .map((item, index) =>
+      normalizeCatalogItem(item, "jamb", index)
+    )
+    .filter((item): item is CatalogItem => Boolean(item));
+}
+
+async function getAirtimePinCatalog(): Promise<CatalogItem[]> {
+  const payload = await clubKonnectGet(
+    "APIEPINDiscountV2.asp",
+    {},
+  );
+
+  const array = extractArray(payload, [
+    "epin",
+    "airtimeEpin",
+    "airtimePin",
+    "networks",
+    "data",
+    "result",
+  ]);
+
+  return array
+    .map((item, index) =>
+      normalizeCatalogItem(item, "airtime-card", index)
+    )
+    .filter((item): item is CatalogItem => Boolean(item));
+}
+
+async function getDataPinCatalog(): Promise<CatalogItem[]> {
+  const plans = await getDataPlans();
+
+  return plans.map((plan) => ({
+    ...plan,
+    id: `data-card-${plan.id}`,
+    metadata: {
+      ...(plan.metadata ?? {}),
+      source: "ClubKonnect data bundle catalogue",
+    },
+  }));
+}
+
+async function getElectricityCatalog(): Promise<CatalogItem[]> {
+  /*
+   * ClubKonnect's current electricity documentation confirms that
+   * electricity-company options are loaded from their live catalogue,
+   * but the public documentation does not expose a stable catalogue
+   * endpoint in the rendered API documentation.
+   *
+   * Therefore we deliberately do NOT invent electricity biller codes.
+   *
+   * The frontend can still use a biller supplied through a configured
+   * request, while this catalogue remains empty until ClubKonnect
+   * exposes the live electricity catalogue endpoint to the account.
+   */
+  return [];
+}
 
 async function getCatalog(
   service: ServiceType,
-  networkCode = "",
-  billerCodeValue = ""
-) {
-  switch (
-    service
-  ) {
-    case "airtime": {
-      const {
-        networks,
-      } =
-        await getAirtimeNetworks();
+  networkCode?: string,
+  billerCode?: string,
+): Promise<CatalogResponse> {
+  let networks: CatalogItem[] = [];
+  let billers: CatalogItem[] = [];
+  let plans: CatalogItem[] = [];
+  let items: CatalogItem[] = [];
 
-      return {
-        networks,
-        billers: [],
-        plans: [],
-        items: [],
-      };
+  switch (service) {
+    case "airtime": {
+      networks = await getAirtimeNetworks();
+      items = networks;
+      break;
     }
 
     case "data": {
-      const [
-        networkResult,
-        plansResult,
-      ] =
-        await Promise.all([
-          getDataNetworks(),
-          getDataPlans(),
-        ]);
-
-      const normalizedPlans =
-        normalizeCatalogArray(
-          plansResult.plans,
-          "data"
-        );
-
-      const filtered =
-        filterByNetwork(
-          normalizedPlans,
-          networkCode
-        );
-
-      return {
-        networks:
-          networkResult.networks,
-
-        billers: [],
-
-        plans:
-          filtered,
-
-        items:
-          filtered,
-      };
-    }
-
-    case "electricity": {
-      const billers =
-        getElectricityCatalog();
-
-      return {
-        networks:
-          billers,
-
-        billers,
-
-        plans: [],
-
-        items: [],
-      };
+      networks = await getDataNetworks();
+      plans = await getDataPlans(networkCode);
+      items = plans;
+      break;
     }
 
     case "cable": {
-      const [
-        typesResult,
-        packagesResult,
-      ] =
-        await Promise.all([
-          getCableTypes(),
-          getCablePackages(),
-        ]);
+      billers = await getCableTypes();
+      plans = await getCablePackages(billerCode);
+      items = plans;
+      break;
+    }
 
-      const normalizedPackages =
-        normalizeCatalogArray(
-          packagesResult.plans,
-          "cable"
-        );
-
-      const filterCode =
-        networkCode ||
-        billerCodeValue;
-
-      const filtered =
-        filterCode
-          ? filterByNetwork(
-              normalizedPackages,
-              filterCode
-            )
-          : normalizedPackages;
-
-      return {
-        networks:
-          typesResult.billers,
-
-        billers:
-          typesResult.billers,
-
-        plans:
-          filtered,
-
-        items:
-          filtered,
-      };
+    case "electricity": {
+      billers = await getElectricityCatalog();
+      items = billers;
+      break;
     }
 
     case "airtime-card": {
-      const result =
-        await getAirtimePinCatalog();
+      networks = await getAirtimeNetworks();
+      plans = await getAirtimePinCatalog();
 
-      return {
-        networks: [],
-        billers: [],
-        plans: [],
-        items:
-          result.items,
-      };
+      if (plans.length === 0) {
+        items = networks;
+      } else {
+        items = plans;
+      }
+
+      break;
     }
 
     case "data-card": {
-      const result =
-        await getDataPinCatalog();
-
-      const filtered =
-        networkCode
-          ? filterByNetwork(
-              result.items,
-              networkCode
-            )
-          : result.items;
-
-      return {
-        networks: [],
-        billers: [],
-        plans:
-          filtered,
-        items:
-          filtered,
-      };
+      networks = await getDataNetworks();
+      plans = await getDataPinCatalog();
+      items = plans;
+      break;
     }
 
     case "smile": {
-      const result =
-        await getSmilePackages();
-
-      const normalized =
-        normalizeCatalogArray(
-          result.plans,
-          "smile"
-        );
-
-      return {
-        networks: [
-          {
-            code:
-              "smile-direct",
-            network_code:
-              "smile-direct",
-            network:
-              "smile-direct",
-            name:
-              "Smile",
-          },
-        ],
-
-        billers: [],
-
-        plans:
-          normalized,
-
-        items:
-          normalized,
-      };
+      plans = await getSmilePackages();
+      items = plans;
+      break;
     }
 
     case "waec": {
-      const result =
-        await getWaecPackages();
-
-      const normalized =
-        normalizeCatalogArray(
-          result.plans,
-          "waec"
-        );
-
-      return {
-        networks: [],
-        billers: [],
-
-        plans:
-          normalized,
-
-        items:
-          normalized,
-      };
+      plans = await getWaecPackages();
+      items = plans;
+      break;
     }
 
     case "jamb": {
-      const result =
-        await getJambPackages();
-
-      const normalized =
-        normalizeCatalogArray(
-          result.plans,
-          "jamb"
-        );
-
-      return {
-        networks: [],
-        billers: [],
-
-        plans:
-          normalized,
-
-        items:
-          normalized,
-      };
+      plans = await getJambPackages();
+      items = plans;
+      break;
     }
 
     default:
-      throw new Error(
-        "Unsupported service."
-      );
+      throw new Error(`Unsupported service: ${service}`);
   }
+
+  return {
+    success: true,
+    service,
+    markup: markupFor(service),
+    networks,
+    billers,
+    plans,
+    items,
+  };
 }
 
-// ============================================================
-// CATALOG PRICE LOOKUP
-// ============================================================
+function requiredString(
+  body: Record<string, unknown>,
+  keys: string[],
+  label: string,
+): string {
+  const value = firstString(body, keys);
 
-async function findCatalogItem(
-  service: ServiceType,
-  selectedCode: string,
-  networkCode = ""
-): Promise<CatalogItem | null> {
-  const catalog =
-    await getCatalog(
-      service,
-      networkCode,
-      networkCode
-    );
+  if (!value) {
+    throw new Error(`${label} is required.`);
+  }
 
-  const allItems =
+  return value;
+}
+
+function optionalString(
+  body: Record<string, unknown>,
+  keys: string[],
+): string {
+  return firstString(body, keys);
+}
+
+function requiredPositiveAmount(
+  body: Record<string, unknown>,
+  keys: string[],
+  label: string,
+): number {
+  const value = firstNumber(body, keys);
+
+  if (value <= 0) {
+    throw new Error(`${label} must be greater than zero.`);
+  }
+
+  return Math.round(value * 100) / 100;
+}
+
+function integerQuantity(
+  body: Record<string, unknown>,
+): number {
+  const value = firstNumber(body, [
+    "quantity",
+    "qty",
+  ]);
+
+  const quantity = Math.floor(value || 1);
+
+  if (quantity < 1 || quantity > 100) {
+    throw new Error("Quantity must be between 1 and 100.");
+  }
+
+  return quantity;
+}
+
+function requestIdFrom(
+  body: Record<string, unknown>,
+): string {
+  const provided = optionalString(body, [
+    "request_id",
+    "requestId",
+    "RequestID",
+  ]);
+
+  if (provided) {
+    return provided;
+  }
+
+  return crypto.randomUUID();
+}
+
+function phoneFrom(
+  body: Record<string, unknown>,
+): string {
+  return requiredString(
+    body,
     [
-      ...(Array.isArray(
-        catalog.items
-      )
-        ? catalog.items
-        : []),
-
-      ...(Array.isArray(
-        catalog.plans
-      )
-        ? catalog.plans
-        : []),
-    ];
-
-  const code =
-    selectedCode
-      .trim()
-      .toLowerCase();
-
-  const found =
-    allItems.find(
-      (
-        item
-      ) =>
-        String(
-          item.code
-        )
-          .trim()
-          .toLowerCase() ===
-        code
-    );
-
-  return (
-    found ?? null
+      "phone",
+      "phoneNumber",
+      "phone_number",
+      "PhoneNo",
+      "recipient_phone",
+    ],
+    "Phone number",
   );
 }
 
-// ============================================================
-// WALLET / TRANSACTION HELPERS
-// ============================================================
+function normalizePhone(phone: string): string {
+  const cleaned = phone.replace(/\s+/g, "");
 
-function requireAdminClient() {
-  if (!adminClient) {
+  if (cleaned.startsWith("+234")) {
+    return `0${cleaned.slice(4)}`;
+  }
+
+  if (cleaned.startsWith("234")) {
+    return `0${cleaned.slice(3)}`;
+  }
+
+  return cleaned;
+}
+
+function ensureReasonableNigerianPhone(phone: string) {
+  const normalized = normalizePhone(phone);
+
+  if (!/^0\d{10}$/.test(normalized)) {
+    throw new Error("Enter a valid Nigerian phone number.");
+  }
+
+  return normalized;
+}
+
+async function findCatalogPrice(
+  service: ServiceType,
+  code: string,
+  networkCode?: string,
+  billerCode?: string,
+): Promise<{
+  providerPrice: number;
+  sellingPrice: number;
+  item: CatalogItem;
+}> {
+  const catalog = await getCatalog(
+    service,
+    networkCode,
+    billerCode,
+  );
+
+  const allItems = [
+    ...catalog.items,
+    ...catalog.plans,
+    ...catalog.networks,
+    ...catalog.billers,
+  ];
+
+  const item = allItems.find((entry) => {
+    return (
+      entry.code === code ||
+      entry.id === code ||
+      entry.metadata?.["code"] === code ||
+      entry.metadata?.["Package"] === code ||
+      entry.metadata?.["package"] === code
+    );
+  });
+
+  if (!item) {
     throw new Error(
-      "Supabase admin client is unavailable."
+      `The selected ${service} product was not found in the current ClubKonnect catalogue.`,
     );
   }
 
-  return adminClient;
+  if (item.providerPrice <= 0) {
+    throw new Error(
+      `The selected ${service} product does not have a valid provider price.`,
+    );
+  }
+
+  return {
+    providerPrice: item.providerPrice,
+    sellingPrice: sellingPrice(
+      item.providerPrice,
+      service,
+    ),
+    item,
+  };
+}
+
+async function verifyPaymentPin(
+  userId: string,
+  paymentPin: string,
+): Promise<void> {
+  if (!paymentPin) {
+    throw new Error("Payment PIN is required.");
+  }
+
+  const { error } = await adminClient.rpc(
+    "verify_payment_pin",
+    {
+      p_user_id: userId,
+      p_pin: paymentPin,
+    },
+  );
+
+  if (error) {
+    throw new Error(
+      error.message || "Unable to verify payment PIN.",
+    );
+  }
 }
 
 async function createTransaction(
   userId: string,
-  service: ServiceType,
-  amount: number,
   reference: string,
-  metadata: Record<string, any>
+  amount: number,
+  service: ServiceType,
+  metadata: Record<string, unknown>,
 ) {
-  const client =
-    requireAdminClient();
-
-  const { data, error } =
-    await client
-      .from(
-        "transactions"
-      )
-      .insert({
-        user_id:
-          userId,
-
-        transaction_type:
-          "service_payment",
-
-        amount,
-
-        reference_number:
-          reference,
-
-        status:
-          "pending",
-
-        provider:
-          "clubkonnect",
-
-        metadata,
-      })
-      .select(
-        "id, reference_number, status"
-      )
-      .single();
+  const { data, error } = await adminClient
+    .from("transactions")
+    .insert({
+      user_id: userId,
+      reference_number: reference,
+      transaction_type: "service_payment",
+      amount,
+      status: "pending",
+      provider: "clubkonnect",
+      metadata: {
+        service,
+        provider: "clubkonnect",
+        ...metadata,
+      },
+    })
+    .select("id")
+    .single();
 
   if (error) {
     throw new Error(
-      `Unable to create service transaction: ${error.message}`
-    );
-  }
-
-  return data;
-}
-
-async function getTransactionByReference(
-  reference: string
-) {
-  const client =
-    requireAdminClient();
-
-  const { data, error } =
-    await client
-      .from(
-        "transactions"
-      )
-      .select("*")
-      .eq(
-        "reference_number",
-        reference
-      )
-      .maybeSingle();
-
-  if (error) {
-    throw new Error(
-      `Unable to read transaction: ${error.message}`
+      error.message || "Unable to create service transaction.",
     );
   }
 
@@ -2504,28 +1180,17 @@ async function getTransactionByReference(
 }
 
 async function updateTransaction(
-  reference: string,
-  updates: Record<string, any>
+  transactionId: string,
+  values: Record<string, unknown>,
 ) {
-  const client =
-    requireAdminClient();
-
-  const { error } =
-    await client
-      .from(
-        "transactions"
-      )
-      .update(
-        updates
-      )
-      .eq(
-        "reference_number",
-        reference
-      );
+  const { error } = await adminClient
+    .from("transactions")
+    .update(values)
+    .eq("id", transactionId);
 
   if (error) {
     throw new Error(
-      `Unable to update transaction: ${error.message}`
+      error.message || "Unable to update service transaction.",
     );
   }
 }
@@ -2534,48 +1199,21 @@ async function debitWallet(
   userId: string,
   amount: number,
   reference: string,
-  description: string
+  description: string,
 ) {
-  const client =
-    requireAdminClient();
-
-  const { data, error } =
-    await client.rpc(
-      "debit_wallet",
-      {
-        p_user_id:
-          userId,
-
-        p_amount:
-          amount,
-
-        p_reference:
-          reference,
-
-        p_description:
-          description,
-      }
-    );
+  const { data, error } = await adminClient.rpc(
+    "debit_wallet",
+    {
+      p_user_id: userId,
+      p_amount: amount,
+      p_reference: reference,
+      p_description: description,
+    },
+  );
 
   if (error) {
     throw new Error(
-      error.message ||
-        "Unable to debit wallet."
-    );
-  }
-
-  /*
-   * The RPC may return either a
-   * boolean or an object depending on
-   * the installed database version.
-   */
-  if (
-    data === false ||
-    data?.success === false
-  ) {
-    throw new Error(
-      data?.message ||
-        "Insufficient wallet balance."
+      error.message || "Unable to debit wallet.",
     );
   }
 
@@ -2586,3077 +1224,1836 @@ async function refundWallet(
   userId: string,
   amount: number,
   reference: string,
-  description: string
+  description: string,
 ) {
-  const client =
-    requireAdminClient();
-
-  const { data, error } =
-    await client.rpc(
-      "refund_wallet",
-      {
-        p_user_id:
-          userId,
-
-        p_amount:
-          amount,
-
-        p_reference:
-          reference,
-
-        p_description:
-          description,
-      }
-    );
+  const { data, error } = await adminClient.rpc(
+    "refund_wallet",
+    {
+      p_user_id: userId,
+      p_amount: amount,
+      p_reference: reference,
+      p_description: description,
+    },
+  );
 
   if (error) {
     throw new Error(
-      error.message ||
-        "Unable to refund wallet."
-    );
-  }
-
-  if (
-    data === false ||
-    data?.success === false
-  ) {
-    throw new Error(
-      data?.message ||
-        "Wallet refund failed."
+      error.message || "Unable to refund wallet.",
     );
   }
 
   return data;
 }
 
-// ============================================================
-// SAFE TRANSACTION CREATION
-// ============================================================
-
-async function createOrGetPendingTransaction(
+async function purchaseAirtime(
   userId: string,
-  service: ServiceType,
-  amount: number,
-  reference: string,
-  metadata: Record<string, any>
-) {
-  const existing =
-    await getTransactionByReference(
-      reference
-    );
+  body: Record<string, unknown>,
+): Promise<ProviderResponse> {
+  const networkCode = requiredString(
+    body,
+    [
+      "network_code",
+      "networkCode",
+      "mobile_network",
+      "mobileNetwork",
+      "MobileNetwork",
+    ],
+    "Mobile network",
+  );
 
-  if (existing) {
-    return {
-      transaction:
-        existing,
+  const phone = ensureReasonableNigerianPhone(
+    phoneFrom(body),
+  );
 
-      created:
-        false,
-    };
-  }
+  const amount = requiredPositiveAmount(
+    body,
+    ["amount", "value"],
+    "Airtime amount",
+  );
+
+  const reference = requestIdFrom(body);
+
+  const total = sellingPrice(
+    amount,
+    "airtime",
+  );
+
+  const transaction = await createTransaction(
+    userId,
+    reference,
+    total,
+    "airtime",
+    {
+      network_code: networkCode,
+      phone,
+      provider_amount: amount,
+      selling_amount: total,
+      request_id: reference,
+    },
+  );
 
   try {
-    const transaction =
-      await createTransaction(
-        userId,
-        service,
-        amount,
-        reference,
-        metadata
-      );
-
-    return {
-      transaction,
-      created:
-        true,
-    };
+    await debitWallet(
+      userId,
+      total,
+      reference,
+      "Airtime purchase",
+    );
   } catch (error) {
-    /*
-     * A concurrent request may have
-     * created the same reference.
-     *
-     * Read it again before failing.
-     */
-    const race =
-      await getTransactionByReference(
-        reference
-      );
-
-    if (race) {
-      return {
-        transaction:
-          race,
-
-        created:
-          false,
-      };
-    }
+    await updateTransaction(transaction.id, {
+      status: "failed",
+      metadata: {
+        error:
+          error instanceof Error
+            ? error.message
+            : String(error),
+      },
+    });
 
     throw error;
   }
-}
 
-// ============================================================
-// METER VERIFICATION
-// ============================================================
-
-async function verifyMeter(
-  body: Record<string, any>
-) {
-  const company =
-    asString(
-      body.electric_company ??
-        body.company_code ??
-        body.biller_code
-    );
-
-  const meterType =
-    asString(
-      body.meter_type ??
-        body.meterType
-    );
-
-  const meter =
-    asString(
-      body.meter_number ??
-        body.meter_no ??
-        body.meterNo
-    );
-
-  if (!company) {
-    throw new Error(
-      "Electricity company is required."
-    );
-  }
-
-  if (!meterType) {
-    throw new Error(
-      "Meter type is required."
-    );
-  }
-
-  if (!meter) {
-    throw new Error(
-      "Meter number is required."
-    );
-  }
-
-  if (
-    meterType !== "01" &&
-    meterType !== "02"
-  ) {
-    throw new Error(
-      "Invalid meter type."
-    );
-  }
-
-  const raw =
-    await clubKonnectGet(
-      "APIVerifyElectricityV1.asp",
-      {
-        ElectricCompany:
-          company,
-
-        MeterNo:
-          meter,
-
-        MeterType:
-          meterType,
-      }
-    );
-
-  const customerName =
-    asString(
-      raw.customer_name ??
-        raw.customerName ??
-        raw.CustomerName
-    );
-
-  if (
-    !customerName ||
-    customerName.toUpperCase() ===
-      "INVALID_METERNO"
-  ) {
-    return {
-      success:
-        false,
-
-      verified:
-        false,
-
-      customer_name:
-        customerName,
-
-      error:
-        "The meter number could not be verified.",
-
-      raw,
-    };
-  }
-
-  return {
-    success:
-      true,
-
-    verified:
-      true,
-
-    customer_name:
-      customerName,
-
-    meter_number:
-      meter,
-
-    meter_type:
-      meterType,
-
-    electric_company:
-      company,
-
-    raw,
-  };
-}
-
-// ============================================================
-// CABLE VERIFICATION
-// ============================================================
-
-async function verifyCable(
-  body: Record<string, any>
-) {
-  const cable =
-    asString(
-      body.cable_tv ??
-        body.cable_code ??
-        body.network_code ??
-        body.biller_code
-    );
-
-  const smartCard =
-    asString(
-      body.smartcard_number ??
-        body.smartCardNumber ??
-        body.smartcard ??
-        body.smartcard_no
-    );
-
-  if (!cable) {
-    throw new Error(
-      "TV service is required."
-    );
-  }
-
-  if (!smartCard) {
-    throw new Error(
-      "Smart card number is required."
-    );
-  }
-
-  const raw =
-    await clubKonnectGet(
-      "APIVerifyCableTVV1.asp",
-      {
-        CableTV:
-          cable,
-
-        SmartCardNo:
-          smartCard,
-      }
-    );
-
-  const customerName =
-    asString(
-      raw.customer_name ??
-        raw.customerName ??
-        raw.CustomerName
-    );
-
-  if (
-    !customerName ||
-    customerName.toUpperCase() ===
-      "INVALID_SMARTCARDNO"
-  ) {
-    return {
-      success:
-        false,
-
-      verified:
-        false,
-
-      customer_name:
-        customerName,
-
-      error:
-        "The smart card number could not be verified.",
-
-      raw,
-    };
-  }
-
-  return {
-    success:
-      true,
-
-    verified:
-      true,
-
-    customer_name:
-      customerName,
-
-    smartcard_number:
-      smartCard,
-
-    cable_tv:
-      cable,
-
-    raw,
-  };
-}
-
-// ============================================================
-// PURCHASE INPUT HELPERS
-// ============================================================
-
-function bodyString(
-  body: Record<string, any>,
-  ...keys: string[]
-): string {
-  for (
-    const key of keys
-  ) {
-    const value =
-      asString(
-        body[key]
-      );
-
-    if (value) {
-      return value;
-    }
-  }
-
-  return "";
-}
-
-function getRequestedAmount(
-  body: Record<string, any>
-): number {
-  return positiveNumber(
-    body.amount ??
-      body.value ??
-      body.selling_amount
-  );
-}
-
-function getQuantity(
-  body: Record<string, any>
-): number {
-  const quantity =
-    Math.floor(
-      asNumber(
-        body.quantity,
-        1
-      )
-    );
-
-  return quantity >= 1
-    ? quantity
-    : 1;
-}
-
-function assertQuantity(
-  quantity: number
-) {
-  if (
-    quantity < 1 ||
-    quantity > 100
-  ) {
-    throw new Error(
-      "E-PIN quantity must be between 1 and 100."
-    );
-  }
-}
-
-// ============================================================
-// PURCHASE CATALOG PRICE RESOLUTION
-// ============================================================
-
-async function resolveFixedProduct(
-  service: ServiceType,
-  body: Record<string, any>,
-  code: string,
-  networkCode = ""
-) {
-  if (!code) {
-    throw new Error(
-      "A valid service option is required."
-    );
-  }
-
-  const item =
-    await findCatalogItem(
-      service,
-      code,
-      networkCode
-    );
-
-  if (!item) {
-    throw new Error(
-      "The selected service option is no longer available. Please refresh and select it again."
-    );
-  }
-
-  const provider =
-    positiveNumber(
-      item.provider_amount ??
-        item.amount ??
-        item.price ??
-        item.value
-    );
-
-  if (
-    provider <= 0
-  ) {
-    throw new Error(
-      "The selected service option does not have a valid provider price."
-    );
-  }
-
-  const selling =
-    sellingPrice(
-      provider,
-      service
-    );
-
-  return {
-    item,
-    providerAmount:
-      provider,
-    sellingAmount:
-      selling,
-  };
-}
-
-// ============================================================
-// PURCHASE PAYLOAD BUILDERS
-// ============================================================
-
-function callbackParams(
-  requestId: string
-) {
-  const callback =
-    getCallbackUrl();
-
-  return {
-    RequestID:
-      requestId,
-
-    ...(callback
-      ? {
-          CallBackURL:
-            callback,
-        }
-      : {}),
-  };
-}
-
-// ============================================================
-// AIRTIME PURCHASE
-// ============================================================
-
-async function purchaseAirtime(
-  body: Record<string, any>,
-  requestId: string
-) {
-  const network =
-    bodyString(
-      body,
-      "network_code",
-      "mobile_network",
-      "network"
-    );
-
-  const phone =
-    normalizePhone(
-      bodyString(
-        body,
-        "phone",
-        "phoneNumber",
-        "customer"
-      )
-    );
-
-  const amount =
-    getRequestedAmount(
-      body
-    );
-
-  if (!network) {
-    throw new Error(
-      "Network is required."
-    );
-  }
-
-  if (
-    !isValidPhone(phone)
-  ) {
-    throw new Error(
-      "Enter a valid Nigerian phone number."
-    );
-  }
-
-  if (
-    amount < 50 ||
-    amount > 200000
-  ) {
-    throw new Error(
-      "Airtime amount must be between ₦50 and ₦200,000."
-    );
-  }
-
-  const raw =
-    await clubKonnectGet(
+  try {
+    const payload = await clubKonnectGet(
       "APIAirtimeV1.asp",
       {
-        MobileNetwork:
-          network,
-
-        Amount:
-          amount,
-
-        MobileNumber:
-          phone,
-
-        ...callbackParams(
-          requestId
-        ),
-      }
+        MobileNetwork: networkCode,
+        MobileNumber: phone,
+        Amount: amount,
+        RequestID: reference,
+        CallBackURL: CALLBACK_URL,
+      },
     );
 
-  return {
-    raw,
+    const result = classifyProviderResponse(payload);
 
-    providerAmount:
-      amount,
+    await updateTransaction(transaction.id, {
+      status: result.success
+        ? "pending"
+        : "failed",
+      provider_reference:
+        result.orderId || null,
+      metadata: {
+        network_code: networkCode,
+        phone,
+        provider_amount: amount,
+        selling_amount: total,
+        request_id: reference,
+        provider_response: payload,
+      },
+    });
 
-    purchaseAmount:
-      amount,
+    if (!result.success) {
+      await refundWallet(
+        userId,
+        total,
+        reference,
+        "Refund for failed airtime purchase",
+      );
 
-    phone,
+      await updateTransaction(transaction.id, {
+        status: "failed",
+      });
+    }
 
-    network,
-  };
+    return result;
+  } catch (error) {
+    await updateTransaction(transaction.id, {
+      status: "pending",
+      metadata: {
+        provider_error:
+          error instanceof Error
+            ? error.message
+            : String(error),
+        request_id: reference,
+      },
+    });
+
+    return {
+      success: true,
+      status: "ORDER_RECEIVED",
+      message:
+        "Your airtime request was submitted and is being reconciled.",
+      requestId: reference,
+    };
+  }
 }
-
-// ============================================================
-// DATA PURCHASE
-// ============================================================
 
 async function purchaseData(
-  body: Record<string, any>,
-  requestId: string
-) {
-  const network =
-    bodyString(
-      body,
+  userId: string,
+  body: Record<string, unknown>,
+): Promise<ProviderResponse> {
+  const networkCode = requiredString(
+    body,
+    [
       "network_code",
+      "networkCode",
       "mobile_network",
-      "network"
-    );
+      "mobileNetwork",
+      "MobileNetwork",
+    ],
+    "Mobile network",
+  );
 
-  const phone =
-    normalizePhone(
-      bodyString(
-        body,
-        "phone",
-        "phoneNumber",
-        "customer"
-      )
-    );
-
-  const plan =
-    bodyString(
-      body,
+  const planCode = requiredString(
+    body,
+    [
       "data_plan",
       "dataPlan",
-      "item_code",
-      "product_code",
-      "variation_code"
-    );
+      "plan_code",
+      "planCode",
+      "Package",
+      "package",
+    ],
+    "Data plan",
+  );
 
-  if (!network) {
-    throw new Error(
-      "Network is required."
+  const phone = ensureReasonableNigerianPhone(
+    phoneFrom(body),
+  );
+
+  const product = await findCatalogPrice(
+    "data",
+    planCode,
+    networkCode,
+  );
+
+  const reference = requestIdFrom(body);
+
+  const transaction = await createTransaction(
+    userId,
+    reference,
+    product.sellingPrice,
+    "data",
+    {
+      network_code: networkCode,
+      data_plan: planCode,
+      phone,
+      provider_amount: product.providerPrice,
+      selling_amount: product.sellingPrice,
+      request_id: reference,
+    },
+  );
+
+  try {
+    await debitWallet(
+      userId,
+      product.sellingPrice,
+      reference,
+      "Data bundle purchase",
     );
+  } catch (error) {
+    await updateTransaction(transaction.id, {
+      status: "failed",
+    });
+
+    throw error;
   }
 
-  if (
-    !isValidPhone(phone)
-  ) {
-    throw new Error(
-      "Enter a valid Nigerian phone number."
-    );
-  }
-
-  if (!plan) {
-    throw new Error(
-      "Data plan is required."
-    );
-  }
-
-  const resolved =
-    await resolveFixedProduct(
-      "data",
-      body,
-      plan,
-      network
-    );
-
-  const raw =
-    await clubKonnectGet(
+  try {
+    const payload = await clubKonnectGet(
       "APIDatabundleV1.asp",
       {
-        MobileNetwork:
-          network,
-
-        DataPlan:
-          plan,
-
-        MobileNumber:
-          phone,
-
-        ...callbackParams(
-          requestId
-        ),
-      }
+        MobileNetwork: networkCode,
+        DataPlan: planCode,
+        MobileNumber: phone,
+        RequestID: reference,
+        CallBackURL: CALLBACK_URL,
+      },
     );
 
-  return {
-    raw,
+    const result = classifyProviderResponse(payload);
 
-    providerAmount:
-      resolved.providerAmount,
+    await updateTransaction(transaction.id, {
+      status: result.success
+        ? "pending"
+        : "failed",
+      provider_reference:
+        result.orderId || null,
+      metadata: {
+        network_code: networkCode,
+        data_plan: planCode,
+        phone,
+        provider_amount: product.providerPrice,
+        selling_amount: product.sellingPrice,
+        request_id: reference,
+        provider_response: payload,
+      },
+    });
 
-    purchaseAmount:
-      resolved.sellingAmount,
+    if (!result.success) {
+      await refundWallet(
+        userId,
+        product.sellingPrice,
+        reference,
+        "Refund for failed data purchase",
+      );
 
-    phone,
+      await updateTransaction(transaction.id, {
+        status: "failed",
+      });
+    }
 
-    network,
+    return result;
+  } catch (error) {
+    await updateTransaction(transaction.id, {
+      status: "pending",
+      metadata: {
+        provider_error:
+          error instanceof Error
+            ? error.message
+            : String(error),
+      },
+    });
 
-    dataPlan:
-      plan,
-
-    item:
-      resolved.item,
-  };
+    return {
+      success: true,
+      status: "ORDER_RECEIVED",
+      message:
+        "Your data request was submitted and is being reconciled.",
+      requestId: reference,
+    };
+  }
 }
 
-// ============================================================
-// ELECTRICITY PURCHASE
-// ============================================================
-
-async function purchaseElectricity(
-  body: Record<string, any>,
-  requestId: string
+async function verifyMeter(
+  body: Record<string, unknown>,
 ) {
-  const company =
-    bodyString(
-      body,
+  const company = requiredString(
+    body,
+    [
       "electric_company",
+      "electricCompany",
       "company_code",
+      "companyCode",
       "biller_code",
-      "network_code"
-    );
+      "billerCode",
+      "ElectricCompany",
+    ],
+    "Electricity company",
+  );
 
-  const meterType =
-    bodyString(
-      body,
+  const meterType = requiredString(
+    body,
+    [
       "meter_type",
-      "meterType"
-    );
+      "meterType",
+      "MeterType",
+    ],
+    "Meter type",
+  );
 
-  const meter =
-    bodyString(
-      body,
+  const meterNumber = requiredString(
+    body,
+    [
       "meter_number",
+      "meterNumber",
       "meter_no",
       "meterNo",
-      "customer"
-    );
+      "MeterNo",
+    ],
+    "Meter number",
+  );
 
-  const phoneRaw =
-    bodyString(
-      body,
-      "phone",
-      "phoneNumber"
-    );
+  const payload = await clubKonnectGet(
+    "APIVerifyElectricityV1.asp",
+    {
+      ElectricCompany: company,
+      MeterNo: meterNumber,
+      MeterType: meterType,
+    },
+  );
 
-  const phone =
-    phoneRaw
-      ? normalizePhone(
-          phoneRaw
-        )
-      : "";
+  const root = asRecord(payload);
 
-  const amount =
-    getRequestedAmount(
-      body
-    );
-
-  if (!company) {
-    throw new Error(
-      "Electricity company is required."
-    );
-  }
-
-  if (!meterType) {
-    throw new Error(
-      "Meter type is required."
-    );
-  }
-
-  if (!meter) {
-    throw new Error(
-      "Meter number is required."
-    );
-  }
+  const customerName = firstString(root, [
+    "customer_name",
+    "customerName",
+    "CustomerName",
+  ]);
 
   if (
-    meterType !== "01" &&
-    meterType !== "02"
+    !customerName ||
+    customerName.toUpperCase() === "INVALID_METERNO"
   ) {
+    return {
+      success: false,
+      message:
+        "The electricity meter could not be verified.",
+      data: payload,
+    };
+  }
+
+  return {
+    success: true,
+    message: "Meter verified successfully.",
+    customer_name: customerName,
+    data: payload,
+  };
+}
+
+async function purchaseElectricity(
+  userId: string,
+  body: Record<string, unknown>,
+): Promise<ProviderResponse> {
+  const company = requiredString(
+    body,
+    [
+      "electric_company",
+      "electricCompany",
+      "company_code",
+      "companyCode",
+      "biller_code",
+      "billerCode",
+      "ElectricCompany",
+    ],
+    "Electricity company",
+  );
+
+  const meterType = requiredString(
+    body,
+    [
+      "meter_type",
+      "meterType",
+      "MeterType",
+    ],
+    "Meter type",
+  );
+
+  const meterNumber = requiredString(
+    body,
+    [
+      "meter_number",
+      "meterNumber",
+      "meter_no",
+      "meterNo",
+      "MeterNo",
+    ],
+    "Meter number",
+  );
+
+  const amount = requiredPositiveAmount(
+    body,
+    ["amount", "Amount"],
+    "Electricity amount",
+  );
+
+  const phone = optionalString(body, [
+    "phone",
+    "phoneNumber",
+    "phone_number",
+    "PhoneNo",
+  ]);
+
+  const reference = requestIdFrom(body);
+
+  const verification = await verifyMeter(body);
+
+  if (!verification.success) {
     throw new Error(
-      "Invalid meter type."
+      verification.message ||
+        "Electricity meter verification failed.",
     );
   }
 
-  if (
-    amount <= 0
-  ) {
-    throw new Error(
-      "Electricity amount is required."
+  const total = sellingPrice(
+    amount,
+    "electricity",
+  );
+
+  const transaction = await createTransaction(
+    userId,
+    reference,
+    total,
+    "electricity",
+    {
+      electric_company: company,
+      meter_type: meterType,
+      meter_number: meterNumber,
+      phone,
+      provider_amount: amount,
+      selling_amount: total,
+      request_id: reference,
+      customer_name:
+        verification.customer_name || null,
+    },
+  );
+
+  try {
+    await debitWallet(
+      userId,
+      total,
+      reference,
+      "Electricity bill payment",
     );
-  }
-
-  if (
-    phone &&
-    !isValidPhone(phone)
-  ) {
-    throw new Error(
-      "Invalid notification phone number."
-    );
-  }
-
-  /*
-   * ALWAYS verify before charging.
-   */
-  const verification =
-    await verifyMeter({
-      electric_company:
-        company,
-
-      meter_type:
-        meterType,
-
-      meter_number:
-        meter,
+  } catch (error) {
+    await updateTransaction(transaction.id, {
+      status: "failed",
     });
 
-  if (
-    verification.success !==
-      true
-  ) {
-    throw new Error(
-      verification.error ||
-        "The meter could not be verified."
-    );
+    throw error;
   }
 
-  const raw =
-    await clubKonnectGet(
+  try {
+    const payload = await clubKonnectGet(
       "APIElectricityV1.asp",
       {
-        ElectricCompany:
-          company,
-
-        MeterType:
-          meterType,
-
-        MeterNo:
-          meter,
-
-        Amount:
-          amount,
-
-        ...(phone
-          ? {
-              PhoneNo:
-                phone,
-            }
-          : {}),
-
-        ...callbackParams(
-          requestId
-        ),
-      }
+        ElectricCompany: company,
+        MeterType: meterType,
+        MeterNo: meterNumber,
+        Amount: amount,
+        PhoneNo: phone || undefined,
+        RequestID: reference,
+        CallBackURL: CALLBACK_URL,
+      },
     );
 
-  return {
-    raw,
+    const result = classifyProviderResponse(payload);
 
-    providerAmount:
-      amount,
-
-    purchaseAmount:
-      sellingPrice(
-        amount,
-        "electricity"
-      ),
-
-    electricCompany:
-      company,
-
-    meterType,
-
-    meterNumber:
-      meter,
-
-    customerName:
-      verification.customer_name,
-  };
-}
-
-// ============================================================
-// CABLE PURCHASE
-// ============================================================
-
-async function purchaseCable(
-  body: Record<string, any>,
-  requestId: string
-) {
-  const cable =
-    bodyString(
-      body,
-      "cable_tv",
-      "cable_code",
-      "network_code",
-      "biller_code"
-    );
-
-  const packageCode =
-    bodyString(
-      body,
-      "package",
-      "package_code",
-      "item_code",
-      "product_code",
-      "variation_code"
-    );
-
-  const smartCard =
-    bodyString(
-      body,
-      "smartcard_number",
-      "smartCardNumber",
-      "smartcard",
-      "smartcard_no",
-      "customer"
-    );
-
-  const phoneRaw =
-    bodyString(
-      body,
-      "phone",
-      "phoneNumber"
-    );
-
-  const phone =
-    phoneRaw
-      ? normalizePhone(
-          phoneRaw
-        )
-      : "";
-
-  if (!cable) {
-    throw new Error(
-      "TV service is required."
-    );
-  }
-
-  if (!packageCode) {
-    throw new Error(
-      "Cable package is required."
-    );
-  }
-
-  if (!smartCard) {
-    throw new Error(
-      "Smart card number is required."
-    );
-  }
-
-  if (
-    phone &&
-    !isValidPhone(phone)
-  ) {
-    throw new Error(
-      "Invalid phone number."
-    );
-  }
-
-  /*
-   * Resolve package price server-side.
-   */
-  const resolved =
-    await resolveFixedProduct(
-      "cable",
-      body,
-      packageCode,
-      cable
-    );
-
-  /*
-   * Verify smartcard before charging.
-   */
-  const verification =
-    await verifyCable({
-      cable_tv:
-        cable,
-
-      smartcard_number:
-        smartCard,
+    await updateTransaction(transaction.id, {
+      status: result.success
+        ? "pending"
+        : "failed",
+      provider_reference:
+        result.orderId || null,
+      metadata: {
+        electric_company: company,
+        meter_type: meterType,
+        meter_number: meterNumber,
+        phone,
+        provider_amount: amount,
+        selling_amount: total,
+        request_id: reference,
+        provider_response: payload,
+      },
     });
 
+    if (!result.success) {
+      await refundWallet(
+        userId,
+        total,
+        reference,
+        "Refund for failed electricity payment",
+      );
+
+      await updateTransaction(transaction.id, {
+        status: "failed",
+      });
+    }
+
+    return result;
+  } catch (error) {
+    await updateTransaction(transaction.id, {
+      status: "pending",
+      metadata: {
+        provider_error:
+          error instanceof Error
+            ? error.message
+            : String(error),
+      },
+    });
+
+    return {
+      success: true,
+      status: "ORDER_RECEIVED",
+      message:
+        "Your electricity payment was submitted and is being reconciled.",
+      requestId: reference,
+    };
+  }
+}
+
+async function verifyCable(
+  body: Record<string, unknown>,
+) {
+  const cableCode = requiredString(
+    body,
+    [
+      "cable_tv",
+      "cableTV",
+      "cable_code",
+      "cableCode",
+      "biller_code",
+      "billerCode",
+      "CableTV",
+    ],
+    "Cable TV service",
+  );
+
+  const smartcardNumber = requiredString(
+    body,
+    [
+      "smartcard_number",
+      "smartcardNumber",
+      "smartCardNumber",
+      "smartcard",
+      "SmartCardNo",
+    ],
+    "Smartcard/IUC number",
+  );
+
+  const payload = await clubKonnectGet(
+    "APIVerifyCableTVV1.asp",
+    {
+      CableTV: cableCode,
+      SmartCardNo: smartcardNumber,
+    },
+  );
+
+  const root = asRecord(payload);
+
+  const customerName = firstString(root, [
+    "customer_name",
+    "customerName",
+    "CustomerName",
+  ]);
+
   if (
-    verification.success !==
-      true
+    !customerName ||
+    customerName.toUpperCase() === "INVALID_SMARTCARDNO"
   ) {
+    return {
+      success: false,
+      message:
+        "The cable TV smartcard/IUC could not be verified.",
+      data: payload,
+    };
+  }
+
+  return {
+    success: true,
+    message: "Smartcard verified successfully.",
+    customer_name: customerName,
+    data: payload,
+  };
+}
+
+async function purchaseCable(
+  userId: string,
+  body: Record<string, unknown>,
+): Promise<ProviderResponse> {
+  const cableCode = requiredString(
+    body,
+    [
+      "cable_tv",
+      "cableTV",
+      "cable_code",
+      "cableCode",
+      "biller_code",
+      "billerCode",
+      "CableTV",
+    ],
+    "Cable TV service",
+  );
+
+  const packageCode = requiredString(
+    body,
+    [
+      "package",
+      "Package",
+      "package_code",
+      "packageCode",
+    ],
+    "Cable TV package",
+  );
+
+  const smartcardNumber = requiredString(
+    body,
+    [
+      "smartcard_number",
+      "smartcardNumber",
+      "smartCardNumber",
+      "smartcard",
+      "SmartCardNo",
+    ],
+    "Smartcard/IUC number",
+  );
+
+  const phone = optionalString(body, [
+    "phone",
+    "phoneNumber",
+    "phone_number",
+    "PhoneNo",
+  ]);
+
+  const product = await findCatalogPrice(
+    "cable",
+    packageCode,
+    undefined,
+    cableCode,
+  );
+
+  const verification = await verifyCable(body);
+
+  if (!verification.success) {
     throw new Error(
-      verification.error ||
-        "The smart card could not be verified."
+      verification.message ||
+        "Cable TV smartcard verification failed.",
     );
   }
 
-  const raw =
-    await clubKonnectGet(
+  const reference = requestIdFrom(body);
+
+  const transaction = await createTransaction(
+    userId,
+    reference,
+    product.sellingPrice,
+    "cable",
+    {
+      cable_tv: cableCode,
+      package: packageCode,
+      smartcard_number: smartcardNumber,
+      phone,
+      provider_amount: product.providerPrice,
+      selling_amount: product.sellingPrice,
+      request_id: reference,
+      customer_name:
+        verification.customer_name || null,
+    },
+  );
+
+  try {
+    await debitWallet(
+      userId,
+      product.sellingPrice,
+      reference,
+      "Cable TV subscription",
+    );
+  } catch (error) {
+    await updateTransaction(transaction.id, {
+      status: "failed",
+    });
+
+    throw error;
+  }
+
+  try {
+    const payload = await clubKonnectGet(
       "APICableTVV1.asp",
       {
-        CableTV:
-          cable,
-
-        Package:
-          packageCode,
-
-        SmartCardNo:
-          smartCard,
-
-        ...(phone
-          ? {
-              PhoneNo:
-                phone,
-            }
-          : {}),
-
-        ...callbackParams(
-          requestId
-        ),
-      }
+        CableTV: cableCode,
+        Package: packageCode,
+        SmartCardNo: smartcardNumber,
+        PhoneNo: phone || undefined,
+        RequestID: reference,
+        CallBackURL: CALLBACK_URL,
+      },
     );
 
-  return {
-    raw,
+    const result = classifyProviderResponse(payload);
 
-    providerAmount:
-      resolved.providerAmount,
+    await updateTransaction(transaction.id, {
+      status: result.success
+        ? "pending"
+        : "failed",
+      provider_reference:
+        result.orderId || null,
+      metadata: {
+        cable_tv: cableCode,
+        package: packageCode,
+        smartcard_number: smartcardNumber,
+        phone,
+        provider_amount: product.providerPrice,
+        selling_amount: product.sellingPrice,
+        request_id: reference,
+        provider_response: payload,
+      },
+    });
 
-    purchaseAmount:
-      resolved.sellingAmount,
+    if (!result.success) {
+      await refundWallet(
+        userId,
+        product.sellingPrice,
+        reference,
+        "Refund for failed cable TV subscription",
+      );
 
-    cableTv:
-      cable,
+      await updateTransaction(transaction.id, {
+        status: "failed",
+      });
+    }
 
-    package:
-      packageCode,
+    return result;
+  } catch (error) {
+    await updateTransaction(transaction.id, {
+      status: "pending",
+      metadata: {
+        provider_error:
+          error instanceof Error
+            ? error.message
+            : String(error),
+      },
+    });
 
-    smartcard:
-      smartCard,
-
-    customerName:
-      verification.customer_name,
-
-    item:
-      resolved.item,
-  };
+    return {
+      success: true,
+      status: "ORDER_RECEIVED",
+      message:
+        "Your cable TV request was submitted and is being reconciled.",
+      requestId: reference,
+    };
+  }
 }
 
-// ============================================================
-// AIRTIME E-PIN PURCHASE
-// ============================================================
-
-async function purchaseAirtimeEpin(
-  body: Record<string, any>,
-  requestId: string
-) {
-  const network =
-    bodyString(
-      body,
+async function purchaseAirtimePin(
+  userId: string,
+  body: Record<string, unknown>,
+): Promise<ProviderResponse> {
+  const networkCode = requiredString(
+    body,
+    [
       "network_code",
+      "networkCode",
       "mobile_network",
-      "network"
-    );
-
-  const value =
-    positiveNumber(
-      body.value ??
-        body.amount
-    );
-
-  const quantity =
-    getQuantity(
-      body
-    );
-
-  assertQuantity(
-    quantity
+      "mobileNetwork",
+      "MobileNetwork",
+    ],
+    "Mobile network",
   );
 
-  if (!network) {
-    throw new Error(
-      "Network is required."
+  const value = requiredPositiveAmount(
+    body,
+    ["value", "amount"],
+    "Airtime E-PIN value",
+  );
+
+  const quantity = integerQuantity(body);
+
+  const providerAmount = value * quantity;
+
+  const total = sellingPrice(
+    providerAmount,
+    "airtime-card",
+  );
+
+  const reference = requestIdFrom(body);
+
+  const transaction = await createTransaction(
+    userId,
+    reference,
+    total,
+    "airtime-card",
+    {
+      network_code: networkCode,
+      value,
+      quantity,
+      provider_amount: providerAmount,
+      selling_amount: total,
+      request_id: reference,
+    },
+  );
+
+  try {
+    await debitWallet(
+      userId,
+      total,
+      reference,
+      "Airtime E-PIN purchase",
     );
+  } catch (error) {
+    await updateTransaction(transaction.id, {
+      status: "failed",
+    });
+
+    throw error;
   }
 
-  if (
-    ![100, 200, 500].includes(
-      value
-    )
-  ) {
-    throw new Error(
-      "Airtime E-PIN value must be ₦100, ₦200 or ₦500."
-    );
-  }
-
-  const providerAmount =
-    value * quantity;
-
-  const purchaseAmount =
-    sellingPrice(
-      providerAmount,
-      "airtime-card"
-    );
-
-  const raw =
-    await clubKonnectGet(
+  try {
+    const payload = await clubKonnectGet(
       "APIEPINV1.asp",
       {
-        MobileNetwork:
-          network,
-
-        Value:
-          value,
-
-        Quantity:
-          quantity,
-
-        ...callbackParams(
-          requestId
-        ),
-      }
+        MobileNetwork: networkCode,
+        Value: value,
+        Quantity: quantity,
+        RequestID: reference,
+        CallBackURL: CALLBACK_URL,
+      },
     );
 
-  return {
-    raw,
+    const result = classifyProviderResponse(payload);
 
-    providerAmount,
+    await updateTransaction(transaction.id, {
+      status: result.success
+        ? "pending"
+        : "failed",
+      provider_reference:
+        result.orderId || null,
+      metadata: {
+        network_code: networkCode,
+        value,
+        quantity,
+        provider_amount: providerAmount,
+        selling_amount: total,
+        request_id: reference,
+        provider_response: payload,
+      },
+    });
 
-    purchaseAmount,
+    if (!result.success) {
+      await refundWallet(
+        userId,
+        total,
+        reference,
+        "Refund for failed Airtime E-PIN purchase",
+      );
 
-    network,
+      await updateTransaction(transaction.id, {
+        status: "failed",
+      });
+    }
 
-    value,
+    return result;
+  } catch (error) {
+    await updateTransaction(transaction.id, {
+      status: "pending",
+      metadata: {
+        provider_error:
+          error instanceof Error
+            ? error.message
+            : String(error),
+      },
+    });
 
-    quantity,
-  };
+    return {
+      success: true,
+      status: "ORDER_RECEIVED",
+      message:
+        "Your Airtime E-PIN request was submitted and is being reconciled.",
+      requestId: reference,
+    };
+  }
 }
 
-// ============================================================
-// DATA E-PIN PURCHASE
-// ============================================================
-
-async function purchaseDataEpin(
-  body: Record<string, any>,
-  requestId: string
-) {
-  const network =
-    bodyString(
-      body,
+async function purchaseDataPin(
+  userId: string,
+  body: Record<string, unknown>,
+): Promise<ProviderResponse> {
+  const networkCode = requiredString(
+    body,
+    [
       "network_code",
+      "networkCode",
       "mobile_network",
-      "network"
-    );
-
-  const plan =
-    bodyString(
-      body,
-      "data_plan",
-      "dataPlan",
-      "item_code",
-      "product_code",
-      "variation_code"
-    );
-
-  const quantity =
-    getQuantity(
-      body
-    );
-
-  assertQuantity(
-    quantity
+      "mobileNetwork",
+      "MobileNetwork",
+    ],
+    "Mobile network",
   );
 
-  if (!network) {
-    throw new Error(
-      "Network is required."
-    );
-  }
+  const planCode = requiredString(
+    body,
+    [
+      "data_plan",
+      "dataPlan",
+      "plan_code",
+      "planCode",
+      "Package",
+      "package",
+    ],
+    "Data E-PIN plan",
+  );
 
-  if (!plan) {
-    throw new Error(
-      "Data E-PIN plan is required."
-    );
-  }
+  const quantity = integerQuantity(body);
 
-  const resolved =
-    await resolveFixedProduct(
-      "data-card",
-      body,
-      plan,
-      network
-    );
+  const product = await findCatalogPrice(
+    "data-card",
+    planCode,
+    networkCode,
+  );
 
   const providerAmount =
-    resolved.providerAmount *
-    quantity;
+    product.providerPrice * quantity;
 
-  const purchaseAmount =
-    sellingPrice(
-      providerAmount,
-      "data-card"
+  const total = sellingPrice(
+    providerAmount,
+    "data-card",
+  );
+
+  const reference = requestIdFrom(body);
+
+  const transaction = await createTransaction(
+    userId,
+    reference,
+    total,
+    "data-card",
+    {
+      network_code: networkCode,
+      data_plan: planCode,
+      quantity,
+      provider_amount: providerAmount,
+      selling_amount: total,
+      request_id: reference,
+    },
+  );
+
+  try {
+    await debitWallet(
+      userId,
+      total,
+      reference,
+      "Data E-PIN purchase",
     );
+  } catch (error) {
+    await updateTransaction(transaction.id, {
+      status: "failed",
+    });
 
-  const raw =
-    await clubKonnectGet(
+    throw error;
+  }
+
+  try {
+    const payload = await clubKonnectGet(
       "APIDatabundleEPINV1.asp",
       {
-        MobileNetwork:
-          network,
-
-        DataPlan:
-          plan,
-
-        Quantity:
-          quantity,
-
-        ...callbackParams(
-          requestId
-        ),
-      }
+        MobileNetwork: networkCode,
+        DataPlan: planCode,
+        Quantity: quantity,
+        RequestID: reference,
+        CallBackURL: CALLBACK_URL,
+      },
     );
 
-  return {
-    raw,
+    const result = classifyProviderResponse(payload);
 
-    providerAmount,
+    await updateTransaction(transaction.id, {
+      status: result.success
+        ? "pending"
+        : "failed",
+      provider_reference:
+        result.orderId || null,
+      metadata: {
+        network_code: networkCode,
+        data_plan: planCode,
+        quantity,
+        provider_amount: providerAmount,
+        selling_amount: total,
+        request_id: reference,
+        provider_response: payload,
+      },
+    });
 
-    purchaseAmount,
+    if (!result.success) {
+      await refundWallet(
+        userId,
+        total,
+        reference,
+        "Refund for failed Data E-PIN purchase",
+      );
 
-    network,
+      await updateTransaction(transaction.id, {
+        status: "failed",
+      });
+    }
 
-    dataPlan:
-      plan,
+    return result;
+  } catch (error) {
+    await updateTransaction(transaction.id, {
+      status: "pending",
+      metadata: {
+        provider_error:
+          error instanceof Error
+            ? error.message
+            : String(error),
+      },
+    });
 
-    quantity,
-
-    item:
-      resolved.item,
-  };
+    return {
+      success: true,
+      status: "ORDER_RECEIVED",
+      message:
+        "Your Data E-PIN request was submitted and is being reconciled.",
+      requestId: reference,
+    };
+  }
 }
 
-// ============================================================
-// SMILE PURCHASE
-// ============================================================
-
 async function purchaseSmile(
-  body: Record<string, any>,
-  requestId: string
-) {
-  const account =
-    bodyString(
-      body,
+  userId: string,
+  body: Record<string, unknown>,
+): Promise<ProviderResponse> {
+  const planCode = requiredString(
+    body,
+    [
+      "data_plan",
+      "dataPlan",
+      "plan_code",
+      "planCode",
+      "Package",
+      "package",
+    ],
+    "Smile data plan",
+  );
+
+  const accountId = requiredString(
+    body,
+    [
       "account_id",
       "accountId",
       "mobile_number",
       "mobileNumber",
       "phone",
-      "customer"
-    );
+      "phoneNumber",
+    ],
+    "Smile account/mobile number",
+  );
 
-  const plan =
-    bodyString(
-      body,
-      "data_plan",
-      "dataPlan",
-      "item_code",
-      "product_code",
-      "variation_code"
-    );
+  const product = await findCatalogPrice(
+    "smile",
+    planCode,
+  );
 
-  if (!account) {
-    throw new Error(
-      "Smile account/mobile number is required."
+  const reference = requestIdFrom(body);
+
+  const transaction = await createTransaction(
+    userId,
+    reference,
+    product.sellingPrice,
+    "smile",
+    {
+      mobile_network: "smile-direct",
+      account_id: accountId,
+      data_plan: planCode,
+      provider_amount: product.providerPrice,
+      selling_amount: product.sellingPrice,
+      request_id: reference,
+    },
+  );
+
+  try {
+    await debitWallet(
+      userId,
+      product.sellingPrice,
+      reference,
+      "Smile data purchase",
     );
+  } catch (error) {
+    await updateTransaction(transaction.id, {
+      status: "failed",
+    });
+
+    throw error;
   }
 
-  if (!plan) {
-    throw new Error(
-      "Smile data plan is required."
-    );
-  }
-
-  /*
-   * Smile account numbers may be
-   * different from ordinary Nigerian
-   * mobile numbers, so do not force
-   * the generic +234 validator here.
-   */
-  const resolved =
-    await resolveFixedProduct(
-      "smile",
-      body,
-      plan
-    );
-
-  const raw =
-    await clubKonnectGet(
+  try {
+    const payload = await clubKonnectGet(
       "APISmileV1.asp",
       {
-        MobileNetwork:
-          "smile-direct",
-
-        DataPlan:
-          plan,
-
-        MobileNumber:
-          account,
-
-        ...callbackParams(
-          requestId
-        ),
-      }
+        MobileNetwork: "smile-direct",
+        MobileNumber: accountId,
+        DataPlan: planCode,
+        RequestID: reference,
+        CallBackURL: CALLBACK_URL,
+      },
     );
 
-  return {
-    raw,
+    const result = classifyProviderResponse(payload);
 
-    providerAmount:
-      resolved.providerAmount,
+    await updateTransaction(transaction.id, {
+      status: result.success
+        ? "pending"
+        : "failed",
+      provider_reference:
+        result.orderId || null,
+      metadata: {
+        mobile_network: "smile-direct",
+        account_id: accountId,
+        data_plan: planCode,
+        provider_amount: product.providerPrice,
+        selling_amount: product.sellingPrice,
+        request_id: reference,
+        provider_response: payload,
+      },
+    });
 
-    purchaseAmount:
-      resolved.sellingAmount,
+    if (!result.success) {
+      await refundWallet(
+        userId,
+        product.sellingPrice,
+        reference,
+        "Refund for failed Smile purchase",
+      );
 
-    accountId:
-      account,
+      await updateTransaction(transaction.id, {
+        status: "failed",
+      });
+    }
 
-    dataPlan:
-      plan,
+    return result;
+  } catch (error) {
+    await updateTransaction(transaction.id, {
+      status: "pending",
+    });
 
-    item:
-      resolved.item,
-  };
+    return {
+      success: true,
+      status: "ORDER_RECEIVED",
+      message:
+        "Your Smile request was submitted and is being reconciled.",
+      requestId: reference,
+    };
+  }
 }
-
-// ============================================================
-// WAEC PURCHASE
-// ============================================================
 
 async function purchaseWaec(
-  body: Record<string, any>,
-  requestId: string
-) {
-  const examType =
-    bodyString(
-      body,
+  userId: string,
+  body: Record<string, unknown>,
+): Promise<ProviderResponse> {
+  const packageCode = requiredString(
+    body,
+    [
+      "package_code",
+      "packageCode",
+      "package",
+      "Package",
       "exam_type",
       "examType",
-      "item_code",
-      "product_code",
-      "variation_code"
-    );
+      "ExamType",
+    ],
+    "WAEC package",
+  );
 
-  const phone =
-    normalizePhone(
-      bodyString(
-        body,
-        "phone",
-        "phoneNumber",
-        "customer"
-      )
-    );
+  const phone = ensureReasonableNigerianPhone(
+    phoneFrom(body),
+  );
 
-  if (!examType) {
-    throw new Error(
-      "WAEC service option is required."
+  const product = await findCatalogPrice(
+    "waec",
+    packageCode,
+  );
+
+  const reference = requestIdFrom(body);
+
+  const transaction = await createTransaction(
+    userId,
+    reference,
+    product.sellingPrice,
+    "waec",
+    {
+      package_code: packageCode,
+      phone,
+      provider_amount: product.providerPrice,
+      selling_amount: product.sellingPrice,
+      request_id: reference,
+    },
+  );
+
+  try {
+    await debitWallet(
+      userId,
+      product.sellingPrice,
+      reference,
+      "WAEC E-PIN purchase",
     );
+  } catch (error) {
+    await updateTransaction(transaction.id, {
+      status: "failed",
+    });
+
+    throw error;
   }
 
-  if (
-    !isValidPhone(phone)
-  ) {
-    throw new Error(
-      "Enter a valid Nigerian phone number."
-    );
-  }
-
-  const resolved =
-    await resolveFixedProduct(
-      "waec",
-      body,
-      examType
-    );
-
-  const raw =
-    await clubKonnectGet(
+  try {
+    const payload = await clubKonnectGet(
       "APIWAECV1.asp",
       {
-        ExamType:
-          examType,
-
-        PhoneNo:
-          phone,
-
-        ...callbackParams(
-          requestId
-        ),
-      }
+        Package: packageCode,
+        PhoneNo: phone,
+        RequestID: reference,
+        CallBackURL: CALLBACK_URL,
+      },
     );
 
-  return {
-    raw,
+    const result = classifyProviderResponse(payload);
 
-    providerAmount:
-      resolved.providerAmount,
+    await updateTransaction(transaction.id, {
+      status: result.success
+        ? "pending"
+        : "failed",
+      provider_reference:
+        result.orderId || null,
+      metadata: {
+        package_code: packageCode,
+        phone,
+        provider_amount: product.providerPrice,
+        selling_amount: product.sellingPrice,
+        request_id: reference,
+        provider_response: payload,
+      },
+    });
 
-    purchaseAmount:
-      resolved.sellingAmount,
+    if (!result.success) {
+      await refundWallet(
+        userId,
+        product.sellingPrice,
+        reference,
+        "Refund for failed WAEC purchase",
+      );
 
-    examType,
+      await updateTransaction(transaction.id, {
+        status: "failed",
+      });
+    }
 
-    phone,
+    return result;
+  } catch (error) {
+    await updateTransaction(transaction.id, {
+      status: "pending",
+    });
 
-    item:
-      resolved.item,
-  };
+    return {
+      success: true,
+      status: "ORDER_RECEIVED",
+      message:
+        "Your WAEC request was submitted and is being reconciled.",
+      requestId: reference,
+    };
+  }
 }
-
-// ============================================================
-// JAMB PURCHASE
-// ============================================================
 
 async function purchaseJamb(
-  body: Record<string, any>,
-  requestId: string
-) {
-  const examType =
-    bodyString(
-      body,
+  userId: string,
+  body: Record<string, unknown>,
+): Promise<ProviderResponse> {
+  const examType = requiredString(
+    body,
+    [
       "exam_type",
       "examType",
-      "item_code",
-      "product_code",
-      "variation_code"
-    );
+      "ExamType",
+    ],
+    "JAMB exam type",
+  );
 
-  const phone =
-    normalizePhone(
-      bodyString(
-        body,
-        "phone",
-        "phoneNumber",
-        "customer"
-      )
-    );
+  const phone = ensureReasonableNigerianPhone(
+    phoneFrom(body),
+  );
 
-  if (!examType) {
+  const validExamTypes = new Set([
+    "de",
+    "utme-mock",
+    "utme-no-mock",
+  ]);
+
+  if (!validExamTypes.has(examType)) {
     throw new Error(
-      "JAMB service option is required."
+      "Invalid JAMB exam type. Use de, utme-mock or utme-no-mock.",
     );
   }
 
-  if (
-    !isValidPhone(phone)
-  ) {
+  const catalog = await getJambPackages();
+
+  const matchingPackage = catalog.find((item) => {
+    const code = item.code.toLowerCase();
+    const name = item.name.toLowerCase();
+
+    return (
+      code === examType.toLowerCase() ||
+      name.includes(examType.toLowerCase())
+    );
+  });
+
+  if (!matchingPackage) {
     throw new Error(
-      "Enter a valid Nigerian phone number."
+      "The selected JAMB exam type is not available in the current ClubKonnect catalogue.",
     );
   }
 
-  const resolved =
-    await resolveFixedProduct(
-      "jamb",
-      body,
-      examType
+  if (matchingPackage.providerPrice <= 0) {
+    throw new Error(
+      "The selected JAMB service has no valid provider price.",
     );
+  }
 
-  const raw =
-    await clubKonnectGet(
+  const total = sellingPrice(
+    matchingPackage.providerPrice,
+    "jamb",
+  );
+
+  const reference = requestIdFrom(body);
+
+  const transaction = await createTransaction(
+    userId,
+    reference,
+    total,
+    "jamb",
+    {
+      exam_type: examType,
+      phone,
+      provider_amount: matchingPackage.providerPrice,
+      selling_amount: total,
+      request_id: reference,
+    },
+  );
+
+  try {
+    await debitWallet(
+      userId,
+      total,
+      reference,
+      "JAMB E-PIN purchase",
+    );
+  } catch (error) {
+    await updateTransaction(transaction.id, {
+      status: "failed",
+    });
+
+    throw error;
+  }
+
+  try {
+    const payload = await clubKonnectGet(
       "APIJAMBV1.asp",
       {
-        ExamType:
-          examType,
-
-        PhoneNo:
-          phone,
-
-        ...callbackParams(
-          requestId
-        ),
-      }
+        ExamType: examType,
+        PhoneNo: phone,
+        RequestID: reference,
+        CallBackURL: CALLBACK_URL,
+      },
     );
 
-  return {
-    raw,
+    const result = classifyProviderResponse(payload);
 
-    providerAmount:
-      resolved.providerAmount,
+    await updateTransaction(transaction.id, {
+      status: result.success
+        ? "pending"
+        : "failed",
+      provider_reference:
+        result.orderId || null,
+      metadata: {
+        exam_type: examType,
+        phone,
+        provider_amount:
+          matchingPackage.providerPrice,
+        selling_amount: total,
+        request_id: reference,
+        provider_response: payload,
+      },
+    });
 
-    purchaseAmount:
-      resolved.sellingAmount,
+    if (!result.success) {
+      await refundWallet(
+        userId,
+        total,
+        reference,
+        "Refund for failed JAMB purchase",
+      );
 
-    examType,
+      await updateTransaction(transaction.id, {
+        status: "failed",
+      });
+    }
 
-    phone,
+    return result;
+  } catch (error) {
+    await updateTransaction(transaction.id, {
+      status: "pending",
+    });
 
-    item:
-      resolved.item,
-  };
+    return {
+      success: true,
+      status: "ORDER_RECEIVED",
+      message:
+        "Your JAMB request was submitted and is being reconciled.",
+      requestId: reference,
+    };
+  }
 }
 
-// ============================================================
-// PROVIDER PURCHASE DISPATCH
-// ============================================================
-
-async function executeProviderPurchase(
+async function purchaseService(
+  userId: string,
   service: ServiceType,
-  body: Record<string, any>,
-  requestId: string
-) {
-  switch (
-    service
-  ) {
+  body: Record<string, unknown>,
+): Promise<ProviderResponse> {
+  switch (service) {
     case "airtime":
-      return purchaseAirtime(
-        body,
-        requestId
-      );
+      return await purchaseAirtime(userId, body);
 
     case "data":
-      return purchaseData(
-        body,
-        requestId
-      );
+      return await purchaseData(userId, body);
 
     case "electricity":
-      return purchaseElectricity(
-        body,
-        requestId
-      );
+      return await purchaseElectricity(userId, body);
 
     case "cable":
-      return purchaseCable(
-        body,
-        requestId
-      );
+      return await purchaseCable(userId, body);
 
     case "airtime-card":
-      return purchaseAirtimeEpin(
-        body,
-        requestId
-      );
+      return await purchaseAirtimePin(userId, body);
 
     case "data-card":
-      return purchaseDataEpin(
-        body,
-        requestId
-      );
+      return await purchaseDataPin(userId, body);
 
     case "smile":
-      return purchaseSmile(
-        body,
-        requestId
-      );
+      return await purchaseSmile(userId, body);
 
     case "waec":
-      return purchaseWaec(
-        body,
-        requestId
-      );
+      return await purchaseWaec(userId, body);
 
     case "jamb":
-      return purchaseJamb(
-        body,
-        requestId
-      );
+      return await purchaseJamb(userId, body);
 
     default:
       throw new Error(
-        "Unsupported service."
+        `Unsupported service: ${service}`,
       );
   }
 }
 
-// ============================================================
-// PURCHASE ACTION
-// ============================================================
-
-async function handlePurchase(
-  userId: string,
-  body: Record<string, any>,
-  service: ServiceType
+async function queryStatus(
+  body: Record<string, unknown>,
 ) {
-  /*
-   * Generate the request ID ourselves.
-   * The browser cannot choose a request ID
-   * that could collide with another customer.
-   */
-  const requestId =
-    makeRequestId(
-      userId,
-      service
-    );
+  const orderId = optionalString(body, [
+    "order_id",
+    "orderId",
+    "OrderID",
+  ]);
 
-  /*
-   * IMPORTANT:
-   * Do NOT trust:
-   *
-   *   body.amount
-   *   body.price
-   *   body.provider_amount
-   *   body.selling_amount
-   *
-   * for fixed-price products.
-   *
-   * Individual service handlers resolve
-   * the real provider price from the
-   * ClubKonnect catalogue.
-   */
+  const requestId = optionalString(body, [
+    "request_id",
+    "requestId",
+    "RequestID",
+  ]);
 
-  /*
-   * First execute a dry provider-resolution
-   * path to determine the authoritative
-   * amount.
-   *
-   * We do this before creating/debiting
-   * the wallet.
-   */
-  let providerInfo:
-    Awaited<
-      ReturnType<
-        typeof executeProviderPurchase
-      >
-    >;
-
-  /*
-   * For network calls that actually place
-   * an order, we must NOT call them twice.
-   *
-   * Therefore each service handler below
-   * currently performs its provider request.
-   *
-   * The safest wallet sequence is:
-   *
-   *   1. resolve catalogue/validation
-   *   2. calculate price
-   *   3. create transaction
-   *   4. debit
-   *   5. submit provider request
-   *
-   * For fixed products the handler resolves
-   * the catalogue again immediately before
-   * provider submission.
-   *
-   * For production retries, the request ID /
-   * transaction reference is the reconciliation
-   * anchor.
-   */
-
-  /*
-   * We need the authoritative amount before
-   * wallet debit. To avoid duplicating provider
-   * purchases, use a dedicated amount resolver.
-   */
-  const resolved =
-    await resolvePurchaseAmount(
-      service,
-      body
-    );
-
-  const total =
-    resolved.sellingAmount;
-
-  if (
-    !Number.isFinite(total) ||
-    total <= 0
-  ) {
+  if (!orderId && !requestId) {
     throw new Error(
-      "Unable to determine the service price."
+      "order_id or request_id is required.",
     );
   }
 
-  const reference =
-    requestId;
-
-  const metadata = {
-    service,
-
-    provider:
-      "clubkonnect",
-
-    request_id:
-      requestId,
-
-    customer:
-      bodyString(
-        body,
-        "customer",
-        "phone",
-        "phoneNumber",
-        "meter_number",
-        "meter_no",
-        "smartcard_number",
-        "smartCardNumber",
-        "account_id",
-        "mobile_number"
-      ),
-
-    network_code:
-      bodyString(
-        body,
-        "network_code",
-        "mobile_network"
-      ),
-
-    item_code:
-      bodyString(
-        body,
-        "item_code",
-        "product_code",
-        "variation_code",
-        "data_plan",
-        "exam_type",
-        "package"
-      ),
-
-    provider_amount:
-      resolved.providerAmount,
-
-    selling_amount:
-      total,
-
-    quantity:
-      getQuantity(
-        body
-      ),
-
-    catalogue_item:
-      resolved.item ??
-      null,
-  };
-
-  const {
-    transaction,
-    created,
-  } =
-    await createOrGetPendingTransaction(
-      userId,
-      service,
-      total,
-      reference,
-      metadata
-    );
-
-  /*
-   * If the same request already exists,
-   * never debit it a second time.
-   */
-  if (!created) {
-    const status =
-      asString(
-        transaction?.status
-      ).toLowerCase();
-
-    if (
-      status ===
-        "completed" ||
-      status ===
-        "successful"
-    ) {
-      return {
-        success:
-          true,
-
-        status:
-          "success",
-
-        message:
-          "This service payment has already been completed.",
-
-        reference,
-
-        transaction_id:
-          transaction.id,
-      };
-    }
-
-    if (
-      status ===
-        "pending"
-    ) {
-      return {
-        success:
-          true,
-
-        status:
-          "pending",
-
-        message:
-          "This service payment is already being processed.",
-
-        reference,
-
-        transaction_id:
-          transaction.id,
-      };
-    }
-
-    if (
-      status ===
-        "failed"
-    ) {
-      /*
-       * This should only occur if the reference
-       * was reused after a terminal failure.
-       */
-      throw new Error(
-        "This payment reference has already failed. Please start a new payment."
-      );
-    }
-  }
-
-  /*
-   * Debit the customer's wallet exactly once.
-   */
-  await debitWallet(
-    userId,
-    total,
-    reference,
-    `ClubKonnect ${service} purchase`
-  );
-
-  await updateTransaction(
-    reference,
+  const payload = await clubKonnectGet(
+    "APIQueryV1.asp",
     {
-      status:
-        "processing",
-
-      metadata: {
-        ...metadata,
-
-        wallet_debited:
-          true,
-      },
-    }
+      OrderID: orderId || undefined,
+      RequestID: requestId || undefined,
+    },
   );
 
-  try {
-    providerInfo =
-      await executeProviderPurchase(
-        service,
-        body,
-        requestId
-      );
-  } catch (providerError) {
-    /*
-     * A network/timeout failure after debit
-     * is NOT automatically refunded because
-     * ClubKonnect may have received the order.
-     *
-     * Mark pending and reconcile using
-     * RequestID / callback.
-     */
-    const message =
-      providerError instanceof
-      Error
-        ? providerError.message
-        : "Unable to reach ClubKonnect.";
-
-    await updateTransaction(
-      reference,
-      {
-        status:
-          "pending",
-
-        provider_reference:
-          requestId,
-
-        metadata: {
-          ...metadata,
-
-          provider_error:
-            message,
-
-          provider_submission:
-            "unknown",
-        },
-      }
-    );
-
-    return {
-      success:
-        true,
-
-      status:
-        "pending",
-
-      message:
-        "Your payment has been received and the service is being confirmed.",
-
-      reference,
-
-      transaction_id:
-        transaction.id,
-
-      request_id:
-        requestId,
-    };
-  }
-
-  const provider =
-    classifyProviderResponse(
-      providerInfo.raw
-    );
-
-  /*
-   * PROVIDER SUCCESS
-   */
-  if (
-    provider.state ===
-    "success"
-  ) {
-    await updateTransaction(
-      reference,
-      {
-        status:
-          "completed",
-
-        provider_reference:
-          provider.orderId ||
-          requestId,
-
-        metadata: {
-          ...metadata,
-
-          provider_status:
-            provider.status,
-
-          provider_status_code:
-            provider.statusCode,
-
-          provider_message:
-            provider.message,
-
-          provider_order_id:
-            provider.orderId,
-
-          provider_response:
-            provider.raw,
-
-          provider_amount:
-            providerInfo.providerAmount,
-        },
-      }
-    );
-
-    return {
-      success:
-        true,
-
-      status:
-        "success",
-
-      message:
-        provider.message ||
-        "Service purchase completed successfully.",
-
-      reference,
-
-      transaction_id:
-        transaction.id,
-
-      provider_reference:
-        provider.orderId ||
-        requestId,
-
-      provider_status:
-        provider.status,
-
-      provider_status_code:
-        provider.statusCode,
-
-      provider_response:
-        provider.raw,
-
-      service,
-    };
-  }
-
-  /*
-   * PROVIDER PENDING
-   */
-  if (
-    provider.state ===
-    "pending"
-  ) {
-    await updateTransaction(
-      reference,
-      {
-        status:
-          "pending",
-
-        provider_reference:
-          provider.orderId ||
-          requestId,
-
-        metadata: {
-          ...metadata,
-
-          provider_status:
-            provider.status,
-
-          provider_status_code:
-            provider.statusCode,
-
-          provider_message:
-            provider.message,
-
-          provider_order_id:
-            provider.orderId,
-
-          provider_response:
-            provider.raw,
-        },
-      }
-    );
-
-    return {
-      success:
-        true,
-
-      status:
-        "pending",
-
-      message:
-        "Your payment was received and the service is being processed.",
-
-      reference,
-
-      transaction_id:
-        transaction.id,
-
-      provider_reference:
-        provider.orderId ||
-        requestId,
-
-      provider_status:
-        provider.status,
-
-      provider_status_code:
-        provider.statusCode,
-
-      service,
-    };
-  }
-
-  /*
-   * DEFINITE PROVIDER FAILURE
-   *
-   * Because the provider gave us an explicit
-   * terminal failure, refund the wallet.
-   */
-  let refundError:
-    string | null =
-      null;
-
-  try {
-    await refundWallet(
-      userId,
-      total,
-      reference,
-      `Refund for failed ClubKonnect ${service} purchase`
-    );
-  } catch (error) {
-    refundError =
-      error instanceof
-      Error
-        ? error.message
-        : "Wallet refund failed.";
-  }
-
-  await updateTransaction(
-    reference,
-    {
-      status:
-        refundError
-          ? "pending"
-          : "failed",
-
-      provider_reference:
-        provider.orderId ||
-        requestId,
-
-      metadata: {
-        ...metadata,
-
-        provider_status:
-          provider.status,
-
-        provider_status_code:
-          provider.statusCode,
-
-        provider_message:
-          provider.message,
-
-        provider_order_id:
-          provider.orderId,
-
-        provider_response:
-          provider.raw,
-
-        refund_attempted:
-          true,
-
-        refund_error:
-          refundError,
-      },
-    }
-  );
-
-  if (refundError) {
-    return {
-      success:
-        false,
-
-      status:
-        "pending",
-
-      error:
-        "The provider rejected the service request, but the wallet refund is still being processed.",
-
-      reference,
-
-      transaction_id:
-        transaction.id,
-    };
-  }
-
-  return {
-    success:
-      false,
-
-    status:
-      "failed",
-
-    error:
-      provider.message ||
-      "ClubKonnect could not complete this service.",
-
-    message:
-      provider.message ||
-      "The service purchase failed and your wallet has been refunded.",
-
-    reference,
-
-    transaction_id:
-      transaction.id,
-
-    provider_status:
-      provider.status,
-
-    provider_status_code:
-      provider.statusCode,
-  };
+  return classifyProviderResponse(payload);
 }
 
-// ============================================================
-// PURCHASE AMOUNT RESOLUTION
-// ============================================================
-
-async function resolvePurchaseAmount(
-  service: ServiceType,
-  body: Record<string, any>
+async function reconcileTransaction(
+  userId: string,
+  body: Record<string, unknown>,
 ) {
-  /*
-   * Dynamic Airtime
-   */
-  if (
-    service ===
-    "airtime"
-  ) {
-    const amount =
-      getRequestedAmount(
-        body
-      );
+  const reference = optionalString(body, [
+    "request_id",
+    "requestId",
+    "reference",
+    "reference_number",
+  ]);
 
-    if (
-      amount < 50 ||
-      amount > 200000
-    ) {
-      throw new Error(
-        "Airtime amount must be between ₦50 and ₦200,000."
-      );
-    }
+  const orderId = optionalString(body, [
+    "order_id",
+    "orderId",
+  ]);
 
-    return {
-      providerAmount:
-        amount,
-
-      sellingAmount:
-        sellingPrice(
-          amount,
-          service
-        ),
-
-      item:
-        null,
-    };
-  }
-
-  /*
-   * Dynamic Electricity
-   */
-  if (
-    service ===
-    "electricity"
-  ) {
-    const amount =
-      getRequestedAmount(
-        body
-      );
-
-    if (
-      amount <= 0
-    ) {
-      throw new Error(
-        "Electricity amount is required."
-      );
-    }
-
-    return {
-      providerAmount:
-        amount,
-
-      sellingAmount:
-        sellingPrice(
-          amount,
-          service
-        ),
-
-      item:
-        null,
-    };
-  }
-
-  /*
-   * Airtime E-PIN is fixed by value
-   * multiplied by quantity.
-   */
-  if (
-    service ===
-    "airtime-card"
-  ) {
-    const value =
-      positiveNumber(
-        body.value ??
-          body.amount
-      );
-
-    const quantity =
-      getQuantity(
-        body
-      );
-
-    assertQuantity(
-      quantity
+  if (!reference && !orderId) {
+    throw new Error(
+      "request_id or order_id is required.",
     );
+  }
 
-    if (
-      ![100, 200, 500].includes(
-        value
+  const payload = await clubKonnectGet(
+    "APIQueryV1.asp",
+    {
+      OrderID: orderId || undefined,
+      RequestID: reference || undefined,
+    },
+  );
+
+  const result = classifyProviderResponse(payload);
+
+  if (reference) {
+    const { data: transaction } = await adminClient
+      .from("transactions")
+      .select(
+        "id,user_id,amount,status,provider_reference",
       )
-    ) {
-      throw new Error(
-        "Airtime E-PIN value must be ₦100, ₦200 or ₦500."
-      );
-    }
+      .eq("reference_number", reference)
+      .eq("user_id", userId)
+      .maybeSingle();
 
-    const providerAmount =
-      value * quantity;
-
-    return {
-      providerAmount,
-
-      sellingAmount:
-        sellingPrice(
-          providerAmount,
-          service
-        ),
-
-      item:
-        null,
-    };
-  }
-
-  /*
-   * Fixed-price services.
-   */
-  const code =
-    bodyString(
-      body,
-      "item_code",
-      "product_code",
-      "variation_code",
-      "data_plan",
-      "dataPlan",
-      "exam_type",
-      "examType",
-      "package",
-      "package_code"
-    );
-
-  if (!code) {
-    throw new Error(
-      "A service package must be selected."
-    );
-  }
-
-  const network =
-    bodyString(
-      body,
-      "network_code",
-      "mobile_network",
-      "network",
-      "cable_tv",
-      "cable_code",
-      "biller_code"
-    );
-
-  const resolved =
-    await resolveFixedProduct(
-      service,
-      body,
-      code,
-      network
-    );
-
-  const quantity =
-    service ===
-      "data-card"
-      ? getQuantity(
-          body
-        )
-      : 1;
-
-  if (
-    service ===
-    "data-card"
-  ) {
-    assertQuantity(
-      quantity
-    );
-  }
-
-  const providerAmount =
-    resolved.providerAmount *
-    quantity;
-
-  /*
-   * The resolved item price is already
-   * provider price. Apply markup once.
-   */
-  const total =
-    sellingPrice(
-      providerAmount,
-      service
-    );
-
-  return {
-    providerAmount,
-
-    sellingAmount:
-      total,
-
-    item:
-      resolved.item,
-  };
-}
-
-// ============================================================
-// STATUS / RECONCILIATION
-// ============================================================
-
-async function queryProviderStatus(
-  orderId?: string,
-  requestId?: string
-) {
-  if (
-    !orderId &&
-    !requestId
-  ) {
-    throw new Error(
-      "Order ID or Request ID is required."
-    );
-  }
-
-  const raw =
-    await clubKonnectGet(
-      "APIQueryV1.asp",
-      {
-        ...(orderId
-          ? {
-              OrderID:
-                orderId,
-            }
-          : {}),
-
-        ...(requestId
-          ? {
-              RequestID:
-                requestId,
-            }
-          : {}),
-      }
-    );
-
-  return {
-    provider:
-      classifyProviderResponse(
-        raw
-      ),
-
-    raw,
-  };
-}
-
-async function handleStatus(
-  userId: string,
-  body: Record<string, any>
-) {
-  const reference =
-    bodyString(
-      body,
-      "reference",
-      "reference_number",
-      "request_id",
-      "requestId"
-    );
-
-  const orderId =
-    bodyString(
-      body,
-      "order_id",
-      "orderId",
-      "OrderID"
-    );
-
-  let requestId =
-    bodyString(
-      body,
-      "request_id",
-      "requestId",
-      "RequestID"
-    );
-
-  if (
-    reference &&
-    !requestId
-  ) {
-    const transaction =
-      await getTransactionByReference(
-        reference
-      );
-
-    if (
-      transaction?.metadata
-        ?.request_id
-    ) {
-      requestId =
-        asString(
-          transaction
-            .metadata
-            .request_id
-        );
-    }
-
-    if (
-      transaction?.provider_reference &&
-      !orderId
-    ) {
-      const providerReference =
-        asString(
-          transaction.provider_reference
-        );
-
-      if (
-        providerReference &&
-        providerReference !==
-          requestId
-      ) {
-        /*
-         * Prefer provider order ID
-         * when it is different.
-         */
-        const queried =
-          await queryProviderStatus(
-            providerReference
-          );
-
-        return {
-          success:
-            true,
-
-          reference,
-
-          transaction_id:
-            transaction?.id,
-
-          provider:
-            queried.provider,
-
-          raw:
-            queried.raw,
-        };
-      }
-    }
-  }
-
-  const queried =
-    await queryProviderStatus(
-      orderId,
-      requestId
-    );
-
-  return {
-    success:
-      true,
-
-    reference:
-      reference || undefined,
-
-    provider:
-      queried.provider,
-
-    raw:
-      queried.raw,
-  };
-}
-
-async function handleReconcile(
-  body: Record<string, any>
-) {
-  const reference =
-    bodyString(
-      body,
-      "reference",
-      "reference_number"
-    );
-
-  const orderId =
-    bodyString(
-      body,
-      "order_id",
-      "orderId"
-    );
-
-  const requestId =
-    bodyString(
-      body,
-      "request_id",
-      "requestId"
-    );
-
-  const transaction =
-    reference
-      ? await getTransactionByReference(
-          reference
-        )
-      : null;
-
-  const providerOrder =
-    orderId ||
-    asString(
-      transaction
-        ?.provider_reference
-    );
-
-  const providerRequest =
-    requestId ||
-    asString(
-      transaction
-        ?.metadata
-        ?.request_id
-    );
-
-  const queried =
-    await queryProviderStatus(
-      providerOrder ||
-        undefined,
-      providerRequest ||
-        undefined
-    );
-
-  if (
-    transaction
-  ) {
-    const provider =
-      queried.provider;
-
-    if (
-      provider.state ===
-      "success"
-    ) {
-      await updateTransaction(
-        transaction.reference_number,
-        {
-          status:
-            "completed",
-
+    if (transaction) {
+      if (result.success) {
+        await updateTransaction(transaction.id, {
+          status: "successful",
           provider_reference:
-            provider.orderId ||
-            transaction.provider_reference,
-
+            result.orderId ||
+            transaction.provider_reference ||
+            null,
           metadata: {
-            ...(transaction.metadata ??
-              {}),
-
-            reconciled:
-              true,
-
-            provider_status:
-              provider.status,
-
-            provider_status_code:
-              provider.statusCode,
-
-            provider_message:
-              provider.message,
-
-            provider_response:
-              provider.raw,
+            reconciliation: payload,
           },
-        }
-      );
-    } else if (
-      provider.state ===
-      "pending"
-    ) {
-      await updateTransaction(
-        transaction.reference_number,
-        {
-          status:
-            "pending",
-
-          provider_reference:
-            provider.orderId ||
-            transaction.provider_reference,
-
-          metadata: {
-            ...(transaction.metadata ??
-              {}),
-
-            reconciled:
-              true,
-
-            provider_status:
-              provider.status,
-
-            provider_status_code:
-              provider.statusCode,
-
-            provider_message:
-              provider.message,
-
-            provider_response:
-              provider.raw,
-          },
-        }
-      );
-    }
-  }
-
-  return {
-    success:
-      true,
-
-    reference:
-      reference || undefined,
-
-    transaction_id:
-      transaction?.id,
-
-    provider:
-      queried.provider,
-
-    raw:
-      queried.raw,
-  };
-}
-
-// ============================================================
-// MAIN HANDLER
-// ============================================================
-
-Deno.serve(
-  async (request) => {
-    /*
-     * CORS
-     */
-    if (
-      request.method ===
-      "OPTIONS"
-    ) {
-      return new Response(
-        "ok",
-        {
-          headers:
-            corsHeaders,
-        }
-      );
-    }
-
-    if (
-      request.method !==
-      "POST"
-    ) {
-      return errorResponse(
-        "Method not allowed.",
-        405
-      );
-    }
-
-    try {
-      /*
-       * Authentication is required for
-       * every operation.
-       */
-      const user =
-        await getUser(
-          request
-        );
-
-      if (!user?.id) {
-        return errorResponse(
-          "Authentication required.",
-          401
-        );
-      }
-
-      let body:
-        Record<
-          string,
-          any
-        >;
-
-      try {
-        body =
-          await request.json();
-      } catch {
-        return errorResponse(
-          "Invalid JSON request body."
-        );
-      }
-
-      const action =
-        asString(
-          body.action ||
-            "purchase"
-        ).toLowerCase();
-
-      /*
-       * --------------------------------------------------------
-       * CATALOG
-       * --------------------------------------------------------
-       */
-      if (
-        action ===
-          "catalog" ||
-        action ===
-          "get_catalog" ||
-        action ===
-          "plans"
-      ) {
-        const service =
-          normalizeService(
-            body.service
-          );
-
-        if (
-          !service
-        ) {
-          return errorResponse(
-            "A valid service is required."
-          );
-        }
-
-        if (
-          COMING_SOON_SERVICES.has(
-            asString(
-              body.service
-            ).toLowerCase()
-          )
-        ) {
-          return response({
-            success:
-              true,
-
-            service:
-              asString(
-                body.service
-              ),
-
-            networks: [],
-            billers: [],
-            plans: [],
-            items: [],
-
-            coming_soon:
-              true,
-
-            message:
-              "This service is coming soon.",
-          });
-        }
-
-        if (
-          !isSupportedService(
-            service
-          )
-        ) {
-          return errorResponse(
-            "This service is not currently supported."
-          );
-        }
-
-        const networkCode =
-          bodyString(
-            body,
-            "network_code",
-            "mobile_network"
-          );
-
-        const billerCodeValue =
-          bodyString(
-            body,
-            "biller_code",
-            "company_code"
-          );
-
-        const catalog =
-          await getCatalog(
-            service,
-            networkCode,
-            billerCodeValue
-          );
-
-        /*
-         * Canonical response contract used by
-         * ServicePayment.tsx.
-         */
-        return response({
-          success:
-            true,
-
-          service,
-
-          markup:
-            markupFor(
-              service
-            ),
-
-          markup_percent:
-            markupFor(
-              service
-            ) * 100,
-
-          networks:
-            catalog.networks ??
-            [],
-
-          billers:
-            catalog.billers ??
-            [],
-
-          plans:
-            catalog.plans ??
-            [],
-
-          items:
-            catalog.items ??
-            [],
-
-          message:
-            "Service catalogue loaded successfully.",
         });
       }
-
-      /*
-       * --------------------------------------------------------
-       * METER VERIFICATION
-       * --------------------------------------------------------
-       */
-      if (
-        action ===
-          "verify_meter" ||
-        action ===
-          "verify-electricity"
-      ) {
-        const service =
-          normalizeService(
-            body.service
-          );
-
-        if (
-          service !==
-          "electricity"
-        ) {
-          return errorResponse(
-            "Meter verification is only available for electricity."
-          );
-        }
-
-        const result =
-          await verifyMeter(
-            body
-          );
-
-        if (
-          result.success !==
-          true
-        ) {
-          return response(
-            result,
-            400
-          );
-        }
-
-        return response(
-          result
-        );
-      }
-
-      /*
-       * --------------------------------------------------------
-       * CABLE VERIFICATION
-       * --------------------------------------------------------
-       */
-      if (
-        action ===
-          "verify_cable" ||
-        action ===
-          "verify-smartcard" ||
-        action ===
-          "verify_smartcard"
-      ) {
-        const service =
-          normalizeService(
-            body.service
-          );
-
-        if (
-          service !==
-          "cable"
-        ) {
-          return errorResponse(
-            "Cable verification is only available for Cable TV."
-          );
-        }
-
-        const result =
-          await verifyCable(
-            body
-          );
-
-        if (
-          result.success !==
-          true
-        ) {
-          return response(
-            result,
-            400
-          );
-        }
-
-        return response(
-          result
-        );
-      }
-
-      /*
-       * --------------------------------------------------------
-       * STATUS
-       * --------------------------------------------------------
-       */
-      if (
-        action ===
-          "status" ||
-        action ===
-          "check_status"
-      ) {
-        return response(
-          await handleStatus(
-            user.id,
-            body
-          )
-        );
-      }
-
-      /*
-       * --------------------------------------------------------
-       * RECONCILIATION
-       * --------------------------------------------------------
-       */
-      if (
-        action ===
-        "reconcile"
-      ) {
-        return response(
-          await handleReconcile(
-            body
-          )
-        );
-      }
-
-      /*
-       * --------------------------------------------------------
-       * PURCHASE
-       * --------------------------------------------------------
-       */
-      if (
-        action ===
-          "purchase" ||
-        action ===
-          "buy" ||
-        action ===
-          "pay"
-      ) {
-        const service =
-          normalizeService(
-            body.service ??
-              body.type
-          );
-
-        if (
-          !service
-        ) {
-          return errorResponse(
-            "A valid service is required."
-          );
-        }
-
-        if (
-          COMING_SOON_SERVICES.has(
-            asString(
-              body.service ??
-                body.type
-            ).toLowerCase()
-          )
-        ) {
-          return errorResponse(
-            "This service is coming soon."
-          );
-        }
-
-        if (
-          !isSupportedService(
-            service
-          )
-        ) {
-          return errorResponse(
-            "This service is not currently supported."
-          );
-        }
-
-        const result =
-          await handlePurchase(
-            user.id,
-            body,
-            service
-          );
-
-        /*
-         * A pending provider request is
-         * still an accepted request.
-         */
-        if (
-          result.status ===
-          "pending"
-        ) {
-          return response(
-            result,
-            200
-          );
-        }
-
-        if (
-          result.success ===
-          false
-        ) {
-          return response(
-            result,
-            400
-          );
-        }
-
-        return response(
-          result,
-          200
-        );
-      }
-
-      return errorResponse(
-        `Unsupported action: ${action}`
-      );
-    } catch (error) {
-      console.error(
-        "clubkonnect-service error:",
-        error
-      );
-
-      const message =
-        error instanceof
-        Error
-          ? error.message
-          : "Unable to process the ClubKonnect service request.";
-
-      /*
-       * Never expose:
-       * - API key
-       * - UserID
-       * - raw credentials
-       * - internal stack traces
-       */
-      return errorResponse(
-        message,
-        500
-      );
     }
   }
-);
+
+  return result;
+}
+
+async function handler(
+  request: Request,
+): Promise<Response> {
+  if (request.method === "OPTIONS") {
+    return new Response("ok", {
+      headers: corsHeaders,
+    });
+  }
+
+  if (request.method !== "POST") {
+    return json(
+      {
+        success: false,
+        error: "Only POST requests are supported.",
+      },
+      405,
+    );
+  }
+
+  try {
+    const user = await getUser(request);
+
+    if (!user) {
+      return json(
+        {
+          success: false,
+          error: "Unauthorized.",
+        },
+        401,
+      );
+    }
+
+    let body: Record<string, unknown>;
+
+    try {
+      body = await request.json();
+    } catch {
+      return json(
+        {
+          success: false,
+          error: "Invalid JSON request body.",
+        },
+        400,
+      );
+    }
+
+    /*
+     * IMPORTANT:
+     *
+     * This explicitly normalizes the action BEFORE routing.
+     *
+     * Therefore:
+     *
+     * { action: "catalog", service: "airtime" }
+     *
+     * will always enter the catalog branch.
+     */
+    const action =
+      normalizeAction(body.action) ??
+      "purchase";
+
+    if (action === "catalog" ||
+        action === "get_catalog" ||
+        action === "plans") {
+      const service = normalizeService(body.service);
+
+      if (!service) {
+        return json(
+          {
+            success: false,
+            error: "A valid service is required.",
+          },
+          400,
+        );
+      }
+
+      if (
+        COMING_SOON_SERVICES.has(
+          String(body.service ?? "")
+            .trim()
+            .toLowerCase(),
+        )
+      ) {
+        return json(
+          {
+            success: false,
+            error: "This service is coming soon.",
+            service,
+          },
+          400,
+        );
+      }
+
+      if (!SUPPORTED_SERVICES.has(service)) {
+        return json(
+          {
+            success: false,
+            error: `Unsupported service: ${service}`,
+          },
+          400,
+        );
+      }
+
+      const networkCode = optionalString(body, [
+        "network_code",
+        "networkCode",
+        "mobile_network",
+        "mobileNetwork",
+      ]);
+
+      const billerCode = optionalString(body, [
+        "biller_code",
+        "billerCode",
+        "electric_company",
+        "electricCompany",
+        "cable_tv",
+        "cableTV",
+        "cable_code",
+        "cableCode",
+      ]);
+
+      const catalog = await getCatalog(
+        service,
+        networkCode || undefined,
+        billerCode || undefined,
+      );
+
+      return json(catalog, 200);
+    }
+
+    if (
+      action === "verify_meter"
+    ) {
+      const result = await verifyMeter(body);
+
+      return json(result, result.success ? 200 : 400);
+    }
+
+    if (
+      action === "verify_cable"
+    ) {
+      const result = await verifyCable(body);
+
+      return json(result, result.success ? 200 : 400);
+    }
+
+    if (
+      action === "status" ||
+      action === "check_status"
+    ) {
+      const result = await queryStatus(body);
+
+      return json(
+        {
+          success: result.success,
+          ...result,
+        },
+        200,
+      );
+    }
+
+    if (action === "reconcile") {
+      const result = await reconcileTransaction(
+        user.id,
+        body,
+      );
+
+      return json(
+        {
+          success: result.success,
+          ...result,
+        },
+        200,
+      );
+    }
+
+    if (
+      action === "purchase" ||
+      action === "buy" ||
+      action === "pay"
+    ) {
+      const service = normalizeService(body.service);
+
+      if (!service) {
+        return json(
+          {
+            success: false,
+            error: "A valid service is required.",
+          },
+          400,
+        );
+      }
+
+      if (!SUPPORTED_SERVICES.has(service)) {
+        return json(
+          {
+            success: false,
+            error: `Unsupported service: ${service}`,
+          },
+          400,
+        );
+      }
+
+      const paymentPin = optionalString(body, [
+        "payment_pin",
+        "paymentPin",
+        "pin",
+      ]);
+
+      if (paymentPin) {
+        await verifyPaymentPin(
+          user.id,
+          paymentPin,
+        );
+      }
+
+      const result = await purchaseService(
+        user.id,
+        service,
+        body,
+      );
+
+      return json(
+        {
+          success: result.success,
+          service,
+          status: result.status,
+          statusCode: result.statusCode,
+          orderId: result.orderId,
+          requestId: result.requestId,
+          message: result.message,
+        },
+        result.success ? 200 : 400,
+      );
+    }
+
+    return json(
+      {
+        success: false,
+        error: `Unsupported action: ${String(body.action ?? "")}`,
+      },
+      400,
+    );
+  } catch (error) {
+    console.error(
+      "clubkonnect-service error:",
+      error,
+    );
+
+    return json(
+      {
+        success: false,
+        error:
+          error instanceof Error
+            ? error.message
+            : "An unexpected error occurred.",
+      },
+      500,
+    );
+  }
+}
+
+Deno.serve(handler);
+
+export default handler;

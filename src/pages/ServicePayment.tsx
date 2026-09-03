@@ -897,6 +897,10 @@ const ServicePayment = ({
             (item as any).Amount;
 
           const price = numberValue(rawPrice);
+          const variable = isVariableItem({
+            ...item,
+            item_code: itemCode,
+          });
 
           const name = cleanString(
             item.name ??
@@ -914,6 +918,8 @@ const ServicePayment = ({
             name,
             amount: price,
             selling_price: price,
+            is_variable: variable,
+
             plan_type:
               item.plan_type ??
               (item as any).planType ??
@@ -930,6 +936,16 @@ const ServicePayment = ({
           };
         })
         .filter(Boolean) as BillItem[];
+
+      if (isAmountOnly) {
+        const variableItem =
+          normalizedItems.find((item) => isVariableItem(item)) ??
+          normalizedItems[0];
+
+        if (variableItem?.item_code) {
+          setSelectedItemCode(cleanString(variableItem.item_code));
+        }
+      }
 
       setItems(
         normalizedItems
@@ -1005,9 +1021,7 @@ const ServicePayment = ({
       return;
     }
 
-    item.item_code = itemCode;
-
-          const sellingPrice = numberValue(
+    const sellingPrice = numberValue(
       item.selling_price ?? item.amount ?? item.price
     );
 

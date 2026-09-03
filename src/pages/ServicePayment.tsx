@@ -81,9 +81,6 @@ interface BillItem {
 
   data_plan?: string;
   network_code?: string;
-  networkCode?: string;
-  selling_price?: number | string;
-  price?: number | string;
 
   plan_type?: string;
   is_hot_deal?: boolean;
@@ -306,18 +303,6 @@ const ServicePayment = ({
     [serviceType]
   );
 
-  // Internal provider routing only. This is never displayed to the customer.
-  const providerId = useMemo(
-    () =>
-      serviceType === "airtime" ||
-      serviceType === "data" ||
-      serviceType === "electricity" ||
-      serviceType === "cable"
-        ? "clubkonnect"
-        : "flutterwave",
-    [serviceType]
-  );
-
   const isData =
     serviceType === "data";
 
@@ -326,10 +311,6 @@ const ServicePayment = ({
 
   const isInternet =
     serviceType === "internet";
-
-  const isAmountOnly =
-    providerId === "clubkonnect" &&
-    (isAirtime || serviceType === "electricity");
 
   // ==========================================================
   // SELECTED BILLER
@@ -340,12 +321,8 @@ const ServicePayment = ({
       billers.find(
         (biller) =>
           String(
-            biller.biller_code ??
-              biller.network_code ??
-              biller.networkCode ??
-              biller.code ??
-              ""
-          ).trim() === selectedBillerCode
+            biller.biller_code ?? ""
+          ) === selectedBillerCode
       ) ?? null,
     [
       billers,
@@ -514,19 +491,17 @@ const ServicePayment = ({
             service: serviceType,
             category,
             country: "NG",
-            provider_id: providerId,
-            providerId: providerId,
           },
         });
 
       if (functionError) {
         console.error("Billers function error:", functionError);
-        throw new Error("Unable to load available options.");
+        throw new Error("Unable to load service providers.");
       }
 
       if (!data || data.success !== true) {
         console.error("Billers API response:", data);
-        throw new Error(data?.error || "Unable to load available options.");
+        throw new Error(data?.error || "Unable to load service providers.");
       }
 
       const loadedBillers = Array.isArray(data?.billers)
@@ -538,14 +513,14 @@ const ServicePayment = ({
       setBillers(loadedBillers);
 
       if (!loadedBillers.length) {
-        setError("No networks or billers are currently available.");
+        setError("No service providers are currently available.");
       }
     } catch (err) {
       console.error("Failed to load billers:", err);
-      const message = "Unable to load available options.";
+      const message = "Unable to load service providers.";
       setError(message);
       toast({
-        title: "Unable to load options",
+        title: "Unable to load services",
         description: message,
         variant: "destructive",
       });
@@ -601,8 +576,6 @@ const ServicePayment = ({
                 cleanBillerCode,
               category,
               country: "NG",
-              provider_id: providerId,
-              providerId: providerId,
             },
           }
         );
@@ -673,7 +646,7 @@ const ServicePayment = ({
         normalizedItems.length === 0
       ) {
         setError(
-          "No packages are currently available for this service."
+          "No packages are currently available for this provider."
         );
       }
     } catch (err: any) {
@@ -936,7 +909,7 @@ const ServicePayment = ({
         return false;
       }
 
-      if (!isAmountOnly && !selectedItemCode) {
+      if (!selectedItemCode) {
         toast({
           title: "Select a package",
           description: "Please select a service package.",
@@ -1112,8 +1085,6 @@ const ServicePayment = ({
       customer: finalCustomer,
       biller_code: selectedBillerCode,
       item_code: selectedItemCode,
-      provider_id: providerId,
-      providerId: providerId,
       phoneNumber:
         serviceType === "airtime" || serviceType === "data"
           ? finalCustomer
@@ -1611,6 +1582,23 @@ const ServicePayment = ({
 
           <div className="bg-white rounded-2xl shadow-sm border p-5 sm:p-6">
 
+            {/* WALLET */}
+
+            <div className="bg-green-50 border border-green-100 p-4 rounded-xl mb-5">
+
+              <p className="text-sm text-green-700">
+                Wallet Balance:{" "}
+                <strong>
+                  {formatNaira(
+                    Number(
+                      walletBalance
+                    )
+                  )}
+                </strong>
+              </p>
+
+            </div>
+
             {/* PROVIDER */}
             {/* LOADING BILLERS */}
 
@@ -1628,17 +1616,7 @@ const ServicePayment = ({
               <div className="flex items-center justify-between">
 
                 <Label>
-                  {isAirtime
-                    ? "Network"
-                    : isData
-                      ? "Network"
-                      : serviceType === "electricity"
-                        ? "Electricity Company"
-                        : serviceType === "cable"
-                          ? "TV Service"
-                          : serviceType === "internet"
-                            ? "Internet Service"
-                            : "Service"}
+                  {isAirtime || isData ? "Network" : "Provider"}
                 </Label>
 
                 {!loadingBillers &&
@@ -1695,11 +1673,8 @@ const ServicePayment = ({
                     const code =
                       String(
                         biller.biller_code ??
-                          biller.network_code ??
-                          biller.networkCode ??
-                          biller.code ??
                           ""
-                      ).trim();
+                      );
 
                     if (!code) {
                       return null;
@@ -1886,7 +1861,7 @@ const ServicePayment = ({
                 )}
 
               </div>
-            ) : !isAmountOnly ? (
+            ) : (
 
               /* =================================================
                  NON-DATA PACKAGE
@@ -1926,7 +1901,7 @@ const ServicePayment = ({
                     {loadingItems
                       ? "Loading packages..."
                       : !selectedBillerCode
-                        ? "Select network or service first"
+                        ? "Select network/provider first"
                         : "Select package"}
                   </option>
 
@@ -1960,17 +1935,6 @@ const ServicePayment = ({
 
                 </select>
 
-              </div>
-            ) : null}
-
-            {isAmountOnly && (
-              <div className="rounded-xl bg-blue-50 border border-blue-100 p-4 mb-5">
-                <p className="text-sm font-medium text-blue-900">
-                  {isAirtime ? "Choose an airtime amount" : "Choose an electricity amount"}
-                </p>
-                <p className="text-xs text-blue-700 mt-1">
-                  No package selection is required for this service.
-                </p>
               </div>
             )}
 
@@ -2210,7 +2174,7 @@ const ServicePayment = ({
                 processingPayment ||
                 verifyingPin ||
                 !selectedBillerCode ||
-                (!selectedItemCode && !isAmountOnly) ||
+                !selectedItemCode ||
                 !customer.trim() ||
                 !amount
               }

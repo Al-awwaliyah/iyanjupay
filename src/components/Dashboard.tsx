@@ -36,7 +36,7 @@ import {
   CardContent,
 } from "@/components/ui/card";
 
-import ServiceCard from "@/components/ServiceCard";
+import ServiceCard from "@/components/services/ServiceCard";
 import FundWalletModal from "@/components/FundWalletModal";
 import ServicePayment from "@/components/ServicePayment";
 import QRCodeModal from "@/components/QRCodeModal";

@@ -575,6 +575,36 @@ export default function ServicePayment({ service, walletBalance, onBack, onHisto
     }
   };
 
+
+  // ==========================================================
+  // AUTOMATIC IDENTIFIER VERIFICATION
+  // ==========================================================
+
+  useEffect(() => {
+    if (!requiresIdentifierVerification || !selectedBillerCode) return;
+
+    const value = isJamb ? profileCode.trim() : customer.trim();
+    const minimumLength = isJamb ? 6 : 8;
+
+    if (value.length < minimumLength || (isElectricity && !meterType)) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      void verifyIdentifier();
+    }, 650);
+
+    return () => window.clearTimeout(timer);
+  }, [
+    customer,
+    profileCode,
+    selectedBillerCode,
+    meterType,
+    requiresIdentifierVerification,
+    isJamb,
+    isElectricity,
+  ]);
+
   function normalisePhone(value: string): string {
     const v = clean(value).replace(/\s+/g, "");
     if (/^0\d{10}$/.test(v)) return `+234${v.slice(1)}`;
@@ -723,12 +753,12 @@ export default function ServicePayment({ service, walletBalance, onBack, onHisto
         type="button"
         onClick={() => void handleBillerSelect(code)}
         disabled={loadingBillers || !!processingSession || verifyingPin}
-        className={`flex min-w-0 flex-col items-center gap-2 rounded-full bg-transparent p-1 transition ${selected ? "" : ""}`}
+        className="flex min-w-0 flex-col items-center gap-0.5 rounded-full bg-transparent p-0.5 transition"
       >
-        <span className={`flex h-14 w-14 items-center justify-center overflow-hidden rounded-full border-2 bg-white text-sm font-bold text-gray-600 shadow-sm ${selected ? "border-[#6D28D9] ring-4 ring-violet-100" : "border-gray-200"}`}>
-          {logo ? <img src={logo} alt="" className="h-full w-full object-contain p-2" onError={(e) => { e.currentTarget.style.display = "none"; }} /> : initials(name)}
+        <span className={`flex h-10 w-10 items-center justify-center overflow-hidden rounded-full border-2 bg-white text-sm font-bold text-gray-600 shadow-sm ${selected ? "border-[#6D28D9] ring-4 ring-violet-100" : "border-gray-200"}`}>
+          {logo ? <img src={logo} alt="" className="h-full w-full object-contain p-1" onError={(e) => { e.currentTarget.style.display = "none"; }} /> : initials(name)}
         </span>
-        <span className={`max-w-[78px] truncate text-xs font-semibold ${selected ? "text-[#4C1D95]" : "text-gray-800"}`}>{name}</span>
+        <span className={`max-w-[64px] truncate text-[9px] font-semibold ${selected ? "text-[#4C1D95]" : "text-gray-800"}`}>{name}</span>
       </button>
     );
   };
@@ -807,12 +837,12 @@ export default function ServicePayment({ service, walletBalance, onBack, onHisto
           </section>
         ) : (
           <>
-            <section className="rounded-3xl border bg-white p-4 shadow-sm sm:p-5">
-              <div className="mb-3 flex items-center justify-between">
+            <section className="rounded-xl border bg-white p-2 shadow-sm">
+              <div className="mb-1.5 flex items-center justify-between">
                 <div><h2 className="text-sm font-bold">Choose service option</h2><p className="text-xs text-gray-500">Select the network, company or TV service you want.</p></div>
                 <Button variant="ghost" size="sm" onClick={() => void loadBillers()} disabled={loadingBillers}><RefreshCw className={`mr-1.5 h-4 w-4 ${loadingBillers ? "animate-spin" : ""}`} />Refresh</Button>
               </div>
-              {loadingBillers ? <div className="flex items-center justify-center py-8 text-sm text-gray-500"><Loader2 className="mr-2 h-4 w-4 animate-spin" />Loading service options...</div> : billers.length ? <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-5">{billers.map(renderBillerCard)}</div> : <div className="rounded-2xl bg-gray-50 p-5 text-center text-sm text-gray-500">No service options available right now.</div>}
+              {loadingBillers ? <div className="flex items-center justify-center py-8 text-sm text-gray-500"><Loader2 className="mr-2 h-4 w-4 animate-spin" />Loading service options...</div> : billers.length ? <div className="grid w-full grid-cols-4 gap-1">{billers.map(renderBillerCard)}</div> : <div className="rounded-2xl bg-gray-50 p-5 text-center text-sm text-gray-500">No service options available right now.</div>}
             </section>
 
             {isElectricity && selectedBiller && (
@@ -826,8 +856,8 @@ export default function ServicePayment({ service, walletBalance, onBack, onHisto
               <section className="rounded-3xl border bg-white p-5 shadow-sm">
                 <Label className="text-sm font-bold">{isJamb ? "JAMB Profile Code" : customerLabel}</Label>
                 {isJamb ? <Input value={profileCode} onChange={(e) => { setProfileCode(e.target.value); resetVerification(); }} placeholder="Enter JAMB Profile Code" className="mt-2 h-12" /> : <Input value={customer} onChange={(e) => { setCustomer(e.target.value.replace(/\s+/g, "")); resetVerification(); }} placeholder={customerPlaceholder} inputMode="numeric" className="mt-2 h-12" />}
-                <Button className="mt-3 h-11 w-full bg-gradient-to-r from-[#4C1D95] via-[#6D28D9] to-[#2563EB] font-bold text-white shadow-sm hover:brightness-105" onClick={() => void verifyIdentifier()} disabled={verifyingIdentifier || (isElectricity && !meterType) || verified}>{verifyingIdentifier ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Verifying...</> : verified ? <><CheckCircle2 className="mr-2 h-4 w-4" />Verified</> : "Verify"}</Button>
-                {verified && <div className="mt-3 flex items-center gap-2 rounded-xl border border-green-200 bg-green-50 p-3 text-sm text-green-800"><CheckCircle2 className="h-4 w-4 shrink-0" /><span>{verifiedName ? `Verified: ${verifiedName}` : "Number verified successfully."}</span></div>}
+                {verifyingIdentifier && <div className="mt-2 flex items-center gap-2 text-xs font-medium text-[#6D28D9]"><Loader2 className="h-3.5 w-3.5 animate-spin" />Verifying details...</div>}
+                {verified && <div className="mt-2 flex items-center gap-2 rounded-xl border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800"><CheckCircle2 className="h-4 w-4 shrink-0" /><span className="font-semibold">{verifiedName || "Account verified"}</span></div>}
               </section>
             )}
 

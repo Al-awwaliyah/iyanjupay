@@ -8,10 +8,8 @@ import React, {
 import {
   ArrowDownLeft,
   ArrowLeft,
-  ArrowUpRight,
   Banknote,
   Building2,
-  CalendarDays,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
@@ -19,17 +17,14 @@ import {
   Copy,
   CreditCard,
   Download,
-  FileText,
   Globe,
   History,
   Loader2,
-  Phone,
   Printer,
   Receipt,
   RefreshCw,
   Search,
   Smartphone,
-  User,
   Wallet,
   Wifi,
   X,
@@ -130,7 +125,13 @@ type NormalizedTransaction = {
 
   subtitle: string;
 
-  providerName: string;
+  /*
+   * IMPORTANT:
+   * This is the CUSTOMER-FACING service provider/biller/network.
+   * It must NEVER contain ClubKonnect, Flutterwave, or another
+   * internal fulfilment provider.
+   */
+  serviceProviderName: string;
 
   recipientName: string;
 
@@ -219,6 +220,21 @@ const BILL_KINDS = new Set<TransactionKind>([
   "internet",
 ]);
 
+/*
+ * Internal fulfilment providers must NEVER be displayed to the
+ * customer as a service provider/network/biller.
+ */
+const INTERNAL_PROVIDER_NAMES = new Set([
+  "clubkonnect",
+  "club konnect",
+  "club-konnect",
+  "flutterwave",
+  "flutter wave",
+  "flutter-wave",
+  "iyanjupay",
+  "iyanju pay",
+]);
+
 /* ================================================================
    HELPERS
    ================================================================ */
@@ -277,7 +293,11 @@ const formatCurrency = (
     currency: "NGN",
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
-  }).format(Number.isFinite(value) ? value : 0);
+  }).format(
+    Number.isFinite(value)
+      ? value
+      : 0
+  );
 };
 
 const formatDate = (
@@ -326,20 +346,6 @@ const normalizePhone = (
   return String(value ?? "").trim();
 };
 
-const maskAccountNumber = (
-  accountNumber: string
-): string => {
-  if (!accountNumber) {
-    return "";
-  }
-
-  if (accountNumber.length <= 4) {
-    return accountNumber;
-  }
-
-  return `****${accountNumber.slice(-4)}`;
-};
-
 const getNested = (
   object: JsonObject,
   paths: string[][]
@@ -376,7 +382,153 @@ const escapeCsv = (
 ): string => {
   const text = String(value ?? "");
 
-  return `"${text.replace(/"/g, '""')}"`;
+  return `"${text.replace(
+    /"/g,
+    '""'
+  )}"`;
+};
+
+/* ================================================================
+   CUSTOMER-FACING SERVICE PROVIDER
+   ================================================================ */
+
+/**
+ * Returns true when a value represents an internal fulfilment
+ * provider rather than the customer's actual network/biller.
+ */
+const isInternalProviderName = (
+  value: unknown
+): boolean => {
+  const normalized = normalizeText(
+    value
+  );
+
+  if (!normalized) {
+    return true;
+  }
+
+  return INTERNAL_PROVIDER_NAMES.has(
+    normalized.replace(/_/g, " ")
+  ) ||
+    INTERNAL_PROVIDER_NAMES.has(
+      normalized
+    );
+};
+
+/**
+ * Extract the customer-facing network/biller/service provider.
+ *
+ * IMPORTANT:
+ * We deliberately DO NOT fall back to metadata.provider.
+ * `metadata.provider` is commonly ClubKonnect/Flutterwave and is
+ * an internal implementation detail.
+ */
+const getCustomerServiceProvider = (
+  metadata: JsonObject,
+  service: string
+): string => {
+  const candidates: unknown[] = [];
+
+  /*
+   * Strong customer-facing fields first.
+   */
+  candidates.push(
+    metadata.network_name,
+    metadata.networkName,
+    metadata.network,
+    metadata.biller_name,
+    metadata.billerName,
+    metadata.service_provider_name,
+    metadata.serviceProviderName,
+    metadata.operator_name,
+    metadata.operatorName,
+    metadata.tv_service,
+    metadata.tvService,
+    metadata.cable_provider,
+    metadata.cableProvider,
+    metadata.electricity_company,
+    metadata.electricityCompany,
+    metadata.disco_name,
+    metadata.discoName,
+    metadata.disco,
+    metadata.provider_name,
+    metadata.providerName
+  );
+
+  /*
+   * Search nested customer-facing response data.
+   */
+  candidates.push(
+    getNested(metadata, [
+      ["flutterwave", "data", "network_name"],
+    ]),
+    getNested(metadata, [
+      ["flutterwave", "data", "networkName"],
+    ]),
+    getNested(metadata, [
+      ["flutterwave", "data", "network"],
+    ]),
+    getNested(metadata, [
+      ["flutterwave_response", "data", "network_name"],
+    ]),
+    getNested(metadata, [
+      ["flutterwave_response", "data", "networkName"],
+    ]),
+    getNested(metadata, [
+      ["flutterwave_response", "data", "network"],
+    ]),
+    getNested(metadata, [
+      ["flutterwave", "data", "biller_name"],
+    ]),
+    getNested(metadata, [
+      ["flutterwave_response", "data", "biller_name"],
+    ])
+  );
+
+  for (const candidate of candidates) {
+    const value = stringValue(
+      candidate
+    );
+
+    if (
+      value &&
+      !isInternalProviderName(value)
+    ) {
+      return value;
+    }
+  }
+
+  /*
+   * Do NOT use metadata.provider here.
+   *
+   * If the service is cable and no biller was persisted, we can
+   * still attempt to identify the TV service from the metadata.
+   */
+  if (service === "cable") {
+    const cableCandidates = [
+      metadata.tv,
+      metadata.tv_provider,
+      metadata.tvProvider,
+      metadata.cable,
+      metadata.cable_service,
+      metadata.cableService,
+    ];
+
+    for (const candidate of cableCandidates) {
+      const value = stringValue(
+        candidate
+      );
+
+      if (
+        value &&
+        !isInternalProviderName(value)
+      ) {
+        return value;
+      }
+    }
+  }
+
+  return "";
 };
 
 /* ================================================================
@@ -405,13 +557,15 @@ const determineKind = (
     metadata.type
   );
 
-  const metadataCategory = normalizeText(
-    metadata.category
-  );
+  const metadataCategory =
+    normalizeText(
+      metadata.category
+    );
 
-  const metadataService = normalizeText(
-    metadata.service
-  );
+  const metadataService =
+    normalizeText(
+      metadata.service
+    );
 
   const metadataTransactionType =
     normalizeText(
@@ -429,8 +583,11 @@ const determineKind = (
   ].join(" ");
 
   if (
-    combined.includes("transfer_refund") ||
-    category === "transfer_refund" ||
+    combined.includes(
+      "transfer_refund"
+    ) ||
+    category ===
+      "transfer_refund" ||
     rawType === "refund" ||
     combined.includes("refund")
   ) {
@@ -453,7 +610,8 @@ const determineKind = (
 
   if (
     combined.includes("electricity") ||
-    metadataService === "electricity"
+    metadataService ===
+      "electricity"
   ) {
     return "electricity";
   }
@@ -490,9 +648,15 @@ const determineKind = (
   if (
     recipient ||
     sender ||
-    combined.includes("wallet_transfer") ||
-    combined.includes("wallet transfer") ||
-    metadata.provider === "iyanjupay"
+    combined.includes(
+      "wallet_transfer"
+    ) ||
+    combined.includes(
+      "wallet transfer"
+    ) ||
+    normalizeText(
+      metadata.provider
+    ) === "iyanjupay"
   ) {
     return "wallet_transfer";
   }
@@ -500,7 +664,9 @@ const determineKind = (
   if (
     combined.includes("funding") ||
     combined.includes("deposit") ||
-    combined.includes("wallet_funding") ||
+    combined.includes(
+      "wallet_funding"
+    ) ||
     rawType === "credit" ||
     rawType === "funding" ||
     rawType === "deposit"
@@ -509,12 +675,18 @@ const determineKind = (
   }
 
   if (
-    combined.includes("bank_transfer") ||
-    combined.includes("bank transfer") ||
+    combined.includes(
+      "bank_transfer"
+    ) ||
+    combined.includes(
+      "bank transfer"
+    ) ||
     category === "transfer" ||
     rawType === "transfer" ||
     rawType === "debit" ||
-    metadata.provider === "flutterwave"
+    normalizeText(
+      metadata.provider
+    ) === "flutterwave"
   ) {
     return "bank_transfer";
   }
@@ -541,18 +713,23 @@ const determineDirection = (
     );
 
   if (
-    explicitDirection === "incoming" ||
+    explicitDirection ===
+      "incoming" ||
     explicitDirection === "in" ||
-    explicitDirection === "credit" ||
-    explicitDirection === "received"
+    explicitDirection ===
+      "credit" ||
+    explicitDirection ===
+      "received"
   ) {
     return "incoming";
   }
 
   if (
-    explicitDirection === "outgoing" ||
+    explicitDirection ===
+      "outgoing" ||
     explicitDirection === "out" ||
-    explicitDirection === "debit" ||
+    explicitDirection ===
+      "debit" ||
     explicitDirection === "sent"
   ) {
     return "outgoing";
@@ -622,24 +799,34 @@ const normalizeTransaction = (
       kind
     );
 
-  /*
-   * ------------------------------------------------------------
-   * BANK TRANSFER
-   * ------------------------------------------------------------
-   */
+  /* --------------------------------------------------------------
+     BANK TRANSFER
+     -------------------------------------------------------------- */
 
   const accountNumber =
     stringValue(
       metadata.account_number,
       metadata.accountNumber,
       getNested(metadata, [
-        ["flutterwave_response", "data", "account_number"],
+        [
+          "flutterwave_response",
+          "data",
+          "account_number",
+        ],
       ]),
       getNested(metadata, [
-        ["flutterwave_response", "data", "accountNumber"],
+        [
+          "flutterwave_response",
+          "data",
+          "accountNumber",
+        ],
       ]),
       getNested(metadata, [
-        ["flutterwave", "data", "account_number"],
+        [
+          "flutterwave",
+          "data",
+          "account_number",
+        ],
       ])
     );
 
@@ -648,13 +835,25 @@ const normalizeTransaction = (
       metadata.beneficiary_name,
       metadata.beneficiaryName,
       getNested(metadata, [
-        ["flutterwave_response", "data", "full_name"],
+        [
+          "flutterwave_response",
+          "data",
+          "full_name",
+        ],
       ]),
       getNested(metadata, [
-        ["flutterwave_response", "data", "account_name"],
+        [
+          "flutterwave_response",
+          "data",
+          "account_name",
+        ],
       ]),
       getNested(metadata, [
-        ["flutterwave", "data", "full_name"],
+        [
+          "flutterwave",
+          "data",
+          "full_name",
+        ],
       ])
     );
 
@@ -664,7 +863,11 @@ const normalizeTransaction = (
       metadata.bank_code,
       metadata.bankCode,
       getNested(metadata, [
-        ["flutterwave_response", "data", "bank_code"],
+        [
+          "flutterwave_response",
+          "data",
+          "bank_code",
+        ],
       ])
     );
 
@@ -673,21 +876,24 @@ const normalizeTransaction = (
       metadata.bank_name,
       metadata.bankName,
       getNested(metadata, [
-        ["flutterwave_response", "data", "bank_name"],
+        [
+          "flutterwave_response",
+          "data",
+          "bank_name",
+        ],
       ]),
       getNested(metadata, [
-        ["flutterwave_response", "data", "bank_name"],
-      ]),
-      getNested(metadata, [
-        ["flutterwave", "data", "bank_name"],
+        [
+          "flutterwave",
+          "data",
+          "bank_name",
+        ],
       ])
     );
 
-  /*
-   * ------------------------------------------------------------
-   * INTERNAL WALLET TRANSFER
-   * ------------------------------------------------------------
-   */
+  /* --------------------------------------------------------------
+     INTERNAL WALLET TRANSFER
+     -------------------------------------------------------------- */
 
   const recipient =
     metadata.recipient ?? {};
@@ -722,11 +928,9 @@ const normalizeTransaction = (
       metadata.sender_wallet_id
     );
 
-  /*
-   * ------------------------------------------------------------
-   * BILL INFORMATION
-   * ------------------------------------------------------------
-   */
+  /* --------------------------------------------------------------
+     BILL INFORMATION
+     -------------------------------------------------------------- */
 
   const service =
     normalizeText(
@@ -736,33 +940,45 @@ const normalizeTransaction = (
         ])
     );
 
-  const providerName =
-    stringValue(
-      metadata.provider_name,
-      metadata.network,
-      metadata.provider,
-      metadata.biller_name,
-      getNested(metadata, [
-        ["flutterwave", "data", "network"],
-      ]),
-      getNested(metadata, [
-        ["flutterwave", "data", "provider"],
-      ]),
-      getNested(metadata, [
-        ["flutterwave_response", "data", "network"],
-      ])
+  /*
+   * CRITICAL:
+   *
+   * `serviceProviderName` is deliberately derived from customer-
+   * facing network/biller fields only.
+   *
+   * We NEVER fall back to metadata.provider.
+   */
+  const serviceProviderName =
+    getCustomerServiceProvider(
+      metadata,
+      service
     );
 
   const phoneNumber =
     normalizePhone(
-      metadata.customer ??
+      metadata.customer_phone ??
+        metadata.customerPhone ??
         metadata.phone_number ??
         metadata.phone ??
+        (
+          service === "airtime" ||
+          service === "data"
+            ? metadata.customer
+            : undefined
+        ) ??
         getNested(metadata, [
-          ["flutterwave", "data", "phone_number"],
+          [
+            "flutterwave",
+            "data",
+            "phone_number",
+          ],
         ]) ??
         getNested(metadata, [
-          ["flutterwave_response", "data", "phone_number"],
+          [
+            "flutterwave_response",
+            "data",
+            "phone_number",
+          ],
         ]) ??
         recipient.phone_number ??
         sender.phone_number
@@ -772,8 +988,10 @@ const normalizeTransaction = (
     stringValue(
       metadata.meter_number,
       metadata.meterNumber,
-      metadata.customer,
-      metadata.meter
+      metadata.meter,
+      service === "electricity"
+        ? metadata.customer
+        : undefined
     );
 
   const meterType =
@@ -790,7 +1008,9 @@ const normalizeTransaction = (
       metadata.smartcardNumber,
       metadata.iuc_number,
       metadata.iucNumber,
-      metadata.customer
+      service === "cable"
+        ? metadata.customer
+        : undefined
     );
 
   const packageName =
@@ -810,14 +1030,14 @@ const normalizeTransaction = (
       metadata.account_number,
       metadata.internet_account,
       metadata.internetAccount,
-      metadata.customer
+      service === "internet"
+        ? metadata.customer
+        : undefined
     );
 
-  /*
-   * ------------------------------------------------------------
-   * FUNDING
-   * ------------------------------------------------------------
-   */
+  /* --------------------------------------------------------------
+     FUNDING
+     -------------------------------------------------------------- */
 
   const virtualAccountNumber =
     stringValue(
@@ -825,54 +1045,47 @@ const normalizeTransaction = (
       metadata.virtualAccountNumber,
       metadata.account_number,
       getNested(metadata, [
-        ["virtual_account", "account_number"],
+        [
+          "virtual_account",
+          "account_number",
+        ],
       ])
     );
 
-  /*
-   * ------------------------------------------------------------
-   * ELECTRONIC TRANSFER FEE
-   * ------------------------------------------------------------
-   *
-   * Electronic transfer fees are stored as separate transaction
-   * records. Their metadata also contains the original transfer
-   * amount, so we MUST NOT use metadata.transfer_amount as the
-   * displayed amount for these fee records.
-   *
-   * Example fee transaction metadata:
-   *
-   *   transfer_amount: 15461.25
-   *   electronic_fee: 50
-   *
-   * The transaction itself is the ₦50 wallet debit.
-   * ------------------------------------------------------------
-   */
+  /* --------------------------------------------------------------
+     ELECTRONIC TRANSFER FEE
+     -------------------------------------------------------------- */
 
   const isElectronicFee =
     kind === "fee" &&
     (
       normalizeText(
         transaction.category
-      ) === "electronic_transfer_fee" ||
+      ) ===
+        "electronic_transfer_fee" ||
       normalizeText(
         metadata.category
-      ) === "electronic_transfer_fee" ||
+      ) ===
+        "electronic_transfer_fee" ||
       normalizeText(
         metadata.fee_type
-      ) === "electronic_transfer_fee" ||
+      ) ===
+        "electronic_transfer_fee" ||
       normalizeText(
         transaction.description
-      ).includes("electronic_transfer_fee") ||
+      ).includes(
+        "electronic_transfer_fee"
+      ) ||
       normalizeText(
         transaction.description
-      ).includes("electronic_transfer_fee_for")
+      ).includes(
+        "electronic_transfer_fee_for"
+      )
     );
 
-  /*
-   * ------------------------------------------------------------
-   * PRICING
-   * ------------------------------------------------------------
-   */
+  /* --------------------------------------------------------------
+     PRICING
+     -------------------------------------------------------------- */
 
   const amount = isElectronicFee
     ? numberValue(
@@ -895,19 +1108,18 @@ const normalizeTransaction = (
         metadata.electronic_fee
       );
 
-  const totalCharged = isElectronicFee
-    ? amount
-    : numberValue(
-        metadata.total_charged,
-        metadata.totalCharged,
-        amount + fee
-      );
+  const totalCharged =
+    isElectronicFee
+      ? amount
+      : numberValue(
+          metadata.total_charged,
+          metadata.totalCharged,
+          amount + fee
+        );
 
-  /*
-   * ------------------------------------------------------------
-   * STATUS
-   * ------------------------------------------------------------
-   */
+  /* --------------------------------------------------------------
+     STATUS
+     -------------------------------------------------------------- */
 
   const normalizedStatus =
     normalizeText(
@@ -928,13 +1140,12 @@ const normalizeTransaction = (
     PENDING_STATUSES.has(
       normalizedStatus
     ) ||
-    (!isSuccessful && !isFailed);
+    (!isSuccessful &&
+      !isFailed);
 
-  /*
-   * ------------------------------------------------------------
-   * DISPLAY TITLE
-   * ------------------------------------------------------------
-   */
+  /* --------------------------------------------------------------
+     DISPLAY TITLE
+     -------------------------------------------------------------- */
 
   let title = "Transaction";
 
@@ -948,7 +1159,8 @@ const normalizeTransaction = (
     title =
       direction === "incoming"
         ? `Transfer from ${
-            senderName || "Bank account"
+            senderName ||
+            "Bank account"
           }`
         : `Transfer to ${
             accountName ||
@@ -977,13 +1189,14 @@ const normalizeTransaction = (
             "IyanjuPay user"
           }`;
 
-    subtitle = "IyanjuPay Wallet";
+    subtitle =
+      "IyanjuPay Wallet";
   }
 
   if (kind === "airtime") {
     title =
-      providerName
-        ? `Airtime — ${providerName}`
+      serviceProviderName
+        ? `Airtime — ${serviceProviderName}`
         : "Airtime";
 
     subtitle =
@@ -993,8 +1206,8 @@ const normalizeTransaction = (
 
   if (kind === "data") {
     title =
-      providerName
-        ? `Data — ${providerName}`
+      serviceProviderName
+        ? `Data — ${serviceProviderName}`
         : "Data";
 
     subtitle =
@@ -1003,10 +1216,12 @@ const normalizeTransaction = (
       "Data bundle";
   }
 
-  if (kind === "electricity") {
+  if (
+    kind === "electricity"
+  ) {
     title =
-      providerName
-        ? `Electricity — ${providerName}`
+      serviceProviderName
+        ? `Electricity — ${serviceProviderName}`
         : "Electricity";
 
     subtitle =
@@ -1017,8 +1232,8 @@ const normalizeTransaction = (
 
   if (kind === "cable") {
     title =
-      providerName
-        ? `Cable TV — ${providerName}`
+      serviceProviderName
+        ? `Cable TV — ${serviceProviderName}`
         : "Cable TV";
 
     subtitle =
@@ -1030,8 +1245,8 @@ const normalizeTransaction = (
 
   if (kind === "internet") {
     title =
-      providerName
-        ? `Internet — ${providerName}`
+      serviceProviderName
+        ? `Internet — ${serviceProviderName}`
         : "Internet";
 
     subtitle =
@@ -1085,7 +1300,7 @@ const normalizeTransaction = (
 
     subtitle,
 
-    providerName,
+    serviceProviderName,
 
     recipientName,
 
@@ -1148,7 +1363,7 @@ const getStatusLabel = (
 };
 
 /* ================================================================
-   STATUS COLORS
+   STATUS BADGE
    ================================================================ */
 
 const StatusBadge = ({
@@ -1238,7 +1453,8 @@ const TransactionIcon = ({
   return (
     <div
       className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full ${
-        transaction.direction === "incoming"
+        transaction.direction ===
+        "incoming"
           ? "bg-green-50 text-green-600"
           : "bg-purple-50 text-purple-600"
       }`}
@@ -1249,7 +1465,7 @@ const TransactionIcon = ({
 };
 
 /* ================================================================
-   TRANSACTION DETAILS ROW
+   DETAIL ROW
    ================================================================ */
 
 const DetailRow = ({
@@ -1278,23 +1494,26 @@ const DetailRow = ({
       <div className="flex min-w-0 items-center gap-2 text-right">
         <span
           className={`break-all text-sm font-medium text-gray-900 ${
-            mono ? "font-mono" : ""
+            mono
+              ? "font-mono"
+              : ""
           }`}
         >
           {value}
         </span>
 
-        {copyable && onCopy && (
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7 shrink-0"
-            onClick={onCopy}
-          >
-            <Copy className="h-3.5 w-3.5" />
-          </Button>
-        )}
+        {copyable &&
+          onCopy && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 shrink-0"
+              onClick={onCopy}
+            >
+              <Copy className="h-3.5 w-3.5" />
+            </Button>
+          )}
       </div>
     </div>
   );
@@ -1314,7 +1533,9 @@ const TransactionHistory = ({
   const [
     transactions,
     setTransactions,
-  ] = useState<Transaction[]>([]);
+  ] = useState<Transaction[]>(
+    []
+  );
 
   const [
     loading,
@@ -1329,7 +1550,9 @@ const TransactionHistory = ({
   const [
     error,
     setError,
-  ] = useState<string | null>(null);
+  ] = useState<string | null>(
+    null
+  );
 
   const [
     search,
@@ -1339,12 +1562,16 @@ const TransactionHistory = ({
   const [
     filterType,
     setFilterType,
-  ] = useState<FilterType>("all");
+  ] = useState<FilterType>(
+    "all"
+  );
 
   const [
     statusFilter,
     setStatusFilter,
-  ] = useState<StatusFilter>("all");
+  ] = useState<StatusFilter>(
+    "all"
+  );
 
   const [
     dateFilter,
@@ -1364,88 +1591,90 @@ const TransactionHistory = ({
       null
     );
 
-  /* ==============================================================
+  /* ============================================================== 
      LOAD TRANSACTIONS
      ============================================================== */
 
-  const loadTransactions = useCallback(
-    async (
-      showRefresh = false
-    ) => {
-      if (!user?.id) {
-        setTransactions([]);
-        setLoading(false);
-        return;
-      }
-
-      if (showRefresh) {
-        setRefreshing(true);
-      } else {
-        setLoading(true);
-      }
-
-      setError(null);
-
-      try {
-        const {
-          data,
-          error: queryError,
-        } = await supabase
-          .from("transactions")
-          .select(
-            `
-              id,
-              user_id,
-              wallet_id,
-              transaction_type,
-              amount,
-              description,
-              status,
-              reference_number,
-              provider,
-              provider_reference,
-              category,
-              metadata,
-              created_at
-            `
-          )
-          .eq(
-            "user_id",
-            user.id
-          )
-          .order(
-            "created_at",
-            {
-              ascending: false,
-            }
-          );
-
-        if (queryError) {
-          throw queryError;
+  const loadTransactions =
+    useCallback(
+      async (
+        showRefresh = false
+      ) => {
+        if (!user?.id) {
+          setTransactions([]);
+          setLoading(false);
+          return;
         }
 
-        setTransactions(
-          (data ?? []) as Transaction[]
-        );
-      } catch (err: any) {
-        console.error(
-          "Transaction history load error:",
-          err
-        );
+        if (showRefresh) {
+          setRefreshing(true);
+        } else {
+          setLoading(true);
+        }
 
-        setError(
-          err?.message ||
-            "Unable to load transaction history."
-        );
-      } finally {
-        setLoading(false);
-        setRefreshing(false);
-      }
-    },
-    [user?.id]
-  );
+        setError(null);
 
-  /* ==============================================================
+        try {
+          const {
+            data,
+            error: queryError,
+          } = await supabase
+            .from("transactions")
+            .select(
+              `
+                id,
+                user_id,
+                wallet_id,
+                transaction_type,
+                amount,
+                description,
+                status,
+                reference_number,
+                provider,
+                provider_reference,
+                category,
+                metadata,
+                created_at
+              `
+            )
+            .eq(
+              "user_id",
+              user.id
+            )
+            .order(
+              "created_at",
+              {
+                ascending: false,
+              }
+            );
+
+          if (queryError) {
+            throw queryError;
+          }
+
+          setTransactions(
+            (data ??
+              []) as Transaction[]
+          );
+        } catch (err: any) {
+          console.error(
+            "Transaction history load error:",
+            err
+          );
+
+          setError(
+            err?.message ||
+              "Unable to load transaction history."
+          );
+        } finally {
+          setLoading(false);
+          setRefreshing(false);
+        }
+      },
+      [user?.id]
+    );
+
+  /* ============================================================== 
      INITIAL LOAD
      ============================================================== */
 
@@ -1453,7 +1682,7 @@ const TransactionHistory = ({
     loadTransactions();
   }, [loadTransactions]);
 
-  /* ==============================================================
+  /* ============================================================== 
      REALTIME
      ============================================================== */
 
@@ -1475,9 +1704,7 @@ const TransactionHistory = ({
             table: "transactions",
             filter: `user_id=eq.${user.id}`,
           },
-          (
-            payload
-          ) => {
+          payload => {
             if (
               payload.eventType ===
               "INSERT"
@@ -1564,18 +1791,16 @@ const TransactionHistory = ({
             }
           }
         )
-        .subscribe(
-          status => {
-            if (
-              status ===
-              "CHANNEL_ERROR"
-            ) {
-              console.warn(
-                "Transaction realtime channel error."
-              );
-            }
+        .subscribe(status => {
+          if (
+            status ===
+            "CHANNEL_ERROR"
+          ) {
+            console.warn(
+              "Transaction realtime channel error."
+            );
           }
-        );
+        });
 
     return () => {
       supabase.removeChannel(
@@ -1584,7 +1809,7 @@ const TransactionHistory = ({
     };
   }, [user?.id]);
 
-  /* ==============================================================
+  /* ============================================================== 
      NORMALIZED TRANSACTIONS
      ============================================================== */
 
@@ -1597,14 +1822,16 @@ const TransactionHistory = ({
       [transactions]
     );
 
-  /* ==============================================================
+  /* ============================================================== 
      FILTER
      ============================================================== */
 
   const filteredTransactions =
     useMemo(() => {
       const query =
-        search.trim().toLowerCase();
+        search
+          .trim()
+          .toLowerCase();
 
       const now = new Date();
 
@@ -1613,15 +1840,11 @@ const TransactionHistory = ({
           const raw =
             transaction.transaction;
 
-          /*
-           * SEARCH
-           */
-
           if (query) {
             const searchable = [
               transaction.title,
               transaction.subtitle,
-              transaction.providerName,
+              transaction.serviceProviderName,
               transaction.recipientName,
               transaction.senderName,
               transaction.phoneNumber,
@@ -1653,13 +1876,9 @@ const TransactionHistory = ({
             }
           }
 
-          /*
-           * TYPE FILTER
-           */
-
           if (
             filterType ===
-            "money_in" &&
+              "money_in" &&
             transaction.direction !==
               "incoming"
           ) {
@@ -1668,7 +1887,7 @@ const TransactionHistory = ({
 
           if (
             filterType ===
-            "money_out" &&
+              "money_out" &&
             transaction.direction !==
               "outgoing"
           ) {
@@ -1677,7 +1896,7 @@ const TransactionHistory = ({
 
           if (
             filterType ===
-            "transfers" &&
+              "transfers" &&
             transaction.kind !==
               "bank_transfer" &&
             transaction.kind !==
@@ -1688,7 +1907,7 @@ const TransactionHistory = ({
 
           if (
             filterType ===
-            "bills" &&
+              "bills" &&
             !BILL_KINDS.has(
               transaction.kind
             )
@@ -1698,7 +1917,7 @@ const TransactionHistory = ({
 
           if (
             filterType ===
-            "funding" &&
+              "funding" &&
             transaction.kind !==
               "funding"
           ) {
@@ -1707,16 +1926,12 @@ const TransactionHistory = ({
 
           if (
             filterType ===
-            "refunds" &&
+              "refunds" &&
             transaction.kind !==
               "refund"
           ) {
             return false;
           }
-
-          /*
-           * STATUS FILTER
-           */
 
           if (
             statusFilter ===
@@ -1741,10 +1956,6 @@ const TransactionHistory = ({
           ) {
             return false;
           }
-
-          /*
-           * DATE FILTER
-           */
 
           if (
             dateFilter !== "all"
@@ -1843,7 +2054,7 @@ const TransactionHistory = ({
       dateFilter,
     ]);
 
-  /* ==============================================================
+  /* ============================================================== 
      PAGINATION
      ============================================================== */
 
@@ -1883,10 +2094,6 @@ const TransactionHistory = ({
     }
   }, [page, totalPages]);
 
-  /* ==============================================================
-     RESET PAGE WHEN FILTERS CHANGE
-     ============================================================== */
-
   useEffect(() => {
     setPage(1);
   }, [
@@ -1896,7 +2103,7 @@ const TransactionHistory = ({
     dateFilter,
   ]);
 
-  /* ==============================================================
+  /* ============================================================== 
      COPY
      ============================================================== */
 
@@ -1927,8 +2134,7 @@ const TransactionHistory = ({
 
           toast({
             title: "Copy failed",
-            description:
-              `Unable to copy ${label.toLowerCase()}.`,
+            description: `Unable to copy ${label.toLowerCase()}.`,
             variant:
               "destructive",
           });
@@ -1937,7 +2143,7 @@ const TransactionHistory = ({
       [toast]
     );
 
-  /* ==============================================================
+  /* ============================================================== 
      CSV EXPORT
      ============================================================== */
 
@@ -1957,6 +2163,9 @@ const TransactionHistory = ({
         return;
       }
 
+      /*
+       * Deliberately no internal Provider column.
+       */
       const headers = [
         "Date",
         "Title",
@@ -1966,7 +2175,7 @@ const TransactionHistory = ({
         "Fee",
         "Total Charged",
         "Status",
-        "Provider",
+        "Service Provider",
         "Bank",
         "Account Name",
         "Account Number",
@@ -1975,39 +2184,37 @@ const TransactionHistory = ({
         "Meter Number",
         "Smartcard/IUC",
         "Reference",
-        "Provider Reference",
       ];
 
       const rows =
         filteredTransactions.map(
-          item => [
-            formatDateTime(
-              item.transaction.created_at
-            ),
-            item.title,
-            item.kind,
-            item.direction,
-            item.amount.toFixed(2),
-            item.fee.toFixed(2),
-            item.totalCharged.toFixed(
-              2
-            ),
-            getStatusLabel(item),
-            item.providerName,
-            item.bankName,
-            item.accountName,
-            item.accountNumber,
-            item.phoneNumber,
-            item.walletId,
-            item.meterNumber,
-            item.smartcardNumber,
-            item.transaction
-              .reference_number,
-            item.transaction
-              .provider_reference,
-          ]
-            .map(escapeCsv)
-            .join(",")
+          item =>
+            [
+              formatDateTime(
+                item.transaction.created_at
+              ),
+              item.title,
+              item.kind,
+              item.direction,
+              item.amount.toFixed(2),
+              item.fee.toFixed(2),
+              item.totalCharged.toFixed(
+                2
+              ),
+              getStatusLabel(item),
+              item.serviceProviderName,
+              item.bankName,
+              item.accountName,
+              item.accountNumber,
+              item.phoneNumber,
+              item.walletId,
+              item.meterNumber,
+              item.smartcardNumber,
+              item.transaction
+                .reference_number,
+            ]
+              .map(escapeCsv)
+              .join(",")
         );
 
       const csv = [
@@ -2071,7 +2278,7 @@ const TransactionHistory = ({
       toast,
     ]);
 
-  /* ==============================================================
+  /* ============================================================== 
      PRINT RECEIPT
      ============================================================== */
 
@@ -2178,8 +2385,8 @@ const TransactionHistory = ({
           "airtime"
         ) {
           details += detail(
-            "Provider",
-            item.providerName
+            "Service provider",
+            item.serviceProviderName
           );
 
           details += detail(
@@ -2192,8 +2399,8 @@ const TransactionHistory = ({
           item.kind === "data"
         ) {
           details += detail(
-            "Provider",
-            item.providerName
+            "Service provider",
+            item.serviceProviderName
           );
 
           details += detail(
@@ -2212,8 +2419,8 @@ const TransactionHistory = ({
           "electricity"
         ) {
           details += detail(
-            "Provider",
-            item.providerName
+            "Service provider",
+            item.serviceProviderName
           );
 
           details += detail(
@@ -2231,8 +2438,8 @@ const TransactionHistory = ({
           item.kind === "cable"
         ) {
           details += detail(
-            "Provider",
-            item.providerName
+            "Service provider",
+            item.serviceProviderName
           );
 
           details += detail(
@@ -2251,8 +2458,8 @@ const TransactionHistory = ({
           "internet"
         ) {
           details += detail(
-            "Provider",
-            item.providerName
+            "Service provider",
+            item.serviceProviderName
           );
 
           details += detail(
@@ -2282,6 +2489,8 @@ const TransactionHistory = ({
                 ?.sender_bank,
               transaction.metadata
                 ?.bank_name,
+              transaction.metadata
+                ?.sender_bank_name,
               "Bank transfer"
             )
           );
@@ -2548,7 +2757,7 @@ const TransactionHistory = ({
                 ${
                   transaction.provider_reference
                     ? detail(
-                        "Provider reference",
+                        "Transaction reference",
                         transaction.provider_reference
                       )
                     : ""
@@ -2576,7 +2785,7 @@ const TransactionHistory = ({
       [toast]
     );
 
-  /* ==============================================================
+  /* ============================================================== 
      CLEAR FILTERS
      ============================================================== */
 
@@ -2597,15 +2806,13 @@ const TransactionHistory = ({
         dateFilter !== "all"
     );
 
-  /* ==============================================================
+  /* ============================================================== 
      RENDER
      ============================================================== */
 
   return (
     <div className="min-h-screen bg-gray-50 pb-10">
-      {/* ==========================================================
-          HEADER
-          ========================================================== */}
+      {/* HEADER */}
 
       <div className="sticky top-0 z-30 border-b border-gray-200 bg-white/95 backdrop-blur">
         <div className="mx-auto max-w-5xl px-4 py-4 sm:px-6">
@@ -2661,7 +2868,9 @@ const TransactionHistory = ({
                 type="button"
                 variant="outline"
                 size="icon"
-                onClick={exportCsv}
+                onClick={
+                  exportCsv
+                }
                 disabled={
                   filteredTransactions.length ===
                   0
@@ -2675,14 +2884,10 @@ const TransactionHistory = ({
         </div>
       </div>
 
-      {/* ==========================================================
-          CONTENT
-          ========================================================== */}
+      {/* CONTENT */}
 
       <main className="mx-auto max-w-5xl px-4 py-5 sm:px-6 sm:py-7">
-        {/* ========================================================
-            SUMMARY
-            ======================================================== */}
+        {/* SUMMARY */}
 
         <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
           <Card className="border-0 shadow-sm">
@@ -2751,9 +2956,7 @@ const TransactionHistory = ({
           </Card>
         </div>
 
-        {/* ========================================================
-            SEARCH
-            ======================================================== */}
+        {/* SEARCH */}
 
         <Card className="mb-5 border-0 shadow-sm">
           <CardContent className="space-y-4 p-4">
@@ -2783,10 +2986,6 @@ const TransactionHistory = ({
                 </button>
               )}
             </div>
-
-            {/* ====================================================
-                FILTERS
-                ==================================================== */}
 
             <div className="grid gap-3 sm:grid-cols-3">
               <Select
@@ -2926,9 +3125,7 @@ const TransactionHistory = ({
           </CardContent>
         </Card>
 
-        {/* ========================================================
-            ERROR
-            ======================================================== */}
+        {/* ERROR */}
 
         {error && (
           <Card className="mb-5 border-red-200 bg-red-50 shadow-sm">
@@ -2958,9 +3155,7 @@ const TransactionHistory = ({
           </Card>
         )}
 
-        {/* ========================================================
-            LOADING
-            ======================================================== */}
+        {/* LOADING */}
 
         {loading && (
           <div className="flex min-h-[300px] items-center justify-center">
@@ -2974,9 +3169,7 @@ const TransactionHistory = ({
           </div>
         )}
 
-        {/* ========================================================
-            EMPTY
-            ======================================================== */}
+        {/* EMPTY */}
 
         {!loading &&
           !error &&
@@ -3016,9 +3209,7 @@ const TransactionHistory = ({
             </Card>
           )}
 
-        {/* ========================================================
-            TRANSACTION LIST
-            ======================================================== */}
+        {/* TRANSACTION LIST */}
 
         {!loading &&
           !error &&
@@ -3103,7 +3294,6 @@ const TransactionHistory = ({
                                   transaction={
                                     item
                                   }
-
                                 />
 
                                 <span className="text-xs text-gray-400">
@@ -3133,9 +3323,7 @@ const TransactionHistory = ({
             </div>
           )}
 
-        {/* ========================================================
-            PAGINATION
-            ======================================================== */}
+        {/* PAGINATION */}
 
         {!loading &&
           filteredTransactions.length >
@@ -3248,10 +3436,6 @@ const TransactionHistory = ({
               </DialogHeader>
 
               <div className="pb-2">
-                {/* ==================================================
-                    DETAILS HEADER
-                    ================================================== */}
-
                 <div className="flex flex-col items-center text-center">
                   <TransactionIcon
                     transaction={
@@ -3307,9 +3491,7 @@ const TransactionHistory = ({
                   )}
                 </div>
 
-                {/* ==================================================
-                    BANK TRANSFER
-                    ================================================== */}
+                {/* BANK TRANSFER */}
 
                 {selectedTransaction.kind ===
                   "bank_transfer" && (
@@ -3356,11 +3538,9 @@ const TransactionHistory = ({
                           selectedTransaction.accountNumber
                         }
                         mono
-                        copyable={
-                          Boolean(
-                            selectedTransaction.accountNumber
-                          )
-                        }
+                        copyable={Boolean(
+                          selectedTransaction.accountNumber
+                        )}
                         onCopy={() =>
                           copyToClipboard(
                             selectedTransaction.accountNumber,
@@ -3399,9 +3579,7 @@ const TransactionHistory = ({
                   </Card>
                 )}
 
-                {/* ==================================================
-                    IYANJUPAY TRANSFER
-                    ================================================== */}
+                {/* IYANJUPAY WALLET TRANSFER */}
 
                 {selectedTransaction.kind ===
                   "wallet_transfer" && (
@@ -3434,11 +3612,9 @@ const TransactionHistory = ({
                           selectedTransaction.phoneNumber
                         }
                         mono
-                        copyable={
-                          Boolean(
-                            selectedTransaction.phoneNumber
-                          )
-                        }
+                        copyable={Boolean(
+                          selectedTransaction.phoneNumber
+                        )}
                         onCopy={() =>
                           copyToClipboard(
                             selectedTransaction.phoneNumber,
@@ -3453,11 +3629,9 @@ const TransactionHistory = ({
                           selectedTransaction.walletId
                         }
                         mono
-                        copyable={
-                          Boolean(
-                            selectedTransaction.walletId
-                          )
-                        }
+                        copyable={Boolean(
+                          selectedTransaction.walletId
+                        )}
                         onCopy={() =>
                           copyToClipboard(
                             selectedTransaction.walletId,
@@ -3483,9 +3657,7 @@ const TransactionHistory = ({
                   </Card>
                 )}
 
-                {/* ==================================================
-                    AIRTIME
-                    ================================================== */}
+                {/* AIRTIME */}
 
                 {selectedTransaction.kind ===
                   "airtime" && (
@@ -3498,9 +3670,9 @@ const TransactionHistory = ({
 
                     <CardContent>
                       <DetailRow
-                        label="Provider"
+                        label="Service provider"
                         value={
-                          selectedTransaction.providerName
+                          selectedTransaction.serviceProviderName
                         }
                       />
 
@@ -3510,7 +3682,9 @@ const TransactionHistory = ({
                           selectedTransaction.phoneNumber
                         }
                         mono
-                        copyable
+                        copyable={Boolean(
+                          selectedTransaction.phoneNumber
+                        )}
                         onCopy={() =>
                           copyToClipboard(
                             selectedTransaction.phoneNumber,
@@ -3529,9 +3703,7 @@ const TransactionHistory = ({
                   </Card>
                 )}
 
-                {/* ==================================================
-                    DATA
-                    ================================================== */}
+                {/* DATA */}
 
                 {selectedTransaction.kind ===
                   "data" && (
@@ -3544,9 +3716,9 @@ const TransactionHistory = ({
 
                     <CardContent>
                       <DetailRow
-                        label="Provider"
+                        label="Service provider"
                         value={
-                          selectedTransaction.providerName
+                          selectedTransaction.serviceProviderName
                         }
                       />
 
@@ -3556,7 +3728,9 @@ const TransactionHistory = ({
                           selectedTransaction.phoneNumber
                         }
                         mono
-                        copyable
+                        copyable={Boolean(
+                          selectedTransaction.phoneNumber
+                        )}
                         onCopy={() =>
                           copyToClipboard(
                             selectedTransaction.phoneNumber,
@@ -3582,9 +3756,7 @@ const TransactionHistory = ({
                   </Card>
                 )}
 
-                {/* ==================================================
-                    ELECTRICITY
-                    ================================================== */}
+                {/* ELECTRICITY */}
 
                 {selectedTransaction.kind ===
                   "electricity" && (
@@ -3597,9 +3769,9 @@ const TransactionHistory = ({
 
                     <CardContent>
                       <DetailRow
-                        label="Provider"
+                        label="Service provider"
                         value={
-                          selectedTransaction.providerName
+                          selectedTransaction.serviceProviderName
                         }
                       />
 
@@ -3609,7 +3781,9 @@ const TransactionHistory = ({
                           selectedTransaction.meterNumber
                         }
                         mono
-                        copyable
+                        copyable={Boolean(
+                          selectedTransaction.meterNumber
+                        )}
                         onCopy={() =>
                           copyToClipboard(
                             selectedTransaction.meterNumber,
@@ -3635,9 +3809,7 @@ const TransactionHistory = ({
                   </Card>
                 )}
 
-                {/* ==================================================
-                    CABLE
-                    ================================================== */}
+                {/* CABLE */}
 
                 {selectedTransaction.kind ===
                   "cable" && (
@@ -3650,9 +3822,9 @@ const TransactionHistory = ({
 
                     <CardContent>
                       <DetailRow
-                        label="Provider"
+                        label="Service provider"
                         value={
-                          selectedTransaction.providerName
+                          selectedTransaction.serviceProviderName
                         }
                       />
 
@@ -3662,7 +3834,9 @@ const TransactionHistory = ({
                           selectedTransaction.smartcardNumber
                         }
                         mono
-                        copyable
+                        copyable={Boolean(
+                          selectedTransaction.smartcardNumber
+                        )}
                         onCopy={() =>
                           copyToClipboard(
                             selectedTransaction.smartcardNumber,
@@ -3688,9 +3862,7 @@ const TransactionHistory = ({
                   </Card>
                 )}
 
-                {/* ==================================================
-                    INTERNET
-                    ================================================== */}
+                {/* INTERNET */}
 
                 {selectedTransaction.kind ===
                   "internet" && (
@@ -3703,9 +3875,9 @@ const TransactionHistory = ({
 
                     <CardContent>
                       <DetailRow
-                        label="Provider"
+                        label="Service provider"
                         value={
-                          selectedTransaction.providerName
+                          selectedTransaction.serviceProviderName
                         }
                       />
 
@@ -3715,7 +3887,9 @@ const TransactionHistory = ({
                           selectedTransaction.internetAccount
                         }
                         mono
-                        copyable
+                        copyable={Boolean(
+                          selectedTransaction.internetAccount
+                        )}
                         onCopy={() =>
                           copyToClipboard(
                             selectedTransaction.internetAccount,
@@ -3741,9 +3915,7 @@ const TransactionHistory = ({
                   </Card>
                 )}
 
-                {/* ==================================================
-                    FUNDING
-                    ================================================== */}
+                {/* FUNDING */}
 
                 {selectedTransaction.kind ===
                   "funding" && (
@@ -3817,9 +3989,7 @@ const TransactionHistory = ({
                   </Card>
                 )}
 
-                {/* ==================================================
-                    REFUND
-                    ================================================== */}
+                {/* REFUND */}
 
                 {selectedTransaction.kind ===
                   "refund" && (
@@ -3863,9 +4033,7 @@ const TransactionHistory = ({
                   </Card>
                 )}
 
-                {/* ==================================================
-                    AMOUNT
-                    ================================================== */}
+                {/* AMOUNT */}
 
                 <Card className="mt-4 border-gray-200 shadow-none">
                   <CardContent className="p-4">
@@ -3898,9 +4066,7 @@ const TransactionHistory = ({
                   </CardContent>
                 </Card>
 
-                {/* ==================================================
-                    TRANSACTION INFORMATION
-                    ================================================== */}
+                {/* TRANSACTION INFORMATION */}
 
                 <Card className="mt-4 border-gray-200 shadow-none">
                   <CardHeader className="pb-2">
@@ -3946,33 +4112,6 @@ const TransactionHistory = ({
                     />
 
                     <DetailRow
-                      label="Provider reference"
-                      value={
-                        selectedTransaction
-                          .transaction
-                          .provider_reference ||
-                        ""
-                      }
-                      mono
-                      copyable={
-                        Boolean(
-                          selectedTransaction
-                            .transaction
-                            .provider_reference
-                        )
-                      }
-                      onCopy={() =>
-                        copyToClipboard(
-                          selectedTransaction
-                            .transaction
-                            .provider_reference ||
-                            "",
-                          "Provider reference"
-                        )
-                      }
-                    />
-
-                    <DetailRow
                       label="Description"
                       value={
                         selectedTransaction
@@ -3984,9 +4123,7 @@ const TransactionHistory = ({
                   </CardContent>
                 </Card>
 
-                {/* ==================================================
-                    ACTIONS
-                    ================================================== */}
+                {/* ACTIONS */}
 
                 <div className="mt-5 grid grid-cols-2 gap-3">
                   <Button

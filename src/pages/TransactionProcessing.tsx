@@ -14,7 +14,6 @@ import {
   Clock3,
   Copy,
   Loader2,
-  LockKeyhole,
   Receipt,
   RefreshCw,
   Send,
@@ -40,19 +39,6 @@ type LegacyTransferType =
   | "iyanjupay"
   | "bank";
 
-type BillService =
-  | "airtime"
-  | "data"
-  | "electricity"
-  | "cable"
-  | "internet";
-
-type TransactionStatus =
-  | "processing"
-  | "success"
-  | "pending"
-  | "failed";
-
 interface TransactionProcessingPageProps {
   transactionType?: TransactionType;
   transferType?: LegacyTransferType;
@@ -71,6 +57,12 @@ interface TransactionProcessingPageProps {
     | Promise<void>
     | void;
 }
+
+type TransactionStatus =
+  | "processing"
+  | "success"
+  | "pending"
+  | "failed";
 
 interface TransactionResult {
   success?: boolean;
@@ -123,18 +115,18 @@ const GOLD = "#F4B400";
 // ============================================================
 
 const formatNaira = (
-  value: number
+  value: number,
 ): string =>
   `₦${Number(value || 0).toLocaleString(
     "en-NG",
     {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
-    }
+    },
   )}`;
 
 const maskAccountNumber = (
-  value: string
+  value: string,
 ): string => {
   const clean = String(value || "").trim();
 
@@ -150,7 +142,7 @@ const maskAccountNumber = (
 };
 
 const getInitials = (
-  value: string
+  value: string,
 ): string => {
   const words = String(value || "")
     .trim()
@@ -162,7 +154,9 @@ const getInitials = (
   }
 
   if (words.length === 1) {
-    return words[0].slice(0, 2).toUpperCase();
+    return words[0]
+      .slice(0, 2)
+      .toUpperCase();
   }
 
   return `${words[0][0]}${words[words.length - 1][0]}`.toUpperCase();
@@ -196,7 +190,8 @@ const TransactionProcessingPage = ({
     resolvedTransactionType === "bill";
 
   const isIyanjuPay =
-    resolvedTransactionType === "iyanjupay";
+    resolvedTransactionType ===
+    "iyanjupay";
 
   const isBank =
     resolvedTransactionType === "bank";
@@ -206,10 +201,14 @@ const TransactionProcessingPage = ({
   // ==========================================================
 
   const [status, setStatus] =
-    useState<TransactionStatus>("processing");
+    useState<TransactionStatus>(
+      "processing",
+    );
 
   const [result, setResult] =
-    useState<TransactionResult | null>(null);
+    useState<TransactionResult | null>(
+      null,
+    );
 
   const [errorMessage, setErrorMessage] =
     useState("");
@@ -248,7 +247,7 @@ const TransactionProcessingPage = ({
     const service = String(
       details?.service ??
         details?.type ??
-        ""
+        "",
     )
       .toLowerCase()
       .trim();
@@ -319,7 +318,7 @@ const TransactionProcessingPage = ({
       const service = String(
         details?.service ??
           details?.type ??
-          ""
+          "",
       ).toLowerCase();
 
       if (
@@ -372,13 +371,13 @@ const TransactionProcessingPage = ({
     "";
 
   // ==========================================================
-  // EXTRACT FUNCTION ERROR
+  // ERROR EXTRACTION
   // ==========================================================
 
   const extractFunctionError =
     async (
       error: any,
-      fallback: string
+      fallback: string,
     ): Promise<string> => {
       let message =
         error?.message ||
@@ -411,14 +410,15 @@ const TransactionProcessingPage = ({
   // ==========================================================
 
   const normalizeStatus = (
-    response: TransactionResult
+    response: TransactionResult,
   ): TransactionStatus => {
     const rawStatus =
       String(
         response?.status ||
           response?.data?.status ||
-          response?.data?.transaction_status ||
-          ""
+          response?.data
+            ?.transaction_status ||
+          "",
       )
         .trim()
         .toLowerCase();
@@ -487,20 +487,15 @@ const TransactionProcessingPage = ({
     useCallback(
       async (
         transactionIdToCheck: string,
-        initialResponse: TransactionResult
+        initialResponse: TransactionResult,
       ): Promise<TransactionResult> => {
-        /*
-         * Keep the user on the premium processing
-         * screen while the transaction gets its first
-         * database confirmation.
-         */
         await new Promise<void>(
           (resolve) => {
             setTimeout(
               resolve,
-              8000
+              8000,
             );
-          }
+          },
         );
 
         if (!mountedRef.current) {
@@ -509,7 +504,7 @@ const TransactionProcessingPage = ({
 
         if (!transactionIdToCheck) {
           console.warn(
-            "Bank transfer status check skipped: transaction ID missing."
+            "Bank transfer status check skipped: transaction ID missing.",
           );
 
           return initialResponse;
@@ -529,18 +524,18 @@ const TransactionProcessingPage = ({
                 provider_reference,
                 amount,
                 metadata
-              `
+              `,
             )
             .eq(
               "id",
-              transactionIdToCheck
+              transactionIdToCheck,
             )
             .maybeSingle();
 
           if (error) {
             console.error(
               "Bank transfer status check failed:",
-              error
+              error,
             );
 
             return initialResponse;
@@ -549,7 +544,7 @@ const TransactionProcessingPage = ({
           if (!transaction) {
             console.warn(
               "Bank transfer transaction was not found:",
-              transactionIdToCheck
+              transactionIdToCheck,
             );
 
             return initialResponse;
@@ -576,14 +571,15 @@ const TransactionProcessingPage = ({
               Number(
                 transaction.amount ??
                   initialResponse.amount ??
-                  amount
+                  amount,
               ),
 
             metadata:
               transaction.metadata,
 
             data: {
-              ...(initialResponse.data || {}),
+              ...(initialResponse.data ||
+                {}),
 
               status:
                 transaction.status,
@@ -605,13 +601,13 @@ const TransactionProcessingPage = ({
         } catch (error) {
           console.error(
             "Unexpected bank transfer status check error:",
-            error
+            error,
           );
 
           return initialResponse;
         }
       },
-      [amount]
+      [amount],
     );
 
   // ==========================================================
@@ -621,7 +617,7 @@ const TransactionProcessingPage = ({
   const executeTransaction =
     useCallback(
       async (
-        allowDuplicateGuard = false
+        allowDuplicateGuard = false,
       ) => {
         if (
           executionStartedRef.current &&
@@ -718,27 +714,27 @@ const TransactionProcessingPage = ({
               String(
                 details?.service ??
                   details?.type ??
-                  ""
+                  "",
               ).toLowerCase();
 
             const billerCode =
               String(
                 details?.biller_code ??
                   details?.billerCode ??
-                  ""
+                  "",
               ).trim();
 
             const itemCode =
               String(
                 details?.item_code ??
                   details?.itemCode ??
-                  ""
+                  "",
               ).trim();
 
             const customer =
               String(
                 details?.customer ??
-                  ""
+                  "",
               ).trim();
 
             const country =
@@ -764,10 +760,8 @@ const TransactionProcessingPage = ({
 
               details: {
                 ...details,
-
                 paymentPin:
                   undefined,
-
                 pin:
                   undefined,
               },
@@ -779,7 +773,7 @@ const TransactionProcessingPage = ({
 
           if (!functionName) {
             throw new Error(
-              "Invalid transaction type."
+              "Invalid transaction type.",
             );
           }
 
@@ -795,7 +789,7 @@ const TransactionProcessingPage = ({
                 isBill
                   ? details?.service
                   : undefined,
-            }
+            },
           );
 
           const {
@@ -806,24 +800,24 @@ const TransactionProcessingPage = ({
               functionName,
               {
                 body,
-              }
+              },
             );
 
           if (error) {
             const message =
               await extractFunctionError(
                 error,
-                `Unable to process this ${transactionName.toLowerCase()}.`
+                `Unable to process this ${transactionName.toLowerCase()}.`,
               );
 
             throw new Error(
-              message
+              message,
             );
           }
 
           if (!data) {
             throw new Error(
-              `No response was received from the ${transactionName.toLowerCase()} service.`
+              `No response was received from the ${transactionName.toLowerCase()} service.`,
             );
           }
 
@@ -839,7 +833,7 @@ const TransactionProcessingPage = ({
             throw new Error(
               response.error ||
                 response.message ||
-                `${transactionName} failed.`
+                `${transactionName} failed.`,
             );
           }
 
@@ -848,7 +842,7 @@ const TransactionProcessingPage = ({
 
           let normalizedStatus =
             normalizeStatus(
-              response
+              response,
             );
 
           // ==================================================
@@ -864,11 +858,11 @@ const TransactionProcessingPage = ({
               mountedRef.current
             ) {
               setStatus(
-                "processing"
+                "processing",
               );
 
               setResult(
-                response
+                response,
               );
             }
 
@@ -882,7 +876,7 @@ const TransactionProcessingPage = ({
             finalResponse =
               await checkBankTransferStatus(
                 existingTransactionId,
-                response
+                response,
               );
 
             if (
@@ -893,7 +887,7 @@ const TransactionProcessingPage = ({
 
             normalizedStatus =
               normalizeStatus(
-                finalResponse
+                finalResponse,
               );
           }
 
@@ -904,11 +898,11 @@ const TransactionProcessingPage = ({
           }
 
           setResult(
-            finalResponse
+            finalResponse,
           );
 
           setStatus(
-            normalizedStatus
+            normalizedStatus,
           );
 
           // ==================================================
@@ -962,12 +956,12 @@ const TransactionProcessingPage = ({
           setErrorMessage(
             finalResponse.error ||
               finalResponse.message ||
-              `The ${transactionName.toLowerCase()} could not be completed.`
+              `The ${transactionName.toLowerCase()} could not be completed.`,
           );
         } catch (error: any) {
           console.error(
             "Transaction processing error:",
-            error
+            error,
           );
 
           if (
@@ -985,7 +979,7 @@ const TransactionProcessingPage = ({
             `Unable to complete this ${transactionName.toLowerCase()}.`;
 
           setErrorMessage(
-            message
+            message,
           );
 
           toast({
@@ -1014,7 +1008,7 @@ const TransactionProcessingPage = ({
         transactionName,
         toast,
         checkBankTransferStatus,
-      ]
+      ],
     );
 
   // ==========================================================
@@ -1072,7 +1066,7 @@ const TransactionProcessingPage = ({
 
       try {
         await navigator.clipboard.writeText(
-          reference
+          reference,
         );
 
         setCopied(true);
@@ -1109,10 +1103,12 @@ const TransactionProcessingPage = ({
     processing: {
       eyebrow:
         "SECURE PROCESSING",
+
       title:
         isBill
           ? `Processing ${billServiceName}`
           : "Processing Transfer",
+
       description:
         isBill
           ? `We're securely processing your ${billServiceName.toLowerCase()} payment.`
@@ -1122,10 +1118,12 @@ const TransactionProcessingPage = ({
     success: {
       eyebrow:
         "TRANSACTION COMPLETE",
+
       title:
         isBill
           ? `${billServiceName} Successful`
           : "Transfer Successful",
+
       description:
         isBill
           ? `Your ${billServiceName.toLowerCase()} payment was completed successfully.`
@@ -1135,23 +1133,27 @@ const TransactionProcessingPage = ({
     pending: {
       eyebrow:
         "AWAITING CONFIRMATION",
+
       title:
         isBill
           ? `${billServiceName} Pending`
           : "Transfer Pending",
+
       description:
         isBill
-          ? `Your ${billServiceName.toLowerCase()} payment has been submitted and is awaiting final confirmation.`
-          : "Your transfer has been submitted and is awaiting final confirmation.",
+          ? `Your ${billServiceName.toLowerCase()} payment is awaiting final confirmation.`
+          : "Your transfer is awaiting final confirmation.",
     },
 
     failed: {
       eyebrow:
         "TRANSACTION UNSUCCESSFUL",
+
       title:
         isBill
           ? `${billServiceName} Failed`
           : "Transfer Failed",
+
       description:
         isBill
           ? `We could not complete your ${billServiceName.toLowerCase()} payment.`
@@ -1170,21 +1172,16 @@ const TransactionProcessingPage = ({
         "processing"
       ) {
         return (
-          <div className="relative flex h-24 w-24 items-center justify-center">
+          <div className="relative flex h-[76px] w-[76px] items-center justify-center">
+            <div className="absolute inset-0 rounded-full border-[3px] border-slate-100" />
+
             <div
-              className="absolute inset-0 rounded-full border-4 border-slate-100"
+              className="absolute inset-0 animate-spin rounded-full border-[3px] border-transparent border-t-[#F4B400]"
               aria-hidden="true"
             />
 
-            <div
-              className="absolute inset-0 animate-spin rounded-full border-4 border-transparent border-t-[#F4B400]"
-              aria-hidden="true"
-            />
-
-            <div
-              className="flex h-16 w-16 items-center justify-center rounded-full bg-[#082A63]"
-            >
-              <Loader2 className="h-7 w-7 animate-spin text-white" />
+            <div className="flex h-[54px] w-[54px] items-center justify-center rounded-full bg-[#082A63] shadow-lg shadow-[#082A63]/20">
+              <Loader2 className="h-6 w-6 animate-spin text-white" />
             </div>
           </div>
         );
@@ -1195,11 +1192,14 @@ const TransactionProcessingPage = ({
         "success"
       ) {
         return (
-          <div className="relative flex h-24 w-24 items-center justify-center">
+          <div className="relative flex h-[76px] w-[76px] items-center justify-center">
             <div className="absolute inset-0 rounded-full bg-emerald-50" />
 
-            <div className="relative flex h-16 w-16 items-center justify-center rounded-full bg-emerald-600 shadow-lg shadow-emerald-600/20">
-              <Check className="h-8 w-8 text-white" strokeWidth={3} />
+            <div className="relative flex h-[54px] w-[54px] items-center justify-center rounded-full bg-emerald-600 shadow-lg shadow-emerald-600/20">
+              <Check
+                className="h-7 w-7 text-white"
+                strokeWidth={3}
+              />
             </div>
           </div>
         );
@@ -1210,104 +1210,23 @@ const TransactionProcessingPage = ({
         "pending"
       ) {
         return (
-          <div className="relative flex h-24 w-24 items-center justify-center">
+          <div className="relative flex h-[76px] w-[76px] items-center justify-center">
             <div className="absolute inset-0 rounded-full bg-amber-50" />
 
-            <div className="relative flex h-16 w-16 items-center justify-center rounded-full bg-amber-500 shadow-lg shadow-amber-500/20">
-              <Clock3 className="h-8 w-8 text-white" />
+            <div className="relative flex h-[54px] w-[54px] items-center justify-center rounded-full bg-amber-500 shadow-lg shadow-amber-500/20">
+              <Clock3 className="h-7 w-7 text-white" />
             </div>
           </div>
         );
       }
 
       return (
-        <div className="relative flex h-24 w-24 items-center justify-center">
+        <div className="relative flex h-[76px] w-[76px] items-center justify-center">
           <div className="absolute inset-0 rounded-full bg-red-50" />
 
-          <div className="relative flex h-16 w-16 items-center justify-center rounded-full bg-red-600 shadow-lg shadow-red-600/20">
-            <XCircle className="h-8 w-8 text-white" />
+          <div className="relative flex h-[54px] w-[54px] items-center justify-center rounded-full bg-red-600 shadow-lg shadow-red-600/20">
+            <XCircle className="h-7 w-7 text-white" />
           </div>
-        </div>
-      );
-    };
-
-  // ==========================================================
-  // TRANSACTION SUMMARY
-  // ==========================================================
-
-  const renderTransactionSummary =
-    () => {
-      if (isBill) {
-        return (
-          <div className="space-y-0">
-            <SummaryRow
-              label="Service"
-              value={billServiceName}
-            />
-
-            {billCustomer && (
-              <SummaryRow
-                label={
-                  billCustomerLabel
-                }
-                value={
-                  billCustomer
-                }
-              />
-            )}
-
-            {billPackage && (
-              <SummaryRow
-                label="Package"
-                value={
-                  billPackage
-                }
-              />
-            )}
-
-            <SummaryRow
-              label="Amount"
-              value={formatNaira(
-                amount
-              )}
-              strong
-            />
-          </div>
-        );
-      }
-
-      return (
-        <div className="space-y-0">
-          <SummaryRow
-            label="Recipient"
-            value={recipient}
-          />
-
-          {isBank &&
-            bank && (
-              <SummaryRow
-                label="Bank"
-                value={bank}
-              />
-            )}
-
-          {isBank &&
-            accountNumber && (
-              <SummaryRow
-                label="Account"
-                value={maskAccountNumber(
-                  accountNumber
-                )}
-              />
-            )}
-
-          <SummaryRow
-            label="Amount"
-            value={formatNaira(
-              amount
-            )}
-            strong
-          />
         </div>
       );
     };
@@ -1317,13 +1236,13 @@ const TransactionProcessingPage = ({
   // ==========================================================
 
   return (
-    <div className="min-h-screen bg-[#F6F8FC] text-slate-900">
+    <div className="fixed inset-0 z-50 flex h-[100dvh] w-full flex-col overflow-hidden bg-[#F6F8FC] text-slate-900">
       {/* ======================================================
-          PREMIUM TOP BAR
-      ====================================================== */}
+          COMPACT MOBILE HEADER
+          ====================================================== */}
 
-      <header className="sticky top-0 z-40 border-b border-slate-200/80 bg-white/95 backdrop-blur-xl">
-        <div className="mx-auto flex h-16 max-w-5xl items-center justify-between px-4 sm:px-6">
+      <header className="shrink-0 border-b border-slate-200 bg-white">
+        <div className="flex h-[58px] items-center justify-between px-4">
           <button
             type="button"
             onClick={() =>
@@ -1334,23 +1253,14 @@ const TransactionProcessingPage = ({
                 "processing" ||
               retrying
             }
-            className="group inline-flex items-center gap-2 rounded-xl px-2 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-100 hover:text-[#082A63] disabled:cursor-not-allowed disabled:opacity-50"
+            className="flex h-9 w-9 items-center justify-center rounded-xl text-slate-600 transition hover:bg-slate-100 disabled:pointer-events-none disabled:opacity-40"
+            aria-label="Go back"
           >
-            <ArrowLeft className="h-4 w-4 transition-transform group-hover:-translate-x-0.5" />
-
-            <span className="hidden sm:inline">
-              Back
-            </span>
+            <ArrowLeft className="h-5 w-5" />
           </button>
 
           <div className="flex items-center gap-2">
-            <div
-              className="flex h-9 w-9 items-center justify-center rounded-xl text-white shadow-sm"
-              style={{
-                backgroundColor:
-                  NAVY,
-              }}
-            >
+            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-[#082A63] text-white">
               {isBill ? (
                 <Receipt className="h-4 w-4" />
               ) : (
@@ -1358,397 +1268,418 @@ const TransactionProcessingPage = ({
               )}
             </div>
 
-            <div className="hidden text-left sm:block">
-              <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">
+            <div className="text-center">
+              <p className="text-[9px] font-extrabold uppercase tracking-[0.18em] text-slate-400">
                 IyanjuPay
               </p>
 
-              <p className="text-sm font-bold text-slate-900">
+              <p className="max-w-[140px] truncate text-xs font-bold text-slate-900">
                 {transactionName}
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5">
-            <ShieldCheck className="h-3.5 w-3.5 text-emerald-600" />
-
-            <span className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
-              Secure
-            </span>
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-50">
+            <ShieldCheck className="h-4 w-4 text-emerald-600" />
           </div>
         </div>
       </header>
 
       {/* ======================================================
-          CONTENT
-      ====================================================== */}
+          MAIN MOBILE CONTENT
+          ====================================================== */}
 
-      <main className="mx-auto w-full max-w-5xl px-4 py-8 sm:px-6 sm:py-12">
-        {/* ====================================================
-            STATUS HERO
-        ==================================================== */}
+      <main className="min-h-0 flex-1 overflow-hidden px-4 py-3">
+        <div className="mx-auto flex h-full w-full max-w-md flex-col">
+          {/* ==================================================
+              COMPACT STATUS
+              ================================================== */}
 
-        <section className="relative overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-[0_20px_60px_-30px_rgba(8,42,99,0.25)]">
-          {/* Decorative premium background */}
-          <div
-            className="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full opacity-[0.06] blur-3xl"
-            style={{
-              backgroundColor:
-                NAVY,
-            }}
-          />
-
-          <div
-            className="pointer-events-none absolute -bottom-32 -left-20 h-72 w-72 rounded-full opacity-[0.07] blur-3xl"
-            style={{
-              backgroundColor:
-                GOLD,
-            }}
-          />
-
-          <div className="relative px-5 py-10 text-center sm:px-10 sm:py-14">
-            <div className="mb-7 flex justify-center">
+          <section className="flex shrink-0 flex-col items-center text-center">
+            <div className="mb-2">
               {renderStatusIcon()}
             </div>
 
-            <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5">
+            <div className="inline-flex items-center gap-1.5 rounded-full bg-white px-2.5 py-1 shadow-sm ring-1 ring-slate-200">
               {status ===
               "processing" ? (
-                <Loader2 className="h-3 w-3 animate-spin text-[#082A63]" />
+                <Loader2 className="h-2.5 w-2.5 animate-spin text-[#082A63]" />
               ) : status ===
                 "success" ? (
-                <Sparkles className="h-3 w-3 text-[#F4B400]" />
+                <Sparkles className="h-2.5 w-2.5 text-[#F4B400]" />
               ) : status ===
                 "pending" ? (
-                <Clock3 className="h-3 w-3 text-amber-500" />
+                <Clock3 className="h-2.5 w-2.5 text-amber-500" />
               ) : (
-                <XCircle className="h-3 w-3 text-red-500" />
+                <XCircle className="h-2.5 w-2.5 text-red-500" />
               )}
 
-              <span className="text-[10px] font-extrabold uppercase tracking-[0.18em] text-slate-500">
+              <span className="text-[8px] font-extrabold uppercase tracking-[0.16em] text-slate-500">
                 {statusConfig.eyebrow}
               </span>
             </div>
 
-            <h1 className="text-2xl font-black tracking-tight text-slate-950 sm:text-4xl">
+            <h1 className="mt-2 text-xl font-black tracking-tight text-slate-950">
               {statusConfig.title}
             </h1>
 
-            <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-slate-500 sm:text-base">
+            <p className="mt-0.5 max-w-[310px] text-[11px] leading-4 text-slate-500">
               {statusConfig.description}
             </p>
 
             {/* Amount */}
+
             {status !==
               "failed" && (
-              <div className="mt-8">
-                <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">
-                  Transaction Amount
+              <div className="mt-2">
+                <p className="text-[8px] font-bold uppercase tracking-[0.16em] text-slate-400">
+                  Amount
                 </p>
 
                 <p
-                  className="mt-1 text-4xl font-black tracking-tight sm:text-5xl"
+                  className="text-2xl font-black tracking-tight"
                   style={{
                     color:
                       NAVY,
                   }}
                 >
                   {formatNaira(
-                    amount
+                    amount,
                   )}
                 </p>
               </div>
             )}
-          </div>
-        </section>
-
-        {/* ====================================================
-            TRANSACTION DETAILS
-        ==================================================== */}
-
-        <section className="mt-5 overflow-hidden rounded-[1.75rem] border border-slate-200 bg-white shadow-[0_12px_40px_-28px_rgba(15,23,42,0.3)]">
-          {/* Receipt header */}
-          <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4 sm:px-7">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#082A63]/[0.07]">
-                <Receipt
-                  className="h-5 w-5"
-                  style={{
-                    color:
-                      NAVY,
-                  }}
-                />
-              </div>
-
-              <div>
-                <p className="text-sm font-bold text-slate-900">
-                  Transaction Details
-                </p>
-
-                <p className="text-xs text-slate-400">
-                  {status ===
-                  "processing"
-                    ? "Transaction in progress"
-                    : "Transaction summary"}
-                </p>
-              </div>
-            </div>
-
-            <div className="hidden items-center gap-1.5 text-xs font-semibold text-slate-400 sm:flex">
-              <LockKeyhole className="h-3.5 w-3.5" />
-              Protected
-            </div>
-          </div>
-
-          {/* Receipt body */}
-          <div className="px-5 py-2 sm:px-7">
-            {isBill ? (
-              <BillIdentity
-                service={
-                  billServiceName
-                }
-                customer={
-                  billCustomer
-                }
-                customerLabel={
-                  billCustomerLabel
-                }
-                packageName={
-                  billPackage
-                }
-              />
-            ) : (
-              <TransferIdentity
-                recipient={
-                  recipient
-                }
-                bank={bank}
-                accountNumber={
-                  accountNumber
-                }
-                isBank={
-                  isBank
-                }
-              />
-            )}
-
-            <div className="mt-2 border-t border-dashed border-slate-200 pt-2">
-              {renderTransactionSummary()}
-            </div>
-          </div>
-        </section>
-
-        {/* ====================================================
-            REFERENCE
-        ==================================================== */}
-
-        {reference && (
-          <section className="mt-5 rounded-[1.5rem] border border-slate-200 bg-white p-5 shadow-[0_12px_40px_-28px_rgba(15,23,42,0.3)] sm:p-6">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-slate-400">
-                  Transaction Reference
-                </p>
-
-                <p className="mt-2 break-all font-mono text-sm font-bold text-slate-800">
-                  {reference}
-                </p>
-              </div>
-
-              <button
-                type="button"
-                onClick={
-                  handleCopyReference
-                }
-                className="flex h-10 shrink-0 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-600 transition hover:border-slate-300 hover:bg-slate-50 hover:text-[#082A63]"
-              >
-                {copied ? (
-                  <>
-                    <Check className="h-4 w-4 text-emerald-600" />
-                    Copied
-                  </>
-                ) : (
-                  <>
-                    <Copy className="h-4 w-4" />
-                    Copy
-                  </>
-                )}
-              </button>
-            </div>
           </section>
-        )}
 
-        {/* ====================================================
-            PENDING NOTICE
-        ==================================================== */}
+          {/* ==================================================
+              COMPACT RECEIPT
+              ================================================== */}
 
-        {status ===
-          "pending" && (
-          <section className="mt-5 rounded-[1.5rem] border border-amber-200 bg-amber-50 p-5 sm:p-6">
-            <div className="flex gap-4">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-100">
-                <Clock3 className="h-5 w-5 text-amber-600" />
-              </div>
+          <section className="mt-3 min-h-0 shrink rounded-2xl border border-slate-200 bg-white shadow-sm">
+            {/* Receipt heading */}
 
-              <div>
-                <h2 className="text-sm font-bold text-amber-950">
-                  Your transaction is still being confirmed
-                </h2>
-
-                <p className="mt-1 text-sm leading-6 text-amber-800">
-                  Please do not submit the same{" "}
-                  {isBill
-                    ? "payment"
-                    : "transfer"}{" "}
-                  again. Your existing transaction is already being processed using its original reference.
-                </p>
-              </div>
-            </div>
-          </section>
-        )}
-
-        {/* ====================================================
-            FAILED MESSAGE
-        ==================================================== */}
-
-        {status ===
-          "failed" && (
-          <section className="mt-5 overflow-hidden rounded-[1.5rem] border border-red-200 bg-white shadow-[0_12px_40px_-28px_rgba(15,23,42,0.3)]">
-            <div className="border-b border-red-100 bg-red-50 px-5 py-4">
-              <div className="flex items-center gap-3">
-                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-red-100">
-                  <XCircle className="h-5 w-5 text-red-600" />
+            <div className="flex items-center justify-between border-b border-slate-100 px-3.5 py-2.5">
+              <div className="flex items-center gap-2">
+                <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#082A63]/[0.07]">
+                  <Receipt
+                    className="h-3.5 w-3.5"
+                    style={{
+                      color:
+                        NAVY,
+                    }}
+                  />
                 </div>
 
-                <p className="text-sm font-bold text-red-900">
-                  What happened?
-                </p>
+                <div>
+                  <p className="text-[11px] font-bold text-slate-900">
+                    Transaction Details
+                  </p>
+
+                  <p className="text-[8px] text-slate-400">
+                    Secure transaction summary
+                  </p>
+                </div>
+              </div>
+
+              <ShieldCheck className="h-3.5 w-3.5 text-emerald-500" />
+            </div>
+
+            {/* Receipt content */}
+
+            <div className="px-3.5">
+              {isBill ? (
+                <CompactBillIdentity
+                  service={
+                    billServiceName
+                  }
+                  customer={
+                    billCustomer
+                  }
+                  customerLabel={
+                    billCustomerLabel
+                  }
+                  packageName={
+                    billPackage
+                  }
+                />
+              ) : (
+                <CompactTransferIdentity
+                  recipient={
+                    recipient
+                  }
+                  bank={bank}
+                  accountNumber={
+                    accountNumber
+                  }
+                  isBank={
+                    isBank
+                  }
+                />
+              )}
+
+              <div className="border-t border-dashed border-slate-200">
+                {isBill ? (
+                  <CompactSummaryRow
+                    label="Service"
+                    value={
+                      billServiceName
+                    }
+                  />
+                ) : (
+                  <CompactSummaryRow
+                    label="Recipient"
+                    value={
+                      recipient
+                    }
+                  />
+                )}
+
+                {isBill &&
+                  billCustomer && (
+                    <CompactSummaryRow
+                      label={
+                        billCustomerLabel
+                      }
+                      value={
+                        billCustomer
+                      }
+                    />
+                  )}
+
+                {isBill &&
+                  billPackage && (
+                    <CompactSummaryRow
+                      label="Package"
+                      value={
+                        billPackage
+                      }
+                    />
+                  )}
+
+                {isBank &&
+                  bank && (
+                    <CompactSummaryRow
+                      label="Bank"
+                      value={bank}
+                    />
+                  )}
+
+                {isBank &&
+                  accountNumber && (
+                    <CompactSummaryRow
+                      label="Account"
+                      value={maskAccountNumber(
+                        accountNumber,
+                      )}
+                    />
+                  )}
+
+                <CompactSummaryRow
+                  label="Amount"
+                  value={formatNaira(
+                    amount,
+                  )}
+                  strong
+                  last
+                />
               </div>
             </div>
-
-            <div className="px-5 py-5">
-              <p className="text-sm leading-6 text-red-800">
-                {errorMessage ||
-                  `The ${isBill ? billServiceName.toLowerCase() : "transfer"} could not be completed.`}
-              </p>
-            </div>
           </section>
-        )}
 
-        {/* ====================================================
-            SECURITY NOTE
-        ==================================================== */}
+          {/* ==================================================
+              RESULT / REFERENCE
+              ================================================== */}
 
-        {status ===
-          "processing" && (
-          <section className="mt-5 flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-5 py-4">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-emerald-50">
-              <ShieldCheck className="h-5 w-5 text-emerald-600" />
-            </div>
+          {status ===
+            "success" &&
+            reference && (
+              <section className="mt-2.5 shrink-0 rounded-xl border border-emerald-100 bg-emerald-50/70 px-3 py-2.5">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="text-[8px] font-extrabold uppercase tracking-[0.14em] text-emerald-600">
+                      Reference
+                    </p>
 
-            <div>
-              <p className="text-xs font-bold text-slate-800">
-                Secure transaction
+                    <p className="mt-0.5 truncate font-mono text-[10px] font-bold text-slate-700">
+                      {reference}
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={
+                      handleCopyReference
+                    }
+                    className="flex h-8 shrink-0 items-center gap-1.5 rounded-lg bg-white px-2.5 text-[9px] font-bold text-slate-600 shadow-sm ring-1 ring-emerald-100 transition hover:text-[#082A63]"
+                  >
+                    {copied ? (
+                      <>
+                        <Check className="h-3 w-3 text-emerald-600" />
+                        Copied
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="h-3 w-3" />
+                        Copy
+                      </>
+                    )}
+                  </button>
+                </div>
+              </section>
+            )}
+
+          {/* ==================================================
+              PENDING
+              ================================================== */}
+
+          {status ===
+            "pending" && (
+            <section className="mt-2.5 shrink-0 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5">
+              <div className="flex items-center gap-2.5">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-amber-100">
+                  <Clock3 className="h-4 w-4 text-amber-600" />
+                </div>
+
+                <div className="min-w-0">
+                  <p className="text-[10px] font-bold text-amber-950">
+                    Awaiting confirmation
+                  </p>
+
+                  <p className="mt-0.5 text-[9px] leading-3.5 text-amber-800">
+                    Please don't submit this{" "}
+                    {isBill
+                      ? "payment"
+                      : "transfer"}{" "}
+                    again.
+                  </p>
+                </div>
+              </div>
+            </section>
+          )}
+
+          {/* ==================================================
+              FAILED
+              ================================================== */}
+
+          {status ===
+            "failed" && (
+            <section className="mt-2.5 shrink-0 rounded-xl border border-red-200 bg-red-50 px-3 py-2.5">
+              <div className="flex items-start gap-2.5">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-red-100">
+                  <XCircle className="h-4 w-4 text-red-600" />
+                </div>
+
+                <div className="min-w-0">
+                  <p className="text-[10px] font-bold text-red-950">
+                    Transaction failed
+                  </p>
+
+                  <p className="mt-0.5 line-clamp-3 text-[9px] leading-3.5 text-red-800">
+                    {errorMessage ||
+                      `The ${isBill ? billServiceName.toLowerCase() : "transfer"} could not be completed.`}
+                  </p>
+                </div>
+              </div>
+            </section>
+          )}
+
+          {/* ==================================================
+              PROCESSING SECURITY
+              ================================================== */}
+
+          {status ===
+            "processing" && (
+            <div className="mt-2.5 flex shrink-0 items-center justify-center gap-1.5 text-center">
+              <ShieldCheck className="h-3 w-3 text-emerald-500" />
+
+              <p className="text-[8px] font-semibold text-slate-400">
+                Your transaction is securely protected
               </p>
-
-              <p className="mt-0.5 text-xs leading-5 text-slate-500">
-                Your transaction is protected by IyanjuPay's secure processing system.
-              </p>
             </div>
-          </section>
-        )}
+          )}
 
-        {/* ====================================================
-            ACTIONS
-        ==================================================== */}
+          {/* ==================================================
+              ACTIONS
+              ================================================== */}
 
-        {status !==
-          "processing" && (
-          <div className="mt-7">
-            {status ===
-            "failed" ? (
-              <div className="grid gap-3 sm:grid-cols-2">
+          {status !==
+            "processing" && (
+            <div className="mt-auto shrink-0 pt-2.5">
+              {status ===
+              "failed" ? (
+                <div className="grid grid-cols-2 gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() =>
+                      void onBack()
+                    }
+                    disabled={
+                      retrying
+                    }
+                    className="h-11 rounded-xl border-slate-200 bg-white text-xs font-bold text-slate-700"
+                  >
+                    <ArrowLeft className="mr-1.5 h-3.5 w-3.5" />
+                    Back
+                  </Button>
+
+                  <Button
+                    type="button"
+                    onClick={
+                      handleRetry
+                    }
+                    disabled={
+                      retrying
+                    }
+                    className="h-11 rounded-xl bg-[#082A63] text-xs font-bold text-white shadow-lg shadow-[#082A63]/20 hover:bg-[#082A63]/95"
+                  >
+                    {retrying ? (
+                      <>
+                        <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                        Retrying
+                      </>
+                    ) : (
+                      <>
+                        <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
+                        Try Again
+                      </>
+                    )}
+                  </Button>
+                </div>
+              ) : (
                 <Button
                   type="button"
-                  variant="outline"
                   onClick={() =>
-                    void onBack()
+                    void onDone()
                   }
-                  disabled={
-                    retrying
-                  }
-                  className="h-12 rounded-xl border-slate-200 bg-white text-sm font-bold text-slate-700 hover:bg-slate-50"
+                  className="h-11 w-full rounded-xl bg-[#082A63] text-xs font-bold text-white shadow-lg shadow-[#082A63]/20 hover:bg-[#082A63]/95"
                 >
-                  <ArrowLeft className="mr-2 h-4 w-4" />
-                  Back
-                </Button>
-
-                <Button
-                  type="button"
-                  onClick={
-                    handleRetry
-                  }
-                  disabled={
-                    retrying
-                  }
-                  className="h-12 rounded-xl text-sm font-bold text-white shadow-lg shadow-[#082A63]/20 hover:opacity-95"
-                  style={{
-                    backgroundColor:
-                      NAVY,
-                  }}
-                >
-                  {retrying ? (
+                  {status ===
+                  "success" ? (
                     <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Retrying...
+                      <CheckCircle2 className="mr-1.5 h-4 w-4" />
+                      Done
                     </>
                   ) : (
                     <>
-                      <RefreshCw className="mr-2 h-4 w-4" />
-                      Try Again
+                      Continue to Dashboard
+                      <ArrowUpRight className="ml-1.5 h-3.5 w-3.5" />
                     </>
                   )}
                 </Button>
-              </div>
-            ) : (
-              <Button
-                type="button"
-                onClick={() =>
-                  void onDone()
-                }
-                className="h-13 w-full rounded-2xl text-sm font-bold text-white shadow-xl shadow-[#082A63]/20 transition hover:-translate-y-0.5 hover:opacity-95"
-                style={{
-                  backgroundColor:
-                    NAVY,
-                }}
-              >
-                {status ===
-                "success" ? (
-                  <>
-                    <CheckCircle2 className="mr-2 h-5 w-5" />
-                    Done
-                  </>
-                ) : (
-                  <>
-                    Continue to Dashboard
-                    <ArrowUpRight className="ml-2 h-4 w-4" />
-                  </>
-                )}
-              </Button>
-            )}
+              )}
+            </div>
+          )}
+
+          {/* Small mobile footer */}
+
+          <div className="flex shrink-0 items-center justify-center gap-1.5 pb-1 pt-2">
+            <ShieldCheck className="h-2.5 w-2.5 text-emerald-500" />
+
+            <span className="text-[7px] font-bold uppercase tracking-[0.12em] text-slate-400">
+              Securely processed by IyanjuPay
+            </span>
           </div>
-        )}
-
-        {/* ====================================================
-            FOOTER
-        ==================================================== */}
-
-        <div className="flex items-center justify-center gap-2 pb-5 pt-8 text-center">
-          <ShieldCheck className="h-3.5 w-3.5 text-emerald-600" />
-
-          <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-            Securely processed by IyanjuPay
-          </p>
         </div>
       </main>
     </div>
@@ -1756,32 +1687,42 @@ const TransactionProcessingPage = ({
 };
 
 // ============================================================
-// SUMMARY ROW
+// COMPACT SUMMARY ROW
 // ============================================================
 
-interface SummaryRowProps {
+interface CompactSummaryRowProps {
   label: string;
   value: string;
   strong?: boolean;
+  last?: boolean;
 }
 
-const SummaryRow = ({
+const CompactSummaryRow = ({
   label,
   value,
   strong = false,
-}: SummaryRowProps) => (
-  <div className="flex min-h-[54px] items-center justify-between gap-6 border-b border-slate-100 last:border-b-0">
-    <span className="text-xs font-medium text-slate-400">
+  last = false,
+}: CompactSummaryRowProps) => (
+  <div
+    className={[
+      "flex min-h-[32px] items-center justify-between gap-3",
+      last
+        ? ""
+        : "border-b border-slate-100",
+    ].join(" ")}
+  >
+    <span className="shrink-0 text-[9px] font-medium text-slate-400">
       {label}
     </span>
 
     <span
       className={[
-        "max-w-[65%] break-words text-right",
+        "max-w-[68%] truncate text-right",
         strong
-          ? "text-base font-black text-[#082A63]"
-          : "text-sm font-bold text-slate-800",
+          ? "text-[12px] font-black text-[#082A63]"
+          : "text-[10px] font-semibold text-slate-700",
       ].join(" ")}
+      title={value}
     >
       {value}
     </span>
@@ -1789,105 +1730,97 @@ const SummaryRow = ({
 );
 
 // ============================================================
-// TRANSFER IDENTITY
+// COMPACT TRANSFER IDENTITY
 // ============================================================
 
-interface TransferIdentityProps {
+interface CompactTransferIdentityProps {
   recipient: string;
   bank: string;
   accountNumber: string;
   isBank: boolean;
 }
 
-const TransferIdentity = ({
+const CompactTransferIdentity = ({
   recipient,
   bank,
   accountNumber,
   isBank,
-}: TransferIdentityProps) => {
+}: CompactTransferIdentityProps) => {
   const initials =
     getInitials(recipient);
 
   return (
-    <div className="flex items-center gap-4 py-5">
-      <div className="relative flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-[#082A63] text-base font-black text-white shadow-lg shadow-[#082A63]/15">
+    <div className="flex items-center gap-2.5 py-2.5">
+      <div className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#082A63] text-[11px] font-black text-white">
         {initials}
 
-        <div className="absolute -bottom-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full border-2 border-white bg-emerald-500">
-          <Check className="h-2.5 w-2.5 text-white" strokeWidth={3} />
+        <div className="absolute -bottom-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full border-2 border-white bg-emerald-500">
+          <Check
+            className="h-2 w-2 text-white"
+            strokeWidth={3}
+          />
         </div>
       </div>
 
       <div className="min-w-0 flex-1">
-        <p className="text-[10px] font-extrabold uppercase tracking-[0.15em] text-slate-400">
+        <p className="text-[8px] font-extrabold uppercase tracking-[0.14em] text-slate-400">
           Sending to
         </p>
 
-        <p className="mt-1 truncate text-base font-black text-slate-900 sm:text-lg">
+        <p className="truncate text-xs font-black text-slate-900">
           {recipient}
         </p>
 
-        {isBank ? (
-          <p className="mt-0.5 truncate text-xs font-medium text-slate-500">
-            {bank
-              ? `${bank} • `
-              : ""}
-            {maskAccountNumber(
-              accountNumber
-            )}
-          </p>
-        ) : (
-          <p className="mt-0.5 text-xs font-medium text-slate-500">
-            IyanjuPay wallet
-          </p>
-        )}
+        <p className="truncate text-[9px] font-medium text-slate-500">
+          {isBank
+            ? `${bank ? `${bank} • ` : ""}${maskAccountNumber(accountNumber)}`
+            : "IyanjuPay wallet"}
+        </p>
       </div>
 
-      <div className="hidden h-10 w-10 items-center justify-center rounded-full bg-slate-50 sm:flex">
-        <ArrowUpRight className="h-4 w-4 text-slate-400" />
-      </div>
+      <ArrowUpRight className="h-3.5 w-3.5 shrink-0 text-slate-300" />
     </div>
   );
 };
 
 // ============================================================
-// BILL IDENTITY
+// COMPACT BILL IDENTITY
 // ============================================================
 
-interface BillIdentityProps {
+interface CompactBillIdentityProps {
   service: string;
   customer: string;
   customerLabel: string;
   packageName: string;
 }
 
-const BillIdentity = ({
+const CompactBillIdentity = ({
   service,
   customer,
   customerLabel,
   packageName,
-}: BillIdentityProps) => {
+}: CompactBillIdentityProps) => {
   const initials =
     getInitials(service);
 
   return (
-    <div className="flex items-center gap-4 py-5">
-      <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-[#082A63] text-sm font-black text-white shadow-lg shadow-[#082A63]/15">
+    <div className="flex items-center gap-2.5 py-2.5">
+      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#082A63] text-[10px] font-black text-white">
         {initials}
       </div>
 
       <div className="min-w-0 flex-1">
-        <p className="text-[10px] font-extrabold uppercase tracking-[0.15em] text-slate-400">
+        <p className="text-[8px] font-extrabold uppercase tracking-[0.14em] text-slate-400">
           Service
         </p>
 
-        <p className="mt-1 truncate text-base font-black text-slate-900 sm:text-lg">
+        <p className="truncate text-xs font-black text-slate-900">
           {service}
         </p>
 
-        <div className="mt-0.5 flex flex-wrap gap-x-2 gap-y-0.5 text-xs font-medium text-slate-500">
+        <div className="flex min-w-0 items-center gap-1.5">
           {customer && (
-            <span>
+            <span className="truncate text-[9px] font-medium text-slate-500">
               {customerLabel}:{" "}
               <span className="font-semibold text-slate-700">
                 {customer}
@@ -1898,12 +1831,12 @@ const BillIdentity = ({
           {packageName && (
             <>
               {customer && (
-                <span className="text-slate-300">
+                <span className="shrink-0 text-[8px] text-slate-300">
                   •
                 </span>
               )}
 
-              <span>
+              <span className="truncate text-[9px] font-medium text-slate-500">
                 {packageName}
               </span>
             </>

@@ -19,6 +19,7 @@ import {
 } from "react-router-dom";
 
 import AppSplash from "@/components/AppSplash";
+import ThemeProvider from "@/components/theme/ThemeProvider";
 import PWAInstallPrompt from "@/components/PWAInstallPrompt";
 
 import Index from "./pages/Index";
@@ -89,6 +90,7 @@ const App = () => {
     <QueryClientProvider
       client={queryClient}
     >
+    <ThemeProvider>
       <TooltipProvider>
         <Toaster />
 
@@ -338,8 +340,9 @@ const App = () => {
 
           <PWAInstallPrompt />
 
-        </BrowserRouter>
-      </TooltipProvider>
+          </BrowserRouter>
+        </TooltipProvider>
+      </ThemeProvider>
     </QueryClientProvider>
   );
 };

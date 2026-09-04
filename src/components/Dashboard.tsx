@@ -27,6 +27,10 @@ import {
   User,
   Wifi,
   Zap,
+  Sun,
+  Moon,
+  Palette,
+  Check,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -366,6 +370,74 @@ const Dashboard = () => {
 
   const [showBalance, setShowBalance] =
     useState(true);
+
+  /*
+   * ============================================================
+   * DASHBOARD APPEARANCE
+   * ============================================================
+   * light = clean light appearance
+   * blue  = blue IyanjuPay appearance
+   * dark  = dark appearance
+   *
+   * The selection is persisted locally so it remains active when
+   * the customer returns to the dashboard.
+   */
+
+  type DashboardTheme = "light" | "blue" | "dark";
+
+  const [dashboardTheme, setDashboardTheme] =
+    useState<DashboardTheme>(() => {
+      if (typeof window === "undefined") return "light";
+
+      const saved = window.localStorage.getItem(
+        "iyanjupay-dashboard-theme"
+      );
+
+      return saved === "dark" || saved === "blue" || saved === "light"
+        ? saved
+        : "light";
+    });
+
+  const [appearanceOpen, setAppearanceOpen] =
+    useState(false);
+
+  useEffect(() => {
+    window.localStorage.setItem(
+      "iyanjupay-dashboard-theme",
+      dashboardTheme
+    );
+
+    document.documentElement.dataset.iyanjupayTheme =
+      dashboardTheme;
+
+    return () => {
+      delete document.documentElement.dataset.iyanjupayTheme;
+    };
+  }, [dashboardTheme]);
+
+  const appearanceConfig = {
+    light: {
+      label: "Light",
+      icon: Sun,
+      header: "from-[#5b21b6] via-[#6d28d9] to-[#2563eb]",
+      wallet: "from-[#4c1d95] via-[#6d28d9] to-[#2563eb]",
+    },
+    blue: {
+      label: "Blue",
+      icon: Palette,
+      header: "from-[#082A63] via-[#1554B8] to-[#2563EB]",
+      wallet: "from-[#082A63] via-[#1554B8] to-[#2563EB]",
+    },
+    dark: {
+      label: "Dark",
+      icon: Moon,
+      header: "from-[#111827] via-[#1E1B4B] to-[#172554]",
+      wallet: "from-[#111827] via-[#312E81] to-[#1E40AF]",
+    },
+  } as const;
+
+  const ActiveAppearanceIcon =
+    appearanceConfig[dashboardTheme].icon;
 
   /*
    * ============================================================
@@ -1966,13 +2038,113 @@ const Dashboard = () => {
    */
 
   return (
-    <div className="min-h-screen bg-[#f7f8fc] pb-24">
+
+      <style>{`
+        .iyanjupay-dashboard {
+          background: #f7f8fc;
+          color: #0f172a;
+          transition: background-color 180ms ease, color 180ms ease;
+        }
+
+        .iyanjupay-theme-blue {
+          background: #f4f8ff;
+        }
+
+        .iyanjupay-theme-dark {
+          background: #090d18;
+          color: #f8fafc;
+        }
+
+        .iyanjupay-theme-dark .bg-white {
+          background-color: #111827 !important;
+        }
+
+        .iyanjupay-theme-dark .bg-slate-50 {
+          background-color: #090d18 !important;
+        }
+
+        .iyanjupay-theme-dark .bg-slate-100 {
+          background-color: #1e293b !important;
+        }
+
+        .iyanjupay-theme-dark [class*="border-slate-200"] {
+          border-color: #334155 !important;
+        }
+
+        .iyanjupay-theme-dark .text-slate-950,
+        .iyanjupay-theme-dark .text-slate-900 {
+          color: #f8fafc !important;
+        }
+
+        .iyanjupay-theme-dark .text-slate-700 {
+          color: #e2e8f0 !important;
+        }
+
+        .iyanjupay-theme-dark .text-slate-600 {
+          color: #cbd5e1 !important;
+        }
+
+        .iyanjupay-theme-dark .text-slate-500 {
+          color: #94a3b8 !important;
+        }
+
+        .iyanjupay-theme-dark .text-slate-400 {
+          color: #64748b !important;
+        }
+
+        .iyanjupay-theme-dark [class*="hover:bg-slate-50"]:hover {
+          background-color: #1e293b !important;
+        }
+
+        .iyanjupay-theme-dark .bg-purple-50 {
+          background-color: #312e81 !important;
+        }
+
+        .iyanjupay-theme-dark .text-purple-700,
+        .iyanjupay-theme-dark .text-purple-600 {
+          color: #c4b5fd !important;
+        }
+
+        .iyanjupay-theme-dark .bg-blue-50 {
+          background-color: #172554 !important;
+        }
+
+        .iyanjupay-theme-dark .bg-emerald-50 {
+          background-color: #052e2b !important;
+        }
+
+        .iyanjupay-theme-dark .bg-orange-50 {
+          background-color: #431407 !important;
+        }
+
+        .iyanjupay-theme-blue .bg-purple-50 {
+          background-color: #dbeafe !important;
+        }
+
+        .iyanjupay-theme-blue .text-purple-700,
+        .iyanjupay-theme-blue .text-purple-600 {
+          color: #1d4ed8 !important;
+        }
+
+        .iyanjupay-theme-blue .bg-purple-600 {
+          background-color: #2563eb !important;
+        }
+
+        .iyanjupay-theme-blue [class*="hover:bg-purple-700"]:hover {
+          background-color: #1d4ed8 !important;
+        }
+      `}</style>
+
+    <div
+      className={`min-h-screen pb-24 iyanjupay-dashboard iyanjupay-theme-${dashboardTheme}`}
+      data-theme={dashboardTheme}
+    >
 
       {/* ====================================================== */}
       {/* TOP HEADER                                             */}
       {/* ====================================================== */}
 
-      <header className="sticky top-0 z-30 border-b border-white/10 bg-gradient-to-r from-[#5b21b6] via-[#6d28d9] to-[#2563eb] text-white shadow-lg">
+      <header className={`sticky top-0 z-30 border-b border-white/10 bg-gradient-to-r ${appearanceConfig[dashboardTheme].header} text-white shadow-lg`}>
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div className="flex h-[72px] items-center justify-between">
 
@@ -2017,6 +2189,68 @@ const Dashboard = () => {
               >
                 <QrCode className="h-5 w-5" />
               </Button>
+
+              {/* APPEARANCE */}
+              <div className="relative">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() =>
+                    setAppearanceOpen((open) => !open)
+                  }
+                  className="h-10 w-10 rounded-full p-0 text-white hover:bg-white/15"
+                  aria-label="Change dashboard appearance"
+                  aria-expanded={appearanceOpen}
+                  aria-haspopup="menu"
+                >
+                  <ActiveAppearanceIcon className="h-5 w-5" />
+                </Button>
+
+                {appearanceOpen && (
+                  <div
+                    role="menu"
+                    aria-label="Dashboard appearance"
+                    className="absolute right-0 top-12 z-[60] w-40 overflow-hidden rounded-2xl border border-slate-200 bg-white p-1.5 text-slate-900 shadow-2xl"
+                  >
+                    <div className="px-2.5 pb-1.5 pt-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                      Appearance
+                    </div>
+
+                    {(Object.keys(appearanceConfig) as DashboardTheme[]).map((theme) => {
+                      const ThemeIcon = appearanceConfig[theme].icon;
+
+                      return (
+                        <button
+                          key={theme}
+                          type="button"
+                          role="menuitem"
+                          onClick={() => {
+                            setDashboardTheme(theme);
+                            setAppearanceOpen(false);
+                          }}
+                          className={`flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left text-xs font-semibold transition ${
+                            dashboardTheme === theme
+                              ? "bg-slate-100 text-slate-900"
+                              : "text-slate-600 hover:bg-slate-50"
+                          }`}
+                        >
+                          <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-slate-100">
+                            <ThemeIcon className="h-3.5 w-3.5" />
+                          </span>
+
+                          <span className="flex-1">
+                            {appearanceConfig[theme].label}
+                          </span>
+
+                          {dashboardTheme === theme && (
+                            <Check className="h-3.5 w-3.5 text-emerald-600" />
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
 
               <Button
                 variant="ghost"
@@ -2097,7 +2331,7 @@ const Dashboard = () => {
         {/* WALLET HERO */}
 
         <section className="mb-7">
-          <Card className="relative overflow-hidden rounded-[28px] border-0 bg-gradient-to-br from-[#4c1d95] via-[#6d28d9] to-[#2563eb] text-white shadow-[0_20px_60px_rgba(79,70,229,0.22)]">
+          <Card className={`relative overflow-hidden rounded-[28px] border-0 bg-gradient-to-br ${appearanceConfig[dashboardTheme].wallet} text-white shadow-[0_20px_60px_rgba(79,70,229,0.22)]`}>
 
             <div className="pointer-events-none absolute -right-20 -top-20 h-56 w-56 rounded-full bg-white/10" />
 

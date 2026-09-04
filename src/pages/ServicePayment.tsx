@@ -8,7 +8,6 @@ import React, {
 import {
   ArrowLeft,
   Check,
-  ChevronDown,
   ChevronRight,
   CircleAlert,
   CreditCard,
@@ -24,6 +23,7 @@ import {
   Sparkles,
   Tv,
   WalletCards,
+  X,
   Zap,
 } from "lucide-react";
 
@@ -32,6 +32,19 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+
+/* ------------------------------------------------------------------ */
+/*  Design tokens (IyanjuPay)                                          */
+/*                                                                      */
+/*  Ink       #071B3E  — deep navy, hero surfaces, primary text        */
+/*  Brand     #082A63  — primary actions, links, focus rings           */
+/*  Brand-2   #153B7A  — gradient partner for Brand                    */
+/*  Gold      #F4B400  — single accent: hot deals, highlights          */
+/*  Paper     #FAF8F4  — app background (warm, not clinical white)     */
+/*  Line      #E7E3DA  — hairline borders on Paper                     */
+/*  Success   #16794D  — sufficient balance / confirmations            */
+/*  Danger    #C22E2E  — errors, insufficient balance                  */
+/* ------------------------------------------------------------------ */
 
 interface ServicePaymentProps {
   service: {
@@ -1306,7 +1319,11 @@ function getProviderRequestService(
   return serviceType;
 }
 
-function ProviderCard({
+/* ------------------------------------------------------------------ */
+/*  Presentational subcomponents                                      */
+/* ------------------------------------------------------------------ */
+
+function ProviderChip({
   provider,
   selected,
   loading,
@@ -1328,65 +1345,67 @@ function ProviderCard({
       onClick={onClick}
       disabled={disabled || loading}
       className={[
-        "group relative w-full overflow-hidden rounded-2xl border bg-white p-3 text-left",
-        "transition-all duration-200",
-        "hover:-translate-y-0.5 hover:border-[#082A63]/30 hover:shadow-lg",
-        "focus:outline-none focus:ring-2 focus:ring-[#082A63]/20",
-        selected
-          ? "border-[#082A63] bg-[#082A63]/[0.025] ring-2 ring-[#082A63]/10"
-          : "border-slate-200",
+        "flex shrink-0 w-[76px] flex-col items-center gap-2 rounded-2xl px-1 py-3",
+        "transition-transform duration-150 active:scale-95",
         disabled || loading
-          ? "cursor-not-allowed opacity-60"
+          ? "cursor-not-allowed opacity-50"
           : "",
       ].join(" ")}
     >
-      {selected && (
-        <span className="absolute right-2 top-2 flex h-5 w-5 items-center justify-center rounded-full bg-[#082A63] text-white">
-          <Check className="h-3 w-3" strokeWidth={3} />
-        </span>
-      )}
+      <span
+        className={[
+          "relative flex h-[58px] w-[58px] items-center justify-center rounded-full bg-white",
+          "shadow-[0_2px_10px_rgba(7,27,62,0.10)]",
+          selected
+            ? "ring-2 ring-[#082A63] ring-offset-2 ring-offset-[#FAF8F4]"
+            : "ring-1 ring-[#E7E3DA]",
+        ].join(" ")}
+      >
+        {logo ? (
+          <img
+            src={logo}
+            alt=""
+            className="h-8 w-8 object-contain"
+            loading="eager"
+            referrerPolicy="no-referrer"
+            onError={(event) => {
+              event.currentTarget.style.display = "none";
 
-      <div className="flex flex-col items-center">
-        <div className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
-          {logo ? (
-            <img
-              src={logo}
-              alt=""
-              className="h-9 w-9 object-contain"
-              loading="eager"
-              referrerPolicy="no-referrer"
-              onError={(event) => {
-                event.currentTarget.style.display = "none";
+              const fallback =
+                event.currentTarget
+                  .nextElementSibling as HTMLElement | null;
 
-                const fallback =
-                  event.currentTarget
-                    .nextElementSibling as HTMLElement | null;
-
-                if (fallback) {
-                  fallback.style.display = "flex";
-                }
-              }}
-            />
-          ) : null}
-
-          <span
-            className="items-center justify-center text-sm font-black text-[#082A63]"
-            style={{
-              display: logo ? "none" : "flex",
+              if (fallback) {
+                fallback.style.display = "flex";
+              }
             }}
-          >
-            {getInitials(name)}
+          />
+        ) : null}
+
+        <span
+          className="items-center justify-center text-xs font-black text-[#082A63]"
+          style={{
+            display: logo ? "none" : "flex",
+          }}
+        >
+          {getInitials(name)}
+        </span>
+
+        {selected && (
+          <span className="absolute -bottom-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full border-2 border-[#FAF8F4] bg-[#082A63] text-white">
+            <Check className="h-2.5 w-2.5" strokeWidth={3} />
           </span>
-        </div>
+        )}
+      </span>
 
-        <p className="mt-2 w-full truncate text-center text-xs font-bold text-slate-800">
-          {name}
-        </p>
-
-        <p className="mt-0.5 text-[10px] font-medium text-slate-400">
-          {selected ? "Selected" : "Tap to select"}
-        </p>
-      </div>
+      <span
+        className={[
+          "line-clamp-1 w-full text-center text-[11px] font-bold",
+          selected ? "text-[#082A63]" : "text-[#5B6472]",
+        ].join(" ")}
+      >
+        {name}
+      </span>
     </button>
   );
 }
@@ -1415,65 +1434,52 @@ function PlanCard({
       onClick={onClick}
       disabled={disabled}
       className={[
-        "group relative min-w-0 overflow-hidden rounded-2xl border bg-white p-4 text-left",
-        "transition-all duration-200",
-        "hover:-translate-y-0.5 hover:border-[#082A63]/25 hover:shadow-lg",
-        "focus:outline-none focus:ring-2 focus:ring-[#082A63]/20",
+        "relative min-w-0 rounded-2xl border p-3.5 text-left",
+        "transition-all duration-150 active:scale-[0.98]",
         selected
-          ? "border-[#082A63] bg-[#082A63]/[0.025] ring-2 ring-[#082A63]/10"
-          : "border-slate-200",
+          ? "border-[#082A63] bg-white shadow-[0_6px_18px_rgba(8,42,99,0.14)]"
+          : "border-[#E7E3DA] bg-white",
         disabled
           ? "cursor-not-allowed opacity-60"
           : "",
       ].join(" ")}
     >
-      {hot && (
-        <span className="absolute right-3 top-3 inline-flex items-center gap-1 rounded-full bg-orange-50 px-2 py-1 text-[9px] font-extrabold uppercase tracking-wide text-orange-600">
-          <Flame className="h-3 w-3" />
-          Hot
-        </span>
-      )}
-
-      {selected && (
-        <span className="absolute left-3 top-3 flex h-6 w-6 items-center justify-center rounded-full bg-[#082A63] text-white">
-          <Check className="h-3.5 w-3.5" strokeWidth={3} />
-        </span>
-      )}
-
-      <div
-        className={[
-          "pr-12",
-          selected ? "pl-8" : "",
-        ].join(" ")}
-      >
-        <p className="line-clamp-2 min-h-[40px] text-sm font-extrabold leading-5 text-slate-900">
+      <div className="flex items-start justify-between gap-2">
+        <p className="line-clamp-2 min-h-[32px] text-[13px] font-extrabold leading-tight text-[#0B1830]">
           {name}
         </p>
 
-        {validity && (
-          <p className="mt-1 text-xs font-medium text-slate-500">
-            {validity}
-          </p>
+        {selected && (
+          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#082A63] text-white">
+            <Check className="h-3 w-3" strokeWidth={3} />
+          </span>
         )}
       </div>
 
-      <div className="mt-4 flex items-end justify-between gap-3">
-        <div>
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-            {quantity > 1 ? "Unit price" : "Price"}
-          </p>
+      {validity && (
+        <p className="mt-1 text-[11px] font-medium text-[#8B93A1]">
+          {validity}
+        </p>
+      )}
 
-          <p className="mt-0.5 text-lg font-black text-[#082A63]">
-            {formatNaira(price)}
-          </p>
-        </div>
+      <div className="mt-3 flex items-end justify-between gap-2">
+        <p className="text-[15px] font-black text-[#082A63]">
+          {formatNaira(price)}
+        </p>
 
         {quantity > 1 && (
-          <p className="text-xs font-bold text-slate-500">
+          <p className="text-[11px] font-bold text-[#8B93A1]">
             × {quantity}
           </p>
         )}
       </div>
+
+      {hot && (
+        <span className="absolute right-2 top-2 inline-flex items-center gap-1 rounded-full bg-[#FDF4DA] px-1.5 py-0.5 text-[8px] font-extrabold uppercase tracking-wide text-[#8B6500]">
+          <Flame className="h-2.5 w-2.5" />
+          Hot
+        </span>
+      )}
     </button>
   );
 }
@@ -1484,18 +1490,61 @@ function LoadingCards({
   count?: number;
 }) {
   return (
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+    <div className="grid grid-cols-2 gap-3">
       {Array.from({
         length: count,
       }).map((_, index) => (
         <div
           key={index}
-          className="h-32 animate-pulse rounded-2xl bg-slate-100"
+          className="h-[92px] animate-pulse rounded-2xl bg-[#EFEBE3]"
         />
       ))}
     </div>
   );
 }
+
+function SectionCard({
+  step,
+  title,
+  subtitle,
+  action,
+  children,
+}: {
+  step?: string;
+  title: string;
+  subtitle?: string;
+  action?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="rounded-[22px] border border-[#E7E3DA] bg-white p-4">
+      <div className="mb-4 flex items-start justify-between gap-3">
+        <div>
+          {step && (
+            <p className="text-[10px] font-extrabold uppercase tracking-[0.14em] text-[#082A63]/45">
+              {step}
+            </p>
+          )}
+          <h2 className="mt-0.5 text-[16px] font-extrabold text-[#0B1830]">
+            {title}
+          </h2>
+          {subtitle && (
+            <p className="mt-0.5 text-[12.5px] leading-5 text-[#8B93A1]">
+              {subtitle}
+            </p>
+          )}
+        </div>
+        {action}
+      </div>
+
+      {children}
+    </section>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Main component                                                    */
+/* ------------------------------------------------------------------ */
 
 const ServicePayment = ({
   service,
@@ -2892,88 +2941,90 @@ const ServicePayment = ({
       onBack();
     };
 
+  /* ---------------------------------------------------------------- */
+  /*  Empty state — no service selected                                */
+  /* ---------------------------------------------------------------- */
+
   if (!service) {
     return (
-      <div className="min-h-screen bg-slate-50 px-4">
-        <div className="mx-auto flex min-h-screen max-w-xl items-center justify-center">
-          <div className="w-full rounded-3xl border border-slate-200 bg-white p-8 text-center shadow-sm">
-            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-[#082A63]/5">
-              <WalletCards className="h-7 w-7 text-[#082A63]" />
-            </div>
-
-            <h2 className="mt-5 text-xl font-black text-slate-900">
-              No service selected
-            </h2>
-
-            <p className="mt-2 text-sm text-slate-500">
-              Select a service to continue.
-            </p>
-
-            <Button
-              type="button"
-              onClick={onBack}
-              className="mt-6 rounded-xl bg-[#082A63] px-6 hover:bg-[#061f4b]"
-            >
-              Go Back
-            </Button>
+      <div className="flex min-h-screen items-center justify-center bg-[#FAF8F4] px-5">
+        <div className="w-full max-w-sm rounded-[28px] border border-[#E7E3DA] bg-white p-8 text-center">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-[#082A63]/[0.06]">
+            <WalletCards className="h-7 w-7 text-[#082A63]" />
           </div>
+
+          <h2 className="mt-5 text-lg font-extrabold text-[#0B1830]">
+            No service selected
+          </h2>
+
+          <p className="mt-2 text-[13px] leading-5 text-[#8B93A1]">
+            Choose a bill or top-up from your services list to
+            continue.
+          </p>
+
+          <Button
+            type="button"
+            onClick={onBack}
+            className="mt-6 h-12 w-full rounded-2xl bg-[#082A63] text-sm font-bold hover:bg-[#061f4b]"
+          >
+            Go back
+          </Button>
         </div>
       </div>
     );
   }
 
+  /* ---------------------------------------------------------------- */
+  /*  Coming-soon services                                             */
+  /* ---------------------------------------------------------------- */
+
   if (isComingSoon) {
     return (
-      <div className="min-h-screen bg-slate-50">
-        <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur">
-          <div className="mx-auto flex h-16 max-w-5xl items-center gap-3 px-4 sm:px-6">
-            <button
-              type="button"
-              onClick={handleBack}
-              className="flex h-10 w-10 items-center justify-center rounded-xl text-slate-600 transition-colors hover:bg-slate-100"
-            >
-              <ArrowLeft className="h-5 w-5" />
-            </button>
+      <div className="min-h-screen bg-[#FAF8F4]">
+        <header className="flex h-16 items-center gap-3 px-4">
+          <button
+            type="button"
+            onClick={handleBack}
+            className="flex h-10 w-10 items-center justify-center rounded-full text-[#0B1830] transition-colors hover:bg-black/5"
+          >
+            <ArrowLeft className="h-5 w-5" />
+          </button>
 
-            <div>
-              <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-[#082A63]/60">
-                IyanjuPay
-              </p>
-
-              <h1 className="text-base font-black text-slate-900">
-                {service.title}
-              </h1>
-            </div>
+          <div>
+            <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-[#082A63]/50">
+              IyanjuPay
+            </p>
+            <h1 className="text-[15px] font-extrabold text-[#0B1830]">
+              {service.title}
+            </h1>
           </div>
         </header>
 
-        <main className="mx-auto flex max-w-5xl items-center justify-center px-4 py-20 sm:px-6">
-          <div className="w-full max-w-lg rounded-3xl border border-slate-200 bg-white p-8 text-center shadow-sm">
-            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-[#082A63]/5">
+        <main className="flex items-center justify-center px-5 py-16">
+          <div className="w-full max-w-sm rounded-[28px] border border-[#E7E3DA] bg-white p-8 text-center">
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-[#082A63]/[0.06]">
               <Sparkles className="h-7 w-7 text-[#082A63]" />
             </div>
 
-            <span className="mt-6 inline-flex rounded-full bg-[#F4B400]/10 px-3 py-1 text-xs font-black text-[#9a6d00]">
-              Coming Soon
+            <span className="mt-6 inline-flex rounded-full bg-[#FDF4DA] px-3 py-1 text-[11px] font-extrabold text-[#8B6500]">
+              Coming soon
             </span>
 
-            <h2 className="mt-4 text-2xl font-black tracking-tight text-slate-900">
+            <h2 className="mt-4 text-xl font-extrabold tracking-tight text-[#0B1830]">
               {service.title}
             </h2>
 
-            <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-slate-500">
-              We are preparing this service for
-              IyanjuPay. You will be able to use it
-              directly from your wallet once it is
-              available.
+            <p className="mx-auto mt-3 max-w-xs text-[13px] leading-5 text-[#8B93A1]">
+              We're preparing this for your wallet. You'll be
+              able to pay for it right here once it launches.
             </p>
 
             <Button
               type="button"
               onClick={handleBack}
-              className="mt-7 rounded-xl bg-[#082A63] px-7 hover:bg-[#061f4b]"
+              className="mt-7 h-12 w-full rounded-2xl bg-[#082A63] text-sm font-bold hover:bg-[#061f4b]"
             >
-              Back to Services
+              Back to services
             </Button>
           </div>
         </main>
@@ -2981,983 +3032,660 @@ const ServicePayment = ({
     );
   }
 
+  /* ---------------------------------------------------------------- */
+  /*  Live payment flow                                                 */
+  /* ---------------------------------------------------------------- */
+
   return (
-    <div className="min-h-screen bg-[#f7f9fc]">
-      <header className="sticky top-0 z-40 border-b border-slate-200/80 bg-white/95 backdrop-blur-xl">
-        <div className="mx-auto flex h-[68px] max-w-6xl items-center justify-between gap-4 px-4 sm:px-6">
-          <div className="flex min-w-0 items-center gap-3">
-            <button
-              type="button"
-              onClick={handleBack}
-              disabled={
-                processingPayment ||
-                verifyingPin
-              }
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-slate-600 transition-all hover:bg-slate-100 disabled:opacity-50"
-              aria-label="Go back"
-            >
-              <ArrowLeft className="h-5 w-5" />
-            </button>
+    <div className="min-h-screen bg-[#FAF8F4]">
+      <header className="sticky top-0 z-30 flex h-16 items-center justify-between gap-3 border-b border-[#E7E3DA]/70 bg-[#FAF8F4]/90 px-4 backdrop-blur-xl">
+        <button
+          type="button"
+          onClick={handleBack}
+          disabled={processingPayment || verifyingPin}
+          className="flex h-10 w-10 items-center justify-center rounded-full text-[#0B1830] transition-colors hover:bg-black/5 disabled:opacity-40"
+          aria-label="Go back"
+        >
+          <ArrowLeft className="h-5 w-5" />
+        </button>
 
-            <div className="flex min-w-0 items-center gap-3">
-              <div className="hidden h-10 w-10 items-center justify-center rounded-xl bg-[#082A63] text-white sm:flex">
-                <ServiceIcon className="h-5 w-5" />
-              </div>
-
-              <div className="min-w-0">
-                <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-[#082A63]/60">
-                  IyanjuPay Services
-                </p>
-
-                <h1 className="truncate text-base font-black text-slate-900 sm:text-lg">
-                  {service.title}
-                </h1>
-              </div>
-            </div>
-          </div>
-
-          {onHistory && (
-            <button
-              type="button"
-              onClick={onHistory}
-              disabled={
-                processingPayment ||
-                verifyingPin
-              }
-              className="hidden items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-600 transition-all hover:border-[#082A63]/20 hover:text-[#082A63] sm:flex"
-            >
-              <RefreshCw className="h-4 w-4" />
-              History
-            </button>
-          )}
+        <div className="min-w-0 flex-1 text-center">
+          <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-[#082A63]/50">
+            IyanjuPay
+          </p>
+          <h1 className="truncate text-[15px] font-extrabold text-[#0B1830]">
+            {service.title}
+          </h1>
         </div>
+
+        {onHistory ? (
+          <button
+            type="button"
+            onClick={onHistory}
+            disabled={processingPayment || verifyingPin}
+            className="flex h-10 w-10 items-center justify-center rounded-full text-[#0B1830] transition-colors hover:bg-black/5 disabled:opacity-40"
+            aria-label="Payment history"
+          >
+            <RefreshCw className="h-4.5 w-4.5" />
+          </button>
+        ) : (
+          <div className="h-10 w-10" />
+        )}
       </header>
 
-      <main className="mx-auto max-w-6xl px-4 py-5 sm:px-6 sm:py-8">
-        {showPinPrompt ? (
-          <div className="mx-auto max-w-xl">
-            <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-[0_20px_70px_rgba(8,42,99,0.08)]">
-              <div className="bg-[#082A63] px-6 py-7 text-white sm:px-8">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/10">
-                    <LockKeyhole className="h-6 w-6" />
-                  </div>
+      <main className="mx-auto max-w-md space-y-4 px-4 pb-[168px] pt-4">
+        {/* Hero */}
+        <div className="relative overflow-hidden rounded-[26px] bg-gradient-to-br from-[#0B1E45] via-[#0E2657] to-[#17417F] p-5 text-white">
+          <svg
+            className="pointer-events-none absolute -right-8 -top-10 h-40 w-40 opacity-[0.10]"
+            viewBox="0 0 200 200"
+          >
+            <circle cx="100" cy="100" r="100" fill="#F4B400" />
+          </svg>
 
-                  <div>
-                    <p className="text-xs font-bold text-white/60">
-                      Secure confirmation
-                    </p>
+          <svg
+            className="pointer-events-none absolute -bottom-14 -left-10 h-32 w-32 opacity-[0.06]"
+            viewBox="0 0 200 200"
+          >
+            <circle cx="100" cy="100" r="100" fill="#FFFFFF" />
+          </svg>
 
-                    <h2 className="text-xl font-black">
-                      Confirm payment
-                    </h2>
-                  </div>
-                </div>
+          <div className="relative flex items-center justify-between">
+            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white/10">
+              <ServiceIcon className="h-5 w-5" />
+            </div>
 
-                <p className="mt-5 text-sm leading-6 text-white/70">
-                  Enter your 4-digit payment PIN to
-                  authorize this transaction.
-                </p>
-              </div>
-
-              <div className="space-y-6 p-5 sm:p-8">
-                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                  <div className="flex items-center justify-between gap-4">
-                    <span className="text-sm font-medium text-slate-500">
-                      Service
-                    </span>
-
-                    <span className="text-sm font-black text-slate-900">
-                      {service.title}
-                    </span>
-                  </div>
-
-                  <div className="my-3 h-px bg-slate-200" />
-
-                  <div className="flex items-center justify-between gap-4">
-                    <span className="text-sm font-medium text-slate-500">
-                      Amount
-                    </span>
-
-                    <span className="text-xl font-black text-[#082A63]">
-                      {formatNaira(
-                        estimatedTotal
-                      )}
-                    </span>
-                  </div>
-
-                  <div className="mt-3 flex items-start justify-between gap-4">
-                    <span className="text-sm font-medium text-slate-500">
-                      {customerLabel}
-                    </span>
-
-                    <span className="break-all text-right text-sm font-bold text-slate-800">
-                      {normalizedCustomer}
-                    </span>
-                  </div>
-
-                  {selectedItem && (
-                    <div className="mt-3 flex items-start justify-between gap-4">
-                      <span className="text-sm font-medium text-slate-500">
-                        Package
-                      </span>
-
-                      <span className="max-w-[65%] text-right text-sm font-bold text-slate-800">
-                        {getItemName(
-                          selectedItem
-                        )}
-                      </span>
-                    </div>
-                  )}
-                </div>
-
-                <div className="space-y-2">
-                  <Label
-                    htmlFor="paymentPin"
-                    className="text-sm font-bold text-slate-800"
-                  >
-                    Payment PIN
-                  </Label>
-
-                  <Input
-                    id="paymentPin"
-                    type="password"
-                    inputMode="numeric"
-                    autoComplete="off"
-                    maxLength={4}
-                    value={paymentPin}
-                    onChange={(event) => {
-                      setPaymentPin(
-                        event.target.value
-                          .replace(/\D/g, "")
-                          .slice(0, 4)
-                      );
-
-                      setError("");
-                    }}
-                    onKeyDown={(event) => {
-                      if (
-                        event.key ===
-                          "Enter" &&
-                        paymentPin.length ===
-                          4
-                      ) {
-                        void verifyPinAndPay();
-                      }
-                    }}
-                    placeholder="••••"
-                    disabled={
-                      verifyingPin
-                    }
-                    autoFocus
-                    className="h-14 rounded-xl text-center text-2xl font-black tracking-[0.6em]"
-                  />
-
-                  <div className="flex items-center justify-center gap-2 pt-1 text-xs font-medium text-slate-400">
-                    <ShieldCheck className="h-3.5 w-3.5" />
-                    Your PIN is verified securely.
-                  </div>
-                </div>
-
-                {error && (
-                  <div className="flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50 p-4">
-                    <CircleAlert className="mt-0.5 h-4 w-4 shrink-0 text-red-600" />
-
-                    <p className="text-sm font-medium leading-5 text-red-700">
-                      {error}
-                    </p>
-                  </div>
-                )}
-
-                <div className="space-y-3">
-                  <Button
-                    type="button"
-                    onClick={() =>
-                      void verifyPinAndPay()
-                    }
-                    disabled={
-                      verifyingPin ||
-                      paymentPin.length !== 4
-                    }
-                    className="h-12 w-full rounded-xl bg-[#082A63] font-bold hover:bg-[#061f4b]"
-                  >
-                    {verifyingPin ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Verifying...
-                      </>
-                    ) : (
-                      <>
-                        <LockKeyhole className="mr-2 h-4 w-4" />
-                        Confirm payment
-                      </>
-                    )}
-                  </Button>
-
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => {
-                      if (
-                        verifyingPin
-                      ) {
-                        return;
-                      }
-
-                      setShowPinPrompt(
-                        false
-                      );
-
-                      setPaymentPin("");
-                      setError("");
-                    }}
-                    disabled={
-                      verifyingPin
-                    }
-                    className="h-12 w-full rounded-xl font-bold"
-                  >
-                    Go back
-                  </Button>
-                </div>
-              </div>
+            <div className="rounded-full bg-white/10 px-3 py-1.5 text-[11px] font-bold">
+              Wallet · {formatNaira(walletBalance)}
             </div>
           </div>
-        ) : (
-          <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_330px]">
-            <section className="min-w-0 space-y-5">
-              <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
-                <div className="mb-6 flex items-start justify-between gap-4">
-                  <div>
-                    <p className="text-xs font-extrabold uppercase tracking-[0.14em] text-[#082A63]/60">
-                      Step 1
-                    </p>
 
-                    <h2 className="mt-1 text-xl font-black tracking-tight text-slate-900">
-                      Choose your option
-                    </h2>
+          <p className="relative mt-5 text-[11px] font-semibold text-white/55">
+            You're paying for
+          </p>
 
-                    <p className="mt-1 text-sm leading-5 text-slate-500">
-                      Select the network, biller or service
-                      option you want to use.
-                    </p>
-                  </div>
+          <p className="relative text-[19px] font-extrabold leading-tight">
+            {service.title}
+          </p>
 
-                  <button
-                    type="button"
+          <div className="relative mt-4 flex items-end justify-between">
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-wide text-white/45">
+                Amount
+              </p>
+              <p className="text-[28px] font-black leading-none">
+                {formatNaira(estimatedTotal)}
+              </p>
+            </div>
+
+            {selectedProvider && (
+              <p className="max-w-[46%] truncate text-right text-[12px] font-bold text-white/70">
+                {getNetworkName(selectedProvider)}
+              </p>
+            )}
+          </div>
+        </div>
+
+        {/* Step 1 — provider */}
+        <SectionCard
+          step="Step 1"
+          title="Choose your option"
+          subtitle="Network, biller or service option."
+          action={
+            <button
+              type="button"
+              onClick={() => void loadProviders()}
+              disabled={
+                loadingProviders ||
+                processingPayment ||
+                verifyingPin
+              }
+              className="flex h-8 w-8 items-center justify-center rounded-full text-[#082A63] transition-colors hover:bg-[#082A63]/[0.06] disabled:opacity-50"
+              aria-label="Refresh options"
+            >
+              <RefreshCw
+                className={[
+                  "h-4 w-4",
+                  loadingProviders ? "animate-spin" : "",
+                ].join(" ")}
+              />
+            </button>
+          }
+        >
+          {loadingProviders ? (
+            <div className="flex gap-3 overflow-hidden">
+              {[1, 2, 3, 4].map((item) => (
+                <div
+                  key={item}
+                  className="h-[92px] w-[76px] shrink-0 animate-pulse rounded-2xl bg-[#EFEBE3]"
+                />
+              ))}
+            </div>
+          ) : providers.length > 0 ? (
+            <div className="-mx-1 flex gap-1 overflow-x-auto px-1 pb-1">
+              {providers.map((provider, index) => {
+                const code = getNetworkCode(provider);
+
+                if (!code) {
+                  return null;
+                }
+
+                return (
+                  <ProviderChip
+                    key={`${code}-${index}`}
+                    provider={provider}
+                    selected={code === selectedProviderCode}
+                    loading={loadingItems}
+                    disabled={processingPayment || verifyingPin}
                     onClick={() =>
-                      void loadProviders()
+                      void handleProviderSelect(code)
                     }
-                    disabled={
-                      loadingProviders ||
-                      processingPayment ||
-                      verifyingPin
-                    }
-                    className="flex h-9 items-center gap-1.5 rounded-xl border border-slate-200 px-3 text-xs font-bold text-slate-600 transition-all hover:border-[#082A63]/20 hover:text-[#082A63] disabled:opacity-50"
-                  >
-                    <RefreshCw
+                  />
+                );
+              })}
+            </div>
+          ) : (
+            <div className="rounded-2xl border border-dashed border-[#DCD6C8] bg-[#FAF8F4] px-5 py-8 text-center">
+              <Search className="mx-auto h-5 w-5 text-[#B7ADA0]" />
+
+              <p className="mt-3 text-[13px] font-bold text-[#0B1830]">
+                No options available
+              </p>
+
+              <p className="mt-1 text-[12px] leading-5 text-[#8B93A1]">
+                We couldn't load the available service options.
+              </p>
+
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => void loadProviders()}
+                className="mt-4 h-9 rounded-xl border-[#E7E3DA] text-xs font-bold"
+              >
+                Try again
+              </Button>
+            </div>
+          )}
+        </SectionCard>
+
+        {/* Step 2 — plans */}
+        {selectedProviderCode && needsPlans && (
+          <SectionCard
+            step="Step 2"
+            title="Choose a package"
+            subtitle={
+              selectedProvider
+                ? `Available for ${getNetworkName(selectedProvider)}`
+                : "Pick the package you want."
+            }
+            action={
+              loadingItems ? (
+                <Loader2 className="h-5 w-5 animate-spin text-[#082A63]" />
+              ) : undefined
+            }
+          >
+            {serviceType === "data" && (
+              <div className="mb-4 -mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
+                {DATA_TABS.map((tab) => {
+                  const count = dataGroups[tab].length;
+
+                  return (
+                    <button
+                      key={tab}
+                      type="button"
+                      onClick={() => setDataTab(tab)}
+                      disabled={processingPayment || verifyingPin}
                       className={[
-                        "h-3.5 w-3.5",
-                        loadingProviders
-                          ? "animate-spin"
-                          : "",
+                        "shrink-0 rounded-full px-3.5 py-2 text-[12px] font-bold transition-all",
+                        dataTab === tab
+                          ? "bg-[#082A63] text-white"
+                          : "bg-[#F1EEE6] text-[#5B6472]",
                       ].join(" ")}
-                    />
-                    Refresh
-                  </button>
+                    >
+                      {tab === "HOT" && (
+                        <Flame className="mr-1 inline h-3 w-3 -mt-0.5" />
+                      )}
+                      {tab}
+                      <span
+                        className={
+                          dataTab === tab
+                            ? "ml-1 opacity-70"
+                            : "ml-1 text-[#B7ADA0]"
+                        }
+                      >
+                        {count}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            {items.length > 0 && (
+              <div className="relative mb-4">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#B7ADA0]" />
+
+                <Input
+                  value={searchTerm}
+                  onChange={(event) => setSearchTerm(event.target.value)}
+                  placeholder="Search packages..."
+                  className="h-11 rounded-xl border-[#E7E3DA] bg-[#FAF8F4] pl-10 text-sm"
+                />
+              </div>
+            )}
+
+            {loadingItems ? (
+              <LoadingCards />
+            ) : visibleItems.length > 0 ? (
+              <div className="grid grid-cols-2 gap-3">
+                {visibleItems.map((item, index) => (
+                  <PlanCard
+                    key={`${getItemCode(item)}-${index}`}
+                    item={item}
+                    selected={getItemCode(item) === selectedItemCode}
+                    quantity={usesQuantity ? quantity : 1}
+                    disabled={processingPayment || verifyingPin}
+                    onClick={() => handleItemSelect(item)}
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="rounded-2xl border border-dashed border-[#DCD6C8] bg-[#FAF8F4] px-5 py-8 text-center">
+                <Package className="mx-auto h-6 w-6 text-[#B7ADA0]" />
+
+                <p className="mt-3 text-[13px] font-bold text-[#0B1830]">
+                  No packages available
+                </p>
+
+                <p className="mt-1 text-[12px] leading-5 text-[#8B93A1]">
+                  Nothing to show for this selection right now.
+                </p>
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => void loadItems(selectedProviderCode)}
+                  className="mt-4 h-9 rounded-xl border-[#E7E3DA] text-xs font-bold"
+                >
+                  <RefreshCw className="mr-2 h-3.5 w-3.5" />
+                  Reload packages
+                </Button>
+              </div>
+            )}
+          </SectionCard>
+        )}
+
+        {/* Step 2 — amount */}
+        {selectedProviderCode && isAmountBased && (
+          <SectionCard
+            step="Step 2"
+            title="Choose amount"
+            subtitle="Pick a value or enter a custom amount."
+          >
+            <div className="grid grid-cols-3 gap-2.5">
+              {(serviceType === "airtime"
+                ? AIRTIME_AMOUNTS
+                : BILL_AMOUNTS
+              ).map((value) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => handleAmountSelect(value)}
+                  disabled={processingPayment || verifyingPin}
+                  className={[
+                    "rounded-2xl border px-3 py-3.5 text-center text-[13px] font-extrabold transition-all active:scale-95",
+                    amount === String(value)
+                      ? "border-[#082A63] bg-[#082A63] text-white"
+                      : "border-[#E7E3DA] bg-white text-[#0B1830]",
+                  ].join(" ")}
+                >
+                  {formatNaira(value)}
+                </button>
+              ))}
+
+              <button
+                type="button"
+                onClick={() => {
+                  setCustomAmount(true);
+                  setAmount("");
+                }}
+                disabled={processingPayment || verifyingPin}
+                className={[
+                  "rounded-2xl border px-3 py-3.5 text-center text-[13px] font-extrabold transition-all active:scale-95",
+                  customAmount
+                    ? "border-[#F4B400] bg-[#FDF4DA] text-[#8B6500]"
+                    : "border-[#E7E3DA] bg-white text-[#0B1830]",
+                ].join(" ")}
+              >
+                Custom
+              </button>
+            </div>
+
+            {customAmount && (
+              <div className="mt-4">
+                <Label
+                  htmlFor="customAmount"
+                  className="text-[13px] font-bold text-[#0B1830]"
+                >
+                  Enter amount
+                </Label>
+
+                <div className="relative mt-2">
+                  <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-sm font-black text-[#B7ADA0]">
+                    ₦
+                  </span>
+
+                  <Input
+                    id="customAmount"
+                    type="number"
+                    min="50"
+                    step="1"
+                    value={amount}
+                    onChange={(event) => setAmount(event.target.value)}
+                    placeholder="Enter amount"
+                    disabled={processingPayment || verifyingPin}
+                    className="h-12 rounded-xl border-[#E7E3DA] pl-8"
+                  />
+                </div>
+              </div>
+            )}
+          </SectionCard>
+        )}
+
+        {/* Step 2 — informational (no plans/amount) */}
+        {selectedProviderCode && !needsPlans && !isAmountBased && (
+          <SectionCard title={service.title}>
+            <p className="text-[12.5px] leading-5 text-[#8B93A1]">
+              Continue by entering the required customer
+              information below.
+            </p>
+          </SectionCard>
+        )}
+
+        {/* Quantity */}
+        {selectedProviderCode && usesQuantity && (
+          <SectionCard title="Quantity" subtitle="How many units do you want?">
+            <div className="flex items-center justify-center gap-4">
+              <button
+                type="button"
+                onClick={() => setQuantity(Math.max(1, quantity - 1))}
+                disabled={
+                  processingPayment || verifyingPin || quantity <= 1
+                }
+                className="flex h-11 w-11 items-center justify-center rounded-full bg-[#F1EEE6] text-lg font-black text-[#0B1830] disabled:opacity-40"
+              >
+                −
+              </button>
+
+              <span className="w-10 text-center text-lg font-black text-[#0B1830]">
+                {quantity}
+              </span>
+
+              <button
+                type="button"
+                onClick={() => setQuantity(Math.min(100, quantity + 1))}
+                disabled={
+                  processingPayment || verifyingPin || quantity >= 100
+                }
+                className="flex h-11 w-11 items-center justify-center rounded-full bg-[#F1EEE6] text-lg font-black text-[#0B1830] disabled:opacity-40"
+              >
+                +
+              </button>
+            </div>
+          </SectionCard>
+        )}
+
+        {/* Customer details */}
+        <SectionCard step="Step 3" title="Customer details">
+          <div className="space-y-2">
+            <Label
+              htmlFor="serviceCustomer"
+              className="text-[13px] font-bold text-[#0B1830]"
+            >
+              {customerLabel}
+            </Label>
+
+            <Input
+              id="serviceCustomer"
+              value={customer}
+              onChange={(event) => setCustomer(event.target.value)}
+              placeholder={customerPlaceholder}
+              disabled={processingPayment || verifyingPin}
+              inputMode={
+                serviceType === "airtime" ||
+                serviceType === "data" ||
+                serviceType === "airtime-card" ||
+                serviceType === "data-card" ||
+                serviceType === "electricity" ||
+                serviceType === "cable" ||
+                serviceType === "waec" ||
+                serviceType === "jamb"
+                  ? "numeric"
+                  : "text"
+              }
+              className="h-12 rounded-xl border-[#E7E3DA]"
+            />
+          </div>
+        </SectionCard>
+
+        {error && (
+          <div className="flex items-start gap-3 rounded-2xl border border-[#F1C7C7] bg-[#FCEEEE] p-4">
+            <CircleAlert className="mt-0.5 h-5 w-5 shrink-0 text-[#C22E2E]" />
+
+            <div>
+              <p className="text-[13px] font-extrabold text-[#7A1E1E]">
+                Something went wrong
+              </p>
+              <p className="mt-0.5 text-[12.5px] leading-5 text-[#9A3A3A]">
+                {error}
+              </p>
+            </div>
+          </div>
+        )}
+      </main>
+
+      {/* Sticky pay bar */}
+      <div className="fixed inset-x-0 bottom-0 z-30 border-t border-[#E7E3DA] bg-white/95 px-4 pb-[max(14px,env(safe-area-inset-bottom))] pt-3 backdrop-blur-xl">
+        <div className="mx-auto max-w-md">
+          {!balanceSufficient && estimatedTotal > 0 && (
+            <p className="mb-2 text-center text-[11.5px] font-bold text-[#C22E2E]">
+              Insufficient wallet balance for this transaction.
+            </p>
+          )}
+
+          <div className="flex items-center gap-3">
+            <div className="shrink-0">
+              <p className="text-[9.5px] font-bold uppercase tracking-wide text-[#8B93A1]">
+                Total
+              </p>
+              <p className="text-[18px] font-black leading-tight text-[#0B1830]">
+                {formatNaira(estimatedTotal)}
+              </p>
+            </div>
+
+            <Button
+              type="button"
+              onClick={openPin}
+              disabled={
+                loadingProviders ||
+                loadingItems ||
+                processingPayment ||
+                verifyingPin ||
+                !selectedProviderCode ||
+                (needsPlans && !selectedItemCode) ||
+                !customer.trim() ||
+                estimatedTotal <= 0 ||
+                !balanceSufficient
+              }
+              className="h-13 flex-1 rounded-2xl bg-[#082A63] text-[13.5px] font-extrabold shadow-[0_10px_24px_rgba(8,42,99,0.28)] hover:bg-[#061f4b] disabled:shadow-none"
+            >
+              {processingPayment ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Processing...
+                </>
+              ) : (
+                <>
+                  <LockKeyhole className="mr-2 h-4 w-4" />
+                  Pay securely
+                  <ChevronRight className="ml-1.5 h-4 w-4" />
+                </>
+              )}
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      {/* PIN bottom sheet */}
+      {showPinPrompt && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-[#05132B]/55 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-t-[32px] bg-white pb-[max(20px,env(safe-area-inset-bottom))]">
+            <div className="mx-auto mt-3 h-1 w-10 rounded-full bg-[#E7E3DA]" />
+
+            <div className="flex items-start justify-between px-6 pt-5">
+              <div className="flex items-center gap-3">
+                <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#082A63]/[0.06]">
+                  <LockKeyhole className="h-5 w-5 text-[#082A63]" />
                 </div>
 
-                {loadingProviders ? (
-                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                    {[1, 2, 3, 4].map(
-                      (item) => (
-                        <div
-                          key={item}
-                          className="h-28 animate-pulse rounded-2xl bg-slate-100"
-                        />
-                      )
-                    )}
-                  </div>
-                ) : providers.length > 0 ? (
-                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-5">
-                    {providers.map(
-                      (provider, index) => {
-                        const code =
-                          getNetworkCode(
-                            provider
-                          );
+                <div>
+                  <p className="text-[10.5px] font-bold uppercase tracking-wide text-[#8B93A1]">
+                    Secure confirmation
+                  </p>
+                  <h2 className="text-[17px] font-extrabold text-[#0B1830]">
+                    Confirm payment
+                  </h2>
+                </div>
+              </div>
 
-                        if (!code) {
-                          return null;
-                        }
+              <button
+                type="button"
+                onClick={() => {
+                  if (verifyingPin) return;
+                  setShowPinPrompt(false);
+                  setPaymentPin("");
+                  setError("");
+                }}
+                disabled={verifyingPin}
+                className="flex h-9 w-9 items-center justify-center rounded-full text-[#8B93A1] transition-colors hover:bg-black/5 disabled:opacity-40"
+                aria-label="Close"
+              >
+                <X className="h-4.5 w-4.5" />
+              </button>
+            </div>
 
-                        return (
-                          <ProviderCard
-                            key={`${code}-${index}`}
-                            provider={provider}
-                            selected={
-                              code ===
-                              selectedProviderCode
-                            }
-                            loading={
-                              loadingItems
-                            }
-                            disabled={
-                              processingPayment ||
-                              verifyingPin
-                            }
-                            onClick={() =>
-                              void handleProviderSelect(
-                                code
-                              )
-                            }
-                          />
-                        );
-                      }
-                    )}
-                  </div>
-                ) : (
-                  <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-5 py-10 text-center">
-                    <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-white shadow-sm">
-                      <Search className="h-5 w-5 text-slate-400" />
-                    </div>
+            <div className="space-y-5 px-6 pb-8 pt-5">
+              <div className="rounded-2xl bg-[#FAF8F4] p-4">
+                <div className="flex items-center justify-between gap-4">
+                  <span className="text-[12.5px] font-semibold text-[#8B93A1]">
+                    Service
+                  </span>
+                  <span className="text-[13px] font-extrabold text-[#0B1830]">
+                    {service.title}
+                  </span>
+                </div>
 
-                    <p className="mt-4 text-sm font-bold text-slate-800">
-                      No options available
-                    </p>
+                <div className="my-3 h-px bg-[#E7E3DA]" />
 
-                    <p className="mt-1 text-xs leading-5 text-slate-500">
-                      We could not load the available
-                      service options.
-                    </p>
+                <div className="flex items-center justify-between gap-4">
+                  <span className="text-[12.5px] font-semibold text-[#8B93A1]">
+                    Amount
+                  </span>
+                  <span className="text-[19px] font-black text-[#082A63]">
+                    {formatNaira(estimatedTotal)}
+                  </span>
+                </div>
 
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() =>
-                        void loadProviders()
-                      }
-                      className="mt-4 rounded-xl"
-                    >
-                      Try again
-                    </Button>
+                <div className="mt-3 flex items-start justify-between gap-4">
+                  <span className="text-[12.5px] font-semibold text-[#8B93A1]">
+                    {customerLabel}
+                  </span>
+                  <span className="break-all text-right text-[13px] font-bold text-[#0B1830]">
+                    {normalizedCustomer}
+                  </span>
+                </div>
+
+                {selectedItem && (
+                  <div className="mt-3 flex items-start justify-between gap-4">
+                    <span className="text-[12.5px] font-semibold text-[#8B93A1]">
+                      Package
+                    </span>
+                    <span className="max-w-[65%] text-right text-[13px] font-bold text-[#0B1830]">
+                      {getItemName(selectedItem)}
+                    </span>
                   </div>
                 )}
               </div>
 
-              {selectedProviderCode &&
-                needsPlans && (
-                  <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
-                    <div className="mb-5 flex items-start justify-between gap-4">
-                      <div>
-                        <p className="text-xs font-extrabold uppercase tracking-[0.14em] text-[#082A63]/60">
-                          Step 2
-                        </p>
+              <div className="space-y-2">
+                <Label
+                  htmlFor="paymentPin"
+                  className="text-[13px] font-bold text-[#0B1830]"
+                >
+                  Payment PIN
+                </Label>
 
-                        <h2 className="mt-1 text-xl font-black tracking-tight text-slate-900">
-                          Choose a package
-                        </h2>
-
-                        <p className="mt-1 text-sm leading-5 text-slate-500">
-                          {selectedProvider
-                            ? `Available options for ${getNetworkName(
-                                selectedProvider
-                              )}.`
-                            : "Choose the package you want."}
-                        </p>
-                      </div>
-
-                      {loadingItems && (
-                        <Loader2 className="h-5 w-5 animate-spin text-[#082A63]" />
-                      )}
-                    </div>
-
-                    {serviceType ===
-                      "data" && (
-                      <div className="mb-5">
-                        <div className="flex gap-2 overflow-x-auto pb-1">
-                          {DATA_TABS.map(
-                            (tab) => {
-                              const count =
-                                dataGroups[
-                                  tab
-                                ].length;
-
-                              return (
-                                <button
-                                  key={tab}
-                                  type="button"
-                                  onClick={() =>
-                                    setDataTab(
-                                      tab
-                                    )
-                                  }
-                                  disabled={
-                                    processingPayment ||
-                                    verifyingPin
-                                  }
-                                  className={[
-                                    "shrink-0 rounded-full border px-4 py-2 text-xs font-extrabold transition-all",
-                                    dataTab ===
-                                    tab
-                                      ? "border-[#082A63] bg-[#082A63] text-white shadow-sm"
-                                      : "border-slate-200 bg-white text-slate-600 hover:border-[#082A63]/30 hover:text-[#082A63]",
-                                  ].join(" ")}
-                                >
-                                  {tab ===
-                                    "HOT" && (
-                                    <Flame className="mr-1 inline h-3.5 w-3.5" />
-                                  )}
-
-                                  {tab}
-
-                                  <span
-                                    className={
-                                      dataTab ===
-                                      tab
-                                        ? "ml-1 opacity-70"
-                                        : "ml-1 text-slate-400"
-                                    }
-                                  >
-                                    {count}
-                                  </span>
-                                </button>
-                              );
-                            }
-                          )}
-                        </div>
-                      </div>
-                    )}
-
-                    {items.length > 0 && (
-                      <div className="mb-5">
-                        <div className="relative">
-                          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-
-                          <Input
-                            value={searchTerm}
-                            onChange={(event) =>
-                              setSearchTerm(
-                                event.target.value
-                              )
-                            }
-                            placeholder="Search packages..."
-                            className="h-11 rounded-xl border-slate-200 bg-slate-50 pl-10"
-                          />
-                        </div>
-                      </div>
-                    )}
-
-                    {loadingItems ? (
-                      <LoadingCards />
-                    ) : visibleItems.length > 0 ? (
-                      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                        {visibleItems.map(
-                          (
-                            item,
-                            index
-                          ) => (
-                            <PlanCard
-                              key={`${getItemCode(
-                                item
-                              )}-${index}`}
-                              item={item}
-                              selected={
-                                getItemCode(
-                                  item
-                                ) ===
-                                selectedItemCode
-                              }
-                              quantity={
-                                usesQuantity
-                                  ? quantity
-                                  : 1
-                              }
-                              disabled={
-                                processingPayment ||
-                                verifyingPin
-                              }
-                              onClick={() =>
-                                handleItemSelect(
-                                  item
-                                )
-                              }
-                            />
-                          )
-                        )}
-                      </div>
-                    ) : (
-                      <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-5 py-10 text-center">
-                        <Package className="mx-auto h-7 w-7 text-slate-300" />
-
-                        <p className="mt-3 text-sm font-bold text-slate-800">
-                          No packages available
-                        </p>
-
-                        <p className="mt-1 text-xs leading-5 text-slate-500">
-                          There are currently no available
-                          packages for this selection.
-                        </p>
-
-                        <Button
-                          type="button"
-                          variant="outline"
-                          onClick={() =>
-                            void loadItems(
-                              selectedProviderCode
-                            )
-                          }
-                          className="mt-4 rounded-xl"
-                        >
-                          <RefreshCw className="mr-2 h-4 w-4" />
-                          Reload packages
-                        </Button>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-              {selectedProviderCode &&
-                isAmountBased && (
-                  <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
-                    <p className="text-xs font-extrabold uppercase tracking-[0.14em] text-[#082A63]/60">
-                      Step 2
-                    </p>
-
-                    <h2 className="mt-1 text-xl font-black tracking-tight text-slate-900">
-                      Choose amount
-                    </h2>
-
-                    <p className="mt-1 text-sm leading-5 text-slate-500">
-                      Select an amount or enter a custom
-                      amount.
-                    </p>
-
-                    <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
-                      {(serviceType ===
-                      "airtime"
-                        ? AIRTIME_AMOUNTS
-                        : BILL_AMOUNTS
-                      ).map(
-                        (value) => (
-                          <button
-                            key={value}
-                            type="button"
-                            onClick={() =>
-                              handleAmountSelect(
-                                value
-                              )
-                            }
-                            disabled={
-                              processingPayment ||
-                              verifyingPin
-                            }
-                            className={[
-                              "rounded-2xl border px-4 py-4 text-center text-sm font-black transition-all",
-                              "hover:-translate-y-0.5 hover:shadow-sm",
-                              amount ===
-                              String(
-                                value
-                              )
-                                ? "border-[#082A63] bg-[#082A63] text-white shadow-md"
-                                : "border-slate-200 bg-white text-slate-700",
-                            ].join(" ")}
-                          >
-                            {formatNaira(
-                              value
-                            )}
-                          </button>
-                        )
-                      )}
-
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setCustomAmount(
-                            true
-                          );
-                          setAmount("");
-                        }}
-                        disabled={
-                          processingPayment ||
-                          verifyingPin
-                        }
-                        className={[
-                          "rounded-2xl border px-4 py-4 text-center text-sm font-black transition-all",
-                          "hover:-translate-y-0.5 hover:shadow-sm",
-                          customAmount
-                            ? "border-[#F4B400] bg-[#F4B400]/10 text-[#8b6500]"
-                            : "border-slate-200 bg-white text-slate-700",
-                        ].join(" ")}
-                      >
-                        Custom amount
-                      </button>
-                    </div>
-
-                    {customAmount && (
-                      <div className="mt-4">
-                        <Label
-                          htmlFor="customAmount"
-                          className="text-sm font-bold text-slate-800"
-                        >
-                          Enter amount
-                        </Label>
-
-                        <div className="relative mt-2">
-                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-black text-slate-400">
-                            ₦
-                          </span>
-
-                          <Input
-                            id="customAmount"
-                            type="number"
-                            min="50"
-                            step="1"
-                            value={
-                              amount
-                            }
-                            onChange={(
-                              event
-                            ) =>
-                              setAmount(
-                                event.target.value
-                              )
-                            }
-                            placeholder="Enter amount"
-                            disabled={
-                              processingPayment ||
-                              verifyingPin
-                            }
-                            className="h-12 rounded-xl pl-8"
-                          />
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-              {selectedProviderCode &&
-                !needsPlans &&
-                !isAmountBased && (
-                  <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
-                    <div className="rounded-2xl bg-slate-50 p-5">
-                      <p className="text-sm font-bold text-slate-800">
-                        {service.title}
-                      </p>
-
-                      <p className="mt-1 text-xs leading-5 text-slate-500">
-                        Continue by entering the required
-                        customer information below.
-                      </p>
-                    </div>
-                  </div>
-                )}
-
-              {selectedProviderCode &&
-                usesQuantity && (
-                  <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
-                    <div className="flex items-center justify-between gap-4">
-                      <div>
-                        <p className="text-sm font-black text-slate-900">
-                          Quantity
-                        </p>
-
-                        <p className="mt-1 text-xs text-slate-500">
-                          Choose how many units you want.
-                        </p>
-                      </div>
-
-                      <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 p-1">
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setQuantity(
-                              Math.max(
-                                1,
-                                quantity - 1
-                              )
-                            )
-                          }
-                          disabled={
-                            processingPayment ||
-                            verifyingPin ||
-                            quantity <= 1
-                          }
-                          className="flex h-9 w-9 items-center justify-center rounded-lg bg-white text-lg font-black text-slate-600 shadow-sm disabled:opacity-40"
-                        >
-                          −
-                        </button>
-
-                        <span className="w-8 text-center text-sm font-black text-slate-900">
-                          {quantity}
-                        </span>
-
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setQuantity(
-                              Math.min(
-                                100,
-                                quantity + 1
-                              )
-                            )
-                          }
-                          disabled={
-                            processingPayment ||
-                            verifyingPin ||
-                            quantity >=
-                              100
-                          }
-                          className="flex h-9 w-9 items-center justify-center rounded-lg bg-white text-lg font-black text-slate-600 shadow-sm disabled:opacity-40"
-                        >
-                          +
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-              <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
-                <p className="text-xs font-extrabold uppercase tracking-[0.14em] text-[#082A63]/60">
-                  Step 3
-                </p>
-
-                <h2 className="mt-1 text-xl font-black tracking-tight text-slate-900">
-                  Customer details
-                </h2>
-
-                <div className="mt-5 space-y-2">
-                  <Label
-                    htmlFor="serviceCustomer"
-                    className="text-sm font-bold text-slate-800"
-                  >
-                    {customerLabel}
-                  </Label>
-
-                  <Input
-                    id="serviceCustomer"
-                    value={customer}
-                    onChange={(event) =>
-                      setCustomer(
-                        event.target.value
-                      )
+                <Input
+                  id="paymentPin"
+                  type="password"
+                  inputMode="numeric"
+                  autoComplete="off"
+                  maxLength={4}
+                  value={paymentPin}
+                  onChange={(event) => {
+                    setPaymentPin(
+                      event.target.value.replace(/\D/g, "").slice(0, 4)
+                    );
+                    setError("");
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" && paymentPin.length === 4) {
+                      void verifyPinAndPay();
                     }
-                    placeholder={
-                      customerPlaceholder
-                    }
-                    disabled={
-                      processingPayment ||
-                      verifyingPin
-                    }
-                    inputMode={
-                      serviceType ===
-                        "airtime" ||
-                      serviceType ===
-                        "data" ||
-                      serviceType ===
-                        "airtime-card" ||
-                      serviceType ===
-                        "data-card" ||
-                      serviceType ===
-                        "electricity" ||
-                      serviceType ===
-                        "cable" ||
-                      serviceType ===
-                        "waec" ||
-                      serviceType ===
-                        "jamb"
-                        ? "numeric"
-                        : "text"
-                    }
-                    className="h-12 rounded-xl border-slate-200"
-                  />
+                  }}
+                  placeholder="••••"
+                  disabled={verifyingPin}
+                  autoFocus
+                  className="h-14 rounded-2xl border-[#E7E3DA] bg-[#FAF8F4] text-center text-2xl font-black tracking-[0.6em]"
+                />
+
+                <div className="flex items-center justify-center gap-2 pt-1 text-[11px] font-medium text-[#8B93A1]">
+                  <ShieldCheck className="h-3.5 w-3.5" />
+                  Your PIN is verified securely.
                 </div>
               </div>
 
               {error && (
-                <div className="flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50 p-4">
-                  <CircleAlert className="mt-0.5 h-5 w-5 shrink-0 text-red-600" />
-
-                  <div>
-                    <p className="text-sm font-black text-red-800">
-                      Something went wrong
-                    </p>
-
-                    <p className="mt-1 text-sm leading-5 text-red-700">
-                      {error}
-                    </p>
-                  </div>
+                <div className="flex items-start gap-3 rounded-2xl border border-[#F1C7C7] bg-[#FCEEEE] p-4">
+                  <CircleAlert className="mt-0.5 h-4 w-4 shrink-0 text-[#C22E2E]" />
+                  <p className="text-[12.5px] font-medium leading-5 text-[#7A1E1E]">
+                    {error}
+                  </p>
                 </div>
               )}
-            </section>
 
-            <aside className="lg:sticky lg:top-24 lg:self-start">
-              <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
-                <div className="bg-[#082A63] p-5 text-white sm:p-6">
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white/10">
-                      <ServiceIcon className="h-5 w-5" />
-                    </div>
-
-                    <div>
-                      <p className="text-[10px] font-extrabold uppercase tracking-[0.15em] text-white/50">
-                        Payment summary
-                      </p>
-
-                      <h3 className="mt-0.5 text-lg font-black">
-                        {service.title}
-                      </h3>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="p-5 sm:p-6">
-                  <div className="space-y-4">
-                    <div className="flex items-start justify-between gap-4">
-                      <span className="text-sm font-medium text-slate-500">
-                        Option
-                      </span>
-
-                      <span className="max-w-[58%] text-right text-sm font-black text-slate-900">
-                        {selectedProvider
-                          ? getNetworkName(
-                              selectedProvider
-                            )
-                          : "Not selected"}
-                      </span>
-                    </div>
-
-                    {selectedItem && (
-                      <div className="flex items-start justify-between gap-4">
-                        <span className="text-sm font-medium text-slate-500">
-                          Package
-                        </span>
-
-                        <span className="max-w-[58%] text-right text-sm font-black text-slate-900">
-                          {getItemName(
-                            selectedItem
-                          )}
-                        </span>
-                      </div>
-                    )}
-
-                    {usesQuantity && (
-                      <div className="flex items-center justify-between gap-4">
-                        <span className="text-sm font-medium text-slate-500">
-                          Quantity
-                        </span>
-
-                        <span className="text-sm font-black text-slate-900">
-                          {quantity}
-                        </span>
-                      </div>
-                    )}
-
-                    {customer && (
-                      <div className="flex items-start justify-between gap-4">
-                        <span className="text-sm font-medium text-slate-500">
-                          Customer
-                        </span>
-
-                        <span className="max-w-[58%] break-all text-right text-sm font-black text-slate-900">
-                          {normalizedCustomer}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="my-5 h-px bg-slate-200" />
-
-                  <div className="rounded-2xl bg-slate-50 p-4">
-                    <div className="flex items-end justify-between gap-4">
-                      <div>
-                        <p className="text-xs font-bold uppercase tracking-wider text-slate-400">
-                          Total
-                        </p>
-
-                        <p className="mt-1 text-3xl font-black tracking-tight text-[#082A63]">
-                          {formatNaira(
-                            estimatedTotal
-                          )}
-                        </p>
-                      </div>
-
-                      <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#082A63]/5">
-                        <WalletCards className="h-5 w-5 text-[#082A63]" />
-                      </div>
-                    </div>
-                  </div>
-
-                  {!balanceSufficient &&
-                    estimatedTotal > 0 && (
-                      <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 p-3">
-                        <p className="text-xs font-bold leading-5 text-red-700">
-                          Your wallet balance is not enough
-                          for this transaction.
-                        </p>
-                      </div>
-                    )}
-
-                  <Button
-                    type="button"
-                    onClick={openPin}
-                    disabled={
-                      loadingProviders ||
-                      loadingItems ||
-                      processingPayment ||
-                      verifyingPin ||
-                      !selectedProviderCode ||
-                      (needsPlans &&
-                        !selectedItemCode) ||
-                      !customer.trim() ||
-                      estimatedTotal <= 0 ||
-                      !balanceSufficient
-                    }
-                    className="mt-5 h-13 w-full rounded-2xl bg-[#082A63] text-sm font-black shadow-lg shadow-[#082A63]/10 hover:bg-[#061f4b] disabled:shadow-none"
-                  >
-                    {processingPayment ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Processing payment...
-                      </>
-                    ) : (
-                      <>
-                        <LockKeyhole className="mr-2 h-4 w-4" />
-                        Continue to secure payment
-                        <ChevronRight className="ml-auto h-4 w-4" />
-                      </>
-                    )}
-                  </Button>
-
-                  <div className="mt-4 flex items-center justify-center gap-2 text-center text-[11px] font-medium leading-4 text-slate-400">
-                    <ShieldCheck className="h-3.5 w-3.5 shrink-0" />
-                    Secure wallet payment protected by IyanjuPay
-                  </div>
-                </div>
-              </div>
-
-              <div className="mt-4 hidden rounded-2xl border border-slate-200 bg-white p-4 lg:block">
-                <div className="flex gap-3">
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#F4B400]/10">
-                    <Sparkles className="h-4 w-4 text-[#9a6d00]" />
-                  </div>
-
-                  <div>
-                    <p className="text-xs font-black text-slate-800">
-                      Simple, secure payments
-                    </p>
-
-                    <p className="mt-1 text-[11px] leading-5 text-slate-500">
-                      Choose your service option, select
-                      your package and confirm with your
-                      payment PIN.
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </aside>
+              <Button
+                type="button"
+                onClick={() => void verifyPinAndPay()}
+                disabled={verifyingPin || paymentPin.length !== 4}
+                className="h-13 w-full rounded-2xl bg-[#082A63] text-[13.5px] font-extrabold hover:bg-[#061f4b]"
+              >
+                {verifyingPin ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Verifying...
+                  </>
+                ) : (
+                  <>
+                    <LockKeyhole className="mr-2 h-4 w-4" />
+                    Confirm payment
+                  </>
+                )}
+              </Button>
+            </div>
           </div>
-        )}
-      </main>
+        </div>
+      )}
     </div>
   );
 };

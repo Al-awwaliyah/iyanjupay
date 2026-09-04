@@ -559,24 +559,41 @@ function createIdempotencyKey(): string {
 function transactionStatusFromResult(
   result: any
 ): Exclude<TransactionStatus, "processing"> {
+  const explicitSuccess =
+    result?.success === true ||
+    result?.data?.success === true;
+
+  const explicitFailure =
+    result?.success === false ||
+    result?.data?.success === false;
+
   const status = clean(
     result?.status ??
       result?.transaction_status ??
       result?.transactionStatus ??
-      result?.data?.status
+      result?.data?.status ??
+      result?.data?.transaction_status ??
+      result?.data?.transactionStatus
   ).toLowerCase();
 
-  if (
-    [
-      "pending",
-      "processing",
-      "queued",
-      "initiated",
-      "in_progress",
-      "in-progress",
-    ].includes(status)
-  ) {
-    return "pending";
+  /*
+   * The Edge Function's explicit success flag takes priority over
+   * a stale/secondary status field.
+   *
+   * This prevents a response such as:
+   * {
+   *   success: true,
+   *   status: "pending"
+   * }
+   *
+   * from being incorrectly displayed as Pending.
+   */
+  if (explicitSuccess) {
+    return "success";
+  }
+
+  if (explicitFailure) {
+    return "failed";
   }
 
   if (
@@ -593,13 +610,37 @@ function transactionStatusFromResult(
   }
 
   if (
-    result &&
-    (result.success === false ||
-      result.data?.success === false)
+    [
+      "pending",
+      "processing",
+      "queued",
+      "initiated",
+      "in_progress",
+      "in-progress",
+    ].includes(status)
   ) {
-    return "failed";
+    return "pending";
   }
 
+  /*
+   * Explicit successful status values are treated as completed.
+   */
+  if (
+    [
+      "success",
+      "successful",
+      "completed",
+      "complete",
+      "successful_transaction",
+    ].includes(status)
+  ) {
+    return "success";
+  }
+
+  /*
+   * Preserve the existing behaviour for responses that don't
+   * provide a recognizable status.
+   */
   return "success";
 }
 

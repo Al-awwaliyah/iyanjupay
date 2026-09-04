@@ -36,23 +36,30 @@ import {
   CardContent,
 } from "@/components/ui/card";
 
-import ServiceCard from "@/components/services/ServiceCard";
-import FundWalletModal from "@/components/FundWalletModal";
-import ServicePayment from "@/components/ServicePayment";
-import QRCodeModal from "@/components/QRCodeModal";
-import WhatsAppFloat from "@/components/WhatsAppFloat";
-import SupportChat from "@/components/SupportChat";
-import SendMoneyPage from "@/components/SendMoneyPage";
-import ProfilePage from "@/components/ProfilePage";
-import TransactionHistory from "@/components/TransactionHistory";
-import RewardsPage from "@/components/RewardsPage";
-import CardsPage from "@/components/CardsPage";
-import MePage from "@/components/MePage";
-import CustomerServicePage from "@/components/CustomerServicePage";
-import SupportPage from "@/components/SupportPage";
-import TransactionLimitPage from "@/components/TransactionLimitPage";
-import PaymentPinPage from "@/components/PaymentPinPage";
-import DisputesPage from "@/components/DisputesPage";
+import ServiceCard from "./services/ServiceCard";
+import FundWalletModal from "./modals/FundWalletModal";
+import ServicePayment from "@/pages/ServicePayment";
+import QRCodeModal from "./modals/QRCodeModal";
+import WhatsAppFloat from "./WhatsAppFloat";
+import SupportChat from "./support/SupportChat";
+import SendMoneyPage from "@/pages/SendMoney";
+
+import ProfilePage from "./profile/ProfilePage";
+import TransactionHistory from "./transactions/TransactionHistory";
+import RewardsPage from "./rewards/RewardsPage";
+import CardsPage from "./cards/CardsPage";
+import MePage from "./me/MePage";
+
+import CustomerServicePage from "./me/CustomerServicePage";
+import SupportPage from "./me/SupportPage";
+import TransactionLimitPage from "./me/TransactionLimitPage";
+import PaymentPinPage from "./me/PaymentPinPage";
+import DisputesPage from "./disputes/UserDisputesPage";
+
+import { useAuth } from "@/hooks/useAuth";
+import { useWallet } from "@/hooks/useWallet";
+import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
 
 import { useAuth } from "@/hooks/useAuth";
 import { useWallet } from "@/hooks/useWallet";

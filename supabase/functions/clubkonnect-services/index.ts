@@ -5,6 +5,11 @@ import {
   getUser,
 } from "../_shared/auth.ts";
 
+import {
+  clubKonnectRequest,
+  clubKonnectCallbackUrl,
+} from "../_shared/clubkonnect.ts";
+
 /**
  * ============================================================
  * IYANJUPAY — CLUBKONNECT SERVICES
@@ -44,6 +49,9 @@ import {
  *
  * Provider:
  *   ClubKonnect / Nellobyte Systems
+ *
+ * API transport:
+ *   ../_shared/clubkonnect.ts
  *
  * Pricing:
  *   airtime       = 0%
@@ -110,9 +118,6 @@ type CatalogItem = {
 
   raw: JsonObject;
 };
-
-const BASE_URL =
-  "https://www.nellobytesystems.com";
 
 const NETWORKS: Record<string, string> = {
   "01": "MTN",
@@ -671,184 +676,6 @@ function validPhone(
 /* ============================================================
  * CREDENTIALS
  * ========================================================== */
-
-function credentials() {
-  const userId =
-    s(
-      Deno.env.get(
-        "CLUBKONNECT_USER_ID"
-      ) ??
-      Deno.env.get(
-        "CLUBKONNECT_USERID"
-      )
-    );
-
-  const apiKey =
-    s(
-      Deno.env.get(
-        "CLUBKONNECT_API_KEY"
-      ) ??
-      Deno.env.get(
-        "CLUBKONNECT_APIKEY"
-      )
-    );
-
-  if (
-    !userId ||
-    !apiKey
-  ) {
-    throw new Error(
-      "ClubKonnect credentials are not configured."
-    );
-  }
-
-  return {
-    userId,
-    apiKey,
-  };
-}
-
-function callbackUrl():
-  | string
-  | undefined {
-  const configured =
-    s(
-      Deno.env.get(
-        "CLUBKONNECT_CALLBACK_URL"
-      )
-    );
-
-  if (configured) {
-    return configured;
-  }
-
-  const supabaseUrl =
-    s(
-      Deno.env.get(
-        "SUPABASE_URL"
-      )
-    );
-
-  if (!supabaseUrl) {
-    return undefined;
-  }
-
-  return `${supabaseUrl.replace(
-    /\/$/,
-    ""
-  )}/functions/v1/clubkonnect-webhook`;
-}
-
-async function clubKonnectRequest(
-  endpoint: string,
-  params: Record<
-    string,
-    unknown
-  > = {}
-) {
-  const {
-    userId,
-    apiKey,
-  } = credentials();
-
-  const url =
-    new URL(
-      `${BASE_URL}/${endpoint}`
-    );
-
-  url.searchParams.set(
-    "UserID",
-    userId
-  );
-
-  url.searchParams.set(
-    "APIKey",
-    apiKey
-  );
-
-  for (
-    const [key, value]
-      of Object.entries(params)
-  ) {
-    if (
-      value !== undefined &&
-      value !== null &&
-      s(value) !== ""
-    ) {
-      url.searchParams.set(
-        key,
-        s(value)
-      );
-    }
-  }
-
-  console.log(
-    "ClubKonnect request",
-    {
-      endpoint,
-      parameter_names:
-        Object.keys(params),
-    }
-  );
-
-  const response =
-    await fetch(
-      url.toString(),
-      {
-        method: "GET",
-        headers: {
-          Accept:
-            "application/json",
-        },
-      }
-    );
-
-  const text =
-    await response.text();
-
-  let body: any = {};
-
-  try {
-    body =
-      text
-        ? JSON.parse(text)
-        : {};
-  } catch {
-    body = {
-      status:
-        "NON_JSON_RESPONSE",
-      raw:
-        text.slice(0, 500),
-    };
-  }
-
-  console.log(
-    "ClubKonnect response",
-    {
-      endpoint,
-      http_status:
-        response.status,
-      ok:
-        response.ok,
-      status:
-        statusText(body),
-      statuscode:
-        statusCode(body),
-      orderid:
-        orderId(body),
-      requestid:
-        requestId(body),
-    }
-  );
-
-  return {
-    ok:
-      response.ok,
-    status:
-      response.status,
-    body,
-  };
-}
 
 /* ============================================================
  * RECURSIVE CATALOGUE HELPERS
@@ -6530,7 +6357,7 @@ const handler = async (
 
     try {
       const callback =
-        callbackUrl();
+        clubKonnectCallbackUrl();
 
       /*
        * AIRTIME

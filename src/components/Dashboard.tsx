@@ -64,7 +64,6 @@ import { useAuth } from "@/hooks/useAuth";
 import { useWallet } from "@/hooks/useWallet";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { useTheme, } from "@/components/theme/ThemeProvider";
 
 /*
  * ============================================================

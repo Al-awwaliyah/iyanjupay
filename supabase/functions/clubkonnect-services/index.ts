@@ -1,4 +1,3 @@
-```ts
 import {
   corsHeaders,
   json,
@@ -5582,4 +5581,3 @@ Deno.serve(
 );
 
 export default handler;
-```

@@ -1,6 +1,6 @@
 import React, { useEffect } from "react";
 
-const SPLASH_DURATION = 4_000;
+const SPLASH_DURATION = 1_000;
 
 const AppSplash = () => {
   useEffect(() => {

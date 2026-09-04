@@ -47,25 +47,7 @@ const AppSplash = () => {
           Simple. Secure. Seamless.
         </p>
 
-        {/* Loading indicator */}
-        <div className="mt-10 flex flex-col items-center">
-
-          {/* Spinner */}
-          <div className="relative h-9 w-9">
-            <div className="absolute inset-0 rounded-full border-4 border-white/20" />
-
-            <div className="absolute inset-0 animate-spin rounded-full border-4 border-transparent border-t-white" />
-          </div>
-
-          {/* Loading text */}
-          <p className="mt-5 text-sm font-semibold text-white">
-            Loading IyanjuPay...
-          </p>
-
-          <p className="mt-1 text-xs text-white/70">
-            Please wait
-          </p>
-        </div>
+       
 
         {/* Bottom text */}
         <p className="mt-12 text-xs text-white/50">

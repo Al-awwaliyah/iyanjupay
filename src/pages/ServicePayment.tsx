@@ -1013,25 +1013,47 @@ function ServiceTransactionProcessing({
 
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900">
-      <header className="sticky top-0 z-20 border-b bg-white/95 backdrop-blur">
-        <div className="mx-auto flex max-w-3xl items-center justify-between px-4 py-3">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={onBack}
-            disabled={isProcessing}
-            aria-label="Back"
-          >
-            <ArrowLeft className="h-5 w-5" />
-          </Button>
+      <header className="sticky top-0 z-20 border-b border-violet-900/20 bg-gradient-to-r from-[#4C1D95] via-[#6D28D9] to-[#2563EB] shadow-md">
+  <div className="mx-auto flex max-w-3xl items-center justify-between px-4 py-3.5">
+    <Button
+      variant="ghost"
+      size="icon"
+      onClick={onBack}
+      disabled={
+        verifyingPin ||
+        verifyingIdentifier
+      }
+      aria-label="Back"
+      className="text-white hover:bg-white/15 hover:text-white"
+    >
+      <ArrowLeft className="h-5 w-5" />
+    </Button>
 
-          <h1 className="text-base font-bold sm:text-lg">
-            Transaction
-          </h1>
+    <div className="min-w-0 text-center">
+      <h1 className="truncate text-base font-bold text-white sm:text-lg">
+        {serviceTitle}
+      </h1>
 
-          <span className="w-9" />
-        </div>
-      </header>
+      <p className="text-[10px] text-violet-100 sm:text-xs">
+        Secure service purchase
+      </p>
+    </div>
+
+    {onHistory ? (
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={onHistory}
+        className="text-white hover:bg-white/15 hover:text-white"
+      >
+        <History className="mr-1.5 h-4 w-4" />
+        History
+      </Button>
+    ) : (
+      <span className="w-9" />
+    )}
+  </div>
+</header>
 
       <main className="mx-auto max-w-3xl px-4 py-6 pb-10">
         <section className="overflow-hidden rounded-[2rem] border bg-white shadow-sm">

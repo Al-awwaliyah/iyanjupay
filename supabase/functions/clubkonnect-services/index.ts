@@ -1361,9 +1361,16 @@ async function cableTypes() {
           code
         );
 
+      const placeholder =
+        /^\[?\[?\s*tv\s*\]?\]?$/i.test(code) ||
+        /^\[?\[?\s*tv\s*\]?\]?$/i.test(name) ||
+        /^tv$/i.test(code) ||
+        /^tv$/i.test(name);
+
       if (
         code &&
         name &&
+        !placeholder &&
         !code.includes(
           "[object Object]"
         ) &&
@@ -1656,6 +1663,23 @@ type ElectricityCompany = {
   }>;
 };
 
+// Local fallback catalogue. This keeps the customer selector usable even when
+// CLUBKONNECT_ELECTRICITY_BILLERS_JSON has not been configured. The actual
+// verification/purchase request is still sent to ClubKonnect server-side.
+const OFFLINE_ELECTRICITY_COMPANIES: ElectricityCompany[] = [
+  { code: "AEDC", name: "Abuja Electricity Distribution Company", meterTypes: [{ code: "PREPAID", name: "Prepaid" }, { code: "POSTPAID", name: "Postpaid" }] },
+  { code: "BEDC", name: "Benin Electricity Distribution Company", meterTypes: [{ code: "PREPAID", name: "Prepaid" }, { code: "POSTPAID", name: "Postpaid" }] },
+  { code: "EEDC", name: "Enugu Electricity Distribution Company", meterTypes: [{ code: "PREPAID", name: "Prepaid" }, { code: "POSTPAID", name: "Postpaid" }] },
+  { code: "EKEDC", name: "Eko Electricity Distribution Company", meterTypes: [{ code: "PREPAID", name: "Prepaid" }, { code: "POSTPAID", name: "Postpaid" }] },
+  { code: "IBEDC", name: "Ibadan Electricity Distribution Company", meterTypes: [{ code: "PREPAID", name: "Prepaid" }, { code: "POSTPAID", name: "Postpaid" }] },
+  { code: "IKEDC", name: "Ikeja Electricity Distribution Company", meterTypes: [{ code: "PREPAID", name: "Prepaid" }, { code: "POSTPAID", name: "Postpaid" }] },
+  { code: "JED", name: "Jos Electricity Distribution Company", meterTypes: [{ code: "PREPAID", name: "Prepaid" }, { code: "POSTPAID", name: "Postpaid" }] },
+  { code: "KAEDCO", name: "Kaduna Electricity Distribution Company", meterTypes: [{ code: "PREPAID", name: "Prepaid" }, { code: "POSTPAID", name: "Postpaid" }] },
+  { code: "KEDCO", name: "Kano Electricity Distribution Company", meterTypes: [{ code: "PREPAID", name: "Prepaid" }, { code: "POSTPAID", name: "Postpaid" }] },
+  { code: "PHED", name: "Port Harcourt Electricity Distribution Company", meterTypes: [{ code: "PREPAID", name: "Prepaid" }, { code: "POSTPAID", name: "Postpaid" }] },
+  { code: "YEDC", name: "Yola Electricity Distribution Company", meterTypes: [{ code: "PREPAID", name: "Prepaid" }, { code: "POSTPAID", name: "Postpaid" }] },
+];
+
 function electricityFromEnv():
   ElectricityCompany[] {
   const configured =
@@ -1666,7 +1690,10 @@ function electricityFromEnv():
     );
 
   if (!configured) {
-    return [];
+    return OFFLINE_ELECTRICITY_COMPANIES.map((company) => ({
+      ...company,
+      meterTypes: company.meterTypes.map((meter) => ({ ...meter })),
+    }));
   }
 
   try {
@@ -1807,7 +1834,10 @@ function electricityFromEnv():
       error
     );
 
-    return [];
+    return OFFLINE_ELECTRICITY_COMPANIES.map((company) => ({
+      ...company,
+      meterTypes: company.meterTypes.map((meter) => ({ ...meter })),
+    }));
   }
 }
 

@@ -10,25 +10,40 @@ import {
  * IYANJUPAY — CLUBKONNECT SERVICES
  * ============================================================
  *
- * Customer-facing services:
+ * Customer-facing service flows:
  *
- *   airtime
- *   data
- *   electricity
- *   cable
- *   airtime-card
- *   data-card
- *   smile
- *   waec
- *   jamb
+ * AIRTIME
+ *   Network → Phone Number → Amount → Purchase
+ *
+ * DATA
+ *   Network → Data Package → Phone Number → Purchase
+ *
+ * AIRTIME E-PIN
+ *   Network → Package/Denomination → Quantity → Purchase
+ *
+ * DATA E-PIN
+ *   Network → Package → Quantity → Purchase
+ *
+ * CABLE TV
+ *   Cable TV → Provider → SmartCard → Verification
+ *   → Package → Purchase
+ *
+ * ELECTRICITY
+ *   Electricity Company → Service Provider/Meter Type
+ *   → Meter Number → Verification → Amount → Purchase
+ *
+ * SMILE
+ *   Provider → Package → Phone Number → Purchase
+ *
+ * WAEC
+ *   Service → Package → Phone Number → Purchase
+ *
+ * JAMB
+ *   Exam Type → Profile Code → Verification
+ *   → Phone Number → Purchase
  *
  * Provider:
- *
  *   ClubKonnect / Nellobyte Systems
- *
- * IMPORTANT
- * ------------------------------------------------------------
- * Provider credentials are server-side only.
  *
  * Pricing:
  *   airtime       = 0%
@@ -41,12 +56,9 @@ import {
  *   waec         = 20%
  *   jamb         = 20%
  *
- * The frontend receives:
- *
- *   providerPrice = provider cost
- *   price         = IyanjuPay customer selling price
- *
- * The frontend MUST NOT apply markup again.
+ * SECURITY:
+ *   ClubKonnect credentials remain server-side.
+ *   Customer supplied prices are NEVER trusted.
  * ============================================================
  */
 
@@ -67,15 +79,35 @@ type CatalogItem = {
   id: string;
   code: string;
   name: string;
+
   price: number;
   providerPrice: number;
+
   networkCode?: string;
   billerCode?: string;
+
+  packageCode?: string;
+  packageName?: string;
+
+  examType?: string;
+  examTypeName?: string;
+
+  meterType?: string;
+  meterTypeName?: string;
+
+  providerCode?: string;
+  providerName?: string;
+
+  value?: number;
+
   service: ServiceType;
+
   period?: string;
   planType?: string;
   validityDays?: number | null;
+
   isHotDeal?: boolean;
+
   raw: JsonObject;
 };
 
@@ -134,6 +166,9 @@ const FAILURE_STATUSES = new Set([
   "INVALID_SMARTCARDNO",
   "INVALID_EXAMTYPE",
   "MISSING_EXAMTYPE",
+  "INVALID_PROFILEID",
+  "INVALID_PROFILE_ID",
+  "INVALID_ACCOUNTNO",
   "INSUFFICIENT_BALANCE",
   "INSUFFICIENT_FUNDS",
   "QUANTITY_NOT_AVAILABLE",
@@ -141,6 +176,7 @@ const FAILURE_STATUSES = new Set([
   "INVALID_PACKAGE",
   "INVALID_CABLETV",
   "INVALID_ELECTRICCOMPANY",
+  "INVALID_ELECTRICITY",
 ]);
 
 const PENDING_STATUSES = new Set([
@@ -159,31 +195,95 @@ const PENDING_STATUSES = new Set([
  * ========================================================== */
 
 function s(value: unknown): string {
-  return String(value ?? "").trim();
+  if (
+    value === null ||
+    value === undefined
+  ) {
+    return "";
+  }
+
+  if (
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean"
+  ) {
+    return String(value).trim();
+  }
+
+  /*
+   * NEVER return "[object Object]".
+   */
+  if (
+    typeof value === "object"
+  ) {
+    const object = value as JsonObject;
+
+    const nested = first(
+      object.name,
+      object.Name,
+      object.label,
+      object.Label,
+      object.title,
+      object.Title,
+      object.code,
+      object.Code,
+      object.id,
+      object.ID,
+      object.value,
+      object.Value,
+    );
+
+    if (
+      nested !== undefined &&
+      nested !== value
+    ) {
+      return s(nested);
+    }
+
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return "";
+    }
+  }
+
+  return String(value).trim();
 }
 
 function n(value: unknown): number {
-  if (typeof value === "number") {
-    return Number.isFinite(value) && value >= 0
+  if (
+    typeof value === "number"
+  ) {
+    return Number.isFinite(value) &&
+      value >= 0
       ? Math.round(value * 100) / 100
       : 0;
   }
 
-  const text = s(value)
-    .replace(/[₦,\s]/g, "")
-    .replace(/NGN/gi, "");
+  const text =
+    s(value)
+      .replace(/[₦,\s]/g, "")
+      .replace(/NGN/gi, "");
 
-  if (!text) return 0;
+  if (!text) {
+    return 0;
+  }
 
-  const result = Number(text);
+  const result =
+    Number(text);
 
-  return Number.isFinite(result) && result >= 0
+  return Number.isFinite(result) &&
+    result >= 0
     ? Math.round(result * 100) / 100
     : 0;
 }
 
-function first(...values: unknown[]): unknown {
-  for (const value of values) {
+function first(
+  ...values: unknown[]
+): unknown {
+  for (
+    const value of values
+  ) {
     if (
       value !== undefined &&
       value !== null &&
@@ -196,7 +296,9 @@ function first(...values: unknown[]): unknown {
   return undefined;
 }
 
-function obj(value: unknown): JsonObject {
+function obj(
+  value: unknown
+): JsonObject {
   if (
     value &&
     typeof value === "object" &&
@@ -208,7 +310,9 @@ function obj(value: unknown): JsonObject {
   return {};
 }
 
-function normalizedKey(value: unknown): string {
+function normalizedKey(
+  value: unknown
+): string {
   return s(value)
     .toLowerCase()
     .replace(/[^a-z0-9]/g, "");
@@ -218,43 +322,62 @@ function pick(
   value: unknown,
   ...aliases: string[]
 ): unknown {
-  const source = obj(value);
+  const source =
+    obj(value);
 
-  const map = new Map<string, unknown>();
+  const map =
+    new Map<string, unknown>();
 
-  for (const [key, val] of Object.entries(source)) {
-    map.set(normalizedKey(key), val);
+  for (
+    const [key, val]
+      of Object.entries(source)
+  ) {
+    map.set(
+      normalizedKey(key),
+      val
+    );
   }
 
-  for (const alias of aliases) {
-    const value = map.get(
-      normalizedKey(alias)
-    );
+  for (
+    const alias of aliases
+  ) {
+    const found =
+      map.get(
+        normalizedKey(alias)
+      );
 
     if (
-      value !== undefined &&
-      value !== null &&
-      s(value) !== ""
+      found !== undefined &&
+      found !== null &&
+      s(found) !== ""
     ) {
-      return value;
+      return found;
     }
   }
 
   return undefined;
 }
 
-function roundMoney(value: number): number {
-  return Math.round(value * 100) / 100;
+function roundMoney(
+  value: number
+): number {
+  return Math.round(
+    value * 100
+  ) / 100;
 }
 
 function markupRate(
   service: ServiceType
 ): number {
-  if (service === "airtime") {
+  if (
+    service === "airtime"
+  ) {
     return 0;
   }
 
-  if (PREMIUM_SERVICES.has(service)) {
+  if (
+    PREMIUM_SERVICES.has(service)
+  ) {
     return PREMIUM_MARKUP;
   }
 
@@ -272,7 +395,7 @@ function sellingPrice(
 }
 
 /* ============================================================
- * STATUS HELPERS
+ * STATUS
  * ========================================================== */
 
 function normalizeStatus(
@@ -283,7 +406,9 @@ function normalizeStatus(
     .replace(/[\s-]+/g, "_");
 }
 
-function statusText(body: any): string {
+function statusText(
+  body: any
+): string {
   return normalizeStatus(
     first(
       pick(
@@ -307,22 +432,23 @@ function statusText(body: any): string {
 function statusCode(
   body: any
 ): number | null {
-  const value = Number(
-    first(
-      pick(
-        body,
-        "statuscode",
-        "statusCode",
-        "StatusCode"
-      ),
-      pick(
-        body?.data,
-        "statuscode",
-        "statusCode",
-        "StatusCode"
+  const value =
+    Number(
+      first(
+        pick(
+          body,
+          "statuscode",
+          "statusCode",
+          "StatusCode"
+        ),
+        pick(
+          body?.data,
+          "statuscode",
+          "statusCode",
+          "StatusCode"
+        )
       )
-    )
-  );
+    );
 
   return Number.isFinite(value)
     ? value
@@ -332,20 +458,21 @@ function statusCode(
 function orderId(
   body: any
 ): string | null {
-  const value = first(
-    pick(
-      body,
-      "orderid",
-      "orderId",
-      "OrderID"
-    ),
-    pick(
-      body?.data,
-      "orderid",
-      "orderId",
-      "OrderID"
-    )
-  );
+  const value =
+    first(
+      pick(
+        body,
+        "orderid",
+        "orderId",
+        "OrderID"
+      ),
+      pick(
+        body?.data,
+        "orderid",
+        "orderId",
+        "OrderID"
+      )
+    );
 
   return value === undefined
     ? null
@@ -355,20 +482,21 @@ function orderId(
 function requestId(
   body: any
 ): string | null {
-  const value = first(
-    pick(
-      body,
-      "requestid",
-      "requestId",
-      "RequestID"
-    ),
-    pick(
-      body?.data,
-      "requestid",
-      "requestId",
-      "RequestID"
-    )
-  );
+  const value =
+    first(
+      pick(
+        body,
+        "requestid",
+        "requestId",
+        "RequestID"
+      ),
+      pick(
+        body?.data,
+        "requestid",
+        "requestId",
+        "RequestID"
+      )
+    );
 
   return value === undefined
     ? null
@@ -379,8 +507,11 @@ function classify(
   body: any,
   httpOk: boolean
 ) {
-  const code = statusCode(body);
-  const text = statusText(body);
+  const code =
+    statusCode(body);
+
+  const text =
+    statusText(body);
 
   if (
     httpOk &&
@@ -393,7 +524,8 @@ function classify(
     )
   ) {
     return {
-      state: "successful" as const,
+      state:
+        "successful" as const,
       code,
       text,
     };
@@ -403,7 +535,8 @@ function classify(
     FAILURE_STATUSES.has(text)
   ) {
     return {
-      state: "failed" as const,
+      state:
+        "failed" as const,
       code,
       text,
     };
@@ -413,38 +546,37 @@ function classify(
     PENDING_STATUSES.has(text)
   ) {
     return {
-      state: "pending" as const,
+      state:
+        "pending" as const,
       code,
       text,
     };
   }
 
-  /*
-   * Unknown provider responses are deliberately
-   * treated as pending.
-   *
-   * We must never refund simply because the
-   * provider returned an unfamiliar response.
-   */
   return {
-    state: "pending" as const,
+    state:
+      "pending" as const,
     code,
     text,
   };
 }
 
 /* ============================================================
- * NETWORK / PHONE
+ * NETWORK
  * ========================================================== */
 
 function networkCode(
   value: unknown
 ): string {
-  const raw = s(value);
+  const raw =
+    s(value);
 
-  if (!raw) return "";
+  if (!raw) {
+    return "";
+  }
 
-  const key = normalizedKey(raw);
+  const key =
+    normalizedKey(raw);
 
   if (
     key === "01" ||
@@ -490,7 +622,9 @@ function networkName(
   code: string
 ): string {
   return (
-    NETWORKS[networkCode(code)] ??
+    NETWORKS[
+      networkCode(code)
+    ] ??
     s(code)
   );
 }
@@ -498,8 +632,12 @@ function networkName(
 function normalizePhone(
   value: unknown
 ): string {
-  const raw = s(value)
-    .replace(/[\s()-]/g, "");
+  const raw =
+    s(value)
+      .replace(
+        /[\s()-]/g,
+        ""
+      );
 
   if (
     /^\+234\d{10}$/.test(raw)
@@ -525,33 +663,40 @@ function normalizePhone(
 function validPhone(
   value: string
 ): boolean {
-  return /^234\d{10}$/.test(value);
+  return /^234\d{10}$/.test(
+    value
+  );
 }
 
 /* ============================================================
- * CREDENTIALS / CLUBKONNECT REQUEST
+ * CREDENTIALS
  * ========================================================== */
 
 function credentials() {
-  const userId = s(
-    Deno.env.get(
-      "CLUBKONNECT_USER_ID"
-    ) ??
+  const userId =
+    s(
+      Deno.env.get(
+        "CLUBKONNECT_USER_ID"
+      ) ??
       Deno.env.get(
         "CLUBKONNECT_USERID"
       )
-  );
+    );
 
-  const apiKey = s(
-    Deno.env.get(
-      "CLUBKONNECT_API_KEY"
-    ) ??
+  const apiKey =
+    s(
+      Deno.env.get(
+        "CLUBKONNECT_API_KEY"
+      ) ??
       Deno.env.get(
         "CLUBKONNECT_APIKEY"
       )
-  );
+    );
 
-  if (!userId || !apiKey) {
+  if (
+    !userId ||
+    !apiKey
+  ) {
     throw new Error(
       "ClubKonnect credentials are not configured."
     );
@@ -566,21 +711,23 @@ function credentials() {
 function callbackUrl():
   | string
   | undefined {
-  const configured = s(
-    Deno.env.get(
-      "CLUBKONNECT_CALLBACK_URL"
-    )
-  );
+  const configured =
+    s(
+      Deno.env.get(
+        "CLUBKONNECT_CALLBACK_URL"
+      )
+    );
 
   if (configured) {
     return configured;
   }
 
-  const supabaseUrl = s(
-    Deno.env.get(
-      "SUPABASE_URL"
-    )
-  );
+  const supabaseUrl =
+    s(
+      Deno.env.get(
+        "SUPABASE_URL"
+      )
+    );
 
   if (!supabaseUrl) {
     return undefined;
@@ -604,9 +751,10 @@ async function clubKonnectRequest(
     apiKey,
   } = credentials();
 
-  const url = new URL(
-    `${BASE_URL}/${endpoint}`
-  );
+  const url =
+    new URL(
+      `${BASE_URL}/${endpoint}`
+    );
 
   url.searchParams.set(
     "UserID",
@@ -619,9 +767,8 @@ async function clubKonnectRequest(
   );
 
   for (
-    const [key, value] of Object.entries(
-      params
-    )
+    const [key, value]
+      of Object.entries(params)
   ) {
     if (
       value !== undefined &&
@@ -644,16 +791,17 @@ async function clubKonnectRequest(
     }
   );
 
-  const response = await fetch(
-    url.toString(),
-    {
-      method: "GET",
-      headers: {
-        Accept:
-          "application/json",
-      },
-    }
-  );
+  const response =
+    await fetch(
+      url.toString(),
+      {
+        method: "GET",
+        headers: {
+          Accept:
+            "application/json",
+        },
+      }
+    );
 
   const text =
     await response.text();
@@ -661,14 +809,16 @@ async function clubKonnectRequest(
   let body: any = {};
 
   try {
-    body = text
-      ? JSON.parse(text)
-      : {};
+    body =
+      text
+        ? JSON.parse(text)
+        : {};
   } catch {
     body = {
       status:
         "NON_JSON_RESPONSE",
-      raw: text.slice(0, 500),
+      raw:
+        text.slice(0, 500),
     };
   }
 
@@ -692,32 +842,38 @@ async function clubKonnectRequest(
   );
 
   return {
-    ok: response.ok,
-    status: response.status,
+    ok:
+      response.ok,
+    status:
+      response.status,
     body,
   };
 }
 
 /* ============================================================
- * ARRAY / CATALOGUE HELPERS
+ * RECURSIVE CATALOGUE HELPERS
  * ========================================================== */
 
 function arraysAt(
   value: unknown,
   keys: string[]
 ): any[] {
-  const source = obj(value);
+  const source =
+    obj(value);
 
-  for (const key of keys) {
-    const value = pick(
-      source,
-      key
-    );
+  for (
+    const key of keys
+  ) {
+    const found =
+      pick(
+        source,
+        key
+      );
 
     if (
-      Array.isArray(value)
+      Array.isArray(found)
     ) {
-      return value;
+      return found;
     }
   }
 
@@ -732,15 +888,19 @@ function walkObjects(
   depth = 0
 ): void {
   if (
-    depth > 15 ||
+    depth > 20 ||
     value === null ||
     value === undefined
   ) {
     return;
   }
 
-  if (Array.isArray(value)) {
-    for (const item of value) {
+  if (
+    Array.isArray(value)
+  ) {
+    for (
+      const item of value
+    ) {
       walkObjects(
         item,
         callback,
@@ -752,23 +912,25 @@ function walkObjects(
   }
 
   if (
-    typeof value !== "object"
+    typeof value !==
+    "object"
   ) {
     return;
   }
 
-  const item = obj(value);
+  const item =
+    obj(value);
 
   callback(item);
 
   for (
-    const child of Object.values(
-      item
-    )
+    const child
+      of Object.values(item)
   ) {
     if (
       child &&
-      typeof child === "object"
+      typeof child ===
+        "object"
     ) {
       walkObjects(
         child,
@@ -851,7 +1013,7 @@ function planPeriod(
 }
 
 /* ============================================================
- * DATA CATALOGUE
+ * DATA
  * ========================================================== */
 
 function normalizeDataPlan(
@@ -861,67 +1023,70 @@ function normalizeDataPlan(
   const product =
     obj(raw);
 
-  const id = s(
-    first(
-      pick(
-        product,
-        "PRODUCT_ID"
-      ),
-      pick(
-        product,
-        "PRODUCT_CODE"
-      ),
-      pick(
-        product,
-        "product_id",
-        "productId"
-      ),
-      pick(
-        product,
-        "code",
-        "Code",
-        "id",
-        "ID"
+  const id =
+    s(
+      first(
+        pick(
+          product,
+          "PRODUCT_ID"
+        ),
+        pick(
+          product,
+          "PRODUCT_CODE"
+        ),
+        pick(
+          product,
+          "product_id",
+          "productId"
+        ),
+        pick(
+          product,
+          "code",
+          "Code",
+          "id",
+          "ID"
+        )
       )
-    )
-  );
+    );
 
-  const code = s(
-    first(
-      pick(
-        product,
-        "PRODUCT_CODE"
-      ),
-      pick(
-        product,
-        "product_code",
-        "productCode"
-      ),
-      id
-    )
-  );
+  const code =
+    s(
+      first(
+        pick(
+          product,
+          "PRODUCT_CODE"
+        ),
+        pick(
+          product,
+          "product_code",
+          "productCode"
+        ),
+        id
+      )
+    );
 
-  const name = s(
-    first(
-      pick(
-        product,
-        "PRODUCT_NAME"
-      ),
-      pick(
-        product,
-        "product_name",
-        "productName"
-      ),
-      pick(
-        product,
-        "name",
-        "Name",
-        "description",
-        "Description"
-      ),
-      id
-    )
-  );
+  const name =
+    s(
+      first(
+        pick(
+          product,
+          "PRODUCT_NAME"
+        ),
+        pick(
+          product,
+          "product_name",
+          "productName"
+        ),
+        pick(
+          product,
+          "name",
+          "Name",
+          "description",
+          "Description"
+        ),
+        id
+      )
+    );
 
   const providerPrice =
     n(
@@ -963,7 +1128,8 @@ function normalizeDataPlan(
           "MOBILENETWORK",
           "MobileNetwork",
           "network_code",
-          "networkCode"
+          "networkCode",
+          "network"
         ),
         fallbackNetwork
       )
@@ -1026,11 +1192,6 @@ function normalizeDataPlan(
       )
     );
 
-  const hot =
-    /\bsme\b/i.test(name) ||
-    /hot\s*deal/i.test(name) ||
-    /hotdeal/i.test(name);
-
   return {
     id,
     code,
@@ -1053,7 +1214,9 @@ function normalizeDataPlan(
     planType,
     validityDays,
     isHotDeal:
-      hot,
+      /\bsme\b/i.test(name) ||
+      /hot\s*deal/i.test(name) ||
+      /hotdeal/i.test(name),
     raw:
       product,
   };
@@ -1073,28 +1236,11 @@ async function dataPlans(): Promise<
     );
   }
 
-  const root =
-    response.body;
-
   const result:
     CatalogItem[] = [];
 
-  /*
-   * Official ClubKonnect structure:
-   *
-   * MOBILE_NETWORK:
-   *   MTN:
-   *     [
-   *       {
-   *         ID: "01",
-   *         PRODUCT: [...]
-   *       }
-   *     ]
-   *
-   *   Glo:
-   *   m_9mobile:
-   *   Airtel:
-   */
+  const root =
+    response.body;
 
   const mobileNetwork =
     obj(
@@ -1169,7 +1315,8 @@ async function dataPlans(): Promise<
         );
 
       for (
-        const product of products
+        const product
+          of products
       ) {
         const item =
           normalizeDataPlan(
@@ -1184,10 +1331,6 @@ async function dataPlans(): Promise<
     }
   }
 
-  /*
-   * Defensive fallback for alternate
-   * account response shapes.
-   */
   if (
     result.length === 0
   ) {
@@ -1228,7 +1371,8 @@ async function dataPlans(): Promise<
           );
 
         for (
-          const product of nestedProducts
+          const product
+            of nestedProducts
         ) {
           const normalized =
             normalizeDataPlan(
@@ -1236,9 +1380,7 @@ async function dataPlans(): Promise<
               possibleNetwork
             );
 
-          if (
-            normalized
-          ) {
+          if (normalized) {
             result.push(
               normalized
             );
@@ -1269,228 +1411,58 @@ async function dataPlans(): Promise<
 }
 
 /* ============================================================
- * NETWORK CATALOGUES
+ * NETWORK CATALOGUE
  * ========================================================== */
 
 async function airtimeNetworks() {
-  /*
-   * ClubKonnect network catalogue.
-   *
-   * If the account response is unusual, we still
-   * expose the canonical Nigerian network codes.
-   */
-  try {
-    const response =
-      await clubKonnectRequest(
-        "APIAirtimeNetworkV2.asp"
-      );
-
-    const found =
-      new Map<
-        string,
-        JsonObject
-      >();
-
-    if (response.ok) {
-      walkObjects(
-        response.body,
-        (item) => {
-          const code =
-            networkCode(
-              first(
-                pick(
-                  item,
-                  "ID",
-                  "id",
-                  "MOBILENETWORK",
-                  "MobileNetwork",
-                  "network_code",
-                  "networkCode",
-                  "code",
-                  "Code"
-                ),
-                pick(
-                  item,
-                  "name",
-                  "Name",
-                  "NetworkName",
-                  "network_name"
-                )
-              )
-            );
-
-          if (
-            NETWORKS[code]
-          ) {
-            found.set(
-              code,
-              item
-            );
-          }
-        }
-      );
-    }
-
-    return Object.entries(
-      NETWORKS
-    ).map(
-      ([code, name]) => ({
+  return Object.entries(
+    NETWORKS
+  ).map(
+    ([code, name]) => ({
+      code,
+      id:
         code,
-        id: code,
-        value: code,
-        name,
-        label: name,
-        title: name,
-        network: name,
-        biller_code: code,
-        billerCode: code,
-        network_code: code,
-        networkCode: code,
-      })
-    );
-  } catch (error) {
-    console.error(
-      "Airtime network catalogue error:",
-      error
-    );
-
-    return Object.entries(
-      NETWORKS
-    ).map(
-      ([code, name]) => ({
+      value:
         code,
-        id: code,
-        value: code,
+      name,
+      label:
         name,
-        label: name,
-        title: name,
-        network: name,
-        biller_code: code,
-        billerCode: code,
-        network_code: code,
-        networkCode: code,
-      })
-    );
-  }
-}
-
-/* ============================================================
- * ELECTRICITY
- * ========================================================== */
-
-function electricityBillers(): Array<{
-  code: string;
-  name: string;
-}> {
-  const configured =
-    s(
-      Deno.env.get(
-        "CLUBKONNECT_ELECTRICITY_BILLERS_JSON"
-      )
-    );
-
-  if (configured) {
-    try {
-      const parsed =
-        JSON.parse(
-          configured
-        );
-
-      const list =
-        Array.isArray(parsed)
-          ? parsed
-          : Array.isArray(
-                parsed?.billers
-              )
-            ? parsed.billers
-            : [];
-
-      const result =
-        list
-          .map(
-            (item: any) => {
-              const code =
-                s(
-                  first(
-                    pick(
-                      item,
-                      "biller_code",
-                      "billerCode",
-                      "code",
-                      "id"
-                    )
-                  )
-                );
-
-              const name =
-                s(
-                  first(
-                    pick(
-                      item,
-                      "name",
-                      "biller_name",
-                      "billerName",
-                      "company",
-                      "label"
-                    ),
-                    code
-                  )
-                );
-
-              return code &&
-                name
-                ? {
-                    code,
-                    name,
-                  }
-                : null;
-            }
-          )
-          .filter(
-            Boolean
-          ) as Array<{
-            code: string;
-            name: string;
-          }>;
-
-      if (
-        result.length
-      ) {
-        return result;
-      }
-    } catch (error) {
-      console.error(
-        "Invalid CLUBKONNECT_ELECTRICITY_BILLERS_JSON:",
-        error
-      );
-    }
-  }
-
-  /*
-   * Do NOT invent undocumented electricity
-   * provider codes.
-   *
-   * Configure this environment variable with
-   * the electricity company codes supplied by
-   * your ClubKonnect account:
-   *
-   * CLUBKONNECT_ELECTRICITY_BILLERS_JSON
-   *
-   * Example:
-   *
-   * [
-   *   {"code":"01","name":"Ikeja Electric"}
-   * ]
-   *
-   * Empty by default is safer than exposing
-   * fabricated disco codes.
-   */
-  return [];
+      title:
+        name,
+      network:
+        name,
+      biller_code:
+        code,
+      billerCode:
+        code,
+      network_code:
+        code,
+      networkCode:
+        code,
+    })
+  );
 }
 
 /* ============================================================
  * CABLE
  * ========================================================== */
+
+function safeDisplayName(
+  value: unknown,
+  fallback = ""
+): string {
+  const text =
+    s(value);
+
+  if (
+    text &&
+    text !== "[object Object]"
+  ) {
+    return text;
+  }
+
+  return fallback;
+}
 
 async function cableTypes() {
   const response =
@@ -1508,19 +1480,22 @@ async function cableTypes() {
     Array<{
       code: string;
       name: string;
+      raw: JsonObject;
     }> = [];
 
   walkObjects(
     response.body,
     (item) => {
       const code =
-        s(
+        safeDisplayName(
           first(
             pick(
               item,
               "CableTV",
               "cableTv",
-              "cable_tv"
+              "cable_tv",
+              "CableTVID",
+              "CableTVCode"
             ),
             pick(
               item,
@@ -1534,32 +1509,92 @@ async function cableTypes() {
           )
         );
 
-      const name =
-        s(
-          first(
-            pick(
-              item,
-              "CableTVName",
-              "cableTvName",
-              "name",
-              "Name",
-              "label"
-            ),
-            code
+      const rawName =
+        first(
+          pick(
+            item,
+            "CableTVName",
+            "cableTvName",
+            "cable_tv_name"
+          ),
+          pick(
+            item,
+            "name",
+            "Name",
+            "label",
+            "Label",
+            "title",
+            "Title"
           )
+        );
+
+      const name =
+        safeDisplayName(
+          rawName,
+          code
         );
 
       if (
         code &&
-        name
+        name &&
+        !code.includes(
+          "[object Object]"
+        ) &&
+        !name.includes(
+          "[object Object]"
+        )
       ) {
         result.push({
           code,
           name,
+          raw:
+            item,
         });
       }
     }
   );
+
+  /*
+   * Defensive canonical fallback.
+   *
+   * These are the documented CableTV IDs.
+   * We only use them if the live type response
+   * does not yield usable entries.
+   */
+  if (
+    result.length === 0
+  ) {
+    return [
+      {
+        code:
+          "dstv",
+        name:
+          "DSTV",
+        raw: {},
+      },
+      {
+        code:
+          "gotv",
+        name:
+          "GOtv",
+        raw: {},
+      },
+      {
+        code:
+          "startimes",
+        name:
+          "Startimes",
+        raw: {},
+      },
+      {
+        code:
+          "showmax",
+        name:
+          "Showmax",
+        raw: {},
+      },
+    ];
+  }
 
   const unique =
     new Map<
@@ -1567,6 +1602,7 @@ async function cableTypes() {
       {
         code: string;
         name: string;
+        raw: JsonObject;
       }
     >();
 
@@ -1574,7 +1610,7 @@ async function cableTypes() {
     const item of result
   ) {
     unique.set(
-      item.code,
+      item.code.toLowerCase(),
       item
     );
   }
@@ -1609,13 +1645,15 @@ async function cablePackages(
     response.body,
     (item) => {
       const itemCable =
-        s(
+        safeDisplayName(
           first(
             pick(
               item,
               "CableTV",
               "cableTv",
-              "cable_tv"
+              "cable_tv",
+              "CableTVID",
+              "CableTVCode"
             ),
             pick(
               item,
@@ -1625,10 +1663,6 @@ async function cablePackages(
           )
         );
 
-      /*
-       * If the response identifies a different
-       * cable service, ignore that package.
-       */
       if (
         itemCable &&
         itemCable.toLowerCase() !==
@@ -1637,8 +1671,8 @@ async function cablePackages(
         return;
       }
 
-      const id =
-        s(
+      const packageCode =
+        safeDisplayName(
           first(
             pick(
               item,
@@ -1654,21 +1688,22 @@ async function cablePackages(
             ),
             pick(
               item,
+              "PRODUCT_CODE",
+              "product_code",
+              "productCode"
+            ),
+            pick(
+              item,
               "code",
               "Code",
               "id",
               "ID"
-            ),
-            pick(
-              item,
-              "Package",
-              "package"
             )
           )
         );
 
-      const name =
-        s(
+      const packageName =
+        safeDisplayName(
           first(
             pick(
               item,
@@ -1680,11 +1715,16 @@ async function cablePackages(
               item,
               "PRODUCT_NAME",
               "product_name",
+              "productName"
+            ),
+            pick(
+              item,
               "name",
               "Name",
-              "description"
+              "description",
+              "Description"
             ),
-            id
+            packageCode
           )
         );
 
@@ -1721,13 +1761,19 @@ async function cablePackages(
         );
 
       if (
-        id &&
+        packageCode &&
+        packageName &&
         providerPrice > 0
       ) {
         result.push({
-          id,
-          code: id,
-          name,
+          id:
+            packageCode,
+          code:
+            packageCode,
+          packageCode,
+          packageName,
+          name:
+            packageName,
           price:
             sellingPrice(
               "cable",
@@ -1735,6 +1781,10 @@ async function cablePackages(
             ),
           providerPrice,
           billerCode:
+            cableTv,
+          providerCode:
+            cableTv,
+          providerName:
             cableTv,
           service:
             "cable",
@@ -1755,7 +1805,8 @@ async function cablePackages(
     const item of result
   ) {
     unique.set(
-      item.id,
+      item.packageCode ??
+        item.id,
       item
     );
   }
@@ -1766,8 +1817,222 @@ async function cablePackages(
 }
 
 /* ============================================================
+ * ELECTRICITY
+ * ========================================================== */
+
+type ElectricityCompany = {
+  code: string;
+  name: string;
+  meterTypes: Array<{
+    code: string;
+    name: string;
+  }>;
+};
+
+function electricityFromEnv():
+  ElectricityCompany[] {
+  const configured =
+    s(
+      Deno.env.get(
+        "CLUBKONNECT_ELECTRICITY_BILLERS_JSON"
+      )
+    );
+
+  if (!configured) {
+    return [];
+  }
+
+  try {
+    const parsed =
+      JSON.parse(
+        configured
+      );
+
+    const list =
+      Array.isArray(parsed)
+        ? parsed
+        : Array.isArray(
+              parsed?.billers
+            )
+          ? parsed.billers
+          : Array.isArray(
+                parsed?.companies
+              )
+            ? parsed.companies
+            : [];
+
+    return list
+      .map(
+        (item: any) => {
+          const code =
+            safeDisplayName(
+              first(
+                pick(
+                  item,
+                  "biller_code",
+                  "billerCode",
+                  "ElectricCompany",
+                  "electricCompany",
+                  "electric_company",
+                  "code",
+                  "id",
+                  "ID"
+                )
+              )
+            );
+
+          const name =
+            safeDisplayName(
+              first(
+                pick(
+                  item,
+                  "name",
+                  "Name",
+                  "biller_name",
+                  "billerName",
+                  "company",
+                  "companyName",
+                  "label"
+                ),
+                code
+              )
+            );
+
+          const meterTypeRaw =
+            first(
+              pick(
+                item,
+                "meterTypes",
+                "meter_types",
+                "MeterTypes"
+              ),
+              pick(
+                item,
+                "meter_types"
+              )
+            );
+
+          const meterTypes =
+            Array.isArray(
+              meterTypeRaw
+            )
+              ? meterTypeRaw
+                  .map(
+                    (meter: any) => ({
+                      code:
+                        safeDisplayName(
+                          first(
+                            pick(
+                              meter,
+                              "code",
+                              "Code",
+                              "id",
+                              "ID",
+                              "MeterType",
+                              "meterType"
+                            )
+                          )
+                        ),
+                      name:
+                        safeDisplayName(
+                          first(
+                            pick(
+                              meter,
+                              "name",
+                              "Name",
+                              "label",
+                              "Label",
+                              "MeterTypeName",
+                              "meterTypeName"
+                            )
+                          )
+                        ),
+                    })
+                  )
+                  .filter(
+                    (
+                      meter: {
+                        code: string;
+                        name: string;
+                      }
+                    ) =>
+                      !!meter.code &&
+                      !!meter.name
+                  )
+              : [];
+
+          return code &&
+            name
+            ? {
+                code,
+                name,
+                meterTypes,
+              }
+            : null;
+        }
+      )
+      .filter(
+        Boolean
+      ) as ElectricityCompany[];
+  } catch (error) {
+    console.error(
+      "Invalid CLUBKONNECT_ELECTRICITY_BILLERS_JSON:",
+      error
+    );
+
+    return [];
+  }
+}
+
+async function electricityCatalog(): Promise<
+  ElectricityCompany[]
+> {
+  /*
+   * ClubKonnect's current public documentation
+   * describes the electricity companies and MeterType
+   * as account catalogue data. If your ClubKonnect
+   * account exposes this catalogue through a custom
+   * endpoint, configure it through:
+   *
+   * CLUBKONNECT_ELECTRICITY_BILLERS_JSON
+   *
+   * The function does NOT fabricate disco codes.
+   */
+  return electricityFromEnv();
+}
+
+/* ============================================================
  * AIRTIME E-PIN
  * ========================================================== */
+
+function airtimePinValue(
+  item: CatalogItem
+): number {
+  if (
+    item.value &&
+    item.value > 0
+  ) {
+    return item.value;
+  }
+
+  const raw =
+    obj(item.raw);
+
+  return n(
+    first(
+      pick(
+        raw,
+        "Value",
+        "value",
+        "Denomination",
+        "denomination"
+      ),
+      item.id
+        .split("-")
+        .pop()
+    )
+  );
+}
 
 async function airtimePinCatalog(
   network?: string
@@ -1797,7 +2062,8 @@ async function airtimePinCatalog(
               "MOBILENETWORK",
               "MobileNetwork",
               "network_code",
-              "networkCode"
+              "networkCode",
+              "NetworkCode"
             ),
             pick(
               item,
@@ -1883,10 +2149,26 @@ async function airtimePinCatalog(
         denomination > 0 &&
         providerPrice > 0
       ) {
+        /*
+         * IMPORTANT:
+         *
+         * This is deliberately exposed as a
+         * PACKAGE/EPIN item rather than an
+         * amount-based service.
+         */
         result.push({
-          id: `${currentNetwork}-${denomination}`,
-          code: `${currentNetwork}-${denomination}`,
-          name: `${NETWORKS[currentNetwork]} ₦${denomination.toLocaleString()} Airtime E-PIN`,
+          id:
+            `${currentNetwork}-${denomination}`,
+          code:
+            `${currentNetwork}-${denomination}`,
+          name:
+            `${NETWORKS[currentNetwork]} ₦${denomination.toLocaleString()} E-PIN`,
+          packageCode:
+            `${currentNetwork}-${denomination}`,
+          packageName:
+            `${NETWORKS[currentNetwork]} ₦${denomination.toLocaleString()} E-PIN`,
+          value:
+            denomination,
           price:
             sellingPrice(
               "airtime-card",
@@ -1914,7 +2196,7 @@ async function airtimePinCatalog(
     const item of result
   ) {
     unique.set(
-      `${item.networkCode}:${item.id}`,
+      `${item.networkCode}:${item.value}`,
       item
     );
   }
@@ -1943,7 +2225,505 @@ async function airtimePinCatalog(
 }
 
 /* ============================================================
- * GENERIC PACKAGE CATALOGUES
+ * DATA E-PIN
+ * ========================================================== */
+
+async function dataPinCatalog(
+  network?: string
+): Promise<CatalogItem[]> {
+  const response =
+    await clubKonnectRequest(
+      "APIDatabundleEPINV1.asp"
+    );
+
+  /*
+   * Some ClubKonnect accounts return the data
+   * E-PIN catalogue through the same endpoint
+   * used by the purchase API. If the response is
+   * not catalogue-shaped, fall back to the data
+   * bundle catalogue.
+   */
+  if (!response.ok) {
+    const data =
+      await dataPlans();
+
+    const wanted =
+      network
+        ? networkCode(network)
+        : "";
+
+    return data
+      .filter(
+        (item) =>
+          !wanted ||
+          item.networkCode ===
+            wanted
+      )
+      .map(
+        (item) => ({
+          ...item,
+          service:
+            "data-card" as const,
+          price:
+            sellingPrice(
+              "data-card",
+              item.providerPrice
+            ),
+        })
+      );
+  }
+
+  const result:
+    CatalogItem[] = [];
+
+  walkObjects(
+    response.body,
+    (item) => {
+      const currentNetwork =
+        networkCode(
+          first(
+            pick(
+              item,
+              "MOBILENETWORK",
+              "MobileNetwork",
+              "network_code",
+              "networkCode"
+            ),
+            pick(
+              item,
+              "Network",
+              "network",
+              "NetworkName"
+            )
+          )
+        );
+
+      const code =
+        safeDisplayName(
+          first(
+            pick(
+              item,
+              "DataPlan",
+              "dataPlan",
+              "DATA_PLAN"
+            ),
+            pick(
+              item,
+              "PRODUCT_CODE",
+              "product_code",
+              "productCode"
+            ),
+            pick(
+              item,
+              "PackageCode",
+              "packageCode",
+              "package_code"
+            ),
+            pick(
+              item,
+              "code",
+              "Code",
+              "id",
+              "ID"
+            )
+          )
+        );
+
+      const name =
+        safeDisplayName(
+          first(
+            pick(
+              item,
+              "PRODUCT_NAME",
+              "product_name",
+              "productName"
+            ),
+            pick(
+              item,
+              "PackageName",
+              "packageName",
+              "package_name"
+            ),
+            pick(
+              item,
+              "name",
+              "Name",
+              "description",
+              "Description"
+            ),
+            code
+          )
+        );
+
+      const providerPrice =
+        n(
+          first(
+            pick(
+              item,
+              "PRODUCT_AMOUNT",
+              "product_amount",
+              "productAmount"
+            ),
+            pick(
+              item,
+              "PackageAmount",
+              "packageAmount",
+              "package_amount"
+            ),
+            pick(
+              item,
+              "provider_amount",
+              "providerAmount"
+            ),
+            pick(
+              item,
+              "price",
+              "Price",
+              "amount",
+              "Amount",
+              "cost",
+              "Cost"
+            )
+          )
+        );
+
+      if (
+        NETWORKS[
+          currentNetwork
+        ] &&
+        code &&
+        providerPrice > 0
+      ) {
+        result.push({
+          id:
+            code,
+          code,
+          packageCode:
+            code,
+          packageName:
+            name,
+          name,
+          price:
+            sellingPrice(
+              "data-card",
+              providerPrice
+            ),
+          providerPrice,
+          networkCode:
+            currentNetwork,
+          service:
+            "data-card",
+          raw:
+            item,
+        });
+      }
+    }
+  );
+
+  /*
+   * If the endpoint returned no usable
+   * catalogue records, use the normal data
+   * catalogue as a compatibility fallback.
+   */
+  if (
+    result.length === 0
+  ) {
+    const data =
+      await dataPlans();
+
+    const wanted =
+      network
+        ? networkCode(network)
+        : "";
+
+    return data
+      .filter(
+        (item) =>
+          !wanted ||
+          item.networkCode ===
+            wanted
+      )
+      .map(
+        (item) => ({
+          ...item,
+          packageCode:
+            item.code,
+          packageName:
+            item.name,
+          service:
+            "data-card" as const,
+          price:
+            sellingPrice(
+              "data-card",
+              item.providerPrice
+            ),
+        })
+      );
+  }
+
+  const unique =
+    new Map<
+      string,
+      CatalogItem
+    >();
+
+  for (
+    const item of result
+  ) {
+    unique.set(
+      `${item.networkCode}:${item.code}`,
+      item
+    );
+  }
+
+  const output =
+    [
+      ...unique.values(),
+    ];
+
+  if (
+    network
+  ) {
+    const wanted =
+      networkCode(
+        network
+      );
+
+    return output.filter(
+      (item) =>
+        item.networkCode ===
+        wanted
+    );
+  }
+
+  return output;
+}
+
+/* ============================================================
+ * JAMB
+ * ========================================================== */
+
+type JambExamType = {
+  code: string;
+  name: string;
+  providerPrice: number;
+  raw: JsonObject;
+};
+
+function jambExamTypeName(
+  code: string
+): string {
+  const key =
+    normalizedKey(code);
+
+  if (
+    key === "de" ||
+    key === "directentry"
+  ) {
+    return "Direct Entry (DE)";
+  }
+
+  if (
+    key === "utmemock"
+  ) {
+    return "UTME PIN (with mock)";
+  }
+
+  if (
+    key === "utmenomock"
+  ) {
+    return "UTME PIN (without mock)";
+  }
+
+  if (
+    key === "jamb"
+  ) {
+    return "JAMB PIN";
+  }
+
+  return code;
+}
+
+async function jambCatalog(): Promise<
+  JambExamType[]
+> {
+  const response =
+    await clubKonnectRequest(
+      "APIJAMBPackagesV2.asp"
+    );
+
+  if (!response.ok) {
+    throw new Error(
+      "JAMB catalogue unavailable."
+    );
+  }
+
+  const result:
+    JambExamType[] = [];
+
+  walkObjects(
+    response.body,
+    (item) => {
+      const code =
+        safeDisplayName(
+          first(
+            pick(
+              item,
+              "EXAMTYPE",
+              "ExamType",
+              "examtype",
+              "exam_type"
+            ),
+            pick(
+              item,
+              "code",
+              "Code",
+              "id",
+              "ID"
+            )
+          )
+        );
+
+      if (!code) {
+        return;
+      }
+
+      const name =
+        safeDisplayName(
+          first(
+            pick(
+              item,
+              "EXAMTYPENAME",
+              "ExamTypeName",
+              "examTypeName"
+            ),
+            pick(
+              item,
+              "name",
+              "Name",
+              "label",
+              "Label",
+              "description",
+              "Description"
+            ),
+            jambExamTypeName(
+              code
+            )
+          ),
+          jambExamTypeName(
+            code
+          )
+        );
+
+      const providerPrice =
+        n(
+          first(
+            pick(
+              item,
+              "PRODUCT_AMOUNT",
+              "product_amount",
+              "productAmount"
+            ),
+            pick(
+              item,
+              "PackageAmount",
+              "packageAmount",
+              "package_amount"
+            ),
+            pick(
+              item,
+              "amount",
+              "Amount",
+              "price",
+              "Price",
+              "cost",
+              "Cost"
+            )
+          )
+        );
+
+      /*
+       * A package catalogue may contain
+       * nested EXAMTYPE records.
+       *
+       * Do not turn EXAMTYPE into a generic
+       * package ID.
+       */
+      result.push({
+        code,
+        name,
+        providerPrice,
+        raw:
+          item,
+      });
+    }
+  );
+
+  /*
+   * If the dynamic catalogue has no usable
+   * records, use ClubKonnect's documented
+   * exam type codes.
+   *
+   * Price remains zero here because the
+   * purchase must be price-verified from
+   * the actual account catalogue.
+   */
+  if (
+    result.length === 0
+  ) {
+    return [
+      {
+        code:
+          "de",
+        name:
+          "Direct Entry (DE)",
+        providerPrice:
+          0,
+        raw: {},
+      },
+      {
+        code:
+          "utme-mock",
+        name:
+          "UTME PIN (with mock)",
+        providerPrice:
+          0,
+        raw: {},
+      },
+      {
+        code:
+          "utme-no-mock",
+        name:
+          "UTME PIN (without mock)",
+        providerPrice:
+          0,
+        raw: {},
+      },
+    ];
+  }
+
+  const unique =
+    new Map<
+      string,
+      JambExamType
+    >();
+
+  for (
+    const item of result
+  ) {
+    unique.set(
+      item.code.toLowerCase(),
+      item
+    );
+  }
+
+  return [
+    ...unique.values(),
+  ];
+}
+
+/* ============================================================
+ * GENERIC PACKAGE SERVICES
  * ========================================================== */
 
 async function genericPackages(
@@ -1951,7 +2731,6 @@ async function genericPackages(
   service:
     | "smile"
     | "waec"
-    | "jamb"
 ): Promise<CatalogItem[]> {
   const response =
     await clubKonnectRequest(
@@ -1971,15 +2750,8 @@ async function genericPackages(
     response.body,
     (item) => {
       const id =
-        s(
+        safeDisplayName(
           first(
-            pick(
-              item,
-              "EXAMTYPE",
-              "ExamType",
-              "examtype",
-              "exam_type"
-            ),
             pick(
               item,
               "PRODUCT_ID",
@@ -2015,7 +2787,7 @@ async function genericPackages(
         );
 
       const name =
-        s(
+        safeDisplayName(
           first(
             pick(
               item,
@@ -2034,11 +2806,11 @@ async function genericPackages(
               "name",
               "Name",
               "description",
-              "Description",
-              "ExamTypeName"
+              "Description"
             ),
             id
-          )
+          ),
+          id
         );
 
       const providerPrice =
@@ -2079,7 +2851,12 @@ async function genericPackages(
       ) {
         result.push({
           id,
-          code: id,
+          code:
+            id,
+          packageCode:
+            id,
+          packageName:
+            name,
           name,
           price:
             sellingPrice(
@@ -2116,175 +2893,7 @@ async function genericPackages(
 }
 
 /* ============================================================
- * CATALOGUE DISPATCH
- * ========================================================== */
-
-async function getCatalog(
-  service: ServiceType,
-  code = ""
-): Promise<CatalogItem[]> {
-  switch (service) {
-    case "airtime": {
-      const networks =
-        await airtimeNetworks();
-
-      return networks.map(
-        (item) => ({
-          id:
-            item.code,
-          code:
-            item.code,
-          name:
-            item.name,
-          price:
-            0,
-          providerPrice:
-            0,
-          networkCode:
-            item.code,
-          service:
-            "airtime",
-          raw:
-            item,
-        })
-      );
-    }
-
-    case "data": {
-      const items =
-        await dataPlans();
-
-      const wanted =
-        code
-          ? networkCode(
-              code
-            )
-          : "";
-
-      return wanted
-        ? items.filter(
-            (item) =>
-              item.networkCode ===
-              wanted
-          )
-        : items;
-    }
-
-    case "electricity": {
-      return electricityBillers()
-        .map(
-          (item) => ({
-            id:
-              item.code,
-            code:
-              item.code,
-            name:
-              item.name,
-            price:
-              0,
-            providerPrice:
-              0,
-            billerCode:
-              item.code,
-            service:
-              "electricity",
-            raw:
-              {},
-          })
-        );
-    }
-
-    case "cable": {
-      if (!code) {
-        return (
-          await cableTypes()
-        ).map(
-          (item) => ({
-            id:
-              item.code,
-            code:
-              item.code,
-            name:
-              item.name,
-            price:
-              0,
-            providerPrice:
-              0,
-            billerCode:
-              item.code,
-            service:
-              "cable",
-            raw:
-              item,
-          })
-        );
-      }
-
-      return cablePackages(
-        code
-      );
-    }
-
-    case "airtime-card": {
-      return airtimePinCatalog(
-        code || undefined
-      );
-    }
-
-    case "data-card": {
-      const items =
-        await dataPlans();
-
-      const wanted =
-        code
-          ? networkCode(
-              code
-            )
-          : "";
-
-      return items
-        .filter(
-          (item) =>
-            !wanted ||
-            item.networkCode ===
-              wanted
-        )
-        .map(
-          (item) => ({
-            ...item,
-            service:
-              "data-card" as const,
-            price:
-              sellingPrice(
-                "data-card",
-                item.providerPrice
-              ),
-          })
-        );
-    }
-
-    case "smile":
-      return genericPackages(
-        "APISmilePackagesV2.asp",
-        "smile"
-      );
-
-    case "waec":
-      return genericPackages(
-        "APIWAECPackagesV2.asp",
-        "waec"
-      );
-
-    case "jamb":
-      return genericPackages(
-        "APIJAMBPackagesV2.asp",
-        "jamb"
-      );
-  }
-}
-
-/* ============================================================
- * PUBLIC RESPONSE
+ * PUBLIC OBJECTS
  * ========================================================== */
 
 function publicNetwork(
@@ -2293,22 +2902,27 @@ function publicNetwork(
 ) {
   return {
     code,
-    id: code,
-    value: code,
+    id:
+      code,
+    value:
+      code,
     name,
-    label: name,
-    title: name,
-    network: name,
-    short_name: name,
-
-    /*
-     * Kept because the supplied ServicePayment
-     * understands these aliases.
-     */
-    biller_code: code,
-    billerCode: code,
-    network_code: code,
-    networkCode: code,
+    label:
+      name,
+    title:
+      name,
+    network:
+      name,
+    short_name:
+      name,
+    biller_code:
+      code,
+    billerCode:
+      code,
+    network_code:
+      code,
+    networkCode:
+      code,
   };
 }
 
@@ -2334,17 +2948,33 @@ function publicItem(
     productCode:
       item.code,
 
+    product_id:
+      item.id,
+
+    productId:
+      item.id,
+
     plan_code:
       item.code,
 
     planCode:
       item.code,
 
-    data_plan:
+    package_code:
+      item.packageCode ??
       item.code,
 
-    dataPlan:
+    packageCode:
+      item.packageCode ??
       item.code,
+
+    package_name:
+      item.packageName ??
+      item.name,
+
+    packageName:
+      item.packageName ??
+      item.name,
 
     name:
       item.name,
@@ -2358,12 +2988,6 @@ function publicItem(
     description:
       item.name,
 
-    /*
-     * IMPORTANT:
-     *
-     * price = customer selling price.
-     * providerPrice = actual provider cost.
-     */
     price:
       item.price,
 
@@ -2409,6 +3033,72 @@ function publicItem(
       item.networkCode ??
       "",
 
+    provider_code:
+      item.providerCode ??
+      item.billerCode ??
+      "",
+
+    providerCode:
+      item.providerCode ??
+      item.billerCode ??
+      "",
+
+    provider_name:
+      item.providerName ??
+      "",
+
+    providerName:
+      item.providerName ??
+      "",
+
+    exam_type:
+      item.examType ??
+      null,
+
+    examType:
+      item.examType ??
+      null,
+
+    exam_type_name:
+      item.examTypeName ??
+      null,
+
+    examTypeName:
+      item.examTypeName ??
+      null,
+
+    meter_type:
+      item.meterType ??
+      null,
+
+    meterType:
+      item.meterType ??
+      null,
+
+    meter_type_name:
+      item.meterTypeName ??
+      null,
+
+    meterTypeName:
+      item.meterTypeName ??
+      null,
+
+    value:
+      item.value ??
+      null,
+
+    denomination:
+      item.value ??
+      null,
+
+    epin_value:
+      item.value ??
+      null,
+
+    epinValue:
+      item.value ??
+      null,
+
     service:
       item.service,
 
@@ -2448,8 +3138,121 @@ function publicItem(
   };
 }
 
+function publicCableProvider(
+  item: {
+    code: string;
+    name: string;
+  }
+) {
+  return {
+    code:
+      item.code,
+    id:
+      item.code,
+    value:
+      item.code,
+    name:
+      item.name,
+    label:
+      item.name,
+    title:
+      item.name,
+    provider:
+      item.name,
+    provider_code:
+      item.code,
+    providerCode:
+      item.code,
+    biller_code:
+      item.code,
+    billerCode:
+      item.code,
+  };
+}
+
+function publicElectricityCompany(
+  company: ElectricityCompany
+) {
+  return {
+    code:
+      company.code,
+    id:
+      company.code,
+    value:
+      company.code,
+    name:
+      company.name,
+    label:
+      company.name,
+    title:
+      company.name,
+    company:
+      company.name,
+    electric_company:
+      company.code,
+    electricCompany:
+      company.code,
+    biller_code:
+      company.code,
+    billerCode:
+      company.code,
+
+    serviceProviders:
+      company.meterTypes.map(
+        (meter) => ({
+          code:
+            meter.code,
+          id:
+            meter.code,
+          value:
+            meter.code,
+          name:
+            meter.name,
+          label:
+            meter.name,
+          title:
+            meter.name,
+          meter_type:
+            meter.code,
+          meterType:
+            meter.code,
+          meter_type_name:
+            meter.name,
+          meterTypeName:
+            meter.name,
+        })
+      ),
+
+    meterTypes:
+      company.meterTypes.map(
+        (meter) => ({
+          code:
+            meter.code,
+          id:
+            meter.code,
+          value:
+            meter.code,
+          name:
+            meter.name,
+          label:
+            meter.name,
+          title:
+            meter.name,
+          meter_type:
+            meter.code,
+          meterType:
+            meter.code,
+          meter_type_name:
+            meter.name,
+          meterTypeName:
+            meter.name,
+        })
+      ),
+  };
+}
+
 /* ============================================================
- * PURCHASE INPUTS
+ * INPUT HELPERS
  * ========================================================== */
 
 function requestedBiller(
@@ -2460,8 +3263,20 @@ function requestedBiller(
     first(
       body.biller_code,
       body.billerCode,
+      body.provider_code,
+      body.providerCode,
+      body.electric_company,
+      body.electricCompany,
+      body.cable_tv,
+      body.cableTv,
       details.biller_code,
-      details.billerCode
+      details.billerCode,
+      details.provider_code,
+      details.providerCode,
+      details.electric_company,
+      details.electricCompany,
+      details.cable_tv,
+      details.cableTv
     )
   );
 }
@@ -2474,8 +3289,10 @@ function requestedNetwork(
     first(
       body.network_code,
       body.networkCode,
+      body.network,
       details.network_code,
       details.networkCode,
+      details.network,
       requestedBiller(
         body,
         details
@@ -2496,22 +3313,24 @@ function requestedItem(
       body.productCode,
       body.plan_code,
       body.planCode,
+      body.package_code,
+      body.packageCode,
+      body.package,
       body.variation_code,
       body.variationCode,
       body.data_plan,
       body.dataPlan,
-      body.package,
-      body.package_code,
       details.item_code,
       details.itemCode,
       details.product_code,
       details.productCode,
       details.plan_code,
       details.planCode,
-      details.data_plan,
-      details.dataPlan,
+      details.package_code,
+      details.packageCode,
       details.package,
-      details.package_code
+      details.data_plan,
+      details.dataPlan
     )
   );
 }
@@ -2526,12 +3345,10 @@ function requestedAmount(
       body.value,
       body.selling_amount,
       body.sellingAmount,
-      body.price,
       details.amount,
       details.value,
       details.selling_amount,
-      details.sellingAmount,
-      details.price
+      details.sellingAmount
     )
   );
 }
@@ -2593,11 +3410,15 @@ function requestedSmartcard(
       body.smartcard_no,
       body.smartcard,
       body.smartCardNumber,
+      body.iuc,
+      body.iucNumber,
       details.smartcard_number,
       details.smartcardNumber,
       details.smartcard_no,
       details.smartcard,
-      details.smartCardNumber
+      details.smartCardNumber,
+      details.iuc,
+      details.iucNumber
     )
   );
 }
@@ -2630,15 +3451,59 @@ function requestedMeterType(
     first(
       body.meter_type,
       body.meterType,
+      body.service_provider,
+      body.serviceProvider,
+      body.provider_code,
+      body.providerCode,
       details.meter_type,
       details.meterType,
-      "prepaid"
+      details.service_provider,
+      details.serviceProvider,
+      details.provider_code,
+      details.providerCode,
+      "01"
+    )
+  );
+}
+
+function requestedProfileCode(
+  body: JsonObject,
+  details: JsonObject
+): string {
+  return s(
+    first(
+      body.profile_code,
+      body.profileCode,
+      body.profile_id,
+      body.profileId,
+      body.ProfileID,
+      details.profile_code,
+      details.profileCode,
+      details.profile_id,
+      details.profileId,
+      details.ProfileID
+    )
+  );
+}
+
+function requestedExamType(
+  body: JsonObject,
+  details: JsonObject
+): string {
+  return s(
+    first(
+      body.exam_type,
+      body.examType,
+      body.ExamType,
+      details.exam_type,
+      details.examType,
+      details.ExamType
     )
   );
 }
 
 /* ============================================================
- * SERVER-SIDE ITEM VALIDATION
+ * SELECTED PACKAGE
  * ========================================================== */
 
 async function findSelectedItem(
@@ -2670,35 +3535,19 @@ async function findSelectedItem(
 
     case "data-card": {
       const items =
-        await dataPlans();
-
-      return items
-        .filter(
-          (item) =>
-            item.networkCode ===
-            networkCode(
-              biller
-            )
-        )
-        .map(
-          (item) => ({
-            ...item,
-            service:
-              "data-card" as const,
-            price:
-              sellingPrice(
-                "data-card",
-                item.providerPrice
-              ),
-          })
-        )
-        .find(
-          (item) =>
-            item.id ===
-              itemCode ||
-            item.code ===
-              itemCode
+        await dataPinCatalog(
+          networkCode(
+            biller
+          )
         );
+
+      return items.find(
+        (item) =>
+          item.id ===
+            itemCode ||
+          item.code ===
+            itemCode
+      );
     }
 
     case "airtime-card":
@@ -2726,6 +3575,8 @@ async function findSelectedItem(
           item.id ===
             itemCode ||
           item.code ===
+            itemCode ||
+          item.packageCode ===
             itemCode
       );
 
@@ -2748,20 +3599,6 @@ async function findSelectedItem(
         await genericPackages(
           "APIWAECPackagesV2.asp",
           "waec"
-        )
-      ).find(
-        (item) =>
-          item.id ===
-            itemCode ||
-          item.code ===
-            itemCode
-      );
-
-    case "jamb":
-      return (
-        await genericPackages(
-          "APIJAMBPackagesV2.asp",
-          "jamb"
         )
       ).find(
         (item) =>
@@ -2912,10 +3749,6 @@ function fulfillment(
   const result:
     JsonObject = {};
 
-  /*
-   * E-PIN information is only returned
-   * after authenticated purchase.
-   */
   for (
     const key of [
       "carddetails",
@@ -2932,6 +3765,8 @@ function fulfillment(
       "productname",
       "mobilenetwork",
       "amount",
+      "metertoken",
+      "meterno",
     ]
   ) {
     if (
@@ -2946,30 +3781,104 @@ function fulfillment(
   return result;
 }
 
-function airtimePinValue(
-  item: CatalogItem
-): number {
-  const raw =
-    obj(item.raw);
+/* ============================================================
+ * VERIFICATION HELPERS
+ * ========================================================== */
 
-  return n(
-    first(
-      pick(
-        raw,
-        "Value",
-        "value",
-        "Denomination",
-        "denomination"
-      ),
-      item.id
-        .split("-")
-        .pop()
+function verificationSuccessful(
+  body: any
+): boolean {
+  const text =
+    normalizeStatus(
+      first(
+        pick(
+          body,
+          "status",
+          "Status",
+          "statuscode",
+          "StatusCode"
+        )
+      )
+    );
+
+  const customerName =
+    s(
+      first(
+        pick(
+          body,
+          "customer_name",
+          "customerName",
+          "CustomerName"
+        ),
+        pick(
+          body?.data,
+          "customer_name",
+          "customerName",
+          "CustomerName"
+        )
+      )
+    );
+
+  if (
+    customerName &&
+    ![
+      "INVALID_ACCOUNTNO",
+      "INVALID_METERNO",
+      "INVALID_SMARTCARDNO",
+      "INVALID_PROFILEID",
+      "INVALID_PROFILE_ID",
+    ].includes(
+      normalizeStatus(
+        customerName
+      )
     )
+  ) {
+    return true;
+  }
+
+  return (
+    text ===
+      "SUCCESS" ||
+    text ===
+      "SUCCESSFUL" ||
+    text ===
+      "COMPLETED" ||
+    text ===
+      "VERIFIED" ||
+    statusCode(body) ===
+      200
   );
 }
 
+function verificationCustomerName(
+  body: any
+): string | null {
+  const value =
+    first(
+      pick(
+        body,
+        "customer_name",
+        "customerName",
+        "CustomerName"
+      ),
+      pick(
+        body?.data,
+        "customer_name",
+        "customerName",
+        "CustomerName"
+      )
+    );
+
+  const result =
+    s(value);
+
+  return result
+    ? result
+    : null;
+}
+
 /* ============================================================
- * EDGE FUNCTION
+ * HANDLER
  * ========================================================== */
 
 const handler = async (
@@ -3071,7 +3980,7 @@ const handler = async (
         success:
           false,
         error:
-          "This service is not available through this service.",
+          "This service is not available through ClubKonnect.",
       },
       400
     );
@@ -3103,113 +4012,153 @@ const handler = async (
           first(
             body.biller_code,
             body.billerCode,
+            body.provider_code,
+            body.providerCode,
             body.network_code,
             body.networkCode,
+            body.cable_tv,
+            body.cableTv,
             details.biller_code,
             details.billerCode,
+            details.provider_code,
+            details.providerCode,
             details.network_code,
-            details.networkCode
+            details.networkCode,
+            details.cable_tv,
+            details.cableTv
           )
         );
 
       /*
-       * NETWORK SERVICES
+       * AIRTIME / DATA / EPIN NETWORKS
        */
       if (
-        service ===
-          "airtime" ||
-        service ===
-          "data" ||
-        service ===
-          "airtime-card" ||
-        service ===
-          "data-card"
+        service === "airtime" ||
+        service === "data" ||
+        service === "airtime-card" ||
+        service === "data-card"
       ) {
         const networks =
-          Object.entries(
-            NETWORKS
-          ).map(
-            ([network, name]) =>
-              publicNetwork(
-                network,
-                name
-              )
+          (
+            await airtimeNetworks()
           );
 
         const items =
-          await getCatalog(
-            service,
-            networkCode(
-              code
-            )
-          );
+          service ===
+            "airtime"
+            ? []
+            : service ===
+                "airtime-card"
+              ? await airtimePinCatalog(
+                  code ||
+                    undefined
+                )
+              : service ===
+                  "data-card"
+                ? await dataPinCatalog(
+                    code ||
+                      undefined
+                  )
+                : await dataPlans();
+
+        const filtered =
+          code &&
+          service !==
+            "airtime"
+            ? items.filter(
+                (item) =>
+                  item.networkCode ===
+                  networkCode(
+                    code
+                  )
+              )
+            : items;
 
         return json({
           success:
             true,
+
           service,
+
           networks,
+
           billers:
             networks,
+
           providers:
             networks,
 
           items:
-            items.map(
+            filtered.map(
               publicItem
             ),
 
           plans:
-            items.map(
+            filtered.map(
               publicItem
             ),
 
           packages:
-            items.map(
+            filtered.map(
               publicItem
             ),
+
+          amount_based:
+            service ===
+            "airtime",
         });
       }
 
       /*
        * ELECTRICITY
+       *
+       * Company and MeterType are separate.
        */
       if (
         service ===
         "electricity"
       ) {
+        const companies =
+          await electricityCatalog();
+
         const billers =
-          electricityBillers()
-            .map(
-              (item) => ({
-                code:
-                  item.code,
-                id:
-                  item.code,
-                name:
-                  item.name,
-                label:
-                  item.name,
-                title:
-                  item.name,
-                biller_code:
-                  item.code,
-                billerCode:
-                  item.code,
-              })
-            );
+          companies.map(
+            publicElectricityCompany
+          );
 
         return json({
           success:
             true,
+
           service,
+
           billers,
+
           networks:
             billers,
+
+          providers:
+            billers,
+
+          electricityCompanies:
+            billers,
+
+          serviceProviders:
+            billers,
+
+          meterTypes:
+            [],
+
           items: [],
+
           plans: [],
+
           packages: [],
+
           amount_based:
+            true,
+
+          requires_verification:
             true,
         });
       }
@@ -3221,40 +4170,40 @@ const handler = async (
         service ===
         "cable"
       ) {
-        if (!code) {
-          const types =
-            await cableTypes();
+        const types =
+          await cableTypes();
 
-          const billers =
+        if (!code) {
+          const providers =
             types.map(
-              (item) => ({
-                code:
-                  item.code,
-                id:
-                  item.code,
-                name:
-                  item.name,
-                label:
-                  item.name,
-                title:
-                  item.name,
-                biller_code:
-                  item.code,
-                billerCode:
-                  item.code,
-              })
+              publicCableProvider
             );
 
           return json({
             success:
               true,
+
             service,
-            billers,
+
+            billers:
+              providers,
+
             networks:
-              billers,
+              providers,
+
+            providers,
+
+            cableProviders:
+              providers,
+
             items: [],
+
             plans: [],
+
             packages: [],
+
+            requires_verification:
+              true,
           });
         }
 
@@ -3263,42 +4212,41 @@ const handler = async (
             code
           );
 
-        const typeName =
-          (
-            await cableTypes()
-          ).find(
+        const selectedType =
+          types.find(
             (item) =>
-              item.code ===
-              code
-          )?.name ??
-          code;
+              item.code
+                .toLowerCase() ===
+              code.toLowerCase()
+          );
 
-        const billers =
-          [
+        const provider =
+          publicCableProvider(
             {
               code,
-              id:
-                code,
               name:
-                typeName,
-              label:
-                typeName,
-              title:
-                typeName,
-              biller_code:
+                selectedType?.name ??
                 code,
-              billerCode:
-                code,
-            },
-          ];
+            }
+          );
 
         return json({
           success:
             true,
+
           service,
-          billers,
+
+          billers:
+            [provider],
+
           networks:
-            billers,
+            [provider],
+
+          providers:
+            [provider],
+
+          cableProviders:
+            [provider],
 
           items:
             items.map(
@@ -3314,26 +4262,108 @@ const handler = async (
             items.map(
               publicItem
             ),
+
+          requires_verification:
+            true,
         });
       }
 
       /*
-       * SMILE / WAEC / JAMB
+       * JAMB
        *
-       * ServicePayment first asks for a
-       * provider/service option and then
-       * requests packages.
+       * ExamType is NOT treated as a package.
+       */
+      if (
+        service ===
+        "jamb"
+      ) {
+        const examTypes =
+          await jambCatalog();
+
+        const options =
+          examTypes.map(
+            (item) => ({
+              code:
+                item.code,
+              id:
+                item.code,
+              value:
+                item.code,
+              name:
+                item.name,
+              label:
+                item.name,
+              title:
+                item.name,
+              exam_type:
+                item.code,
+              examType:
+                item.code,
+              exam_type_name:
+                item.name,
+              examTypeName:
+                item.name,
+              providerPrice:
+                item.providerPrice,
+              provider_price:
+                item.providerPrice,
+              price:
+                item.providerPrice > 0
+                  ? sellingPrice(
+                      "jamb",
+                      item.providerPrice
+                    )
+                  : 0,
+            })
+          );
+
+        return json({
+          success:
+            true,
+
+          service,
+
+          examTypes:
+            options,
+
+          billers:
+            options,
+
+          networks:
+            options,
+
+          providers:
+            options,
+
+          items:
+            options,
+
+          plans: [],
+
+          packages: [],
+
+          requires_profile_verification:
+            true,
+
+          requires_phone:
+            true,
+        });
+      }
+
+      /*
+       * SMILE / WAEC
        */
       const items =
-        await getCatalog(
-          service
+        await genericPackages(
+          service ===
+            "smile"
+            ? "APISmilePackagesV2.asp"
+            : "APIWAECPackagesV2.asp",
+          service ===
+            "smile"
+            ? "smile"
+            : "waec"
         );
-
-      const name =
-        service ===
-        "smile"
-          ? "Smile"
-          : service.toUpperCase();
 
       const option =
         {
@@ -3343,11 +4373,21 @@ const handler = async (
             service,
           value:
             service,
-          name,
+          name:
+            service ===
+            "smile"
+              ? "Smile"
+              : "WAEC",
           label:
-            name,
+            service ===
+            "smile"
+              ? "Smile"
+              : "WAEC",
           title:
-            name,
+            service ===
+            "smile"
+              ? "Smile"
+              : "WAEC",
           biller_code:
             service,
           billerCode:
@@ -3357,10 +4397,16 @@ const handler = async (
       return json({
         success:
           true,
+
         service,
+
         billers:
           [option],
+
         networks:
+          [option],
+
+        providers:
           [option],
 
         items:
@@ -3397,14 +4443,16 @@ const handler = async (
   }
 
   /* ==========================================================
-   * LEGACY BILLERS / NETWORKS
+   * BILLERS / NETWORKS
    * ======================================================== */
 
   if (
     action ===
       "billers" ||
     action ===
-      "networks"
+      "networks" ||
+    action ===
+      "providers"
   ) {
     try {
       if (
@@ -3418,15 +4466,7 @@ const handler = async (
           "data-card"
       ) {
         const billers =
-          Object.entries(
-            NETWORKS
-          ).map(
-            ([code, name]) =>
-              publicNetwork(
-                code,
-                name
-              )
-          );
+          await airtimeNetworks();
 
         return json({
           success:
@@ -3434,6 +4474,8 @@ const handler = async (
           service,
           billers,
           networks:
+            billers,
+          providers:
             billers,
         });
       }
@@ -3443,23 +4485,11 @@ const handler = async (
         "electricity"
       ) {
         const billers =
-          electricityBillers()
-            .map(
-              (item) => ({
-                code:
-                  item.code,
-                id:
-                  item.code,
-                name:
-                  item.name,
-                label:
-                  item.name,
-                biller_code:
-                  item.code,
-                billerCode:
-                  item.code,
-              })
-            );
+          (
+            await electricityCatalog()
+          ).map(
+            publicElectricityCompany
+          );
 
         return json({
           success:
@@ -3467,6 +4497,12 @@ const handler = async (
           service,
           billers,
           networks:
+            billers,
+          providers:
+            billers,
+          electricityCompanies:
+            billers,
+          serviceProviders:
             billers,
         });
       }
@@ -3479,20 +4515,7 @@ const handler = async (
           (
             await cableTypes()
           ).map(
-            (item) => ({
-              code:
-                item.code,
-              id:
-                item.code,
-              name:
-                item.name,
-              label:
-                item.name,
-              biller_code:
-                item.code,
-              billerCode:
-                item.code,
-            })
+            publicCableProvider
           );
 
         return json({
@@ -3502,6 +4525,66 @@ const handler = async (
           billers,
           networks:
             billers,
+          providers:
+            billers,
+          cableProviders:
+            billers,
+        });
+      }
+
+      if (
+        service ===
+        "jamb"
+      ) {
+        const options =
+          (
+            await jambCatalog()
+          ).map(
+            (item) => ({
+              code:
+                item.code,
+              id:
+                item.code,
+              value:
+                item.code,
+              name:
+                item.name,
+              label:
+                item.name,
+              title:
+                item.name,
+              exam_type:
+                item.code,
+              examType:
+                item.code,
+              exam_type_name:
+                item.name,
+              examTypeName:
+                item.name,
+              price:
+                item.providerPrice > 0
+                  ? sellingPrice(
+                      "jamb",
+                      item.providerPrice
+                    )
+                  : 0,
+              providerPrice:
+                item.providerPrice,
+            })
+          );
+
+        return json({
+          success:
+            true,
+          service,
+          billers:
+            options,
+          networks:
+            options,
+          providers:
+            options,
+          examTypes:
+            options,
         });
       }
 
@@ -3509,7 +4592,7 @@ const handler = async (
         service ===
         "smile"
           ? "Smile"
-          : service.toUpperCase();
+          : "WAEC";
 
       const option =
         {
@@ -3517,8 +4600,12 @@ const handler = async (
             service,
           id:
             service,
+          value:
+            service,
           name,
           label:
+            name,
+          title:
             name,
           biller_code:
             service,
@@ -3533,6 +4620,8 @@ const handler = async (
         billers:
           [option],
         networks:
+          [option],
+        providers:
           [option],
       });
     } catch (error) {
@@ -3554,14 +4643,564 @@ const handler = async (
   }
 
   /* ==========================================================
-   * ITEMS / PLANS
+   * VERIFY CABLE SMARTCARD
+   * ======================================================== */
+
+  if (
+    action ===
+      "verify_smartcard" ||
+    action ===
+      "verify-smartcard" ||
+    action ===
+      "verify_cable" ||
+    action ===
+      "verify-cable"
+  ) {
+    if (
+      service !==
+      "cable"
+    ) {
+      return json(
+        {
+          success:
+            false,
+          error:
+            "SmartCard verification is only available for Cable TV.",
+        },
+        400
+      );
+    }
+
+    const cableTv =
+      requestedBiller(
+        body,
+        details
+      );
+
+    const smartcard =
+      requestedSmartcard(
+        body,
+        details
+      );
+
+    if (!cableTv) {
+      return json(
+        {
+          success:
+            false,
+          error:
+            "Please select a Cable TV provider.",
+        },
+        400
+      );
+    }
+
+    if (!smartcard) {
+      return json(
+        {
+          success:
+            false,
+          error:
+            "Enter your SmartCard/IUC number.",
+        },
+        400
+      );
+    }
+
+    try {
+      const response =
+        await clubKonnectRequest(
+          "APIVerifyCableTVV1.asp",
+          {
+            CableTV:
+              cableTv,
+
+            SmartCardNo:
+              smartcard,
+          }
+        );
+
+      const customerName =
+        verificationCustomerName(
+          response.body
+        );
+
+      const verified =
+        verificationSuccessful(
+          response.body
+        ) &&
+        customerName !==
+          "INVALID_SMARTCARDNO";
+
+      if (!verified) {
+        return json(
+          {
+            success:
+              false,
+
+            verified:
+              false,
+
+            error:
+              customerName ===
+              "INVALID_SMARTCARDNO"
+                ? "The SmartCard/IUC number could not be verified."
+                : "Unable to verify this SmartCard/IUC number.",
+
+            provider_response:
+              safeProviderResponse(
+                response.body
+              ),
+          },
+          400
+        );
+      }
+
+      return json({
+        success:
+          true,
+
+        verified:
+          true,
+
+        service:
+          "cable",
+
+        provider:
+          cableTv,
+
+        smartcardNumber:
+          smartcard,
+
+        customer_name:
+          customerName,
+
+        customerName:
+          customerName,
+
+        message:
+          "SmartCard verified successfully. You can now choose a package.",
+      });
+    } catch (error) {
+      console.error(
+        "Cable SmartCard verification failed:",
+        error
+      );
+
+      return json(
+        {
+          success:
+            false,
+          verified:
+            false,
+          error:
+            "Unable to verify the SmartCard right now. Please try again.",
+        },
+        502
+      );
+    }
+  }
+
+  /* ==========================================================
+   * VERIFY ELECTRICITY METER
+   * ======================================================== */
+
+  if (
+    action ===
+      "verify_meter" ||
+    action ===
+      "verify-meter" ||
+    action ===
+      "verify_electricity" ||
+    action ===
+      "verify-electricity"
+  ) {
+    if (
+      service !==
+      "electricity"
+    ) {
+      return json(
+        {
+          success:
+            false,
+          error:
+            "Meter verification is only available for electricity.",
+        },
+        400
+      );
+    }
+
+    const electricCompany =
+      s(
+        first(
+          body.electric_company,
+          body.electricCompany,
+          body.biller_code,
+          body.billerCode,
+          details.electric_company,
+          details.electricCompany,
+          details.biller_code,
+          details.billerCode
+        )
+      );
+
+    const meterType =
+      requestedMeterType(
+        body,
+        details
+      );
+
+    const meterNumber =
+      requestedMeter(
+        body,
+        details
+      );
+
+    if (!electricCompany) {
+      return json(
+        {
+          success:
+            false,
+          error:
+            "Please select an electricity company.",
+        },
+        400
+      );
+    }
+
+    if (!meterNumber) {
+      return json(
+        {
+          success:
+            false,
+          error:
+            "Enter your meter number.",
+        },
+        400
+      );
+    }
+
+    try {
+      const response =
+        await clubKonnectRequest(
+          "APIVerifyElectricityV1.asp",
+          {
+            ElectricCompany:
+              electricCompany,
+
+            MeterNo:
+              meterNumber,
+
+            MeterType:
+              meterType,
+          }
+        );
+
+      const customerName =
+        verificationCustomerName(
+          response.body
+        );
+
+      const normalizedCustomer =
+        normalizeStatus(
+          customerName ??
+          ""
+        );
+
+      const verified =
+        verificationSuccessful(
+          response.body
+        ) &&
+        ![
+          "INVALID_METERNO",
+          "INVALID_ACCOUNTNO",
+        ].includes(
+          normalizedCustomer
+        );
+
+      if (!verified) {
+        return json(
+          {
+            success:
+              false,
+
+            verified:
+              false,
+
+            error:
+              [
+                "INVALID_METERNO",
+                "INVALID_ACCOUNTNO",
+              ].includes(
+                normalizedCustomer
+              )
+                ? "The meter number could not be verified."
+                : "Unable to verify this meter number.",
+
+            provider_response:
+              safeProviderResponse(
+                response.body
+              ),
+          },
+          400
+        );
+      }
+
+      return json({
+        success:
+          true,
+
+        verified:
+          true,
+
+        service:
+          "electricity",
+
+        electricCompany:
+          electricCompany,
+
+        biller_code:
+          electricCompany,
+
+        meterType:
+          meterType,
+
+        meter_type:
+          meterType,
+
+        meterNumber:
+          meterNumber,
+
+        meter_number:
+          meterNumber,
+
+        customer_name:
+          customerName,
+
+        customerName:
+          customerName,
+
+        message:
+          "Meter verified successfully. You can now enter the amount.",
+      });
+    } catch (error) {
+      console.error(
+        "Electricity meter verification failed:",
+        error
+      );
+
+      return json(
+        {
+          success:
+            false,
+          verified:
+            false,
+          error:
+            "Unable to verify the meter right now. Please try again.",
+        },
+        502
+      );
+    }
+  }
+
+  /* ==========================================================
+   * VERIFY JAMB PROFILE
+   * ======================================================== */
+
+  if (
+    action ===
+      "verify_profile" ||
+    action ===
+      "verify-profile" ||
+    action ===
+      "verify_jamb" ||
+    action ===
+      "verify-jamb"
+  ) {
+    if (
+      service !==
+      "jamb"
+    ) {
+      return json(
+        {
+          success:
+            false,
+          error:
+            "JAMB profile verification is only available for JAMB.",
+        },
+        400
+      );
+    }
+
+    const examType =
+      requestedExamType(
+        body,
+        details
+      );
+
+    const profileCode =
+      requestedProfileCode(
+        body,
+        details
+      );
+
+    if (!examType) {
+      return json(
+        {
+          success:
+            false,
+          error:
+            "Please select an examination type.",
+        },
+        400
+      );
+    }
+
+    if (!profileCode) {
+      return json(
+        {
+          success:
+            false,
+          error:
+            "Enter your JAMB Profile Code.",
+        },
+        400
+      );
+    }
+
+    try {
+      const response =
+        await clubKonnectRequest(
+          "APIVerifyJAMBV1.asp",
+          {
+            ExamType:
+              examType,
+
+            ProfileID:
+              profileCode,
+          }
+        );
+
+      const customerName =
+        verificationCustomerName(
+          response.body
+        );
+
+      const normalizedCustomer =
+        normalizeStatus(
+          customerName ??
+          ""
+        );
+
+      const verified =
+        verificationSuccessful(
+          response.body
+        ) &&
+        ![
+          "INVALID_ACCOUNTNO",
+          "INVALID_PROFILEID",
+          "INVALID_PROFILE_ID",
+        ].includes(
+          normalizedCustomer
+        );
+
+      if (!verified) {
+        return json(
+          {
+            success:
+              false,
+
+            verified:
+              false,
+
+            error:
+              [
+                "INVALID_ACCOUNTNO",
+                "INVALID_PROFILEID",
+                "INVALID_PROFILE_ID",
+              ].includes(
+                normalizedCustomer
+              )
+                ? "The JAMB Profile Code could not be verified."
+                : "Unable to verify this JAMB Profile Code.",
+
+            provider_response:
+              safeProviderResponse(
+                response.body
+              ),
+          },
+          400
+        );
+      }
+
+      return json({
+        success:
+          true,
+
+        verified:
+          true,
+
+        service:
+          "jamb",
+
+        examType:
+          examType,
+
+        exam_type:
+          examType,
+
+        profileCode:
+          profileCode,
+
+        profile_code:
+          profileCode,
+
+        profileId:
+          profileCode,
+
+        profile_id:
+          profileCode,
+
+        customer_name:
+          customerName,
+
+        customerName:
+          customerName,
+
+        message:
+          "JAMB Profile Code verified successfully. Enter the phone number to continue.",
+      });
+    } catch (error) {
+      console.error(
+        "JAMB profile verification failed:",
+        error
+      );
+
+      return json(
+        {
+          success:
+            false,
+          verified:
+            false,
+          error:
+            "Unable to verify the JAMB Profile Code right now. Please try again.",
+        },
+        502
+      );
+    }
+  }
+
+  /* ==========================================================
+   * ITEMS / PLANS / PACKAGES
    * ======================================================== */
 
   if (
     action ===
       "items" ||
     action ===
-      "plans"
+      "plans" ||
+    action ===
+      "packages"
   ) {
     const biller =
       requestedBiller(
@@ -3570,100 +5209,314 @@ const handler = async (
       );
 
     try {
+      /*
+       * AIRTIME
+       */
       if (
         service ===
-          "airtime" ||
-        service ===
-          "electricity"
+        "airtime"
       ) {
         return json({
           success:
             true,
+
           service,
+
           biller_code:
             biller,
+
           items: [],
           plans: [],
           packages: [],
+
           amount_based:
             true,
         });
       }
 
-      if (
-        (
-          service ===
-            "data" ||
-          service ===
-            "airtime-card" ||
-          service ===
-            "data-card"
-        ) &&
-        !networkCode(
-          biller
-        )
-      ) {
-        return json(
-          {
-            success:
-              false,
-            error:
-              "Please select a network.",
-          },
-          400
-        );
-      }
-
+      /*
+       * ELECTRICITY
+       *
+       * Amount comes after meter verification.
+       */
       if (
         service ===
-          "cable" &&
-        !biller
+        "electricity"
       ) {
-        return json(
-          {
-            success:
-              false,
-            error:
-              "Please select a cable TV service.",
-          },
-          400
-        );
-      }
+        return json({
+          success:
+            true,
 
-      const code =
-        service ===
-            "data" ||
-          service ===
-            "airtime-card" ||
-          service ===
-            "data-card"
-          ? networkCode(
-              biller
-            )
-          : biller;
-
-      const items =
-        await getCatalog(
           service,
-          code
+
+          biller_code:
+            biller,
+
+          items: [],
+          plans: [],
+          packages: [],
+
+          amount_based:
+            true,
+
+          requires_verification:
+            true,
+        });
+      }
+
+      /*
+       * JAMB
+       *
+       * ExamType is the service option.
+       * There is no generic package selector.
+       */
+      if (
+        service ===
+        "jamb"
+      ) {
+        const examType =
+          requestedExamType(
+            body,
+            details
+          );
+
+        const catalog =
+          await jambCatalog();
+
+        const selected =
+          examType
+            ? catalog.find(
+                (item) =>
+                  item.code
+                    .toLowerCase() ===
+                  examType.toLowerCase()
+              )
+            : undefined;
+
+        return json({
+          success:
+            true,
+
+          service,
+
+          examType:
+            examType ??
+            null,
+
+          exam_type:
+            examType ??
+            null,
+
+          items:
+            selected
+              ? [
+                  {
+                    id:
+                      selected.code,
+                    code:
+                      selected.code,
+                    name:
+                      selected.name,
+                    label:
+                      selected.name,
+                    examType:
+                      selected.code,
+                    exam_type:
+                      selected.code,
+                    providerPrice:
+                      selected.providerPrice,
+                    price:
+                      selected.providerPrice > 0
+                        ? sellingPrice(
+                            "jamb",
+                            selected.providerPrice
+                          )
+                        : 0,
+                  },
+                ]
+              : [],
+
+          plans: [],
+
+          packages: [],
+
+          requires_profile_verification:
+            true,
+        });
+      }
+
+      /*
+       * Network services.
+       */
+      if (
+        service ===
+          "data" ||
+        service ===
+          "airtime-card" ||
+        service ===
+          "data-card"
+      ) {
+        if (
+          !networkCode(
+            biller
+          )
+        ) {
+          return json(
+            {
+              success:
+                false,
+              error:
+                "Please select a network.",
+            },
+            400
+          );
+        }
+
+        const code =
+          networkCode(
+            biller
+          );
+
+        const items =
+          service ===
+            "data"
+            ? await dataPlans()
+            : service ===
+                "airtime-card"
+              ? await airtimePinCatalog(
+                  code
+                )
+              : await dataPinCatalog(
+                  code
+                );
+
+        const filtered =
+          items.filter(
+            (item) =>
+              item.networkCode ===
+              code
+          );
+
+        return json({
+          success:
+            true,
+
+          service,
+
+          biller_code:
+            biller,
+
+          billerCode:
+            biller,
+
+          network_code:
+            code,
+
+          networkCode:
+            code,
+
+          items:
+            filtered.map(
+              publicItem
+            ),
+
+          plans:
+            filtered.map(
+              publicItem
+            ),
+
+          packages:
+            filtered.map(
+              publicItem
+            ),
+
+          amount_based:
+            false,
+
+          quantity_based:
+            service ===
+              "airtime-card" ||
+            service ===
+              "data-card",
+        });
+      }
+
+      /*
+       * CABLE
+       */
+      if (
+        service ===
+        "cable"
+      ) {
+        if (!biller) {
+          return json(
+            {
+              success:
+                false,
+              error:
+                "Please select a Cable TV provider.",
+            },
+            400
+          );
+        }
+
+        const items =
+          await cablePackages(
+            biller
+          );
+
+        return json({
+          success:
+            true,
+
+          service,
+
+          biller_code:
+            biller,
+
+          billerCode:
+            biller,
+
+          items:
+            items.map(
+              publicItem
+            ),
+
+          plans:
+            items.map(
+              publicItem
+            ),
+
+          packages:
+            items.map(
+              publicItem
+            ),
+
+          requires_verification:
+            true,
+        });
+      }
+
+      /*
+       * SMILE / WAEC
+       */
+      const items =
+        await genericPackages(
+          service ===
+            "smile"
+            ? "APISmilePackagesV2.asp"
+            : "APIWAECPackagesV2.asp",
+          service ===
+            "smile"
+            ? "smile"
+            : "waec"
         );
 
       return json({
         success:
           true,
+
         service,
-        biller_code:
-          biller,
-        billerCode:
-          biller,
-        network_code:
-          networkCode(
-            biller
-          ),
-        networkCode:
-          networkCode(
-            biller
-          ),
 
         items:
           items.map(
@@ -3719,33 +5572,91 @@ const handler = async (
       );
 
     if (
-      (
-        service ===
-          "data" ||
-        service ===
-          "airtime-card" ||
-        service ===
-          "data-card"
-      ) &&
-      !biller
+      service ===
+      "airtime"
     ) {
-      return json(
-        {
-          success:
-            false,
-          error:
-            "Please select a network.",
-        },
-        400
-      );
+      return json({
+        success:
+          true,
+        status:
+          "successful",
+        validated:
+          true,
+      });
     }
 
     if (
-      !itemCode &&
-      service !==
-        "airtime" &&
-      service !==
-        "electricity"
+      service ===
+      "electricity"
+    ) {
+      return json({
+        success:
+          true,
+        status:
+          "successful",
+        validated:
+          true,
+      });
+    }
+
+    if (
+      service ===
+      "jamb"
+    ) {
+      const examType =
+        requestedExamType(
+          body,
+          details
+        );
+
+      const profileCode =
+        requestedProfileCode(
+          body,
+          details
+        );
+
+      if (!examType) {
+        return json(
+          {
+            success:
+              false,
+            error:
+              "Examination type is required.",
+          },
+          400
+        );
+      }
+
+      if (!profileCode) {
+        return json(
+          {
+            success:
+              false,
+            error:
+              "JAMB Profile Code is required.",
+          },
+          400
+        );
+      }
+
+      return json({
+        success:
+          true,
+        status:
+          "successful",
+        validated:
+          true,
+        examType,
+        exam_type:
+          examType,
+        profileCode,
+        profile_code:
+          profileCode,
+      });
+    }
+
+    if (
+      !itemCode
     ) {
       return json(
         {
@@ -3759,22 +5670,6 @@ const handler = async (
     }
 
     try {
-      if (
-        service ===
-          "airtime" ||
-        service ===
-          "electricity"
-      ) {
-        return json({
-          success:
-            true,
-          status:
-            "successful",
-          validated:
-            true,
-        });
-      }
-
       const selected =
         await findSelectedItem(
           service,
@@ -3797,10 +5692,13 @@ const handler = async (
       return json({
         success:
           true,
+
         status:
           "successful",
+
         validated:
           true,
+
         data:
           publicItem(
             selected
@@ -3873,6 +5771,36 @@ const handler = async (
         customerRaw
       );
 
+    const smartcard =
+      requestedSmartcard(
+        body,
+        details
+      );
+
+    const meterNumber =
+      requestedMeter(
+        body,
+        details
+      );
+
+    const meterType =
+      requestedMeterType(
+        body,
+        details
+      );
+
+    const profileCode =
+      requestedProfileCode(
+        body,
+        details
+      );
+
+    const examType =
+      requestedExamType(
+        body,
+        details
+      );
+
     /*
      * Network services.
      */
@@ -3903,59 +5831,7 @@ const handler = async (
     }
 
     /*
-     * Cable.
-     */
-    if (
-      service ===
-        "cable" &&
-      !biller
-    ) {
-      return json(
-        {
-          success:
-            false,
-          error:
-            "Please select a cable TV service.",
-        },
-        400
-      );
-    }
-
-    /*
-     * Package services.
-     */
-    if (
-      (
-        service ===
-          "data" ||
-        service ===
-          "cable" ||
-        service ===
-          "airtime-card" ||
-        service ===
-          "data-card" ||
-        service ===
-          "smile" ||
-        service ===
-          "waec" ||
-        service ===
-          "jamb"
-      ) &&
-      !itemCode
-    ) {
-      return json(
-        {
-          success:
-            false,
-          error:
-            "Please select a valid package.",
-        },
-        400
-      );
-    }
-
-    /*
-     * E-PIN quantities.
+     * E-PIN quantity.
      */
     if (
       (
@@ -3978,7 +5854,7 @@ const handler = async (
     }
 
     /*
-     * Services that use a Nigerian phone.
+     * Phone based services.
      */
     if (
       (
@@ -4013,63 +5889,156 @@ const handler = async (
     }
 
     /*
-     * Cable and electricity use separate
-     * customer identifiers.
+     * Cable.
      */
-    const smartcard =
-      requestedSmartcard(
-        body,
-        details
-      );
-
-    const meterNumber =
-      requestedMeter(
-        body,
-        details
-      );
-
-    const meterType =
-      requestedMeterType(
-        body,
-        details
-      );
-
     if (
       service ===
-        "cable" &&
-      !smartcard
+      "cable"
     ) {
-      return json(
-        {
-          success:
-            false,
-          error:
-            "Enter a valid SmartCard number.",
-        },
-        400
-      );
-    }
+      if (!biller) {
+        return json(
+          {
+            success:
+              false,
+            error:
+              "Please select a Cable TV provider.",
+          },
+          400
+        );
+      }
 
-    if (
-      service ===
-        "electricity" &&
-      !meterNumber
-    ) {
-      return json(
-        {
-          success:
-            false,
-          error:
-            "Enter a valid meter number.",
-        },
-        400
-      );
+      if (!smartcard) {
+        return json(
+          {
+            success:
+              false,
+            error:
+              "Enter a valid SmartCard/IUC number.",
+          },
+          400
+        );
+      }
+
+      if (!itemCode) {
+        return json(
+          {
+            success:
+              false,
+            error:
+              "Please select a Cable TV package.",
+          },
+          400
+        );
+      }
     }
 
     /*
-     * Generate our own server-side transaction
-     * reference.
+     * Electricity.
      */
+    if (
+      service ===
+      "electricity"
+    ) {
+      if (!biller) {
+        return json(
+          {
+            success:
+              false,
+            error:
+              "Please select an electricity company.",
+          },
+          400
+        );
+      }
+
+      if (!meterNumber) {
+        return json(
+          {
+            success:
+              false,
+            error:
+              "Enter a valid meter number.",
+          },
+          400
+        );
+      }
+
+      if (!meterType) {
+        return json(
+          {
+            success:
+              false,
+            error:
+              "Please select a meter type/service provider.",
+          },
+          400
+        );
+      }
+    }
+
+    /*
+     * JAMB.
+     */
+    if (
+      service ===
+      "jamb"
+    ) {
+      if (!examType) {
+        return json(
+          {
+            success:
+              false,
+            error:
+              "Please select an examination type.",
+          },
+          400
+        );
+      }
+
+      if (!profileCode) {
+        return json(
+          {
+            success:
+              false,
+            error:
+              "Enter your JAMB Profile Code.",
+          },
+          400
+        );
+      }
+    }
+
+    /*
+     * Package services.
+     */
+    if (
+      (
+        service ===
+          "data" ||
+        service ===
+          "cable" ||
+        service ===
+          "airtime-card" ||
+        service ===
+          "data-card" ||
+        service ===
+          "smile" ||
+        service ===
+          "waec"
+      ) &&
+      !itemCode
+    ) {
+      return json(
+        {
+          success:
+            false,
+          error:
+            "Please select a valid package.",
+        },
+        400
+      );
+    }
+
     const reference =
       `CK_${service
         .replace(
@@ -4126,34 +6095,29 @@ const handler = async (
             amount
           );
 
-        /*
-         * Airtime markup is explicitly 0%.
-         */
         total =
           sellingPrice(
             "airtime",
             providerAmount
           );
 
-        selected =
-          {
-            id:
-              `${network}-${amount}`,
-            code:
-              `${network}-${amount}`,
-            name:
-              `${networkName(network)} Airtime`,
-            price:
-              total,
-            providerPrice:
-              providerAmount,
-            networkCode:
-              network,
-            service:
-              "airtime",
-            raw:
-              {},
-          };
+        selected = {
+          id:
+            `${network}-${amount}`,
+          code:
+            `${network}-${amount}`,
+          name:
+            `${networkName(network)} Airtime`,
+          price:
+            total,
+          providerPrice:
+            providerAmount,
+          networkCode:
+            network,
+          service:
+            "airtime",
+          raw: {},
+        };
       }
 
       /*
@@ -4183,20 +6147,6 @@ const handler = async (
           );
         }
 
-        if (
-          !biller
-        ) {
-          return json(
-            {
-              success:
-                false,
-              error:
-                "Please select an electricity company.",
-            },
-            400
-          );
-        }
-
         providerAmount =
           roundMoney(
             amount
@@ -4208,25 +6158,100 @@ const handler = async (
             providerAmount
           );
 
-        selected =
-          {
-            id:
-              `${biller}-${amount}`,
-            code:
-              `${biller}-${amount}`,
-            name:
-              `${biller} Electricity`,
-            price:
-              total,
-            providerPrice:
-              providerAmount,
-            billerCode:
-              biller,
-            service:
-              "electricity",
-            raw:
-              {},
-          };
+        selected = {
+          id:
+            `${biller}-${meterType}-${amount}`,
+          code:
+            `${biller}-${meterType}-${amount}`,
+          name:
+            `${biller} Electricity`,
+          price:
+            total,
+          providerPrice:
+            providerAmount,
+          billerCode:
+            biller,
+          providerCode:
+            meterType,
+          providerName:
+            meterType,
+          meterType:
+            meterType,
+          service:
+            "electricity",
+          raw: {},
+        };
+      }
+
+      /*
+       * JAMB
+       *
+       * JAMB purchase is priced from the
+       * actual ExamType catalogue.
+       */
+      else if (
+        service ===
+        "jamb"
+      ) {
+        const catalog =
+          await jambCatalog();
+
+        const jamb =
+          catalog.find(
+            (item) =>
+              item.code
+                .toLowerCase() ===
+              examType.toLowerCase()
+          );
+
+        if (
+          !jamb ||
+          jamb.providerPrice <= 0
+        ) {
+          return json(
+            {
+              success:
+                false,
+              error:
+                "The selected JAMB examination type is currently unavailable.",
+            },
+            400
+          );
+        }
+
+        providerAmount =
+          jamb.providerPrice;
+
+        total =
+          sellingPrice(
+            "jamb",
+            providerAmount
+          );
+
+        selected = {
+          id:
+            examType,
+          code:
+            examType,
+          name:
+            jamb.name,
+          packageCode:
+            examType,
+          packageName:
+            jamb.name,
+          examType:
+            examType,
+          examTypeName:
+            jamb.name,
+          price:
+            total,
+          providerPrice:
+            providerAmount,
+          service:
+            "jamb",
+          raw:
+            jamb.raw,
+        };
       }
 
       /*
@@ -4306,12 +6331,8 @@ const handler = async (
       );
     }
 
-    /*
-     * Preserve the exact customer price that
-     * was independently calculated server-side.
-     */
-    const metadata =
-      {
+    const metadata:
+      JsonObject = {
         service,
 
         category:
@@ -4333,11 +6354,36 @@ const handler = async (
           network ||
           null,
 
+        provider_code:
+          selected.providerCode ||
+          null,
+
+        provider_name:
+          selected.providerName ||
+          null,
+
         item_code:
           selected.id,
 
         product_code:
           selected.code,
+
+        package_code:
+          selected.packageCode ??
+          null,
+
+        package_name:
+          selected.packageName ??
+          selected.name,
+
+        exam_type:
+          examType ||
+          selected.examType ||
+          null,
+
+        profile_code:
+          profileCode ||
+          null,
 
         provider_amount:
           providerAmount,
@@ -4360,6 +6406,17 @@ const handler = async (
             ? quantity
             : 1,
 
+        epin_value:
+          selected.value ??
+          (
+            service ===
+            "airtime-card"
+              ? airtimePinValue(
+                  selected
+                )
+              : null
+          ),
+
         customer:
           customer ||
           null,
@@ -4372,12 +6429,17 @@ const handler = async (
           smartcard ||
           null,
 
+        smartcard_number:
+          smartcard ||
+          null,
+
         meter_number:
           meterNumber ||
           null,
 
         meter_type:
           meterType ||
+          selected.meterType ||
           null,
 
         plan_name:
@@ -4585,6 +6647,7 @@ const handler = async (
                 biller,
 
               Package:
+                selected.packageCode ||
                 selected.code ||
                 selected.id,
 
@@ -4655,6 +6718,7 @@ const handler = async (
                 ),
 
               DataPlan:
+                selected.packageCode ||
                 selected.code ||
                 selected.id,
 
@@ -4726,6 +6790,11 @@ const handler = async (
 
       /*
        * JAMB
+       *
+       * IMPORTANT:
+       * ProfileID is verified before purchase,
+       * but ClubKonnect's purchase API uses
+       * ExamType + PhoneNo.
        */
       else {
         providerResponse =
@@ -4733,8 +6802,7 @@ const handler = async (
             "APIJAMBV1.asp",
             {
               ExamType:
-                selected.code ||
-                selected.id,
+                examType,
 
               PhoneNo:
                 customer,
@@ -4750,17 +6818,6 @@ const handler = async (
     } catch (
       providerError
     ) {
-      /*
-       * IMPORTANT:
-       *
-       * A network exception does NOT prove that
-       * ClubKonnect did not receive the request.
-       *
-       * Therefore we DO NOT refund here.
-       *
-       * The transaction remains pending and can
-       * later be reconciled through APIQueryV1.
-       */
       console.error(
         "ClubKonnect provider request exception:",
         providerError
@@ -4824,7 +6881,7 @@ const handler = async (
     }
 
     /* ========================================================
-     * CLASSIFY PROVIDER RESPONSE
+     * CLASSIFY
      * ====================================================== */
 
     const classified =
@@ -4926,7 +6983,21 @@ const handler = async (
           service ===
           "data"
             ? "Data purchase completed successfully."
-            : "Purchase completed successfully.",
+            : service ===
+                "jamb"
+              ? "JAMB e-PIN purchase completed successfully."
+              : service ===
+                  "cable"
+                ? "Cable TV subscription completed successfully."
+                : service ===
+                    "electricity"
+                  ? "Electricity payment completed successfully."
+                  : service ===
+                      "airtime-card" ||
+                    service ===
+                      "data-card"
+                    ? "E-PIN purchase completed successfully."
+                    : "Purchase completed successfully.",
 
         fulfillment:
           fulfilled,
@@ -5045,7 +7116,7 @@ const handler = async (
     }
 
     /* ========================================================
-     * PENDING / UNKNOWN
+     * PENDING
      * ====================================================== */
 
     await updateTransaction(
@@ -5308,10 +7379,6 @@ const handler = async (
         providerResponse.body
       );
 
-    /* ========================================================
-     * RECONCILED SUCCESS
-     * ====================================================== */
-
     if (
       classified.state ===
       "successful"
@@ -5388,10 +7455,6 @@ const handler = async (
           fulfilled,
       });
     }
-
-    /* ========================================================
-     * RECONCILED FAILURE
-     * ====================================================== */
 
     if (
       classified.state ===
@@ -5504,10 +7567,6 @@ const handler = async (
           "Purchase failed. Your wallet has been refunded.",
       });
     }
-
-    /* ========================================================
-     * STILL PENDING
-     * ====================================================== */
 
     await updateTransaction(
       admin,

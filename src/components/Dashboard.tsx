@@ -2038,102 +2038,102 @@ const Dashboard = () => {
    */
 
   return (
+  <>
+    <style>{`
+      .iyanjupay-dashboard {
+        background: #f7f8fc;
+        color: #0f172a;
+        transition: background-color 180ms ease, color 180ms ease;
+      }
 
-      <style>{`
-        .iyanjupay-dashboard {
-          background: #f7f8fc;
-          color: #0f172a;
-          transition: background-color 180ms ease, color 180ms ease;
-        }
+      .iyanjupay-theme-blue {
+        background: #f4f8ff;
+      }
 
-        .iyanjupay-theme-blue {
-          background: #f4f8ff;
-        }
+      .iyanjupay-theme-dark {
+        background: #090d18;
+        color: #f8fafc;
+      }
 
-        .iyanjupay-theme-dark {
-          background: #090d18;
-          color: #f8fafc;
-        }
+      .iyanjupay-theme-dark .bg-white {
+        background-color: #111827 !important;
+      }
 
-        .iyanjupay-theme-dark .bg-white {
-          background-color: #111827 !important;
-        }
+      .iyanjupay-theme-dark .bg-slate-50 {
+        background-color: #090d18 !important;
+      }
 
-        .iyanjupay-theme-dark .bg-slate-50 {
-          background-color: #090d18 !important;
-        }
+      .iyanjupay-theme-dark .bg-slate-100 {
+        background-color: #1e293b !important;
+      }
 
-        .iyanjupay-theme-dark .bg-slate-100 {
-          background-color: #1e293b !important;
-        }
+      .iyanjupay-theme-dark [class*="border-slate-200"] {
+        border-color: #334155 !important;
+      }
 
-        .iyanjupay-theme-dark [class*="border-slate-200"] {
-          border-color: #334155 !important;
-        }
+      .iyanjupay-theme-dark .text-slate-950,
+      .iyanjupay-theme-dark .text-slate-900 {
+        color: #f8fafc !important;
+      }
 
-        .iyanjupay-theme-dark .text-slate-950,
-        .iyanjupay-theme-dark .text-slate-900 {
-          color: #f8fafc !important;
-        }
+      .iyanjupay-theme-dark .text-slate-700 {
+        color: #e2e8f0 !important;
+      }
 
-        .iyanjupay-theme-dark .text-slate-700 {
-          color: #e2e8f0 !important;
-        }
+      .iyanjupay-theme-dark .text-slate-600 {
+        color: #cbd5e1 !important;
+      }
 
-        .iyanjupay-theme-dark .text-slate-600 {
-          color: #cbd5e1 !important;
-        }
+      .iyanjupay-theme-dark .text-slate-500 {
+        color: #94a3b8 !important;
+      }
 
-        .iyanjupay-theme-dark .text-slate-500 {
-          color: #94a3b8 !important;
-        }
+      .iyanjupay-theme-dark .text-slate-400 {
+        color: #64748b !important;
+      }
 
-        .iyanjupay-theme-dark .text-slate-400 {
-          color: #64748b !important;
-        }
+      .iyanjupay-theme-dark [class*="hover:bg-slate-50"]:hover {
+        background-color: #1e293b !important;
+      }
 
-        .iyanjupay-theme-dark [class*="hover:bg-slate-50"]:hover {
-          background-color: #1e293b !important;
-        }
+      .iyanjupay-theme-dark .bg-purple-50 {
+        background-color: #312e81 !important;
+      }
 
-        .iyanjupay-theme-dark .bg-purple-50 {
-          background-color: #312e81 !important;
-        }
+      .iyanjupay-theme-dark .text-purple-700,
+      .iyanjupay-theme-dark .text-purple-600 {
+        color: #c4b5fd !important;
+      }
 
-        .iyanjupay-theme-dark .text-purple-700,
-        .iyanjupay-theme-dark .text-purple-600 {
-          color: #c4b5fd !important;
-        }
+      .iyanjupay-theme-dark .bg-blue-50 {
+        background-color: #172554 !important;
+      }
 
-        .iyanjupay-theme-dark .bg-blue-50 {
-          background-color: #172554 !important;
-        }
+      .iyanjupay-theme-dark .bg-emerald-50 {
+        background-color: #052e2b !important;
+      }
 
-        .iyanjupay-theme-dark .bg-emerald-50 {
-          background-color: #052e2b !important;
-        }
+      .iyanjupay-theme-dark .bg-orange-50 {
+        background-color: #431407 !important;
+      }
 
-        .iyanjupay-theme-dark .bg-orange-50 {
-          background-color: #431407 !important;
-        }
+      .iyanjupay-theme-blue .bg-purple-50 {
+        background-color: #dbeafe !important;
+      }
 
-        .iyanjupay-theme-blue .bg-purple-50 {
-          background-color: #dbeafe !important;
-        }
+      .iyanjupay-theme-blue .text-purple-700,
+      .iyanjupay-theme-blue .text-purple-600 {
+        color: #1d4ed8 !important;
+      }
 
-        .iyanjupay-theme-blue .text-purple-700,
-        .iyanjupay-theme-blue .text-purple-600 {
-          color: #1d4ed8 !important;
-        }
+      .iyanjupay-theme-blue .bg-purple-600 {
+        background-color: #2563eb !important;
+      }
 
-        .iyanjupay-theme-blue .bg-purple-600 {
-          background-color: #2563eb !important;
-        }
-
-        .iyanjupay-theme-blue [class*="hover:bg-purple-700"]:hover {
-          background-color: #1d4ed8 !important;
-        }
-      `}</style>
+      .iyanjupay-theme-blue [class*="hover:bg-purple-700"]:hover {
+        background-color: #1d4ed8 !important;
+      }
+    `}</style>
 
     <div
       className={`min-h-screen pb-24 iyanjupay-dashboard iyanjupay-theme-${dashboardTheme}`}
@@ -2826,8 +2826,9 @@ const Dashboard = () => {
       {/* WHATSAPP                                              */}
       {/* ====================================================== */}
 
-      <WhatsAppFloat />
+            <WhatsAppFloat />
     </div>
+  </>
   );
 };
 

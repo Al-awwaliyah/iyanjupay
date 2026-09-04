@@ -7,15 +7,19 @@ import React, {
 
 import {
   ArrowLeft,
+  BadgeCheck,
   Check,
+  ChevronDown,
   ChevronRight,
   CircleAlert,
   CreditCard,
   Flame,
   Loader2,
   LockKeyhole,
+  Minus,
   Package,
   Phone,
+  Plus,
   RefreshCw,
   Search,
   ShieldCheck,
@@ -33,18 +37,17 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 
-/* ------------------------------------------------------------------ */
-/*  Design tokens (IyanjuPay)                                          */
-/*                                                                      */
-/*  Ink       #071B3E  — deep navy, hero surfaces, primary text        */
-/*  Brand     #082A63  — primary actions, links, focus rings           */
-/*  Brand-2   #153B7A  — gradient partner for Brand                    */
-/*  Gold      #F4B400  — single accent: hot deals, highlights          */
-/*  Paper     #FAF8F4  — app background (warm, not clinical white)     */
-/*  Line      #E7E3DA  — hairline borders on Paper                     */
-/*  Success   #16794D  — sufficient balance / confirmations            */
-/*  Danger    #C22E2E  — errors, insufficient balance                  */
-/* ------------------------------------------------------------------ */
+/* ==========================================================================
+   IYANJUPAY SERVICE PAYMENT
+   --------------------------------------------------------------------------
+   Premium customer-facing service experience.
+
+   IMPORTANT:
+   - Provider names are never exposed as backend/provider terminology.
+   - Wallet balance is intentionally NOT displayed here.
+   - Catalogue comes from clubkonnect-services.
+   - Purchase is delegated to onPurchase().
+   ========================================================================== */
 
 interface ServicePaymentProps {
   service: {
@@ -79,6 +82,9 @@ interface CatalogueNetwork {
   providerName?: string;
   biller_name?: string;
   billerName?: string;
+
+  short_name?: string;
+  shortName?: string;
 
   network_code?: string | number;
   networkCode?: string | number;
@@ -134,8 +140,10 @@ interface CatalogueItem {
 
   amount?: number | string;
   price?: number | string;
+
   selling_price?: number | string;
   sellingPrice?: number | string;
+
   sale_price?: number | string;
   salePrice?: number | string;
 
@@ -238,18 +246,10 @@ const LIVE_SERVICES = new Set<ServiceKind>([
   "jamb",
 ]);
 
-const COMING_SOON_SERVICES = new Set([
+const COMING_SOON_SERVICES = new Set<ServiceKind>([
   "internet",
   "insurance",
   "savings",
-]);
-
-const PREMIUM_SERVICES = new Set([
-  "airtime-card",
-  "data-card",
-  "smile",
-  "waec",
-  "jamb",
 ]);
 
 const DATA_TABS: DataTab[] = [
@@ -282,25 +282,35 @@ const BILL_AMOUNTS = [
 const NETWORK_LOGOS: Record<string, string> = {
   mtn:
     "https://upload.wikimedia.org/wikipedia/commons/a/af/MTN_Logo.svg",
+
   glo:
     "https://upload.wikimedia.org/wikipedia/commons/8/86/GloLogo.png",
+
   airtel:
     "https://upload.wikimedia.org/wikipedia/commons/f/fb/Bharti_Airtel_Logo.svg",
+
   "9mobile":
     "https://images.seeklogo.com/logo-png/48/1/9mobile-logo-png_seeklogo-481168.png",
 
   dstv:
     "https://res.cloudinary.com/paybeta/image/upload/v1714827633/Provider/Cable/dstv.jpg",
+
   gotv:
     "https://res.cloudinary.com/paybeta/image/upload/v1714828100/Provider/Cable/gotv.png",
+
   startimes:
     "https://res.cloudinary.com/paybeta/image/upload/v1714827913/Provider/Cable/startimes.jpg",
+
   showmax:
     "https://commons.wikimedia.org/wiki/Special:Redirect/file/Showmax_Logo.svg",
 
   smile:
     "https://cdn.jsdelivr.net/gh/PaystackHQ/nigerialogos@master/public/logos/smile/smile.svg",
 };
+
+/* ==========================================================================
+   Utilities
+   ========================================================================== */
 
 function cleanString(value: unknown): string {
   return String(value ?? "").trim();
@@ -315,7 +325,9 @@ function numberValue(value: unknown): number {
     .replace(/[₦,\s]/g, "")
     .replace(/NGN/gi, "");
 
-  if (!cleaned) return 0;
+  if (!cleaned) {
+    return 0;
+  }
 
   const result = Number(cleaned);
 
@@ -365,33 +377,13 @@ function normalizeKey(value: unknown): string {
     .replace(/[^a-z0-9]/g, "");
 }
 
-function getNestedArray(
-  value: any,
-  keys: string[]
-): any[] {
-  if (Array.isArray(value)) {
-    return value;
-  }
-
-  if (
-    value &&
-    typeof value === "object"
-  ) {
-    for (const key of keys) {
-      if (Array.isArray(value[key])) {
-        return value[key];
-      }
-    }
-  }
-
-  return [];
-}
-
 function recursiveArrays(
   value: unknown,
   depth = 0
 ): any[][] {
-  if (depth > 12) return [];
+  if (depth > 12) {
+    return [];
+  }
 
   if (Array.isArray(value)) {
     const arrays: any[][] = [value];
@@ -449,41 +441,44 @@ function extractCatalogueNetworks(
     for (const array of recursiveArrays(response)) {
       for (const item of array) {
         if (
-          item &&
-          typeof item === "object" &&
-          !Array.isArray(item)
+          !item ||
+          typeof item !== "object" ||
+          Array.isArray(item)
         ) {
-          const obj = objectValue(item);
+          continue;
+        }
 
-          const code = firstValue(
-            obj.code,
-            obj.id,
-            obj.value,
-            obj.network_code,
-            obj.networkCode,
-            obj.biller_code,
-            obj.billerCode,
-            obj.MobileNetwork,
-            obj.MOBILE_NETWORK
-          );
+        const obj = objectValue(item);
 
-          const name = firstValue(
-            obj.name,
-            obj.label,
-            obj.title,
-            obj.network,
-            obj.company,
-            obj.provider,
-            obj.biller_name,
-            obj.billerName
-          );
+        const code = firstValue(
+          obj.code,
+          obj.id,
+          obj.value,
+          obj.network_code,
+          obj.networkCode,
+          obj.biller_code,
+          obj.billerCode,
+          obj.MobileNetwork,
+          obj.MOBILE_NETWORK
+        );
 
-          if (
-            code !== undefined &&
-            name !== undefined
-          ) {
-            candidates.push(item);
-          }
+        const name = firstValue(
+          obj.name,
+          obj.label,
+          obj.title,
+          obj.network,
+          obj.company,
+          obj.provider,
+          obj.biller_name,
+          obj.billerName,
+          obj.short_name
+        );
+
+        if (
+          code !== undefined &&
+          name !== undefined
+        ) {
+          candidates.push(item);
         }
       }
     }
@@ -522,6 +517,7 @@ function extractCatalogueNetworks(
       firstValue(
         item.name,
         item.short_name,
+        item.shortName,
         item.label,
         item.title,
         item.network,
@@ -535,11 +531,15 @@ function extractCatalogueNetworks(
       )
     );
 
-    if (!code || !name) continue;
+    if (!code || !name) {
+      continue;
+    }
 
     const key = `${normalizeKey(code)}:${normalizeKey(name)}`;
 
-    if (seen.has(key)) continue;
+    if (seen.has(key)) {
+      continue;
+    }
 
     seen.add(key);
 
@@ -587,58 +587,62 @@ function extractCatalogueItems(
     for (const array of recursiveArrays(response)) {
       for (const item of array) {
         if (
-          item &&
-          typeof item === "object" &&
-          !Array.isArray(item)
+          !item ||
+          typeof item !== "object" ||
+          Array.isArray(item)
         ) {
-          const obj = objectValue(item);
+          continue;
+        }
 
-          const code = firstValue(
-            obj.item_code,
-            obj.itemCode,
-            obj.product_code,
-            obj.productCode,
-            obj.product_id,
-            obj.productId,
-            obj.plan_code,
-            obj.planCode,
-            obj.PRODUCT_CODE,
-            obj.PRODUCT_ID,
-            obj.code,
-            obj.id
-          );
+        const obj = objectValue(item);
 
-          const name = firstValue(
-            obj.name,
-            obj.title,
-            obj.label,
-            obj.product_name,
-            obj.productName,
-            obj.PRODUCT_NAME,
-            obj.plan_name,
-            obj.planName,
-            obj.package_name,
-            obj.packageName
-          );
+        const code = firstValue(
+          obj.item_code,
+          obj.itemCode,
+          obj.product_code,
+          obj.productCode,
+          obj.product_id,
+          obj.productId,
+          obj.plan_code,
+          obj.planCode,
+          obj.PRODUCT_CODE,
+          obj.PRODUCT_ID,
+          obj.code,
+          obj.id
+        );
 
-          const amount = firstValue(
-            obj.price,
-            obj.amount,
-            obj.selling_price,
-            obj.sellingPrice,
-            obj.provider_price,
-            obj.providerPrice,
-            obj.PRODUCT_AMOUNT,
-            obj.product_amount
-          );
+        const name = firstValue(
+          obj.name,
+          obj.title,
+          obj.label,
+          obj.product_name,
+          obj.productName,
+          obj.PRODUCT_NAME,
+          obj.plan_name,
+          obj.planName,
+          obj.package_name,
+          obj.packageName
+        );
 
-          if (
-            code !== undefined &&
-            (name !== undefined ||
-              amount !== undefined)
-          ) {
-            result.push(item);
-          }
+        const amount = firstValue(
+          obj.price,
+          obj.amount,
+          obj.selling_price,
+          obj.sellingPrice,
+          obj.provider_price,
+          obj.providerPrice,
+          obj.PRODUCT_AMOUNT,
+          obj.product_amount
+        );
+
+        if (
+          code !== undefined &&
+          (
+            name !== undefined ||
+            amount !== undefined
+          )
+        ) {
+          result.push(item);
         }
       }
     }
@@ -680,11 +684,15 @@ function extractCatalogueItems(
       )
     );
 
-    if (!code) continue;
+    if (!code) {
+      continue;
+    }
 
     const key = code.toLowerCase();
 
-    if (seen.has(key)) continue;
+    if (seen.has(key)) {
+      continue;
+    }
 
     seen.add(key);
 
@@ -973,7 +981,9 @@ function normalizeNetworkCode(
 ): string {
   const original = cleanString(value);
 
-  if (!original) return "";
+  if (!original) {
+    return "";
+  }
 
   const key = normalizeKey(original);
 
@@ -1018,6 +1028,7 @@ function getNetworkName(
     firstValue(
       network.name,
       network.short_name,
+      network.shortName,
       network.label,
       network.title,
       network.network,
@@ -1064,7 +1075,9 @@ function getNetworkLogo(
     )
   );
 
-  if (supplied) return supplied;
+  if (supplied) {
+    return supplied;
+  }
 
   const key = normalizeKey(
     getNetworkName(network)
@@ -1081,9 +1094,7 @@ function getNetworkLogo(
     return NETWORK_LOGOS.glo;
   }
 
-  if (
-    key.includes("airtel")
-  ) {
+  if (key.includes("airtel")) {
     return NETWORK_LOGOS.airtel;
   }
 
@@ -1129,7 +1140,9 @@ function getInitials(
     .split(/\s+/)
     .filter(Boolean);
 
-  if (!words.length) return "?";
+  if (!words.length) {
+    return "?";
+  }
 
   if (words.length === 1) {
     return words[0]
@@ -1164,13 +1177,6 @@ function normalizePhone(
   }
 
   return input;
-}
-
-function phoneForProvider(
-  value: string
-): string {
-  return normalizePhone(value)
-    .replace(/^\+/, "");
 }
 
 function getServiceIcon(
@@ -1254,6 +1260,8 @@ function getCustomerLabel(
   switch (serviceType) {
     case "airtime":
     case "data":
+    case "airtime-card":
+    case "data-card":
       return "Phone number";
 
     case "electricity":
@@ -1262,16 +1270,10 @@ function getCustomerLabel(
     case "cable":
       return "Smartcard number";
 
-    case "airtime-card":
-    case "data-card":
-      return "Phone number";
-
     case "smile":
       return "Smile account / phone";
 
     case "waec":
-      return "Phone number";
-
     case "jamb":
       return "Phone number";
 
@@ -1290,7 +1292,7 @@ function getCustomerPlaceholder(
     case "data-card":
     case "waec":
     case "jamb":
-      return "08012345678";
+      return "080 1234 5678";
 
     case "electricity":
       return "Enter meter number";
@@ -1309,19 +1311,213 @@ function getCustomerPlaceholder(
 function getProviderRequestService(
   serviceType: ServiceKind
 ): string {
-  /*
-   * Keep the customer-facing service type intact whenever
-   * possible. The edge function owns provider selection.
-   *
-   * WAEC/JAMB are also sent individually rather than exposing
-   * "education" in the customer UI.
-   */
   return serviceType;
 }
 
-/* ------------------------------------------------------------------ */
-/*  Presentational subcomponents                                      */
-/* ------------------------------------------------------------------ */
+/* ==========================================================================
+   Presentational Components
+   ========================================================================== */
+
+function ServiceHeader({
+  service,
+  serviceType,
+  ServiceIcon,
+  disabled,
+  onBack,
+  onHistory,
+}: {
+  service: {
+    title: string;
+    type: string;
+  };
+  serviceType: ServiceKind;
+  ServiceIcon: React.ElementType;
+  disabled: boolean;
+  onBack: () => void;
+  onHistory?: () => void;
+}) {
+  return (
+    <header className="sticky top-0 z-40 border-b border-slate-200/70 bg-[#F7F9FC]/90 backdrop-blur-2xl">
+      <div className="mx-auto flex h-[68px] max-w-xl items-center justify-between px-4">
+        <button
+          type="button"
+          onClick={onBack}
+          disabled={disabled}
+          aria-label="Go back"
+          className="group flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-200/80 bg-white shadow-[0_4px_18px_rgba(15,23,42,0.05)] transition-all duration-200 hover:-translate-x-0.5 hover:border-[#082A63]/20 hover:bg-[#082A63]/[0.03] active:scale-95 disabled:opacity-40"
+        >
+          <ArrowLeft className="h-5 w-5 text-[#071B3E]" />
+        </button>
+
+        <div className="flex min-w-0 items-center gap-3 px-3">
+          <div className="hidden h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[#082A63] to-[#164B96] text-white shadow-[0_5px_16px_rgba(8,42,99,0.18)] sm:flex">
+            <ServiceIcon className="h-4.5 w-4.5" />
+          </div>
+
+          <div className="min-w-0 text-center sm:text-left">
+            <p className="text-[9px] font-black uppercase tracking-[0.2em] text-[#082A63]/50">
+              IyanjuPay
+            </p>
+
+            <h1 className="truncate text-[15px] font-black tracking-[-0.01em] text-[#071B3E]">
+              {service.title}
+            </h1>
+          </div>
+        </div>
+
+        {onHistory ? (
+          <button
+            type="button"
+            onClick={onHistory}
+            disabled={disabled}
+            aria-label="Payment history"
+            className="flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-200/80 bg-white shadow-[0_4px_18px_rgba(15,23,42,0.05)] transition-all duration-200 hover:border-[#082A63]/20 hover:bg-[#082A63]/[0.03] active:scale-95 disabled:opacity-40"
+          >
+            <RefreshCw className="h-[17px] w-[17px] text-[#071B3E]" />
+          </button>
+        ) : (
+          <div className="h-11 w-11" />
+        )}
+      </div>
+    </header>
+  );
+}
+
+function PremiumHero({
+  service,
+  ServiceIcon,
+  selectedProvider,
+  estimatedTotal,
+  selectedItem,
+}: {
+  service: {
+    title: string;
+    type: string;
+  };
+  ServiceIcon: React.ElementType;
+  selectedProvider: CatalogueNetwork | null;
+  estimatedTotal: number;
+  selectedItem: CatalogueItem | null;
+}) {
+  const providerName = selectedProvider
+    ? getNetworkName(selectedProvider)
+    : "";
+
+  const itemName = selectedItem
+    ? getItemName(selectedItem)
+    : "";
+
+  return (
+    <section className="relative overflow-hidden rounded-[30px] bg-[#071B3E] shadow-[0_18px_45px_rgba(7,27,62,0.18)]">
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_88%_12%,rgba(244,180,0,0.22),transparent_27%),radial-gradient(circle_at_0%_100%,rgba(37,99,235,0.32),transparent_42%)]" />
+
+      <div className="absolute -right-20 -top-24 h-64 w-64 rounded-full border-[32px] border-white/[0.035]" />
+      <div className="absolute -bottom-32 -left-24 h-72 w-72 rounded-full border-[42px] border-white/[0.025]" />
+
+      <div className="relative p-5 sm:p-6">
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex h-12 w-12 items-center justify-center rounded-[17px] border border-white/10 bg-white/[0.09] shadow-inner">
+            <ServiceIcon className="h-5 w-5 text-white" />
+          </div>
+
+          <div className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.08] px-3 py-1.5 text-[10px] font-bold text-white/75 backdrop-blur-md">
+            <ShieldCheck className="h-3.5 w-3.5 text-[#F4B400]" />
+            Secure payment
+          </div>
+        </div>
+
+        <div className="mt-7">
+          <p className="text-[10px] font-bold uppercase tracking-[0.17em] text-white/45">
+            Pay for
+          </p>
+
+          <h2 className="mt-1 text-[23px] font-black tracking-[-0.025em] text-white">
+            {service.title}
+          </h2>
+        </div>
+
+        <div className="mt-7 flex items-end justify-between gap-4">
+          <div>
+            <p className="text-[9px] font-bold uppercase tracking-[0.16em] text-white/40">
+              Total
+            </p>
+
+            <p className="mt-1 text-[31px] font-black leading-none tracking-[-0.035em] text-white">
+              {formatNaira(estimatedTotal)}
+            </p>
+          </div>
+
+          {(providerName || itemName) && (
+            <div className="max-w-[48%] text-right">
+              <p className="text-[9px] font-bold uppercase tracking-[0.15em] text-white/35">
+                Selected
+              </p>
+
+              <p className="mt-1 truncate text-[12px] font-bold text-white/80">
+                {providerName || itemName}
+              </p>
+
+              {providerName && itemName && (
+                <p className="mt-0.5 truncate text-[10px] font-medium text-white/45">
+                  {itemName}
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-[#F4B400]/40 to-transparent" />
+    </section>
+  );
+}
+
+function SectionCard({
+  step,
+  title,
+  subtitle,
+  action,
+  children,
+}: {
+  step?: string;
+  title: string;
+  subtitle?: string;
+  action?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="overflow-hidden rounded-[26px] border border-slate-200/80 bg-white shadow-[0_5px_24px_rgba(15,23,42,0.045)]">
+      <div className="px-4 pb-0 pt-5 sm:px-5">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            {step && (
+              <div className="mb-2 inline-flex items-center gap-1.5 rounded-full bg-[#082A63]/[0.055] px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.14em] text-[#082A63]">
+                <span className="h-1.5 w-1.5 rounded-full bg-[#F4B400]" />
+                {step}
+              </div>
+            )}
+
+            <h2 className="text-[17px] font-black tracking-[-0.015em] text-[#071B3E]">
+              {title}
+            </h2>
+
+            {subtitle && (
+              <p className="mt-1 max-w-[320px] text-[12px] leading-5 text-slate-500">
+                {subtitle}
+              </p>
+            )}
+          </div>
+
+          {action}
+        </div>
+      </div>
+
+      <div className="px-4 pb-5 pt-4 sm:px-5">
+        {children}
+      </div>
+    </section>
+  );
+}
 
 function ProviderChip({
   provider,
@@ -1345,20 +1541,21 @@ function ProviderChip({
       onClick={onClick}
       disabled={disabled || loading}
       className={[
-        "flex shrink-0 w-[76px] flex-col items-center gap-2 rounded-2xl px-1 py-3",
-        "transition-transform duration-150 active:scale-95",
+        "group relative flex w-[82px] shrink-0 flex-col items-center gap-2.5 rounded-[22px] px-2 py-3 transition-all duration-200",
+        selected
+          ? "bg-[#082A63]/[0.055]"
+          : "bg-transparent hover:bg-slate-50",
         disabled || loading
           ? "cursor-not-allowed opacity-50"
-          : "",
+          : "active:scale-95",
       ].join(" ")}
     >
-      <span
+      <div
         className={[
-          "relative flex h-[58px] w-[58px] items-center justify-center rounded-full bg-white",
-          "shadow-[0_2px_10px_rgba(7,27,62,0.10)]",
+          "relative flex h-[60px] w-[60px] items-center justify-center rounded-[20px] bg-white transition-all duration-200",
           selected
-            ? "ring-2 ring-[#082A63] ring-offset-2 ring-offset-[#FAF8F4]"
-            : "ring-1 ring-[#E7E3DA]",
+            ? "border-2 border-[#082A63] shadow-[0_8px_22px_rgba(8,42,99,0.14)]"
+            : "border border-slate-200 shadow-[0_4px_14px_rgba(15,23,42,0.06)] group-hover:-translate-y-0.5 group-hover:shadow-[0_8px_20px_rgba(15,23,42,0.09)]",
         ].join(" ")}
       >
         {logo ? (
@@ -1383,7 +1580,7 @@ function ProviderChip({
         ) : null}
 
         <span
-          className="items-center justify-center text-xs font-black text-[#082A63]"
+          className="h-full w-full items-center justify-center rounded-[18px] bg-[#F1F5F9] text-[12px] font-black text-[#082A63]"
           style={{
             display: logo ? "none" : "flex",
           }}
@@ -1392,20 +1589,67 @@ function ProviderChip({
         </span>
 
         {selected && (
-          <span className="absolute -bottom-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full border-2 border-[#FAF8F4] bg-[#082A63] text-white">
-            <Check className="h-2.5 w-2.5" strokeWidth={3} />
+          <span className="absolute -right-1.5 -top-1.5 flex h-6 w-6 items-center justify-center rounded-full border-[3px] border-white bg-[#082A63] text-white shadow-[0_3px_10px_rgba(8,42,99,0.22)]">
+            <Check
+              className="h-3 w-3"
+              strokeWidth={3.5}
+            />
           </span>
         )}
-      </span>
+      </div>
 
       <span
         className={[
-          "line-clamp-1 w-full text-center text-[11px] font-bold",
-          selected ? "text-[#082A63]" : "text-[#5B6472]",
+          "line-clamp-1 w-full text-center text-[10.5px] font-black",
+          selected
+            ? "text-[#082A63]"
+            : "text-slate-600",
         ].join(" ")}
       >
         {name}
       </span>
+    </button>
+  );
+}
+
+function AmountButton({
+  value,
+  selected,
+  onClick,
+  disabled,
+}: {
+  value: number;
+  selected: boolean;
+  onClick: () => void;
+  disabled: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={[
+        "relative h-[58px] overflow-hidden rounded-[18px] border px-2 text-center transition-all duration-200",
+        selected
+          ? "border-[#082A63] bg-[#082A63] text-white shadow-[0_8px_20px_rgba(8,42,99,0.18)]"
+          : "border-slate-200 bg-white text-[#071B3E] hover:-translate-y-0.5 hover:border-[#082A63]/20 hover:shadow-[0_7px_18px_rgba(15,23,42,0.07)]",
+        disabled
+          ? "cursor-not-allowed opacity-50"
+          : "active:scale-[0.97]",
+      ].join(" ")}
+    >
+      <span className="text-[13px] font-black">
+        {formatNaira(value)}
+      </span>
+
+      {selected && (
+        <span className="absolute right-1.5 top-1.5">
+          <Check
+            className="h-3 w-3 text-[#F4B400]"
+            strokeWidth={3.5}
+          />
+        </span>
+      )}
     </button>
   );
 }
@@ -1434,117 +1678,221 @@ function PlanCard({
       onClick={onClick}
       disabled={disabled}
       className={[
-        "relative min-w-0 rounded-2xl border p-3.5 text-left",
-        "transition-all duration-150 active:scale-[0.98]",
+        "group relative min-h-[126px] overflow-hidden rounded-[22px] border p-4 text-left transition-all duration-200",
         selected
-          ? "border-[#082A63] bg-white shadow-[0_6px_18px_rgba(8,42,99,0.14)]"
-          : "border-[#E7E3DA] bg-white",
+          ? "border-[#082A63] bg-gradient-to-br from-[#082A63]/[0.045] to-white shadow-[0_10px_26px_rgba(8,42,99,0.12)]"
+          : "border-slate-200 bg-white hover:-translate-y-0.5 hover:border-[#082A63]/15 hover:shadow-[0_9px_24px_rgba(15,23,42,0.075)]",
         disabled
           ? "cursor-not-allowed opacity-60"
-          : "",
+          : "active:scale-[0.985]",
       ].join(" ")}
     >
-      <div className="flex items-start justify-between gap-2">
-        <p className="line-clamp-2 min-h-[32px] text-[13px] font-extrabold leading-tight text-[#0B1830]">
+      {hot && (
+        <span className="absolute right-3 top-3 inline-flex items-center gap-1 rounded-full border border-[#F4B400]/20 bg-[#FFF8DF] px-2 py-1 text-[8px] font-black uppercase tracking-[0.08em] text-[#8B6500]">
+          <Flame className="h-2.5 w-2.5" />
+          Hot
+        </span>
+      )}
+
+      <div className="flex min-h-[40px] items-start justify-between gap-2 pr-8">
+        <p className="line-clamp-2 text-[13px] font-black leading-[1.35] tracking-[-0.01em] text-[#071B3E]">
           {name}
         </p>
 
         {selected && (
-          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#082A63] text-white">
-            <Check className="h-3 w-3" strokeWidth={3} />
+          <span className="absolute left-3 top-3 flex h-5 w-5 items-center justify-center rounded-full bg-[#082A63] text-white">
+            <Check
+              className="h-3 w-3"
+              strokeWidth={3.5}
+            />
           </span>
         )}
       </div>
 
       {validity && (
-        <p className="mt-1 text-[11px] font-medium text-[#8B93A1]">
+        <div className="mt-2 inline-flex items-center rounded-full bg-slate-100 px-2 py-1 text-[9px] font-bold text-slate-500">
           {validity}
-        </p>
+        </div>
       )}
 
-      <div className="mt-3 flex items-end justify-between gap-2">
-        <p className="text-[15px] font-black text-[#082A63]">
+      <div className="mt-4 flex items-end justify-between gap-2">
+        <span className="text-[16px] font-black tracking-[-0.02em] text-[#082A63]">
           {formatNaira(price)}
-        </p>
+        </span>
 
         {quantity > 1 && (
-          <p className="text-[11px] font-bold text-[#8B93A1]">
+          <span className="rounded-full bg-slate-100 px-2 py-1 text-[9px] font-black text-slate-500">
             × {quantity}
-          </p>
+          </span>
         )}
       </div>
-
-      {hot && (
-        <span className="absolute right-2 top-2 inline-flex items-center gap-1 rounded-full bg-[#FDF4DA] px-1.5 py-0.5 text-[8px] font-extrabold uppercase tracking-wide text-[#8B6500]">
-          <Flame className="h-2.5 w-2.5" />
-          Hot
-        </span>
-      )}
     </button>
   );
 }
 
-function LoadingCards({
+function SearchBox({
+  value,
+  onChange,
+  placeholder,
+  disabled,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  placeholder: string;
+  disabled: boolean;
+}) {
+  return (
+    <div className="relative">
+      <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+
+      <Input
+        value={value}
+        onChange={(event) =>
+          onChange(event.target.value)
+        }
+        placeholder={placeholder}
+        disabled={disabled}
+        className="h-12 rounded-[17px] border-slate-200 bg-[#F8FAFC] pl-10 text-[13px] font-medium text-[#071B3E] shadow-none placeholder:text-slate-400 focus-visible:border-[#082A63]/40 focus-visible:ring-[#082A63]/10"
+      />
+
+      {value && (
+        <button
+          type="button"
+          onClick={() => onChange("")}
+          disabled={disabled}
+          className="absolute right-2.5 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full bg-slate-200/70 text-slate-500"
+        >
+          <X className="h-3.5 w-3.5" />
+        </button>
+      )}
+    </div>
+  );
+}
+
+function LoadingPlans({
   count = 6,
 }: {
   count?: number;
 }) {
   return (
     <div className="grid grid-cols-2 gap-3">
-      {Array.from({
-        length: count,
-      }).map((_, index) => (
-        <div
-          key={index}
-          className="h-[92px] animate-pulse rounded-2xl bg-[#EFEBE3]"
-        />
-      ))}
+      {Array.from({ length: count }).map(
+        (_, index) => (
+          <div
+            key={index}
+            className="h-[126px] animate-pulse rounded-[22px] bg-slate-100"
+          />
+        )
+      )}
     </div>
   );
 }
 
-function SectionCard({
-  step,
+function EmptyState({
+  icon: Icon,
   title,
-  subtitle,
+  description,
   action,
-  children,
 }: {
-  step?: string;
+  icon: React.ElementType;
   title: string;
-  subtitle?: string;
+  description: string;
   action?: React.ReactNode;
-  children: React.ReactNode;
 }) {
   return (
-    <section className="rounded-[22px] border border-[#E7E3DA] bg-white p-4">
-      <div className="mb-4 flex items-start justify-between gap-3">
-        <div>
-          {step && (
-            <p className="text-[10px] font-extrabold uppercase tracking-[0.14em] text-[#082A63]/45">
-              {step}
-            </p>
-          )}
-          <h2 className="mt-0.5 text-[16px] font-extrabold text-[#0B1830]">
-            {title}
-          </h2>
-          {subtitle && (
-            <p className="mt-0.5 text-[12.5px] leading-5 text-[#8B93A1]">
-              {subtitle}
-            </p>
-          )}
-        </div>
-        {action}
+    <div className="rounded-[22px] border border-dashed border-slate-200 bg-[#F8FAFC] px-5 py-9 text-center">
+      <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-[17px] bg-white shadow-[0_5px_16px_rgba(15,23,42,0.06)]">
+        <Icon className="h-5 w-5 text-[#082A63]/60" />
       </div>
 
-      {children}
-    </section>
+      <p className="mt-4 text-[13px] font-black text-[#071B3E]">
+        {title}
+      </p>
+
+      <p className="mx-auto mt-1.5 max-w-[280px] text-[11.5px] leading-5 text-slate-500">
+        {description}
+      </p>
+
+      {action && (
+        <div className="mt-4">
+          {action}
+        </div>
+      )}
+    </div>
   );
 }
 
-/* ------------------------------------------------------------------ */
-/*  Main component                                                    */
-/* ------------------------------------------------------------------ */
+function QuantitySelector({
+  quantity,
+  onDecrease,
+  onIncrease,
+  disabled,
+}: {
+  quantity: number;
+  onDecrease: () => void;
+  onIncrease: () => void;
+  disabled: boolean;
+}) {
+  return (
+    <div className="flex items-center justify-between rounded-[20px] border border-slate-200 bg-[#F8FAFC] p-2">
+      <button
+        type="button"
+        onClick={onDecrease}
+        disabled={disabled || quantity <= 1}
+        className="flex h-11 w-11 items-center justify-center rounded-[15px] bg-white text-[#071B3E] shadow-[0_3px_10px_rgba(15,23,42,0.06)] transition-all active:scale-95 disabled:opacity-30"
+      >
+        <Minus className="h-4 w-4" />
+      </button>
+
+      <div className="text-center">
+        <p className="text-[9px] font-black uppercase tracking-[0.15em] text-slate-400">
+          Quantity
+        </p>
+
+        <p className="mt-0.5 text-[20px] font-black text-[#071B3E]">
+          {quantity}
+        </p>
+      </div>
+
+      <button
+        type="button"
+        onClick={onIncrease}
+        disabled={disabled || quantity >= 100}
+        className="flex h-11 w-11 items-center justify-center rounded-[15px] bg-[#082A63] text-white shadow-[0_6px_16px_rgba(8,42,99,0.16)] transition-all active:scale-95 disabled:opacity-30"
+      >
+        <Plus className="h-4 w-4" />
+      </button>
+    </div>
+  );
+}
+
+function ErrorCard({
+  message,
+}: {
+  message: string;
+}) {
+  return (
+    <div className="flex items-start gap-3 rounded-[20px] border border-red-100 bg-red-50 p-4">
+      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white">
+        <CircleAlert className="h-4.5 w-4.5 text-red-600" />
+      </div>
+
+      <div>
+        <p className="text-[12px] font-black text-red-800">
+          Something went wrong
+        </p>
+
+        <p className="mt-1 text-[11.5px] leading-5 text-red-700/80">
+          {message}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+/* ==========================================================================
+   Main Component
+   ========================================================================== */
 
 const ServicePayment = ({
   service,
@@ -1572,9 +1920,6 @@ const ServicePayment = ({
   const isComingSoon =
     COMING_SOON_SERVICES.has(serviceType);
 
-  const isNetworkService =
-    serviceUsesNetwork(serviceType);
-
   const isAmountBased =
     serviceIsAmountBased(serviceType);
 
@@ -1590,11 +1935,15 @@ const ServicePayment = ({
   const [items, setItems] =
     useState<CatalogueItem[]>([]);
 
-  const [selectedProviderCode, setSelectedProviderCode] =
-    useState("");
+  const [
+    selectedProviderCode,
+    setSelectedProviderCode,
+  ] = useState("");
 
-  const [selectedItemCode, setSelectedItemCode] =
-    useState("");
+  const [
+    selectedItemCode,
+    setSelectedItemCode,
+  ] = useState("");
 
   const [amount, setAmount] =
     useState("");
@@ -1717,8 +2066,7 @@ const ServicePayment = ({
         }
 
         if (
-          category ===
-          "Extra Night"
+          category === "Extra Night"
         ) {
           groups["Extra Night"].push(item);
         } else if (
@@ -1736,9 +2084,7 @@ const ServicePayment = ({
         }
       }
 
-      if (
-        groups.HOT.length === 0
-      ) {
+      if (!groups.HOT.length) {
         groups.HOT =
           items.filter(
             (item) =>
@@ -1853,18 +2199,10 @@ const ServicePayment = ({
         };
 
         if (providerCode) {
-          /*
-           * IMPORTANT:
-           * The backend should receive the correct
-           * field for the selected customer-facing
-           * service option.
-           */
           if (
             serviceType === "data" ||
-            serviceType ===
-              "airtime-card" ||
-            serviceType ===
-              "data-card"
+            serviceType === "airtime-card" ||
+            serviceType === "data-card"
           ) {
             payload.network_code =
               providerCode;
@@ -1874,13 +2212,6 @@ const ServicePayment = ({
           }
         }
 
-        /*
-         * WAEC/JAMB may be implemented by the edge
-         * function under its education abstraction.
-         *
-         * We still send the exact customer service
-         * first. The backend decides how to route it.
-         */
         if (
           serviceType === "waec" ||
           serviceType === "jamb"
@@ -1932,28 +2263,6 @@ const ServicePayment = ({
       [serviceType]
     );
 
-  const extractProviders =
-    useCallback(
-      (
-        response: CatalogueResponse
-      ) =>
-        extractCatalogueNetworks(
-          response
-        ),
-      []
-    );
-
-  const extractItems =
-    useCallback(
-      (
-        response: CatalogueResponse
-      ) =>
-        extractCatalogueItems(
-          response
-        ),
-      []
-    );
-
   const loadProviders =
     useCallback(
       async () => {
@@ -1974,21 +2283,8 @@ const ServicePayment = ({
         setCustomAmount(false);
 
         try {
-          /*
-           * PRIMARY CONTRACT
-           *
-           * New ClubKonnect abstraction:
-           * action: catalog
-           *
-           * FALLBACK
-           *
-           * Older deployed edge-function:
-           * action: billers
-           *
-           * This makes the frontend tolerant while the
-           * backend is being migrated.
-           */
-          let response: CatalogueResponse;
+          let response:
+            CatalogueResponse;
 
           try {
             response =
@@ -1996,36 +2292,18 @@ const ServicePayment = ({
                 action: "catalog",
               });
 
-            let loaded =
-              extractProviders(
+            const loaded =
+              extractCatalogueNetworks(
                 response
               );
 
-            if (
-              loaded.length === 0 &&
-              (
-                response.billers ||
-                response.networks ||
-                response.providers
-              )
-            ) {
-              loaded =
-                extractProviders(
-                  response
-                );
-            }
-
-            if (
-              loaded.length === 0
-            ) {
+            if (!loaded.length) {
               throw new Error(
-                "No service providers returned."
+                "No service options returned."
               );
             }
 
-            setProviders(
-              loaded
-            );
+            setProviders(loaded);
 
             if (
               loaded.length === 1
@@ -2045,7 +2323,7 @@ const ServicePayment = ({
             return;
           } catch (catalogError) {
             console.warn(
-              "Primary catalogue provider request failed; trying legacy billers contract.",
+              "Catalog option loading failed. Trying billers fallback.",
               catalogError
             );
           }
@@ -2056,19 +2334,17 @@ const ServicePayment = ({
             });
 
           const loaded =
-            extractProviders(
+            extractCatalogueNetworks(
               response
             );
 
           if (!loaded.length) {
             throw new Error(
-              "No service providers are currently available."
+              "No service options are currently available."
             );
           }
 
-          setProviders(
-            loaded
-          );
+          setProviders(loaded);
 
           if (
             loaded.length === 1
@@ -2086,13 +2362,13 @@ const ServicePayment = ({
           }
         } catch (err: any) {
           console.error(
-            "Failed to load service providers:",
+            "Failed to load service options:",
             err
           );
 
           const message =
             err?.message ||
-            "Unable to load service providers.";
+            "Unable to load service options.";
 
           setError(message);
 
@@ -2105,13 +2381,10 @@ const ServicePayment = ({
               "destructive",
           });
         } finally {
-          setLoadingProviders(
-            false
-          );
+          setLoadingProviders(false);
         }
       },
       [
-        extractProviders,
         invokeCatalogue,
         isLive,
         service,
@@ -2124,13 +2397,11 @@ const ServicePayment = ({
       async (
         providerCode: string
       ) => {
-        const cleanProvider =
-          cleanString(
-            providerCode
-          );
+        const code =
+          cleanString(providerCode);
 
         if (
-          !cleanProvider ||
+          !code ||
           !needsPlans
         ) {
           return;
@@ -2147,107 +2418,83 @@ const ServicePayment = ({
 
         try {
           let response:
-            | CatalogueResponse;
+            CatalogueResponse;
 
-          /*
-           * PRIMARY: catalog with provider
-           */
           try {
             response =
               await invokeCatalogue({
                 action: "catalog",
-                providerCode:
-                  cleanProvider,
+                providerCode: code,
               });
 
             let loaded =
-              extractItems(
+              extractCatalogueItems(
                 response
               );
 
-            /*
-             * Some catalogue implementations
-             * return the array directly under data.
-             */
-            if (
-              !loaded.length
-            ) {
+            if (!loaded.length) {
               loaded =
-                extractCatalogueItems(
-                  {
-                    ...response,
-                    items:
-                      response.data,
-                  }
-              );
+                extractCatalogueItems({
+                  ...response,
+                  items:
+                    response.data,
+                });
             }
 
-            if (
-              !loaded.length
-            ) {
+            const usable =
+              loaded.filter(
+                (item) =>
+                  getSellingPrice(item) > 0
+              );
+
+            if (!usable.length) {
               throw new Error(
                 "No packages were returned."
               );
             }
 
-            setItems(
-              loaded.filter(
-                (item) =>
-                  getSellingPrice(
-                    item
-                  ) > 0
-              )
-            );
-
+            setItems(usable);
             return;
           } catch (catalogError) {
             console.warn(
-              "Primary package catalogue request failed; trying legacy items contract.",
+              "Catalog package loading failed. Trying items fallback.",
               catalogError
             );
           }
 
-          /*
-           * FALLBACK: legacy items contract
-           */
           response =
             await invokeCatalogue({
               action: "items",
-              providerCode:
-                cleanProvider,
+              providerCode: code,
             });
 
           const loaded =
-            extractItems(
+            extractCatalogueItems(
               response
             );
 
           const usable =
             loaded.filter(
               (item) =>
-                getSellingPrice(
-                  item
-                ) > 0
+                getSellingPrice(item) > 0
             );
 
           if (!usable.length) {
             throw new Error(
-              "No packages are currently available for this option."
+              "No packages are currently available."
             );
           }
 
-          setItems(
-            usable
-          );
+          setItems(usable);
         } catch (err: any) {
           console.error(
-            "Failed to load service packages:",
+            "Failed to load packages:",
             err
           );
 
           const message =
             err?.message ||
-            "Unable to load service packages.";
+            "Unable to load packages.";
 
           setError(message);
 
@@ -2260,13 +2507,10 @@ const ServicePayment = ({
               "destructive",
           });
         } finally {
-          setLoadingItems(
-            false
-          );
+          setLoadingItems(false);
         }
       },
       [
-        extractItems,
         invokeCatalogue,
         needsPlans,
         toast,
@@ -2313,22 +2557,17 @@ const ServicePayment = ({
       }
 
       const code =
-        cleanString(
-          providerCode
-        );
+        cleanString(providerCode);
 
-      if (!code) return;
+      if (!code) {
+        return;
+      }
 
-      setSelectedProviderCode(
-        code
-      );
-
+      setSelectedProviderCode(code);
       setSelectedItemCode("");
       setItems([]);
-
       setAmount("");
       setCustomAmount(false);
-
       setError("");
 
       if (needsPlans) {
@@ -2361,7 +2600,7 @@ const ServicePayment = ({
           title:
             "Unavailable package",
           description:
-            "This package does not have a valid customer price.",
+            "This package does not have a valid price.",
           variant:
             "destructive",
         });
@@ -2369,14 +2608,8 @@ const ServicePayment = ({
         return;
       }
 
-      setSelectedItemCode(
-        code
-      );
-
-      setAmount(
-        String(price)
-      );
-
+      setSelectedItemCode(code);
+      setAmount(String(price));
       setCustomAmount(false);
       setError("");
     };
@@ -2392,22 +2625,17 @@ const ServicePayment = ({
         return;
       }
 
-      setAmount(
-        String(value)
-      );
-
+      setAmount(String(value));
       setCustomAmount(false);
       setError("");
     };
 
   const validateForm =
     (): boolean => {
-      if (
-        !selectedProviderCode
-      ) {
+      if (!selectedProviderCode) {
         toast({
           title:
-            "Select an option",
+            "Choose an option",
           description:
             "Please select a network or service option.",
           variant:
@@ -2423,9 +2651,9 @@ const ServicePayment = ({
       ) {
         toast({
           title:
-            "Select a package",
+            "Choose a package",
           description:
-            "Please select a package before continuing.",
+            "Please select the package you want.",
           variant:
             "destructive",
         });
@@ -2449,22 +2677,16 @@ const ServicePayment = ({
       if (
         serviceType === "airtime" ||
         serviceType === "data" ||
-        serviceType ===
-          "airtime-card" ||
-        serviceType ===
-          "data-card" ||
+        serviceType === "airtime-card" ||
+        serviceType === "data-card" ||
         serviceType === "waec" ||
         serviceType === "jamb"
       ) {
         const phone =
-          normalizePhone(
-            customer
-          );
+          normalizePhone(customer);
 
         if (
-          !/^\+234\d{10}$/.test(
-            phone
-          )
+          !/^\+234\d{10}$/.test(phone)
         ) {
           toast({
             title:
@@ -2482,12 +2704,10 @@ const ServicePayment = ({
       const total =
         estimatedTotal;
 
-      if (
-        total <= 0
-      ) {
+      if (total <= 0) {
         toast({
           title:
-            "Invalid amount",
+            "Choose an amount",
           description:
             "Please select a valid amount or package.",
           variant:
@@ -2505,7 +2725,7 @@ const ServicePayment = ({
           title:
             "Insufficient wallet balance",
           description:
-            "Please fund your wallet to continue.",
+            "Please fund your wallet before continuing.",
           variant:
             "destructive",
         });
@@ -2532,9 +2752,7 @@ const ServicePayment = ({
             title:
               "Invalid plan price",
             description:
-              `This plan costs ${formatNaira(
-                price
-              )}.`,
+              `This plan costs ${formatNaira(price)}.`,
             variant:
               "destructive",
           });
@@ -2549,9 +2767,7 @@ const ServicePayment = ({
   const buildPurchaseDetails =
     () => {
       const finalCustomer =
-        normalizePhone(
-          customer
-        );
+        normalizePhone(customer);
 
       const item =
         selectedItem;
@@ -2562,11 +2778,6 @@ const ServicePayment = ({
       const providerPrice =
         item
           ? getProviderPrice(item)
-          : estimatedTotal;
-
-      const sellingPrice =
-        item
-          ? getSellingPrice(item)
           : estimatedTotal;
 
       return {
@@ -2595,14 +2806,18 @@ const ServicePayment = ({
           serviceUsesNetwork(
             serviceType
           )
-            ? selectedProviderCode
+            ? normalizeNetworkCode(
+                selectedProviderCode
+              )
             : "",
 
         networkCode:
           serviceUsesNetwork(
             serviceType
           )
-            ? selectedProviderCode
+            ? normalizeNetworkCode(
+                selectedProviderCode
+              )
             : "",
 
         biller_code:
@@ -2657,14 +2872,18 @@ const ServicePayment = ({
           cleanString(
             item?.data_plan ??
               item?.dataPlan ??
-              getItemCode(item ?? {})
+              getItemCode(
+                item ?? {}
+              )
           ),
 
         dataPlan:
           cleanString(
             item?.data_plan ??
               item?.dataPlan ??
-              getItemCode(item ?? {})
+              getItemCode(
+                item ?? {}
+              )
           ),
 
         amount:
@@ -2796,9 +3015,7 @@ const ServicePayment = ({
 
   const openPin =
     () => {
-      if (
-        !validateForm()
-      ) {
+      if (!validateForm()) {
         return;
       }
 
@@ -2892,9 +3109,7 @@ const ServicePayment = ({
         setShowPinPrompt(false);
         setPaymentPin("");
 
-        setProcessingPayment(
-          true
-        );
+        setProcessingPayment(true);
 
         await onPurchase(
           total,
@@ -2941,565 +3156,764 @@ const ServicePayment = ({
       onBack();
     };
 
-  /* ---------------------------------------------------------------- */
-  /*  Empty state — no service selected                                */
-  /* ---------------------------------------------------------------- */
+  /* ==========================================================================
+     No Service
+     ========================================================================== */
 
   if (!service) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-[#FAF8F4] px-5">
-        <div className="w-full max-w-sm rounded-[28px] border border-[#E7E3DA] bg-white p-8 text-center">
-          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-[#082A63]/[0.06]">
+      <div className="flex min-h-screen items-center justify-center bg-[#F7F9FC] px-5">
+        <div className="w-full max-w-sm rounded-[30px] border border-slate-200 bg-white p-8 text-center shadow-[0_18px_50px_rgba(15,23,42,0.08)]">
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-[21px] bg-[#082A63]/[0.06]">
             <WalletCards className="h-7 w-7 text-[#082A63]" />
           </div>
 
-          <h2 className="mt-5 text-lg font-extrabold text-[#0B1830]">
+          <h2 className="mt-5 text-xl font-black tracking-tight text-[#071B3E]">
             No service selected
           </h2>
 
-          <p className="mt-2 text-[13px] leading-5 text-[#8B93A1]">
-            Choose a bill or top-up from your services list to
-            continue.
+          <p className="mt-2 text-[12.5px] leading-5 text-slate-500">
+            Choose a service from IyanjuPay to continue.
           </p>
 
           <Button
             type="button"
             onClick={onBack}
-            className="mt-6 h-12 w-full rounded-2xl bg-[#082A63] text-sm font-bold hover:bg-[#061f4b]"
+            className="mt-7 h-12 w-full rounded-[17px] bg-[#082A63] text-[13px] font-black shadow-[0_8px_20px_rgba(8,42,99,0.18)] hover:bg-[#061F4B]"
           >
-            Go back
+            Back to services
           </Button>
         </div>
       </div>
     );
   }
 
-  /* ---------------------------------------------------------------- */
-  /*  Coming-soon services                                             */
-  /* ---------------------------------------------------------------- */
+  /* ==========================================================================
+     Coming Soon
+     ========================================================================== */
 
   if (isComingSoon) {
     return (
-      <div className="min-h-screen bg-[#FAF8F4]">
-        <header className="flex h-16 items-center gap-3 px-4">
-          <button
-            type="button"
-            onClick={handleBack}
-            className="flex h-10 w-10 items-center justify-center rounded-full text-[#0B1830] transition-colors hover:bg-black/5"
-          >
-            <ArrowLeft className="h-5 w-5" />
-          </button>
+      <div className="min-h-screen bg-[#F7F9FC]">
+        <ServiceHeader
+          service={service}
+          serviceType={serviceType}
+          ServiceIcon={ServiceIcon}
+          disabled={processingPayment || verifyingPin}
+          onBack={handleBack}
+          onHistory={onHistory}
+        />
 
-          <div>
-            <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-[#082A63]/50">
-              IyanjuPay
-            </p>
-            <h1 className="text-[15px] font-extrabold text-[#0B1830]">
-              {service.title}
-            </h1>
-          </div>
-        </header>
+        <main className="mx-auto flex min-h-[calc(100vh-68px)] max-w-xl items-center justify-center px-5 py-12">
+          <div className="w-full overflow-hidden rounded-[32px] border border-slate-200 bg-white text-center shadow-[0_22px_60px_rgba(15,23,42,0.08)]">
+            <div className="relative overflow-hidden bg-[#071B3E] px-7 py-10 text-white">
+              <div className="absolute -right-16 -top-20 h-48 w-48 rounded-full border-[25px] border-white/[0.04]" />
+              <div className="absolute -bottom-20 -left-14 h-44 w-44 rounded-full border-[22px] border-[#F4B400]/[0.06]" />
 
-        <main className="flex items-center justify-center px-5 py-16">
-          <div className="w-full max-w-sm rounded-[28px] border border-[#E7E3DA] bg-white p-8 text-center">
-            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-[#082A63]/[0.06]">
-              <Sparkles className="h-7 w-7 text-[#082A63]" />
+              <div className="relative mx-auto flex h-16 w-16 items-center justify-center rounded-[22px] border border-white/10 bg-white/[0.08]">
+                <ServiceIcon className="h-7 w-7" />
+              </div>
+
+              <span className="relative mt-5 inline-flex items-center gap-1.5 rounded-full border border-[#F4B400]/20 bg-[#F4B400]/10 px-3 py-1.5 text-[10px] font-black text-[#F4B400]">
+                <Sparkles className="h-3 w-3" />
+                Coming soon
+              </span>
+
+              <h2 className="relative mt-4 text-[23px] font-black tracking-tight">
+                {service.title}
+              </h2>
             </div>
 
-            <span className="mt-6 inline-flex rounded-full bg-[#FDF4DA] px-3 py-1 text-[11px] font-extrabold text-[#8B6500]">
-              Coming soon
-            </span>
+            <div className="px-7 py-7">
+              <p className="mx-auto max-w-sm text-[13px] leading-6 text-slate-500">
+                We are preparing this service to give you a
+                smooth and reliable experience inside IyanjuPay.
+              </p>
 
-            <h2 className="mt-4 text-xl font-extrabold tracking-tight text-[#0B1830]">
-              {service.title}
-            </h2>
-
-            <p className="mx-auto mt-3 max-w-xs text-[13px] leading-5 text-[#8B93A1]">
-              We're preparing this for your wallet. You'll be
-              able to pay for it right here once it launches.
-            </p>
-
-            <Button
-              type="button"
-              onClick={handleBack}
-              className="mt-7 h-12 w-full rounded-2xl bg-[#082A63] text-sm font-bold hover:bg-[#061f4b]"
-            >
-              Back to services
-            </Button>
+              <Button
+                type="button"
+                onClick={handleBack}
+                className="mt-7 h-12 w-full rounded-[17px] bg-[#082A63] text-[13px] font-black shadow-[0_8px_20px_rgba(8,42,99,0.16)] hover:bg-[#061F4B]"
+              >
+                Back to services
+              </Button>
+            </div>
           </div>
         </main>
       </div>
     );
   }
 
-  /* ---------------------------------------------------------------- */
-  /*  Live payment flow                                                 */
-  /* ---------------------------------------------------------------- */
+  /* ==========================================================================
+     Live Service
+     ========================================================================== */
 
   return (
-    <div className="min-h-screen bg-[#FAF8F4]">
-      <header className="sticky top-0 z-30 flex h-16 items-center justify-between gap-3 border-b border-[#E7E3DA]/70 bg-[#FAF8F4]/90 px-4 backdrop-blur-xl">
-        <button
-          type="button"
-          onClick={handleBack}
-          disabled={processingPayment || verifyingPin}
-          className="flex h-10 w-10 items-center justify-center rounded-full text-[#0B1830] transition-colors hover:bg-black/5 disabled:opacity-40"
-          aria-label="Go back"
-        >
-          <ArrowLeft className="h-5 w-5" />
-        </button>
+    <div className="min-h-screen bg-[#F7F9FC] text-[#071B3E]">
+      <ServiceHeader
+        service={service}
+        serviceType={serviceType}
+        ServiceIcon={ServiceIcon}
+        disabled={processingPayment || verifyingPin}
+        onBack={handleBack}
+        onHistory={onHistory}
+      />
 
-        <div className="min-w-0 flex-1 text-center">
-          <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-[#082A63]/50">
-            IyanjuPay
-          </p>
-          <h1 className="truncate text-[15px] font-extrabold text-[#0B1830]">
-            {service.title}
-          </h1>
-        </div>
+      <main className="mx-auto max-w-xl space-y-4 px-4 pb-[185px] pt-4 sm:px-5 sm:pt-5">
+        {/* ------------------------------------------------------------------
+            Hero
+            ------------------------------------------------------------------ */}
 
-        {onHistory ? (
-          <button
-            type="button"
-            onClick={onHistory}
-            disabled={processingPayment || verifyingPin}
-            className="flex h-10 w-10 items-center justify-center rounded-full text-[#0B1830] transition-colors hover:bg-black/5 disabled:opacity-40"
-            aria-label="Payment history"
-          >
-            <RefreshCw className="h-4.5 w-4.5" />
-          </button>
-        ) : (
-          <div className="h-10 w-10" />
-        )}
-      </header>
+        <PremiumHero
+          service={service}
+          ServiceIcon={ServiceIcon}
+          selectedProvider={selectedProvider}
+          estimatedTotal={estimatedTotal}
+          selectedItem={selectedItem}
+        />
 
-      <main className="mx-auto max-w-md space-y-4 px-4 pb-[168px] pt-4">
-        {/* Hero */}
-        <div className="relative overflow-hidden rounded-[26px] bg-gradient-to-br from-[#0B1E45] via-[#0E2657] to-[#17417F] p-5 text-white">
-          <svg
-            className="pointer-events-none absolute -right-8 -top-10 h-40 w-40 opacity-[0.10]"
-            viewBox="0 0 200 200"
-          >
-            <circle cx="100" cy="100" r="100" fill="#F4B400" />
-          </svg>
+        {/* ------------------------------------------------------------------
+            Step 1 — Service option
+            ------------------------------------------------------------------ */}
 
-          <svg
-            className="pointer-events-none absolute -bottom-14 -left-10 h-32 w-32 opacity-[0.06]"
-            viewBox="0 0 200 200"
-          >
-            <circle cx="100" cy="100" r="100" fill="#FFFFFF" />
-          </svg>
-
-          <div className="relative flex items-center justify-between">
-            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white/10">
-              <ServiceIcon className="h-5 w-5" />
-            </div>
-
-            <div className="rounded-full bg-white/10 px-3 py-1.5 text-[11px] font-bold">
-              Wallet · {formatNaira(walletBalance)}
-            </div>
-          </div>
-
-          <p className="relative mt-5 text-[11px] font-semibold text-white/55">
-            You're paying for
-          </p>
-
-          <p className="relative text-[19px] font-extrabold leading-tight">
-            {service.title}
-          </p>
-
-          <div className="relative mt-4 flex items-end justify-between">
-            <div>
-              <p className="text-[10px] font-bold uppercase tracking-wide text-white/45">
-                Amount
-              </p>
-              <p className="text-[28px] font-black leading-none">
-                {formatNaira(estimatedTotal)}
-              </p>
-            </div>
-
-            {selectedProvider && (
-              <p className="max-w-[46%] truncate text-right text-[12px] font-bold text-white/70">
-                {getNetworkName(selectedProvider)}
-              </p>
-            )}
-          </div>
-        </div>
-
-        {/* Step 1 — provider */}
         <SectionCard
           step="Step 1"
-          title="Choose your option"
-          subtitle="Network, biller or service option."
+          title={
+            serviceType === "airtime" ||
+            serviceType === "data" ||
+            serviceType === "airtime-card" ||
+            serviceType === "data-card"
+              ? "Select network"
+              : "Select service"
+          }
+          subtitle={
+            serviceType === "airtime" ||
+            serviceType === "data"
+              ? "Choose the network you want to use."
+              : "Choose the option you want to pay for."
+          }
           action={
             <button
               type="button"
-              onClick={() => void loadProviders()}
+              onClick={() =>
+                void loadProviders()
+              }
               disabled={
                 loadingProviders ||
                 processingPayment ||
                 verifyingPin
               }
-              className="flex h-8 w-8 items-center justify-center rounded-full text-[#082A63] transition-colors hover:bg-[#082A63]/[0.06] disabled:opacity-50"
               aria-label="Refresh options"
+              className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-[#082A63] shadow-[0_3px_10px_rgba(15,23,42,0.04)] transition-all hover:border-[#082A63]/20 active:scale-95 disabled:opacity-40"
             >
               <RefreshCw
                 className={[
                   "h-4 w-4",
-                  loadingProviders ? "animate-spin" : "",
+                  loadingProviders
+                    ? "animate-spin"
+                    : "",
                 ].join(" ")}
               />
             </button>
           }
         >
           {loadingProviders ? (
-            <div className="flex gap-3 overflow-hidden">
-              {[1, 2, 3, 4].map((item) => (
+            <div className="flex gap-2 overflow-hidden">
+              {[
+                1,
+                2,
+                3,
+                4,
+                5,
+              ].map((item) => (
                 <div
                   key={item}
-                  className="h-[92px] w-[76px] shrink-0 animate-pulse rounded-2xl bg-[#EFEBE3]"
+                  className="h-[103px] w-[82px] shrink-0 animate-pulse rounded-[22px] bg-slate-100"
                 />
               ))}
             </div>
           ) : providers.length > 0 ? (
-            <div className="-mx-1 flex gap-1 overflow-x-auto px-1 pb-1">
-              {providers.map((provider, index) => {
-                const code = getNetworkCode(provider);
+            <div className="-mx-1 flex gap-1 overflow-x-auto px-1 pb-1 scrollbar-none">
+              {providers.map(
+                (
+                  provider,
+                  index
+                ) => {
+                  const code =
+                    getNetworkCode(
+                      provider
+                    );
 
-                if (!code) {
-                  return null;
-                }
-
-                return (
-                  <ProviderChip
-                    key={`${code}-${index}`}
-                    provider={provider}
-                    selected={code === selectedProviderCode}
-                    loading={loadingItems}
-                    disabled={processingPayment || verifyingPin}
-                    onClick={() =>
-                      void handleProviderSelect(code)
-                    }
-                  />
-                );
-              })}
-            </div>
-          ) : (
-            <div className="rounded-2xl border border-dashed border-[#DCD6C8] bg-[#FAF8F4] px-5 py-8 text-center">
-              <Search className="mx-auto h-5 w-5 text-[#B7ADA0]" />
-
-              <p className="mt-3 text-[13px] font-bold text-[#0B1830]">
-                No options available
-              </p>
-
-              <p className="mt-1 text-[12px] leading-5 text-[#8B93A1]">
-                We couldn't load the available service options.
-              </p>
-
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => void loadProviders()}
-                className="mt-4 h-9 rounded-xl border-[#E7E3DA] text-xs font-bold"
-              >
-                Try again
-              </Button>
-            </div>
-          )}
-        </SectionCard>
-
-        {/* Step 2 — plans */}
-        {selectedProviderCode && needsPlans && (
-          <SectionCard
-            step="Step 2"
-            title="Choose a package"
-            subtitle={
-              selectedProvider
-                ? `Available for ${getNetworkName(selectedProvider)}`
-                : "Pick the package you want."
-            }
-            action={
-              loadingItems ? (
-                <Loader2 className="h-5 w-5 animate-spin text-[#082A63]" />
-              ) : undefined
-            }
-          >
-            {serviceType === "data" && (
-              <div className="mb-4 -mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
-                {DATA_TABS.map((tab) => {
-                  const count = dataGroups[tab].length;
+                  if (!code) {
+                    return null;
+                  }
 
                   return (
-                    <button
-                      key={tab}
-                      type="button"
-                      onClick={() => setDataTab(tab)}
-                      disabled={processingPayment || verifyingPin}
-                      className={[
-                        "shrink-0 rounded-full px-3.5 py-2 text-[12px] font-bold transition-all",
-                        dataTab === tab
-                          ? "bg-[#082A63] text-white"
-                          : "bg-[#F1EEE6] text-[#5B6472]",
-                      ].join(" ")}
-                    >
-                      {tab === "HOT" && (
-                        <Flame className="mr-1 inline h-3 w-3 -mt-0.5" />
-                      )}
-                      {tab}
-                      <span
-                        className={
-                          dataTab === tab
-                            ? "ml-1 opacity-70"
-                            : "ml-1 text-[#B7ADA0]"
-                        }
-                      >
-                        {count}
-                      </span>
-                    </button>
+                    <ProviderChip
+                      key={`${code}-${index}`}
+                      provider={provider}
+                      selected={
+                        code ===
+                        selectedProviderCode
+                      }
+                      loading={
+                        loadingItems
+                      }
+                      disabled={
+                        processingPayment ||
+                        verifyingPin
+                      }
+                      onClick={() =>
+                        void handleProviderSelect(
+                          code
+                        )
+                      }
+                    />
                   );
-                })}
-              </div>
-            )}
-
-            {items.length > 0 && (
-              <div className="relative mb-4">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#B7ADA0]" />
-
-                <Input
-                  value={searchTerm}
-                  onChange={(event) => setSearchTerm(event.target.value)}
-                  placeholder="Search packages..."
-                  className="h-11 rounded-xl border-[#E7E3DA] bg-[#FAF8F4] pl-10 text-sm"
-                />
-              </div>
-            )}
-
-            {loadingItems ? (
-              <LoadingCards />
-            ) : visibleItems.length > 0 ? (
-              <div className="grid grid-cols-2 gap-3">
-                {visibleItems.map((item, index) => (
-                  <PlanCard
-                    key={`${getItemCode(item)}-${index}`}
-                    item={item}
-                    selected={getItemCode(item) === selectedItemCode}
-                    quantity={usesQuantity ? quantity : 1}
-                    disabled={processingPayment || verifyingPin}
-                    onClick={() => handleItemSelect(item)}
-                  />
-                ))}
-              </div>
-            ) : (
-              <div className="rounded-2xl border border-dashed border-[#DCD6C8] bg-[#FAF8F4] px-5 py-8 text-center">
-                <Package className="mx-auto h-6 w-6 text-[#B7ADA0]" />
-
-                <p className="mt-3 text-[13px] font-bold text-[#0B1830]">
-                  No packages available
-                </p>
-
-                <p className="mt-1 text-[12px] leading-5 text-[#8B93A1]">
-                  Nothing to show for this selection right now.
-                </p>
-
+                }
+              )}
+            </div>
+          ) : (
+            <EmptyState
+              icon={Search}
+              title="No options available"
+              description="We could not load the available options right now."
+              action={
                 <Button
                   type="button"
                   variant="outline"
-                  onClick={() => void loadItems(selectedProviderCode)}
-                  className="mt-4 h-9 rounded-xl border-[#E7E3DA] text-xs font-bold"
+                  onClick={() =>
+                    void loadProviders()
+                  }
+                  className="h-10 rounded-xl border-slate-200 bg-white text-[11px] font-black"
                 >
                   <RefreshCw className="mr-2 h-3.5 w-3.5" />
-                  Reload packages
+                  Try again
                 </Button>
-              </div>
-            )}
-          </SectionCard>
-        )}
+              }
+            />
+          )}
+        </SectionCard>
 
-        {/* Step 2 — amount */}
-        {selectedProviderCode && isAmountBased && (
-          <SectionCard
-            step="Step 2"
-            title="Choose amount"
-            subtitle="Pick a value or enter a custom amount."
-          >
-            <div className="grid grid-cols-3 gap-2.5">
-              {(serviceType === "airtime"
-                ? AIRTIME_AMOUNTS
-                : BILL_AMOUNTS
-              ).map((value) => (
-                <button
-                  key={value}
-                  type="button"
-                  onClick={() => handleAmountSelect(value)}
-                  disabled={processingPayment || verifyingPin}
-                  className={[
-                    "rounded-2xl border px-3 py-3.5 text-center text-[13px] font-extrabold transition-all active:scale-95",
-                    amount === String(value)
-                      ? "border-[#082A63] bg-[#082A63] text-white"
-                      : "border-[#E7E3DA] bg-white text-[#0B1830]",
-                  ].join(" ")}
-                >
-                  {formatNaira(value)}
-                </button>
-              ))}
+        {/* ------------------------------------------------------------------
+            Package / Plan selection
+            ------------------------------------------------------------------ */}
 
-              <button
-                type="button"
-                onClick={() => {
-                  setCustomAmount(true);
-                  setAmount("");
-                }}
-                disabled={processingPayment || verifyingPin}
-                className={[
-                  "rounded-2xl border px-3 py-3.5 text-center text-[13px] font-extrabold transition-all active:scale-95",
-                  customAmount
-                    ? "border-[#F4B400] bg-[#FDF4DA] text-[#8B6500]"
-                    : "border-[#E7E3DA] bg-white text-[#0B1830]",
-                ].join(" ")}
-              >
-                Custom
-              </button>
-            </div>
+        {selectedProviderCode &&
+          needsPlans && (
+            <SectionCard
+              step="Step 2"
+              title="Choose a package"
+              subtitle={
+                selectedProvider
+                  ? `Available for ${getNetworkName(
+                      selectedProvider
+                    )}`
+                  : "Select the package you want."
+              }
+              action={
+                loadingItems ? (
+                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#082A63]/[0.05]">
+                    <Loader2 className="h-4 w-4 animate-spin text-[#082A63]" />
+                  </div>
+                ) : (
+                  selectedItem && (
+                    <div className="hidden rounded-full bg-emerald-50 px-2.5 py-1 text-[9px] font-black text-emerald-700 sm:flex">
+                      Selected
+                    </div>
+                  )
+                )
+              }
+            >
+              {serviceType ===
+                "data" && (
+                <div className="mb-4 overflow-x-auto pb-1 scrollbar-none">
+                  <div className="flex min-w-max gap-2">
+                    {DATA_TABS.map(
+                      (tab) => {
+                        const count =
+                          dataGroups[
+                            tab
+                          ].length;
 
-            {customAmount && (
-              <div className="mt-4">
-                <Label
-                  htmlFor="customAmount"
-                  className="text-[13px] font-bold text-[#0B1830]"
-                >
-                  Enter amount
-                </Label>
+                        const active =
+                          dataTab ===
+                          tab;
 
-                <div className="relative mt-2">
-                  <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-sm font-black text-[#B7ADA0]">
-                    ₦
-                  </span>
+                        return (
+                          <button
+                            key={tab}
+                            type="button"
+                            onClick={() =>
+                              setDataTab(
+                                tab
+                              )
+                            }
+                            disabled={
+                              processingPayment ||
+                              verifyingPin
+                            }
+                            className={[
+                              "flex h-10 items-center gap-1.5 rounded-full px-3.5 text-[10.5px] font-black transition-all duration-200",
+                              active
+                                ? "bg-[#082A63] text-white shadow-[0_6px_16px_rgba(8,42,99,0.15)]"
+                                : "border border-slate-200 bg-white text-slate-500 hover:border-[#082A63]/15 hover:text-[#082A63]",
+                            ].join(" ")}
+                          >
+                            {tab ===
+                              "HOT" && (
+                              <Flame
+                                className={[
+                                  "h-3.5 w-3.5",
+                                  active
+                                    ? "text-[#F4B400]"
+                                    : "text-[#D39A00]",
+                                ].join(" ")}
+                              />
+                            )}
 
-                  <Input
-                    id="customAmount"
-                    type="number"
-                    min="50"
-                    step="1"
-                    value={amount}
-                    onChange={(event) => setAmount(event.target.value)}
-                    placeholder="Enter amount"
-                    disabled={processingPayment || verifyingPin}
-                    className="h-12 rounded-xl border-[#E7E3DA] pl-8"
+                            {tab}
+
+                            <span
+                              className={[
+                                "rounded-full px-1.5 py-0.5 text-[8px]",
+                                active
+                                  ? "bg-white/10 text-white/70"
+                                  : "bg-slate-100 text-slate-400",
+                              ].join(" ")}
+                            >
+                              {count}
+                            </span>
+                          </button>
+                        );
+                      }
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {items.length > 0 && (
+                <div className="mb-4">
+                  <SearchBox
+                    value={searchTerm}
+                    onChange={
+                      setSearchTerm
+                    }
+                    placeholder={
+                      serviceType ===
+                      "data"
+                        ? "Search data plans..."
+                        : "Search packages..."
+                    }
+                    disabled={
+                      processingPayment ||
+                      verifyingPin
+                    }
                   />
                 </div>
-              </div>
-            )}
-          </SectionCard>
-        )}
+              )}
 
-        {/* Step 2 — informational (no plans/amount) */}
-        {selectedProviderCode && !needsPlans && !isAmountBased && (
-          <SectionCard title={service.title}>
-            <p className="text-[12.5px] leading-5 text-[#8B93A1]">
-              Continue by entering the required customer
-              information below.
-            </p>
-          </SectionCard>
-        )}
+              {loadingItems ? (
+                <LoadingPlans />
+              ) : visibleItems.length > 0 ? (
+                <div className="grid grid-cols-2 gap-3">
+                  {visibleItems.map(
+                    (
+                      item,
+                      index
+                    ) => (
+                      <PlanCard
+                        key={`${getItemCode(
+                          item
+                        )}-${index}`}
+                        item={item}
+                        selected={
+                          getItemCode(
+                            item
+                          ) ===
+                          selectedItemCode
+                        }
+                        quantity={
+                          usesQuantity
+                            ? quantity
+                            : 1
+                        }
+                        disabled={
+                          processingPayment ||
+                          verifyingPin
+                        }
+                        onClick={() =>
+                          handleItemSelect(
+                            item
+                          )
+                        }
+                      />
+                    )
+                  )}
+                </div>
+              ) : (
+                <EmptyState
+                  icon={Package}
+                  title="No packages found"
+                  description={
+                    searchTerm
+                      ? "Try a different search term."
+                      : "Nothing is available for this selection right now."
+                  }
+                  action={
+                    searchTerm ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() =>
+                          setSearchTerm(
+                            ""
+                          )
+                        }
+                        className="h-10 rounded-xl border-slate-200 bg-white text-[11px] font-black"
+                      >
+                        Clear search
+                      </Button>
+                    ) : (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() =>
+                          void loadItems(
+                            selectedProviderCode
+                          )
+                        }
+                        className="h-10 rounded-xl border-slate-200 bg-white text-[11px] font-black"
+                      >
+                        <RefreshCw className="mr-2 h-3.5 w-3.5" />
+                        Reload packages
+                      </Button>
+                    )
+                  }
+                />
+              )}
+            </SectionCard>
+          )}
 
-        {/* Quantity */}
-        {selectedProviderCode && usesQuantity && (
-          <SectionCard title="Quantity" subtitle="How many units do you want?">
-            <div className="flex items-center justify-center gap-4">
-              <button
-                type="button"
-                onClick={() => setQuantity(Math.max(1, quantity - 1))}
-                disabled={
-                  processingPayment || verifyingPin || quantity <= 1
-                }
-                className="flex h-11 w-11 items-center justify-center rounded-full bg-[#F1EEE6] text-lg font-black text-[#0B1830] disabled:opacity-40"
-              >
-                −
-              </button>
+        {/* ------------------------------------------------------------------
+            Amount selection
+            ------------------------------------------------------------------ */}
 
-              <span className="w-10 text-center text-lg font-black text-[#0B1830]">
-                {quantity}
-              </span>
-
-              <button
-                type="button"
-                onClick={() => setQuantity(Math.min(100, quantity + 1))}
-                disabled={
-                  processingPayment || verifyingPin || quantity >= 100
-                }
-                className="flex h-11 w-11 items-center justify-center rounded-full bg-[#F1EEE6] text-lg font-black text-[#0B1830] disabled:opacity-40"
-              >
-                +
-              </button>
-            </div>
-          </SectionCard>
-        )}
-
-        {/* Customer details */}
-        <SectionCard step="Step 3" title="Customer details">
-          <div className="space-y-2">
-            <Label
-              htmlFor="serviceCustomer"
-              className="text-[13px] font-bold text-[#0B1830]"
+        {selectedProviderCode &&
+          isAmountBased && (
+            <SectionCard
+              step="Step 2"
+              title="Choose amount"
+              subtitle={
+                serviceType ===
+                "airtime"
+                  ? "Select how much airtime you want."
+                  : "Choose a bill amount or enter your own."
+              }
             >
-              {customerLabel}
-            </Label>
+              <div className="grid grid-cols-3 gap-2.5">
+                {(serviceType ===
+                "airtime"
+                  ? AIRTIME_AMOUNTS
+                  : BILL_AMOUNTS
+                ).map(
+                  (value) => (
+                    <AmountButton
+                      key={value}
+                      value={value}
+                      selected={
+                        amount ===
+                        String(value)
+                      }
+                      onClick={() =>
+                        handleAmountSelect(
+                          value
+                        )
+                      }
+                      disabled={
+                        processingPayment ||
+                        verifyingPin
+                      }
+                    />
+                  )
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCustomAmount(
+                      true
+                    );
+                    setAmount("");
+                  }}
+                  disabled={
+                    processingPayment ||
+                    verifyingPin
+                  }
+                  className={[
+                    "h-[58px] rounded-[18px] border text-[12px] font-black transition-all duration-200 active:scale-[0.97]",
+                    customAmount
+                      ? "border-[#F4B400] bg-[#FFF8DF] text-[#8B6500] shadow-[0_6px_16px_rgba(244,180,0,0.10)]"
+                      : "border-slate-200 bg-white text-[#071B3E] hover:-translate-y-0.5 hover:border-[#F4B400]/50",
+                  ].join(" ")}
+                >
+                  Custom
+                </button>
+              </div>
+
+              {customAmount && (
+                <div className="mt-4 rounded-[20px] border border-[#F4B400]/20 bg-[#FFFDF5] p-4">
+                  <Label
+                    htmlFor="customAmount"
+                    className="text-[11px] font-black uppercase tracking-[0.08em] text-[#8B6500]"
+                  >
+                    Enter amount
+                  </Label>
+
+                  <div className="relative mt-2">
+                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[16px] font-black text-[#8B6500]">
+                      ₦
+                    </span>
+
+                    <Input
+                      id="customAmount"
+                      type="number"
+                      min="50"
+                      step="1"
+                      value={amount}
+                      onChange={(
+                        event
+                      ) =>
+                        setAmount(
+                          event.target
+                            .value
+                        )
+                      }
+                      placeholder="Enter amount"
+                      disabled={
+                        processingPayment ||
+                        verifyingPin
+                      }
+                      className="h-12 rounded-[16px] border-[#F4B400]/25 bg-white pl-9 text-[15px] font-black text-[#071B3E] shadow-none focus-visible:border-[#F4B400] focus-visible:ring-[#F4B400]/10"
+                    />
+                  </div>
+                </div>
+              )}
+            </SectionCard>
+          )}
+
+        {/* ------------------------------------------------------------------
+            Quantity
+            ------------------------------------------------------------------ */}
+
+        {selectedProviderCode &&
+          usesQuantity && (
+            <SectionCard
+              title="How many cards?"
+              subtitle="Choose the quantity you want to purchase."
+            >
+              <QuantitySelector
+                quantity={quantity}
+                onDecrease={() =>
+                  setQuantity(
+                    Math.max(
+                      1,
+                      quantity - 1
+                    )
+                  )
+                }
+                onIncrease={() =>
+                  setQuantity(
+                    Math.min(
+                      100,
+                      quantity + 1
+                    )
+                  )
+                }
+                disabled={
+                  processingPayment ||
+                  verifyingPin
+                }
+              />
+            </SectionCard>
+          )}
+
+        {/* ------------------------------------------------------------------
+            Customer information
+            ------------------------------------------------------------------ */}
+
+        <SectionCard
+          step={
+            needsPlans ||
+            isAmountBased
+              ? "Step 3"
+              : "Step 2"
+          }
+          title="Where should we send it?"
+          subtitle={
+            serviceType ===
+            "electricity"
+              ? "Enter the meter number for the electricity account."
+              : serviceType ===
+                  "cable"
+                ? "Enter the smartcard number attached to the subscription."
+                : serviceType ===
+                    "smile"
+                  ? "Enter the Smile account or phone number."
+                  : "Enter the customer's details carefully."
+          }
+        >
+          <div className="rounded-[20px] border border-slate-200 bg-[#F8FAFC] p-3">
+            <div className="mb-2 flex items-center justify-between">
+              <Label
+                htmlFor="serviceCustomer"
+                className="text-[11px] font-black uppercase tracking-[0.08em] text-slate-500"
+              >
+                {customerLabel}
+              </Label>
+
+              <span className="inline-flex items-center gap-1 text-[9px] font-bold text-emerald-600">
+                <ShieldCheck className="h-3 w-3" />
+                Protected
+              </span>
+            </div>
 
             <Input
               id="serviceCustomer"
               value={customer}
-              onChange={(event) => setCustomer(event.target.value)}
-              placeholder={customerPlaceholder}
-              disabled={processingPayment || verifyingPin}
+              onChange={(event) =>
+                setCustomer(
+                  event.target.value
+                )
+              }
+              placeholder={
+                customerPlaceholder
+              }
+              disabled={
+                processingPayment ||
+                verifyingPin
+              }
               inputMode={
-                serviceType === "airtime" ||
-                serviceType === "data" ||
-                serviceType === "airtime-card" ||
-                serviceType === "data-card" ||
-                serviceType === "electricity" ||
-                serviceType === "cable" ||
-                serviceType === "waec" ||
-                serviceType === "jamb"
+                serviceType ===
+                  "airtime" ||
+                serviceType ===
+                  "data" ||
+                serviceType ===
+                  "airtime-card" ||
+                serviceType ===
+                  "data-card" ||
+                serviceType ===
+                  "electricity" ||
+                serviceType ===
+                  "cable" ||
+                serviceType ===
+                  "waec" ||
+                serviceType ===
+                  "jamb"
                   ? "numeric"
                   : "text"
               }
-              className="h-12 rounded-xl border-[#E7E3DA]"
+              className="h-12 rounded-[16px] border-slate-200 bg-white text-[14px] font-bold text-[#071B3E] shadow-none placeholder:text-slate-400 focus-visible:border-[#082A63]/40 focus-visible:ring-[#082A63]/10"
             />
           </div>
+
+          {customer.trim() && (
+            <div className="mt-3 flex items-center gap-2 px-1 text-[10.5px] font-medium text-slate-400">
+              <BadgeCheck className="h-3.5 w-3.5 text-emerald-500" />
+              Double-check the details before payment.
+            </div>
+          )}
         </SectionCard>
 
-        {error && (
-          <div className="flex items-start gap-3 rounded-2xl border border-[#F1C7C7] bg-[#FCEEEE] p-4">
-            <CircleAlert className="mt-0.5 h-5 w-5 shrink-0 text-[#C22E2E]" />
+        {/* ------------------------------------------------------------------
+            Selected payment summary
+            ------------------------------------------------------------------ */}
 
-            <div>
-              <p className="text-[13px] font-extrabold text-[#7A1E1E]">
-                Something went wrong
-              </p>
-              <p className="mt-0.5 text-[12.5px] leading-5 text-[#9A3A3A]">
-                {error}
+        {estimatedTotal > 0 && (
+          <section className="rounded-[25px] border border-[#082A63]/10 bg-gradient-to-br from-[#082A63]/[0.035] to-white p-4 shadow-[0_5px_22px_rgba(8,42,99,0.035)]">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-[14px] bg-[#082A63] text-white shadow-[0_6px_15px_rgba(8,42,99,0.15)]">
+                  <CreditCard className="h-4 w-4" />
+                </div>
+
+                <div>
+                  <p className="text-[9px] font-black uppercase tracking-[0.12em] text-[#082A63]/50">
+                    Payment summary
+                  </p>
+
+                  <p className="mt-0.5 text-[13px] font-black text-[#071B3E]">
+                    Ready to pay
+                  </p>
+                </div>
+              </div>
+
+              <p className="text-[20px] font-black tracking-[-0.025em] text-[#082A63]">
+                {formatNaira(
+                  estimatedTotal
+                )}
               </p>
             </div>
-          </div>
+
+            {(selectedProvider ||
+              selectedItem) && (
+              <div className="mt-4 flex flex-wrap gap-2">
+                {selectedProvider && (
+                  <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1.5 text-[9.5px] font-black text-slate-600">
+                    {getNetworkName(
+                      selectedProvider
+                    )}
+                  </span>
+                )}
+
+                {selectedItem && (
+                  <span className="max-w-full truncate rounded-full border border-slate-200 bg-white px-2.5 py-1.5 text-[9.5px] font-black text-slate-600">
+                    {getItemName(
+                      selectedItem
+                    )}
+                  </span>
+                )}
+
+                {usesQuantity &&
+                  quantity > 1 && (
+                    <span className="rounded-full border border-[#F4B400]/20 bg-[#FFF8DF] px-2.5 py-1.5 text-[9.5px] font-black text-[#8B6500]">
+                      {quantity} units
+                    </span>
+                  )}
+              </div>
+            )}
+          </section>
+        )}
+
+        {error && (
+          <ErrorCard message={error} />
         )}
       </main>
 
-      {/* Sticky pay bar */}
-      <div className="fixed inset-x-0 bottom-0 z-30 border-t border-[#E7E3DA] bg-white/95 px-4 pb-[max(14px,env(safe-area-inset-bottom))] pt-3 backdrop-blur-xl">
-        <div className="mx-auto max-w-md">
-          {!balanceSufficient && estimatedTotal > 0 && (
-            <p className="mb-2 text-center text-[11.5px] font-bold text-[#C22E2E]">
-              Insufficient wallet balance for this transaction.
-            </p>
-          )}
+      {/* =========================================================================
+          Sticky payment action
+          ========================================================================= */}
+
+      <div className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200/80 bg-white/95 px-4 pb-[max(14px,env(safe-area-inset-bottom))] pt-3 shadow-[0_-12px_35px_rgba(15,23,42,0.08)] backdrop-blur-2xl">
+        <div className="mx-auto max-w-xl">
+          {!balanceSufficient &&
+            estimatedTotal > 0 && (
+              <div className="mb-2 flex items-center justify-center gap-1.5 text-[10.5px] font-black text-red-600">
+                <CircleAlert className="h-3.5 w-3.5" />
+                Insufficient wallet balance
+              </div>
+            )}
 
           <div className="flex items-center gap-3">
-            <div className="shrink-0">
-              <p className="text-[9.5px] font-bold uppercase tracking-wide text-[#8B93A1]">
+            <div className="min-w-[78px]">
+              <p className="text-[8.5px] font-black uppercase tracking-[0.15em] text-slate-400">
                 Total
               </p>
-              <p className="text-[18px] font-black leading-tight text-[#0B1830]">
-                {formatNaira(estimatedTotal)}
+
+              <p className="mt-0.5 text-[19px] font-black leading-none tracking-[-0.025em] text-[#071B3E]">
+                {formatNaira(
+                  estimatedTotal
+                )}
               </p>
             </div>
 
@@ -3512,176 +3926,282 @@ const ServicePayment = ({
                 processingPayment ||
                 verifyingPin ||
                 !selectedProviderCode ||
-                (needsPlans && !selectedItemCode) ||
+                (needsPlans &&
+                  !selectedItemCode) ||
                 !customer.trim() ||
                 estimatedTotal <= 0 ||
                 !balanceSufficient
               }
-              className="h-13 flex-1 rounded-2xl bg-[#082A63] text-[13.5px] font-extrabold shadow-[0_10px_24px_rgba(8,42,99,0.28)] hover:bg-[#061f4b] disabled:shadow-none"
+              className="h-[54px] flex-1 rounded-[18px] bg-[#082A63] text-[13px] font-black tracking-[-0.005em] shadow-[0_10px_25px_rgba(8,42,99,0.23)] transition-all duration-200 hover:-translate-y-0.5 hover:bg-[#061F4B] hover:shadow-[0_13px_28px_rgba(8,42,99,0.26)] active:translate-y-0 disabled:translate-y-0 disabled:shadow-none"
             >
               {processingPayment ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Processing...
+                  Processing payment...
                 </>
               ) : (
                 <>
                   <LockKeyhole className="mr-2 h-4 w-4" />
                   Pay securely
-                  <ChevronRight className="ml-1.5 h-4 w-4" />
+                  <ChevronRight className="ml-auto h-4 w-4 opacity-60" />
                 </>
               )}
             </Button>
           </div>
+
+          <div className="mt-2 flex items-center justify-center gap-1.5 text-[9px] font-medium text-slate-400">
+            <ShieldCheck className="h-3 w-3 text-emerald-500" />
+            Protected by IyanjuPay secure payment
+          </div>
         </div>
       </div>
 
-      {/* PIN bottom sheet */}
+      {/* =========================================================================
+          PIN confirmation bottom sheet
+          ========================================================================= */}
+
       {showPinPrompt && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-[#05132B]/55 backdrop-blur-sm">
-          <div className="w-full max-w-md rounded-t-[32px] bg-white pb-[max(20px,env(safe-area-inset-bottom))]">
-            <div className="mx-auto mt-3 h-1 w-10 rounded-full bg-[#E7E3DA]" />
+        <div className="fixed inset-0 z-[100] flex items-end justify-center bg-[#020B1C]/65 p-0 backdrop-blur-md">
+          <div
+            className="absolute inset-0"
+            onClick={() => {
+              if (!verifyingPin) {
+                setShowPinPrompt(false);
+                setPaymentPin("");
+                setError("");
+              }
+            }}
+          />
 
-            <div className="flex items-start justify-between px-6 pt-5">
-              <div className="flex items-center gap-3">
-                <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#082A63]/[0.06]">
-                  <LockKeyhole className="h-5 w-5 text-[#082A63]" />
-                </div>
+          <div className="relative w-full max-w-xl overflow-hidden rounded-t-[34px] bg-white pb-[max(18px,env(safe-area-inset-bottom))] shadow-[0_-20px_70px_rgba(0,0,0,0.22)]">
+            <div className="mx-auto mt-3 h-1.5 w-11 rounded-full bg-slate-200" />
 
-                <div>
-                  <p className="text-[10.5px] font-bold uppercase tracking-wide text-[#8B93A1]">
-                    Secure confirmation
-                  </p>
-                  <h2 className="text-[17px] font-extrabold text-[#0B1830]">
-                    Confirm payment
-                  </h2>
-                </div>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => {
-                  if (verifyingPin) return;
-                  setShowPinPrompt(false);
-                  setPaymentPin("");
-                  setError("");
-                }}
-                disabled={verifyingPin}
-                className="flex h-9 w-9 items-center justify-center rounded-full text-[#8B93A1] transition-colors hover:bg-black/5 disabled:opacity-40"
-                aria-label="Close"
-              >
-                <X className="h-4.5 w-4.5" />
-              </button>
-            </div>
-
-            <div className="space-y-5 px-6 pb-8 pt-5">
-              <div className="rounded-2xl bg-[#FAF8F4] p-4">
-                <div className="flex items-center justify-between gap-4">
-                  <span className="text-[12.5px] font-semibold text-[#8B93A1]">
-                    Service
-                  </span>
-                  <span className="text-[13px] font-extrabold text-[#0B1830]">
-                    {service.title}
-                  </span>
-                </div>
-
-                <div className="my-3 h-px bg-[#E7E3DA]" />
-
-                <div className="flex items-center justify-between gap-4">
-                  <span className="text-[12.5px] font-semibold text-[#8B93A1]">
-                    Amount
-                  </span>
-                  <span className="text-[19px] font-black text-[#082A63]">
-                    {formatNaira(estimatedTotal)}
-                  </span>
-                </div>
-
-                <div className="mt-3 flex items-start justify-between gap-4">
-                  <span className="text-[12.5px] font-semibold text-[#8B93A1]">
-                    {customerLabel}
-                  </span>
-                  <span className="break-all text-right text-[13px] font-bold text-[#0B1830]">
-                    {normalizedCustomer}
-                  </span>
-                </div>
-
-                {selectedItem && (
-                  <div className="mt-3 flex items-start justify-between gap-4">
-                    <span className="text-[12.5px] font-semibold text-[#8B93A1]">
-                      Package
-                    </span>
-                    <span className="max-w-[65%] text-right text-[13px] font-bold text-[#0B1830]">
-                      {getItemName(selectedItem)}
-                    </span>
+            <div className="px-5 pb-4 pt-5 sm:px-6">
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-[17px] bg-[#082A63]/[0.07]">
+                    <LockKeyhole className="h-5 w-5 text-[#082A63]" />
                   </div>
-                )}
-              </div>
 
-              <div className="space-y-2">
-                <Label
-                  htmlFor="paymentPin"
-                  className="text-[13px] font-bold text-[#0B1830]"
-                >
-                  Payment PIN
-                </Label>
+                  <div>
+                    <p className="text-[9px] font-black uppercase tracking-[0.16em] text-[#082A63]/50">
+                      Final step
+                    </p>
 
-                <Input
-                  id="paymentPin"
-                  type="password"
-                  inputMode="numeric"
-                  autoComplete="off"
-                  maxLength={4}
-                  value={paymentPin}
-                  onChange={(event) => {
-                    setPaymentPin(
-                      event.target.value.replace(/\D/g, "").slice(0, 4)
+                    <h2 className="mt-0.5 text-[19px] font-black tracking-tight text-[#071B3E]">
+                      Confirm payment
+                    </h2>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (
+                      verifyingPin
+                    ) {
+                      return;
+                    }
+
+                    setShowPinPrompt(
+                      false
                     );
+                    setPaymentPin("");
                     setError("");
                   }}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" && paymentPin.length === 4) {
-                      void verifyPinAndPay();
-                    }
-                  }}
-                  placeholder="••••"
-                  disabled={verifyingPin}
-                  autoFocus
-                  className="h-14 rounded-2xl border-[#E7E3DA] bg-[#FAF8F4] text-center text-2xl font-black tracking-[0.6em]"
-                />
+                  disabled={
+                    verifyingPin
+                  }
+                  aria-label="Close"
+                  className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 text-slate-500 transition-all active:scale-95 disabled:opacity-40"
+                >
+                  <X className="h-4.5 w-4.5" />
+                </button>
+              </div>
+            </div>
 
-                <div className="flex items-center justify-center gap-2 pt-1 text-[11px] font-medium text-[#8B93A1]">
-                  <ShieldCheck className="h-3.5 w-3.5" />
-                  Your PIN is verified securely.
+            <div className="max-h-[75vh] space-y-5 overflow-y-auto px-5 pb-7 sm:px-6">
+              {/* Payment recap */}
+              <div className="overflow-hidden rounded-[24px] border border-slate-200 bg-[#F8FAFC]">
+                <div className="bg-[#071B3E] px-4 py-4 text-white">
+                  <div className="flex items-center justify-between gap-4">
+                    <div>
+                      <p className="text-[8.5px] font-black uppercase tracking-[0.15em] text-white/40">
+                        You're paying
+                      </p>
+
+                      <p className="mt-1 text-[14px] font-black">
+                        {service.title}
+                      </p>
+                    </div>
+
+                    <p className="text-[22px] font-black tracking-[-0.03em]">
+                      {formatNaira(
+                        estimatedTotal
+                      )}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="divide-y divide-slate-200">
+                  <div className="flex items-center justify-between gap-4 px-4 py-3.5">
+                    <span className="text-[11px] font-medium text-slate-400">
+                      {customerLabel}
+                    </span>
+
+                    <span className="max-w-[62%] break-all text-right text-[12px] font-black text-[#071B3E]">
+                      {normalizedCustomer}
+                    </span>
+                  </div>
+
+                  {selectedProvider && (
+                    <div className="flex items-center justify-between gap-4 px-4 py-3.5">
+                      <span className="text-[11px] font-medium text-slate-400">
+                        Selected option
+                      </span>
+
+                      <span className="max-w-[62%] truncate text-right text-[12px] font-black text-[#071B3E]">
+                        {getNetworkName(
+                          selectedProvider
+                        )}
+                      </span>
+                    </div>
+                  )}
+
+                  {selectedItem && (
+                    <div className="flex items-start justify-between gap-4 px-4 py-3.5">
+                      <span className="text-[11px] font-medium text-slate-400">
+                        Package
+                      </span>
+
+                      <span className="max-w-[62%] text-right text-[12px] font-black leading-5 text-[#071B3E]">
+                        {getItemName(
+                          selectedItem
+                        )}
+                      </span>
+                    </div>
+                  )}
+
+                  {usesQuantity && (
+                    <div className="flex items-center justify-between gap-4 px-4 py-3.5">
+                      <span className="text-[11px] font-medium text-slate-400">
+                        Quantity
+                      </span>
+
+                      <span className="text-[12px] font-black text-[#071B3E]">
+                        {quantity}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* PIN */}
+              <div className="rounded-[24px] border border-[#082A63]/10 bg-gradient-to-br from-[#082A63]/[0.035] to-white p-5">
+                <div className="text-center">
+                  <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-[15px] bg-[#082A63] text-white shadow-[0_7px_18px_rgba(8,42,99,0.18)]">
+                    <LockKeyhole className="h-4.5 w-4.5" />
+                  </div>
+
+                  <p className="mt-3 text-[14px] font-black text-[#071B3E]">
+                    Enter your payment PIN
+                  </p>
+
+                  <p className="mt-1 text-[10.5px] leading-5 text-slate-400">
+                    Your PIN confirms this transaction securely.
+                  </p>
+                </div>
+
+                <div className="mt-5">
+                  <Input
+                    id="paymentPin"
+                    type="password"
+                    inputMode="numeric"
+                    autoComplete="off"
+                    maxLength={4}
+                    value={paymentPin}
+                    onChange={(
+                      event
+                    ) => {
+                      setPaymentPin(
+                        event.target.value
+                          .replace(
+                            /\D/g,
+                            ""
+                          )
+                          .slice(
+                            0,
+                            4
+                          )
+                      );
+
+                      setError("");
+                    }}
+                    onKeyDown={(
+                      event
+                    ) => {
+                      if (
+                        event.key ===
+                          "Enter" &&
+                        paymentPin.length ===
+                          4
+                      ) {
+                        void verifyPinAndPay();
+                      }
+                    }}
+                    placeholder="••••"
+                    disabled={
+                      verifyingPin
+                    }
+                    autoFocus
+                    className="h-[60px] rounded-[19px] border-slate-200 bg-white text-center text-[25px] font-black tracking-[0.65em] text-[#071B3E] shadow-[0_5px_16px_rgba(15,23,42,0.05)] focus-visible:border-[#082A63]/40 focus-visible:ring-[#082A63]/10"
+                  />
+                </div>
+
+                <div className="mt-3 flex items-center justify-center gap-1.5 text-[9.5px] font-bold text-slate-400">
+                  <ShieldCheck className="h-3.5 w-3.5 text-emerald-500" />
+                  Your PIN is encrypted and protected.
                 </div>
               </div>
 
               {error && (
-                <div className="flex items-start gap-3 rounded-2xl border border-[#F1C7C7] bg-[#FCEEEE] p-4">
-                  <CircleAlert className="mt-0.5 h-4 w-4 shrink-0 text-[#C22E2E]" />
-                  <p className="text-[12.5px] font-medium leading-5 text-[#7A1E1E]">
-                    {error}
-                  </p>
-                </div>
+                <ErrorCard
+                  message={error}
+                />
               )}
 
               <Button
                 type="button"
-                onClick={() => void verifyPinAndPay()}
-                disabled={verifyingPin || paymentPin.length !== 4}
-                className="h-13 w-full rounded-2xl bg-[#082A63] text-[13.5px] font-extrabold hover:bg-[#061f4b]"
+                onClick={() =>
+                  void verifyPinAndPay()
+                }
+                disabled={
+                  verifyingPin ||
+                  paymentPin.length !==
+                    4
+                }
+                className="h-[54px] w-full rounded-[18px] bg-[#082A63] text-[13px] font-black shadow-[0_10px_24px_rgba(8,42,99,0.20)] hover:bg-[#061F4B] disabled:shadow-none"
               >
                 {verifyingPin ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Verifying...
+                    Verifying payment...
                   </>
                 ) : (
                   <>
                     <LockKeyhole className="mr-2 h-4 w-4" />
-                    Confirm payment
+                    Confirm & pay{" "}
+                    {formatNaira(
+                      estimatedTotal
+                    )}
                   </>
                 )}
               </Button>
+
+              <p className="flex items-center justify-center gap-1.5 text-[9px] font-medium text-slate-400">
+                <BadgeCheck className="h-3 w-3 text-emerald-500" />
+                You are authorizing this transaction yourself.
+              </p>
             </div>
           </div>
         </div>

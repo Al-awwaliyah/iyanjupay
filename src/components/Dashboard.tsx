@@ -944,6 +944,8 @@ const Dashboard = () => {
           "Service unavailable",
         description:
           `${service.title} is not currently available.`,
+        variant:
+          "destructive",
       });
 
       return;
@@ -964,14 +966,12 @@ const Dashboard = () => {
    * SERVICE PURCHASE
    * ============================================================
    *
-   * IMPORTANT:
-   * The live Edge Function is:
+   * The service system uses:
    *
    * clubkonnect-services
    *
-   * NOT:
-   *
-   * clubkonnect-service
+   * The underlying service provider is never exposed
+   * to the customer-facing UI.
    */
 
   const handlePurchase = async (
@@ -1015,9 +1015,10 @@ const Dashboard = () => {
     /*
      * Frontend balance check.
      *
-     * The Edge Function remains responsible for the
-     * authoritative atomic wallet debit.
+     * The Edge Function remains responsible for
+     * the authoritative atomic wallet debit.
      */
+
     const currentBalance =
       Number(
         wallet?.balance ?? 0
@@ -1230,8 +1231,8 @@ const Dashboard = () => {
    * BANK TRANSFER
    * ============================================================
    *
-   * SendMoney.tsx remains completely separate from the
-   * service-payment system.
+   * SendMoney.tsx remains completely separate from
+   * the service-payment system.
    */
 
   const handleTransfer = async (
@@ -1975,8 +1976,6 @@ const Dashboard = () => {
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div className="flex h-[72px] items-center justify-between">
 
-            {/* BRAND */}
-
             <button
               type="button"
               onClick={() =>
@@ -2003,8 +2002,6 @@ const Dashboard = () => {
                 </p>
               </div>
             </button>
-
-            {/* HEADER ACTIONS */}
 
             <div className="flex items-center gap-1 sm:gap-2">
               <Button
@@ -2071,9 +2068,7 @@ const Dashboard = () => {
 
       <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
 
-        {/* ==================================================== */}
-        {/* GREETING                                             */}
-        {/* ==================================================== */}
+        {/* GREETING */}
 
         <section className="mb-6">
           <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
@@ -2099,24 +2094,17 @@ const Dashboard = () => {
           </div>
         </section>
 
-        {/* ==================================================== */}
-        {/* WALLET HERO                                          */}
-        {/* ==================================================== */}
+        {/* WALLET HERO */}
 
         <section className="mb-7">
           <Card className="relative overflow-hidden rounded-[28px] border-0 bg-gradient-to-br from-[#4c1d95] via-[#6d28d9] to-[#2563eb] text-white shadow-[0_20px_60px_rgba(79,70,229,0.22)]">
-
-            {/* Decorative shapes */}
 
             <div className="pointer-events-none absolute -right-20 -top-20 h-56 w-56 rounded-full bg-white/10" />
 
             <div className="pointer-events-none absolute -bottom-24 right-24 h-48 w-48 rounded-full bg-white/5" />
 
             <CardContent className="relative p-5 sm:p-7">
-
               <div className="flex flex-col gap-7">
-
-                {/* BALANCE AREA */}
 
                 <div className="flex items-start justify-between gap-4">
                   <div>
@@ -2169,8 +2157,6 @@ const Dashboard = () => {
                     </p>
                   </div>
 
-                  {/* WALLET ID */}
-
                   <div className="hidden text-right sm:block">
                     <p className="text-xs font-medium text-purple-100">
                       Wallet ID
@@ -2182,8 +2168,6 @@ const Dashboard = () => {
                     </p>
                   </div>
                 </div>
-
-                {/* ACTIONS */}
 
                 <div className="grid grid-cols-2 gap-3">
                   <Button
@@ -2217,8 +2201,6 @@ const Dashboard = () => {
                   </Button>
                 </div>
 
-                {/* MOBILE WALLET ID */}
-
                 <div className="flex items-center justify-between border-t border-white/10 pt-4 sm:hidden">
                   <span className="text-xs text-purple-100">
                     Wallet ID
@@ -2234,9 +2216,7 @@ const Dashboard = () => {
           </Card>
         </section>
 
-        {/* ==================================================== */}
-        {/* QUICK ACTIONS                                        */}
-        {/* ==================================================== */}
+        {/* QUICK ACTIONS */}
 
         <section className="mb-8">
           <div className="mb-3 flex items-center justify-between">
@@ -2328,9 +2308,7 @@ const Dashboard = () => {
           </div>
         </section>
 
-        {/* ==================================================== */}
-        {/* SERVICES                                             */}
-        {/* ==================================================== */}
+        {/* SERVICES */}
 
         <section className="mb-8">
           <div className="mb-4 flex items-end justify-between">
@@ -2388,9 +2366,7 @@ const Dashboard = () => {
           </div>
         </section>
 
-        {/* ==================================================== */}
-        {/* ACCOUNT INSIGHTS                                     */}
-        {/* ==================================================== */}
+        {/* ACCOUNT OVERVIEW */}
 
         <section className="mb-8">
           <div className="mb-4">
@@ -2404,8 +2380,6 @@ const Dashboard = () => {
           </div>
 
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-
-            {/* SPENDING */}
 
             <Card className="rounded-3xl border-slate-200/80 bg-white shadow-sm transition hover:shadow-md">
               <CardContent className="p-5">
@@ -2439,8 +2413,6 @@ const Dashboard = () => {
               </CardContent>
             </Card>
 
-            {/* TRANSACTIONS */}
-
             <Card className="rounded-3xl border-slate-200/80 bg-white shadow-sm transition hover:shadow-md">
               <CardContent className="p-5">
                 <div className="flex items-start justify-between">
@@ -2466,8 +2438,6 @@ const Dashboard = () => {
                 </div>
               </CardContent>
             </Card>
-
-            {/* SUCCESS RATE */}
 
             <Card className="rounded-3xl border-slate-200/80 bg-white shadow-sm transition hover:shadow-md">
               <CardContent className="p-5">
@@ -2498,9 +2468,7 @@ const Dashboard = () => {
           </div>
         </section>
 
-        {/* ==================================================== */}
-        {/* SECURITY / TRUST                                    */}
-        {/* ==================================================== */}
+        {/* SECURITY / TRUST */}
 
         <section className="mb-4">
           <Card className="overflow-hidden rounded-3xl border-slate-200/80 bg-white shadow-sm">

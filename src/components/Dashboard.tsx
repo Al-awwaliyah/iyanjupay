@@ -6,6 +6,7 @@ import React, {
 
 import {
   Banknote,
+  ChevronRight,
   CreditCard,
   Eye,
   EyeOff,
@@ -36,7 +37,6 @@ import {
   CardContent,
 } from "@/components/ui/card";
 
-import ServiceCard from "./services/ServiceCard";
 import FundWalletModal from "./modals/FundWalletModal";
 import ServicePayment from "@/pages/ServicePayment";
 import QRCodeModal from "./modals/QRCodeModal";
@@ -309,6 +309,236 @@ const isMoneyOutTransaction = (
 };
 
 /*
+ * Resolves a transaction into what the Recent Activity feed
+ * shows: an icon, a human title, direction (money in/out) and
+ * a status label. Built entirely from data already fetched by
+ * loadDashboardStats — no extra network calls.
+ */
+const describeTransaction = (
+  transaction: DashboardTransaction
+) => {
+  const type = normalizeText(
+    transaction.transaction_type
+  );
+
+  const category = normalizeText(
+    transaction.category
+  );
+
+  const isOut =
+    isMoneyOutTransaction(
+      transaction
+    );
+
+  const status = isFailedTransaction(
+    transaction
+  )
+    ? "failed"
+    : isSuccessfulTransaction(
+        transaction
+      )
+    ? "successful"
+    : "pending";
+
+  let Icon = Receipt;
+
+  if (
+    type.includes("airtime") ||
+    category.includes("airtime")
+  ) {
+    Icon = Smartphone;
+  } else if (
+    type.includes("data") ||
+    category.includes("data")
+  ) {
+    Icon = Wifi;
+  } else if (
+    type.includes("electric") ||
+    category.includes("electric")
+  ) {
+    Icon = Zap;
+  } else if (
+    type.includes("cable") ||
+    category.includes("cable")
+  ) {
+    Icon = CreditCard;
+  } else if (
+    type.includes("transfer") ||
+    type.includes("bank")
+  ) {
+    Icon = Send;
+  } else if (
+    type === "credit" ||
+    type === "funding" ||
+    type === "deposit" ||
+    category === "funding"
+  ) {
+    Icon = Plus;
+  }
+
+  const rawTitle =
+    transaction.description?.trim() ||
+    (transaction.category ||
+      transaction.transaction_type ||
+      "Transaction")
+      .replace(/[_-]+/g, " ");
+
+  const title =
+    rawTitle.charAt(0).toUpperCase() +
+    rawTitle.slice(1);
+
+  return {
+    Icon,
+    title,
+    isOut,
+    status,
+  };
+};
+
+const formatTransactionDate = (
+  iso: string
+): string => {
+  try {
+    return new Intl.DateTimeFormat(
+      "en-NG",
+      {
+        day: "numeric",
+        month: "short",
+        hour: "numeric",
+        minute: "2-digit",
+      }
+    ).format(new Date(iso));
+  } catch {
+    return "";
+  }
+};
+
+const getGreeting = (): string => {
+  const hour = new Date().getHours();
+
+  if (hour < 12) {
+    return "Good morning";
+  }
+
+  if (hour < 17) {
+    return "Good afternoon";
+  }
+
+  return "Good evening";
+};
+
+/*
+ * ============================================================
+ * SERVICE CATALOG
+ * ============================================================
+ *
+ * Icon backgrounds are deliberately drawn from one disciplined
+ * tint system (a light "-50" fill with a matching "-600" icon)
+ * rather than a grab-bag of saturated flat colors — this is
+ * what keeps a 9-tile grid feeling designed instead of random.
+ */
+
+const services = [
+  {
+    title: "Buy Airtime",
+    description:
+      "Recharge your phone instantly",
+    icon: Smartphone,
+    tint: "bg-blue-50 text-blue-600",
+    type: "airtime" as BillService,
+    available: true,
+  },
+  {
+    title: "Buy Data",
+    description: "Fast data bundles",
+    icon: Wifi,
+    tint: "bg-violet-50 text-violet-600",
+    type: "data" as BillService,
+    available: true,
+  },
+  {
+    title: "Electricity",
+    description: "Pay your power bill",
+    icon: Zap,
+    tint: "bg-amber-50 text-amber-600",
+    type: "electricity" as BillService,
+    available: true,
+  },
+  {
+    title: "Cable TV",
+    description: "DSTV, GOtv & Startimes",
+    icon: CreditCard,
+    tint: "bg-rose-50 text-rose-600",
+    type: "cable" as BillService,
+    available: true,
+  },
+  {
+    title: "Airtime E-Pin",
+    description: "Buy recharge PINs",
+    icon: Receipt,
+    tint: "bg-sky-50 text-sky-600",
+    type: "airtime-card" as BillService,
+    available: true,
+  },
+  {
+    title: "Data E-Pin",
+    description: "Buy data PINs",
+    icon: Radio,
+    tint: "bg-indigo-50 text-indigo-600",
+    type: "data-card" as BillService,
+    available: true,
+  },
+  {
+    title: "Smile",
+    description: "Smile data bundles",
+    icon: Wifi,
+    tint: "bg-cyan-50 text-cyan-600",
+    type: "smile" as BillService,
+    available: true,
+  },
+  {
+    title: "WAEC",
+    description: "Result checker PINs",
+    icon: GraduationCap,
+    tint: "bg-emerald-50 text-emerald-600",
+    type: "waec" as BillService,
+    available: true,
+  },
+  {
+    title: "JAMB",
+    description: "UTME & DE PINs",
+    icon: GraduationCap,
+    tint: "bg-teal-50 text-teal-600",
+    type: "jamb" as BillService,
+    available: true,
+  },
+  {
+    title: "Internet Bills",
+    description: "Coming soon",
+    icon: Wifi,
+    tint: "bg-slate-100 text-slate-400",
+    type: "internet" as BillService,
+    available: false,
+  },
+  {
+    title: "Insurance",
+    description: "Coming soon",
+    icon: Shield,
+    tint: "bg-slate-100 text-slate-400",
+    type: "insurance" as BillService,
+    available: false,
+  },
+  {
+    title: "Savings",
+    description: "Coming soon",
+    icon: PiggyBank,
+    tint: "bg-slate-100 text-slate-400",
+    type: "savings" as BillService,
+    available: false,
+  },
+];
+
+/*
  * ============================================================
  * DASHBOARD
  * ============================================================
@@ -369,7 +599,7 @@ const Dashboard = () => {
 
   /*
    * ============================================================
-   * STATS
+   * STATS + RECENT ACTIVITY
    * ============================================================
    */
 
@@ -382,6 +612,13 @@ const Dashboard = () => {
 
   const [statsLoading, setStatsLoading] =
     useState(true);
+
+  const [
+    recentTransactions,
+    setRecentTransactions,
+  ] = useState<DashboardTransaction[]>(
+    []
+  );
 
   /*
    * ============================================================
@@ -513,6 +750,8 @@ const Dashboard = () => {
           successRate: 100,
         });
 
+        setRecentTransactions([]);
+
         setStatsLoading(false);
 
         return;
@@ -550,6 +789,10 @@ const Dashboard = () => {
         const transactions =
           (data ??
             []) as DashboardTransaction[];
+
+        setRecentTransactions(
+          transactions.slice(0, 4)
+        );
 
         const now = new Date();
 
@@ -792,123 +1035,6 @@ const Dashboard = () => {
     refreshWallet,
     loadDashboardStats,
   ]);
-
-  /*
-   * ============================================================
-   * SERVICES
-   * ============================================================
-   */
-
-  const services = [
-    {
-      title: "Buy Airtime",
-      description:
-        "Recharge your phone instantly",
-      icon: Smartphone,
-      color: "bg-blue-500",
-      type: "airtime" as BillService,
-      available: true,
-    },
-    {
-      title: "Buy Data",
-      description:
-        "Fast data bundles",
-      icon: Wifi,
-      color: "bg-purple-500",
-      type: "data" as BillService,
-      available: true,
-    },
-    {
-      title: "Electricity",
-      description:
-        "Pay your power bill",
-      icon: Zap,
-      color: "bg-yellow-500",
-      type: "electricity" as BillService,
-      available: true,
-    },
-    {
-      title: "Cable TV",
-      description:
-        "DSTV, GOTV & Startimes",
-      icon: CreditCard,
-      color: "bg-red-500",
-      type: "cable" as BillService,
-      available: true,
-    },
-    {
-      title: "Airtime E-Pin",
-      description:
-        "Buy recharge PINs",
-      icon: Receipt,
-      color: "bg-green-500",
-      type: "airtime-card" as BillService,
-      available: true,
-    },
-    {
-      title: "Data E-Pin",
-      description:
-        "Buy data PINs",
-      icon: Radio,
-      color: "bg-indigo-500",
-      type: "data-card" as BillService,
-      available: true,
-    },
-    {
-      title: "Smile",
-      description:
-        "Smile data bundles",
-      icon: Wifi,
-      color: "bg-cyan-500",
-      type: "smile" as BillService,
-      available: true,
-    },
-    {
-      title: "WAEC",
-      description:
-        "WAEC services",
-      icon: GraduationCap,
-      color: "bg-orange-500",
-      type: "waec" as BillService,
-      available: true,
-    },
-    {
-      title: "JAMB",
-      description:
-        "JAMB services",
-      icon: GraduationCap,
-      color: "bg-emerald-500",
-      type: "jamb" as BillService,
-      available: true,
-    },
-    {
-      title: "Internet Bills",
-      description:
-        "Coming soon",
-      icon: Wifi,
-      color: "bg-slate-500",
-      type: "internet" as BillService,
-      available: false,
-    },
-    {
-      title: "Insurance",
-      description:
-        "Coming soon",
-      icon: Shield,
-      color: "bg-teal-500",
-      type: "insurance" as BillService,
-      available: false,
-    },
-    {
-      title: "Savings",
-      description:
-        "Coming soon",
-      icon: PiggyBank,
-      color: "bg-pink-500",
-      type: "savings" as BillService,
-      available: false,
-    },
-  ];
 
   /*
    * ============================================================
@@ -1852,108 +1978,51 @@ const Dashboard = () => {
 
   /*
    * ============================================================
-   * BOTTOM NAVIGATION
+   * BOTTOM NAVIGATION — floating pill island
    * ============================================================
    */
+
+  const NAV_ITEMS: Array<{
+    key: CurrentPage;
+    label: string;
+    icon: typeof Home;
+  }> = [
+    { key: "home", label: "Home", icon: Home },
+    { key: "rewards", label: "Rewards", icon: Gift },
+    { key: "cards", label: "Cards", icon: CreditCard },
+    { key: "me", label: "Me", icon: User },
+  ];
 
   const renderBottomNav = (
     page: CurrentPage
   ) => (
-    <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-slate-200/80 bg-white/95 px-3 py-2 shadow-[0_-8px_30px_rgba(15,23,42,0.06)] backdrop-blur-xl">
-      <div className="mx-auto max-w-3xl">
-        <div className="grid grid-cols-4 gap-1">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() =>
-              setCurrentPage(
-                "home"
-              )
-            }
-            className={`h-14 rounded-2xl ${
-              page === "home"
-                ? "bg-purple-50 text-purple-700"
-                : "text-slate-500 hover:bg-slate-50"
-            }`}
-          >
-            <span className="flex flex-col items-center gap-1">
-              <Home className="h-5 w-5" />
+    <div className="fixed inset-x-0 bottom-0 z-40 px-4 pb-4">
+      <div className="mx-auto flex max-w-sm items-center gap-1 rounded-[28px] border border-slate-200/70 bg-white/95 p-2 shadow-[0_16px_40px_rgba(15,23,42,0.14)] backdrop-blur-xl">
+        {NAV_ITEMS.map((item) => {
+          const active = page === item.key;
 
-              <span className="text-[11px] font-semibold">
-                Home
+          return (
+            <button
+              key={item.key}
+              type="button"
+              onClick={() =>
+                setCurrentPage(item.key)
+              }
+              className={[
+                "flex flex-1 flex-col items-center gap-1 rounded-3xl py-2.5 transition",
+                active
+                  ? "bg-gradient-to-br from-[#4C1D95] to-[#2563EB] text-white shadow-md"
+                  : "text-slate-500 hover:bg-slate-50",
+              ].join(" ")}
+            >
+              <item.icon className="h-5 w-5" />
+
+              <span className="text-[10px] font-semibold">
+                {item.label}
               </span>
-            </span>
-          </Button>
-
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() =>
-              setCurrentPage(
-                "rewards"
-              )
-            }
-            className={`h-14 rounded-2xl ${
-              page === "rewards"
-                ? "bg-purple-50 text-purple-700"
-                : "text-slate-500 hover:bg-slate-50"
-            }`}
-          >
-            <span className="flex flex-col items-center gap-1">
-              <Gift className="h-5 w-5" />
-
-              <span className="text-[11px] font-semibold">
-                Rewards
-              </span>
-            </span>
-          </Button>
-
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() =>
-              setCurrentPage(
-                "cards"
-              )
-            }
-            className={`h-14 rounded-2xl ${
-              page === "cards"
-                ? "bg-purple-50 text-purple-700"
-                : "text-slate-500 hover:bg-slate-50"
-            }`}
-          >
-            <span className="flex flex-col items-center gap-1">
-              <CreditCard className="h-5 w-5" />
-
-              <span className="text-[11px] font-semibold">
-                Cards
-              </span>
-            </span>
-          </Button>
-
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() =>
-              setCurrentPage(
-                "me"
-              )
-            }
-            className={`h-14 rounded-2xl ${
-              page === "me"
-                ? "bg-purple-50 text-purple-700"
-                : "text-slate-500 hover:bg-slate-50"
-            }`}
-          >
-            <span className="flex flex-col items-center gap-1">
-              <User className="h-5 w-5" />
-
-              <span className="text-[11px] font-semibold">
-                Me
-              </span>
-            </span>
-          </Button>
-        </div>
+            </button>
+          );
+        })}
       </div>
     </div>
   );
@@ -1965,7 +2034,44 @@ const Dashboard = () => {
    */
 
   return (
-    <div className="min-h-screen bg-[#f7f8fc] pb-24">
+    <div className="min-h-screen bg-[#f7f8fc] pb-28">
+
+      {/*
+        Distinct type system for this brand: Space Grotesk for
+        balance figures and headings (a geometric display face
+        with real character on currency numerals), Inter for
+        everything read at length. One orchestrated reveal
+        animation on the wallet card only — respects
+        prefers-reduced-motion.
+      */}
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap');
+
+        .font-display {
+          font-family: 'Space Grotesk', ui-sans-serif, system-ui, sans-serif;
+        }
+
+        @keyframes iyanjuHeroReveal {
+          from {
+            opacity: 0;
+            transform: translateY(14px) scale(0.98);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+          }
+        }
+
+        .iyanju-hero-reveal {
+          animation: iyanjuHeroReveal 0.7s cubic-bezier(0.16, 1, 0.3, 1) both;
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+          .iyanju-hero-reveal {
+            animation: none;
+          }
+        }
+      `}</style>
 
       {/* ====================================================== */}
       {/* TOP HEADER                                             */}
@@ -1988,13 +2094,13 @@ const Dashboard = () => {
               aria-label="Go to IyanjuPay home"
             >
               <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-white shadow-md">
-                <span className="text-sm font-black text-purple-700">
+                <span className="font-display text-sm font-bold text-purple-700">
                   IP
                 </span>
               </div>
 
               <div className="hidden sm:block">
-                <p className="text-lg font-black tracking-tight">
+                <p className="font-display text-lg font-bold tracking-tight">
                   IyanjuPay
                 </p>
 
@@ -2078,12 +2184,8 @@ const Dashboard = () => {
         <section className="mb-6">
           <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
             <div>
-              <p className="mb-1 text-sm font-medium text-purple-600">
-                Welcome back
-              </p>
-
-              <h1 className="text-2xl font-black tracking-tight text-slate-950 sm:text-3xl">
-                Hello, {firstName} 👋
+              <h1 className="font-display text-2xl font-bold tracking-tight text-slate-950 sm:text-3xl">
+                {getGreeting()}, {firstName}
               </h1>
 
               <p className="mt-1 text-sm text-slate-500 sm:text-base">
@@ -2091,9 +2193,8 @@ const Dashboard = () => {
               </p>
             </div>
 
-            <div className="hidden rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-500 shadow-sm sm:flex sm:items-center sm:gap-2">
+            <div className="hidden items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-500 shadow-sm sm:flex">
               <span className="h-2 w-2 rounded-full bg-emerald-500" />
-
               Account active
             </div>
           </div>
@@ -2104,13 +2205,46 @@ const Dashboard = () => {
         {/* ==================================================== */}
 
         <section className="mb-7">
-          <Card className="relative overflow-hidden rounded-[28px] border-0 bg-gradient-to-br from-[#4c1d95] via-[#6d28d9] to-[#2563eb] text-white shadow-[0_20px_60px_rgba(79,70,229,0.22)]">
+          <Card className="iyanju-hero-reveal relative overflow-hidden rounded-[28px] border-0 bg-gradient-to-br from-[#4c1d95] via-[#6d28d9] to-[#2563eb] text-white shadow-[0_20px_60px_rgba(79,70,229,0.22)]">
 
-            {/* Decorative shapes */}
+            {/*
+              A quiet adire-inspired watermark — the tie-dye
+              resist patterns (dots, cowries, small diamonds)
+              common in Yoruba textiles — standing in for the
+              generic blurred-circle decoration. This is the one
+              bold, brand-specific move on the page; everything
+              else stays disciplined.
+            */}
+            <svg
+              className="pointer-events-none absolute inset-0 h-full w-full opacity-[0.08]"
+              aria-hidden="true"
+            >
+              <defs>
+                <pattern
+                  id="iyanjuAdireMotif"
+                  width="48"
+                  height="48"
+                  patternUnits="userSpaceOnUse"
+                  patternTransform="rotate(6)"
+                >
+                  <circle cx="8" cy="10" r="2.4" fill="white" />
+                  <circle cx="32" cy="6" r="1.4" fill="white" />
+                  <path
+                    d="M22 30 L26.5 37 L17.5 37 Z"
+                    fill="white"
+                  />
+                  <circle cx="40" cy="34" r="2" fill="white" />
+                  <circle cx="14" cy="40" r="1.2" fill="white" />
+                </pattern>
+              </defs>
+              <rect
+                width="100%"
+                height="100%"
+                fill="url(#iyanjuAdireMotif)"
+              />
+            </svg>
 
-            <div className="pointer-events-none absolute -right-20 -top-20 h-56 w-56 rounded-full bg-white/10" />
-
-            <div className="pointer-events-none absolute -bottom-24 right-24 h-48 w-48 rounded-full bg-white/5" />
+            <div className="pointer-events-none absolute -bottom-24 -right-16 h-64 w-64 rounded-full bg-white/5 blur-2xl" />
 
             <CardContent className="relative p-5 sm:p-7">
 
@@ -2122,16 +2256,16 @@ const Dashboard = () => {
                   <div>
                     <div className="flex items-center gap-2">
                       <p className="text-sm font-medium text-purple-100">
-                        Available Balance
+                        Available balance
                       </p>
 
-                      <span className="rounded-full bg-white/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-purple-100">
+                      <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-bold text-purple-100">
                         NGN
                       </span>
                     </div>
 
                     <div className="mt-2 flex items-center gap-3">
-                      <span className="text-3xl font-black tracking-tight sm:text-4xl">
+                      <span className="font-display text-3xl font-bold tracking-tight sm:text-[42px]">
                         ₦
                         {showBalance
                           ? formattedBalance
@@ -2239,16 +2373,14 @@ const Dashboard = () => {
         {/* ==================================================== */}
 
         <section className="mb-8">
-          <div className="mb-3 flex items-center justify-between">
-            <div>
-              <h2 className="text-lg font-black text-slate-950">
-                Quick Actions
-              </h2>
+          <div className="mb-3">
+            <h2 className="font-display text-lg font-bold text-slate-950">
+              Quick actions
+            </h2>
 
-              <p className="text-xs text-slate-500">
-                Get things done faster
-              </p>
-            </div>
+            <p className="text-xs text-slate-500">
+              Get things done faster
+            </p>
           </div>
 
           <div className="grid grid-cols-4 gap-2 sm:gap-3">
@@ -2278,9 +2410,9 @@ const Dashboard = () => {
                   services[1]
                 )
               }
-              className="group rounded-2xl border border-slate-200 bg-white p-3 shadow-sm transition hover:-translate-y-0.5 hover:border-purple-200 hover:shadow-md sm:p-4"
+              className="group rounded-2xl border border-slate-200 bg-white p-3 shadow-sm transition hover:-translate-y-0.5 hover:border-violet-200 hover:shadow-md sm:p-4"
             >
-              <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-2xl bg-purple-50 text-purple-600 transition group-hover:scale-105">
+              <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-2xl bg-violet-50 text-violet-600 transition group-hover:scale-105">
                 <Wifi className="h-5 w-5" />
               </div>
 
@@ -2335,7 +2467,7 @@ const Dashboard = () => {
         <section className="mb-8">
           <div className="mb-4 flex items-end justify-between">
             <div>
-              <h2 className="text-xl font-black tracking-tight text-slate-950">
+              <h2 className="font-display text-xl font-bold tracking-tight text-slate-950">
                 Services
               </h2>
 
@@ -2344,58 +2476,213 @@ const Dashboard = () => {
               </p>
             </div>
 
-            <span className="hidden rounded-full bg-purple-50 px-3 py-1 text-xs font-bold text-purple-700 sm:block">
+            <span className="hidden rounded-full bg-violet-50 px-3 py-1 text-xs font-bold text-violet-700 sm:block">
               9 available
             </span>
           </div>
 
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
             {services.map(
-              (
-                service,
-                index
-              ) => (
-                <div
+              (service, index) => (
+                <button
                   key={`${service.type}-${index}`}
-                  className={
-                    service.available
-                      ? "transition hover:-translate-y-0.5"
-                      : "opacity-80"
+                  type="button"
+                  onClick={() =>
+                    handleServiceClick(
+                      service
+                    )
                   }
+                  className={[
+                    "group flex flex-col items-start gap-3 rounded-2xl border border-slate-200/80 bg-white p-4 text-left transition",
+                    service.available
+                      ? "hover:-translate-y-0.5 hover:border-violet-200 hover:shadow-[0_10px_30px_rgba(109,40,217,0.08)]"
+                      : "opacity-70",
+                  ].join(" ")}
                 >
-                  <ServiceCard
-                    title={
-                      service.title
-                    }
-                    description={
-                      service.description
-                    }
-                    icon={
-                      service.icon
-                    }
-                    color={
-                      service.color
-                    }
-                    onClick={() =>
-                      handleServiceClick(
-                        service
-                      )
-                    }
-                  />
-                </div>
+                  <div
+                    className={`flex h-11 w-11 items-center justify-center rounded-xl transition group-hover:scale-105 ${service.tint}`}
+                  >
+                    <service.icon className="h-5 w-5" />
+                  </div>
+
+                  <div>
+                    <p className="text-sm font-bold text-slate-900">
+                      {service.title}
+                    </p>
+
+                    <p className="mt-0.5 text-xs text-slate-500">
+                      {service.description}
+                    </p>
+                  </div>
+                </button>
               )
             )}
           </div>
         </section>
 
         {/* ==================================================== */}
-        {/* ACCOUNT INSIGHTS                                     */}
+        {/* RECENT ACTIVITY                                      */}
+        {/* ==================================================== */}
+
+        <section className="mb-8">
+          <div className="mb-4 flex items-end justify-between">
+            <div>
+              <h2 className="font-display text-xl font-bold tracking-tight text-slate-950">
+                Recent activity
+              </h2>
+
+              <p className="mt-1 text-sm text-slate-500">
+                Your latest transactions
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={() =>
+                setCurrentPage(
+                  "history"
+                )
+              }
+              className="flex items-center gap-1 text-sm font-semibold text-violet-700 hover:text-violet-800"
+            >
+              View all
+              <ChevronRight className="h-4 w-4" />
+            </button>
+          </div>
+
+          <Card className="rounded-3xl border-slate-200/80 bg-white shadow-sm">
+            <CardContent className="p-0">
+              {statsLoading ? (
+                <div className="divide-y divide-slate-100">
+                  {[1, 2, 3].map(
+                    (row) => (
+                      <div
+                        key={row}
+                        className="flex items-center gap-3 px-5 py-4"
+                      >
+                        <div className="h-10 w-10 animate-pulse rounded-xl bg-slate-100" />
+
+                        <div className="flex-1">
+                          <div className="h-3.5 w-32 animate-pulse rounded bg-slate-100" />
+
+                          <div className="mt-2 h-3 w-20 animate-pulse rounded bg-slate-100" />
+                        </div>
+
+                        <div className="h-4 w-16 animate-pulse rounded bg-slate-100" />
+                      </div>
+                    )
+                  )}
+                </div>
+              ) : recentTransactions.length ===
+                0 ? (
+                <div className="p-8 text-center">
+                  <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-violet-50 text-violet-600">
+                    <Receipt className="h-5 w-5" />
+                  </div>
+
+                  <p className="mt-3 text-sm font-semibold text-slate-700">
+                    No transactions yet
+                  </p>
+
+                  <p className="mt-1 text-xs text-slate-500">
+                    Your activity will show up here once you make your first payment.
+                  </p>
+                </div>
+              ) : (
+                <div className="divide-y divide-slate-100">
+                  {recentTransactions.map(
+                    (transaction) => {
+                      const {
+                        Icon,
+                        title,
+                        isOut,
+                        status,
+                      } =
+                        describeTransaction(
+                          transaction
+                        );
+
+                      const amount =
+                        Number(
+                          transaction.amount
+                        );
+
+                      return (
+                        <div
+                          key={
+                            transaction.id
+                          }
+                          className="flex items-center gap-3 px-5 py-4"
+                        >
+                          <div
+                            className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${
+                              isOut
+                                ? "bg-slate-100 text-slate-600"
+                                : "bg-emerald-50 text-emerald-600"
+                            }`}
+                          >
+                            <Icon className="h-5 w-5" />
+                          </div>
+
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-sm font-semibold text-slate-900">
+                              {title}
+                            </p>
+
+                            <p className="mt-0.5 text-xs text-slate-500">
+                              {formatTransactionDate(
+                                transaction.created_at
+                              )}
+                              {status ===
+                                "pending" &&
+                                " · Pending"}
+                              {status ===
+                                "failed" &&
+                                " · Failed"}
+                            </p>
+                          </div>
+
+                          <p
+                            className={`shrink-0 text-sm font-bold ${
+                              isOut
+                                ? "text-slate-900"
+                                : "text-emerald-600"
+                            }`}
+                          >
+                            {isOut
+                              ? "−"
+                              : "+"}
+                            ₦
+                            {Number.isFinite(
+                              amount
+                            )
+                              ? amount.toLocaleString(
+                                  "en-NG",
+                                  {
+                                    minimumFractionDigits: 0,
+                                    maximumFractionDigits: 2,
+                                  }
+                                )
+                              : "0"}
+                          </p>
+                        </div>
+                      );
+                    }
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </section>
+
+        {/* ==================================================== */}
+        {/* ACCOUNT OVERVIEW                                     */}
         {/* ==================================================== */}
 
         <section className="mb-8">
           <div className="mb-4">
-            <h2 className="text-xl font-black tracking-tight text-slate-950">
-              Account Overview
+            <h2 className="font-display text-xl font-bold tracking-tight text-slate-950">
+              Account overview
             </h2>
 
             <p className="mt-1 text-sm text-slate-500">
@@ -2411,25 +2698,24 @@ const Dashboard = () => {
               <CardContent className="p-5">
                 <div className="flex items-start justify-between">
                   <div>
-                    <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-                      This Month
+                    <p className="text-xs font-medium text-slate-500">
+                      Spent this month
                     </p>
 
-                    <p className="mt-2 text-2xl font-black tracking-tight text-slate-950">
-                      {statsLoading
-                        ? "..."
-                        : `₦${stats.monthlySpent.toLocaleString(
-                            "en-NG",
-                            {
-                              minimumFractionDigits: 0,
-                              maximumFractionDigits: 2,
-                            }
-                          )}`}
-                    </p>
-
-                    <p className="mt-1 text-xs text-slate-500">
-                      Total spent
-                    </p>
+                    {statsLoading ? (
+                      <div className="mt-2 h-7 w-28 animate-pulse rounded-md bg-slate-100" />
+                    ) : (
+                      <p className="font-display mt-2 text-2xl font-bold tracking-tight text-slate-950">
+                        ₦
+                        {stats.monthlySpent.toLocaleString(
+                          "en-NG",
+                          {
+                            minimumFractionDigits: 0,
+                            maximumFractionDigits: 2,
+                          }
+                        )}
+                      </p>
+                    )}
                   </div>
 
                   <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-red-50 text-red-600">
@@ -2445,19 +2731,17 @@ const Dashboard = () => {
               <CardContent className="p-5">
                 <div className="flex items-start justify-between">
                   <div>
-                    <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-                      Activity
-                    </p>
-
-                    <p className="mt-2 text-2xl font-black tracking-tight text-slate-950">
-                      {statsLoading
-                        ? "..."
-                        : stats.monthlyTransactions.toLocaleString()}
-                    </p>
-
-                    <p className="mt-1 text-xs text-slate-500">
+                    <p className="text-xs font-medium text-slate-500">
                       Transactions this month
                     </p>
+
+                    {statsLoading ? (
+                      <div className="mt-2 h-7 w-16 animate-pulse rounded-md bg-slate-100" />
+                    ) : (
+                      <p className="font-display mt-2 text-2xl font-bold tracking-tight text-slate-950">
+                        {stats.monthlyTransactions.toLocaleString()}
+                      </p>
+                    )}
                   </div>
 
                   <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">
@@ -2473,19 +2757,17 @@ const Dashboard = () => {
               <CardContent className="p-5">
                 <div className="flex items-start justify-between">
                   <div>
-                    <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-                      Reliability
-                    </p>
-
-                    <p className="mt-2 text-2xl font-black tracking-tight text-slate-950">
-                      {statsLoading
-                        ? "..."
-                        : `${stats.successRate}%`}
-                    </p>
-
-                    <p className="mt-1 text-xs text-slate-500">
+                    <p className="text-xs font-medium text-slate-500">
                       Successful transactions
                     </p>
+
+                    {statsLoading ? (
+                      <div className="mt-2 h-7 w-14 animate-pulse rounded-md bg-slate-100" />
+                    ) : (
+                      <p className="font-display mt-2 text-2xl font-bold tracking-tight text-slate-950">
+                        {stats.successRate}%
+                      </p>
+                    )}
                   </div>
 
                   <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600">
@@ -2508,7 +2790,7 @@ const Dashboard = () => {
               <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
 
                 <div className="flex items-start gap-3">
-                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-purple-50 text-purple-600">
+                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-violet-50 text-violet-600">
                     <Shield className="h-5 w-5" />
                   </div>
 
@@ -2518,7 +2800,7 @@ const Dashboard = () => {
                     </p>
 
                     <p className="mt-1 max-w-xl text-xs leading-5 text-slate-500">
-                      IyanjuPay uses secure authentication and payment authorization to protect your money and transactions.
+                      Every payment is authorized with your PIN, and your funds stay secured behind bank-grade authentication.
                     </p>
                   </div>
                 </div>
@@ -2532,7 +2814,7 @@ const Dashboard = () => {
                   }
                   className="rounded-xl border-slate-200 font-semibold"
                 >
-                  Security Settings
+                  Security settings
                 </Button>
 
               </div>

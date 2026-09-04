@@ -14,8 +14,6 @@ import {
   RefreshCw,
   ShieldCheck,
   Smartphone,
-  Tv,
-  Zap,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -1163,8 +1161,8 @@ function ProviderCard({
       onClick={onClick}
       disabled={disabled}
       className={[
-        "group relative w-full overflow-hidden rounded-2xl border bg-white p-3 text-left transition-all duration-200",
-        "hover:-translate-y-0.5 hover:shadow-lg",
+        "group relative w-full min-w-0 overflow-hidden rounded-xl border bg-white p-2 text-center transition-all duration-200",
+        "hover:-translate-y-0.5 hover:shadow-md",
         selected
           ? "border-[#6D28D9] bg-[#6D28D9]/[0.03] ring-2 ring-[#6D28D9]/15"
           : "border-slate-200 hover:border-[#6D28D9]/30",
@@ -1174,18 +1172,18 @@ function ProviderCard({
       ].join(" ")}
     >
       {selected && (
-        <span className="absolute right-2 top-2 z-10 flex h-5 w-5 items-center justify-center rounded-full bg-gradient-to-r from-[#4C1D95] to-[#2563EB] text-white shadow-sm">
-          <Check className="h-3 w-3 stroke-[3]" />
+        <span className="absolute right-1.5 top-1.5 z-10 flex h-4 w-4 items-center justify-center rounded-full bg-gradient-to-r from-[#4C1D95] to-[#2563EB] text-white shadow-sm">
+          <Check className="h-2.5 w-2.5 stroke-[3]" />
         </span>
       )}
 
-      <div className="mx-auto flex h-12 w-12 items-center justify-center overflow-hidden rounded-xl border border-slate-100 bg-white shadow-sm">
+      <div className="mx-auto flex h-9 w-9 items-center justify-center overflow-hidden rounded-lg border border-slate-100 bg-white shadow-sm">
         {logo ? (
           <img
             src={logo}
             alt=""
             aria-hidden="true"
-            className="h-8 w-8 object-contain"
+            className="h-6 w-6 object-contain"
             loading="eager"
             referrerPolicy="no-referrer"
             onError={(event) => {
@@ -1209,7 +1207,7 @@ function ProviderCard({
         ) : null}
 
         <span
-          className="items-center justify-center text-sm font-black text-[#4C1D95]"
+          className="items-center justify-center text-[10px] font-black text-[#4C1D95]"
           style={{
             display: logo
               ? "none"
@@ -1222,7 +1220,7 @@ function ProviderCard({
         </span>
       </div>
 
-      <p className="mt-2 truncate text-center text-[11px] font-bold text-slate-700 sm:text-xs">
+      <p className="mt-1.5 truncate px-0.5 text-center text-[10px] font-bold leading-tight text-slate-700 sm:text-[11px]">
         {name}
       </p>
     </button>
@@ -3427,48 +3425,18 @@ const ServicePayment = ({
         ) : (
           <div className="space-y-5">
             {/* ==================================================
-                INTRO
-                ================================================== */}
-
-            <div className="rounded-3xl bg-gradient-to-r from-[#4C1D95] via-[#6D28D9] to-[#2563EB] p-5 text-white shadow-lg sm:p-6">
-              <div className="flex items-start gap-4">
-                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white/15">
-                  {isCable ? (
-                    <Tv className="h-6 w-6" />
-                  ) : isElectricity ? (
-                    <Zap className="h-6 w-6" />
-                  ) : (
-                    <Smartphone className="h-6 w-6" />
-                  )}
-                </div>
-
-                <div>
-                  <h2 className="text-lg font-black">
-                    {service.title}
-                  </h2>
-
-                  <p className="mt-1 text-sm leading-6 text-white/75">
-                    Select your service provider first,
-                    then enter your details and choose
-                    what you want to purchase.
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            {/* ==================================================
                 STEP 1 — PROVIDER
                 ================================================== */}
 
-            <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-              <div className="mb-4 flex items-start justify-between gap-3">
-                <div>
+            <section className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm sm:p-4">
+              <div className="mb-3 flex items-center justify-between gap-2">
+                <div className="min-w-0">
                   <div className="flex items-center gap-2">
-                    <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[#4C1D95] text-xs font-black text-white">
+                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#4C1D95] text-[11px] font-black text-white">
                       1
                     </span>
 
-                    <Label className="text-base font-black text-slate-900">
+                    <Label className="truncate text-sm font-black text-slate-900 sm:text-base">
                       {serviceUsesNetwork(
                         serviceType
                       )
@@ -3479,7 +3447,7 @@ const ServicePayment = ({
                     </Label>
                   </div>
 
-                  <p className="ml-9 mt-1 text-xs text-slate-500">
+                  <p className="ml-8 mt-0.5 text-[10px] text-slate-500 sm:text-xs">
                     Select your preferred service provider.
                   </p>
                 </div>
@@ -3496,25 +3464,26 @@ const ServicePayment = ({
                       processingPayment ||
                       verifyingPin
                     }
-                    className="h-8 rounded-lg px-2 text-[#4C1D95]"
+                    className="h-7 shrink-0 rounded-lg px-2 text-xs text-[#4C1D95]"
                   >
-                    <RefreshCw className="mr-1 h-3.5 w-3.5" />
+                    <RefreshCw className="mr-1 h-3 w-3" />
                     Refresh
                   </Button>
                 )}
               </div>
 
               {loadingProviders ? (
-                <div className="flex min-h-[120px] items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50">
+                <div className="flex min-h-[90px] items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50">
                   <div className="text-center">
-                    <Loader2 className="mx-auto h-6 w-6 animate-spin text-[#6D28D9]" />
-                    <p className="mt-2 text-sm font-medium text-slate-500">
+                    <Loader2 className="mx-auto h-5 w-5 animate-spin text-[#6D28D9]" />
+
+                    <p className="mt-1.5 text-xs font-medium text-slate-500">
                       Loading providers...
                     </p>
                   </div>
                 </div>
               ) : providers.length ? (
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <div className="grid grid-cols-4 gap-2 sm:grid-cols-5 md:grid-cols-6">
                   {providers.map(
                     (
                       provider,
@@ -3565,8 +3534,8 @@ const ServicePayment = ({
                   )}
                 </div>
               ) : (
-                <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-6 text-center">
-                  <p className="text-sm font-medium text-slate-500">
+                <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-5 text-center">
+                  <p className="text-xs font-medium text-slate-500 sm:text-sm">
                     No providers are currently available.
                   </p>
 
@@ -3577,9 +3546,9 @@ const ServicePayment = ({
                     onClick={() =>
                       void loadProviders()
                     }
-                    className="mt-3 rounded-xl"
+                    className="mt-2.5 h-8 rounded-lg px-3 text-xs"
                   >
-                    <RefreshCw className="mr-2 h-4 w-4" />
+                    <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
                     Try Again
                   </Button>
                 </div>

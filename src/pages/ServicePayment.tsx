@@ -2796,7 +2796,6 @@ export default function ServicePayment({
           actualHotPlan && (
             <span className="absolute right-1 top-1 inline-flex items-center gap-0.5 rounded-full bg-red-500 px-1.5 py-0.5 text-[8px] font-extrabold uppercase leading-none text-white shadow-sm">
               <Flame className="h-2.5 w-2.5" />
-              HOT
             </span>
           )}
 

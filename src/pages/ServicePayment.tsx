@@ -2794,7 +2794,7 @@ export default function ServicePayment({
       >
         {showHotBadge &&
           actualHotPlan && (
-            <span className="absolute right-1 top-1 inline-flex items-center gap-0.5 rounded-full bg-yellow-500 px-1.5 py-0.5 text-[8px] font-extrabold uppercase leading-none text-white shadow-sm">
+            <span className="absolute right-1 top-1 inline-flex items-center gap-0.5 rounded-full bg-orange-500 px-1.5 py-0.5 text-[8px] font-extrabold uppercase leading-none text-white shadow-sm">
               <Flame className="h-2.5 w-2.5" />
             </span>
           )}

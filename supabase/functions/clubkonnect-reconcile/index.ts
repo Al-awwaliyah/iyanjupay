@@ -1,2143 +1,651 @@
-import {
-  corsHeaders,
-  json,
-  adminClient,
-} from "../_shared/auth.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-import {
-  createClient,
-} from "https://esm.sh/@supabase/supabase-js@2";
+const BASE_URL = "https://www.nellobytesystems.com";
 
+const CORS_HEADERS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Content-Type": "application/json",
+};
 
-/* ================================================================
-   TYPES
-   ================================================================ */
+type JsonObject = Record<string, any>;
+type State = "successful" | "failed" | "pending";
 
-type ReconcileState =
-  | "successful"
-  | "failed"
-  | "pending";
-
-type JsonObject =
-  Record<string, unknown>;
-
-
-/* ================================================================
-   ENVIRONMENT
-   ================================================================ */
-
-const SUPABASE_URL =
-  Deno.env.get(
-    "SUPABASE_URL",
-  ) ?? "";
-
-const SUPABASE_ANON_KEY =
-  Deno.env.get(
-    "SUPABASE_ANON_KEY",
-  ) ?? "";
-
-const CLUBKONNECT_BASE_URL =
-  "https://www.nellobytesystems.com";
-
-
-/* ================================================================
-   RESPONSE
-   ================================================================ */
-
-function response(
-  body: unknown,
-  status = 200,
-) {
-  return new Response(
-    JSON.stringify(body),
-    {
-      status,
-      headers: {
-        ...corsHeaders,
-        "Content-Type":
-          "application/json",
-      },
-    },
-  );
+function json(body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: CORS_HEADERS,
+  });
 }
 
-
-/* ================================================================
-   STRING
-   ================================================================ */
-
-function s(
-  value: unknown,
-): string {
-  if (
-    value === null ||
-    value === undefined
-  ) {
-    return "";
-  }
-
-  return String(value).trim();
+function s(value: unknown): string {
+  return String(value ?? "").trim();
 }
 
-
-/* ================================================================
-   NUMBER
-   ================================================================ */
-
-function n(
-  value: unknown,
-): number | null {
-  const number =
-    Number(value);
-
-  return Number.isFinite(number)
-    ? number
-    : null;
+function n(value: unknown): number {
+  const valueNumber = Number(value);
+  return Number.isFinite(valueNumber) ? valueNumber : 0;
 }
 
+function normalize(value: unknown): string {
+  return s(value).toLowerCase().replace(/[\s-]+/g, "_");
+}
 
-/* ================================================================
-   FIRST VALUE
-   ================================================================ */
+function statusCode(body: JsonObject): number | null {
+  const candidates = [
+    body?.statuscode,
+    body?.StatusCode,
+    body?.statusCode,
+    body?.code,
+    body?.Code,
+    body?.data?.statuscode,
+    body?.data?.StatusCode,
+  ];
 
-function first(
-  ...values: unknown[]
-): unknown {
-  for (
-    const value of values
-  ) {
-    if (
-      value !== null &&
-      value !== undefined &&
-      s(value) !== ""
-    ) {
-      return value;
-    }
+  for (const value of candidates) {
+    const parsed = Number(value);
+    if (Number.isInteger(parsed)) return parsed;
   }
 
   return null;
 }
 
-
-/* ================================================================
-   OBJECT
-   ================================================================ */
-
-function object(
-  value: unknown,
-): JsonObject {
-  if (
-    value &&
-    typeof value === "object" &&
-    !Array.isArray(value)
-  ) {
-    return value as JsonObject;
-  }
-
-  return {};
-}
-
-
-/* ================================================================
-   STATUS CODE
-   ================================================================ */
-
-function statusCode(
-  body: any,
-): number | null {
-  return n(
-    first(
-      body?.statuscode,
-      body?.StatusCode,
-      body?.statusCode,
-      body?.STATUSCODE,
-      body?.code,
-      body?.Code,
-    ),
-  );
-}
-
-
-/* ================================================================
-   STATUS TEXT
-   ================================================================ */
-
-function statusText(
-  body: any,
-): string {
+function statusText(body: JsonObject): string {
   return s(
-    first(
-      body?.orderstatus,
-      body?.OrderStatus,
-      body?.status,
-      body?.Status,
-      body?.order_status,
-      body?.message,
-    ),
+    body?.orderstatus ??
+      body?.OrderStatus ??
+      body?.status ??
+      body?.Status ??
+      body?.message ??
+      body?.Message ??
+      body?.orderremark ??
+      body?.OrderRemark,
   ).toUpperCase();
 }
 
-
-/* ================================================================
-   ORDER ID
-   ================================================================ */
-
-function orderId(
-  body: any,
-): string {
-  return s(
-    first(
-      body?.orderid,
-      body?.OrderID,
-      body?.orderId,
-      body?.order_id,
-      body?.order,
-    ),
-  );
-}
-
-
-/* ================================================================
-   REQUEST ID
-   ================================================================ */
-
-function requestId(
-  body: any,
-): string {
-  return s(
-    first(
-      body?.requestid,
-      body?.RequestID,
-      body?.requestId,
-      body?.request_id,
-    ),
-  );
-}
-
-
-/* ================================================================
-   ORDER REMARK
-   ================================================================ */
-
-function orderRemark(
-  body: any,
-): string {
-  return s(
-    first(
-      body?.orderremark,
-      body?.OrderRemark,
-      body?.remark,
-      body?.Remark,
-      body?.message,
-    ),
-  );
-}
-
-
-/* ================================================================
-   CLASSIFICATION
-   ================================================================ */
-
-function classify(
-  body: any,
-  httpOk: boolean,
-): {
-  state: ReconcileState;
+function classify(body: JsonObject, httpOk: boolean): {
+  state: State;
   code: number | null;
   text: string;
 } {
-  const code =
-    statusCode(body);
+  const code = statusCode(body);
+  const text = statusText(body);
 
-  const text =
-    statusText(body);
-
-  /*
-   * ClubKonnect's definitive success
-   * response is status code 200.
-   *
-   * Never classify a generic HTTP 200 as
-   * a successful financial transaction.
-   */
-  if (
-    httpOk &&
-    code === 200
-  ) {
-    return {
-      state:
-        "successful",
-      code,
-      text,
-    };
+  if (httpOk && code === 200) {
+    return { state: "successful", code, text };
   }
 
-  /*
-   * Explicit completed-but-network-
-   * unresponsive / unspecified states
-   * require reconciliation rather than
-   * immediate wallet refund.
-   */
-  if (
-    code === 201 ||
-    code === 299
-  ) {
-    return {
-      state:
-        "pending",
-      code,
-      text,
-    };
+  if (code === 201 || code === 299) {
+    return { state: "pending", code, text };
   }
 
-  /*
-   * Received / processing states.
-   */
-  if (
-    code === 100 ||
-    code === 199 ||
-    code === 300 ||
-    code === 399
-  ) {
-    return {
-      state:
-        "pending",
-      code,
-      text,
-    };
+  if (code === 100 || code === 199 || code === 300 || code === 399) {
+    return { state: "pending", code, text };
   }
 
-  /*
-   * ClubKonnect's 600-range represents
-   * on-hold/network conditions generally.
-   *
-   * Do not refund merely because the
-   * transaction has a 600-series status.
-   */
-  if (
-    code !== null &&
-    code >= 600 &&
-    code <= 699
-  ) {
-    /*
-     * 602 specifically represents a
-     * provider-side cancellation/refund
-     * condition and is handled as failed.
-     */
-    if (code === 602) {
-      return {
-        state:
-          "failed",
-        code,
-        text,
-      };
-    }
-
-    return {
-      state:
-        "pending",
-      code,
-      text,
-    };
+  if (code !== null && code >= 600 && code <= 699) {
+    return { state: "pending", code, text };
   }
 
-  /*
-   * 400-599 are failure/cancellation
-   * responses.
-   */
-  if (
-    code !== null &&
-    code >= 400 &&
-    code <= 599
-  ) {
-    return {
-      state:
-        "failed",
-      code,
-      text,
-    };
+  if (code !== null && code >= 400 && code <= 599) {
+    return { state: "failed", code, text };
   }
 
-  /*
-   * Text fallback only applies when
-   * numeric status is unavailable.
-   */
-  if (
-    code === null
-  ) {
+  const failed = new Set([
+    "FAILED",
+    "FAILURE",
+    "ORDER_ERROR",
+    "ORDER_CANCELLED",
+    "CANCELLED",
+    "CANCELED",
+    "DECLINED",
+    "REJECTED",
+    "TRANSACTION_FAILED",
+    "INVALID_TRANSACTION",
+  ]);
+
+  if (failed.has(text)) {
+    return { state: "failed", code, text };
+  }
+
+  return { state: "pending", code, text };
+}
+
+function orderId(body: JsonObject): string | null {
+  const value =
+    body?.orderid ??
+    body?.OrderID ??
+    body?.orderId ??
+    body?.data?.orderid ??
+    body?.data?.OrderID;
+  return s(value) || null;
+}
+
+function requestId(body: JsonObject): string | null {
+  const value =
+    body?.requestid ??
+    body?.RequestID ??
+    body?.requestId ??
+    body?.data?.requestid ??
+    body?.data?.RequestID;
+  return s(value) || null;
+}
+
+function safeResponse(body: JsonObject): JsonObject {
+  const output: JsonObject = {};
+  for (const [key, value] of Object.entries(body ?? {})) {
+    const lower = key.toLowerCase();
     if (
-      text.includes(
-        "ORDER_COMPLETED",
-      ) ||
-      text === "SUCCESS" ||
-      text === "SUCCESSFUL" ||
-      text === "COMPLETED"
+      lower.includes("apikey") ||
+      lower.includes("secret") ||
+      lower.includes("password") ||
+      lower.includes("token")
     ) {
-      /*
-       * Do not trust a textual completed
-       * response alone unless the provider
-       * explicitly supplies numeric 200.
-       */
-      return {
-        state:
-          "pending",
-        code,
-        text,
-      };
+      continue;
     }
 
     if (
-      text.includes(
-        "ORDER_ERROR",
-      ) ||
-      text.includes(
-        "ORDER_CANCELLED",
-      ) ||
-      text === "FAILED" ||
-      text === "FAILURE" ||
-      text === "CANCELLED"
+      value === null ||
+      typeof value === "string" ||
+      typeof value === "number" ||
+      typeof value === "boolean" ||
+      (typeof value === "object" && value !== null)
     ) {
-      return {
-        state:
-          "failed",
-        code,
-        text,
-      };
+      output[key] = value;
     }
   }
-
-  return {
-    state:
-      "pending",
-    code,
-    text,
-  };
+  return output;
 }
 
-
-/* ================================================================
-   CREDENTIALS
-   ================================================================ */
-
-function credentials() {
-  const userId =
-    s(
-      Deno.env.get(
-        "CLUBKONNECT_USER_ID",
-      ) ??
-      Deno.env.get(
-        "CLUBKONNECT_USERID",
-      ),
-    );
-
-  const apiKey =
-    s(
-      Deno.env.get(
-        "CLUBKONNECT_API_KEY",
-      ) ??
-      Deno.env.get(
-        "CLUBKONNECT_APIKEY",
-      ),
-    );
-
-  if (
-    !userId ||
-    !apiKey
-  ) {
-    throw new Error(
-      "ClubKonnect credentials are not configured.",
-    );
-  }
-
-  return {
-    userId,
-    apiKey,
-  };
-}
-
-
-/* ================================================================
-   CLUBKONNECT REQUEST
-   ================================================================ */
-
-async function clubKonnectRequest(
-  params: Record<
-    string,
-    unknown
-  >,
+async function providerQuery(
+  userId: string,
+  apiKey: string,
+  params: Record<string, string>,
 ) {
-  const {
-    userId,
-    apiKey,
-  } =
-    credentials();
+  const url = new URL(`${BASE_URL}/APIQueryV1.asp`);
+  url.searchParams.set("UserID", userId);
+  url.searchParams.set("APIKey", apiKey);
 
-  const url =
-    new URL(
-      `${CLUBKONNECT_BASE_URL}/APIQueryV1.asp`,
-    );
-
-  url.searchParams.set(
-    "UserID",
-    userId,
-  );
-
-  url.searchParams.set(
-    "APIKey",
-    apiKey,
-  );
-
-  for (
-    const [
-      key,
-      value,
-    ] of Object.entries(
-      params,
-    )
-  ) {
-    if (
-      value !== null &&
-      value !== undefined &&
-      s(value) !== ""
-    ) {
-      url.searchParams.set(
-        key,
-        s(value),
-      );
-    }
+  for (const [key, value] of Object.entries(params)) {
+    if (value) url.searchParams.set(key, value);
   }
 
-  console.log(
-    "ClubKonnect reconciliation request",
-    {
-      endpoint:
-        "APIQueryV1.asp",
-      parameter_names:
-        Object.keys(params),
-    },
-  );
+  const response = await fetch(url.toString(), {
+    method: "GET",
+    headers: { Accept: "application/json" },
+  });
 
-  const providerResponse =
-    await fetch(
-      url.toString(),
-      {
-        method:
-          "GET",
-        headers: {
-          Accept:
-            "application/json",
-        },
-      },
-    );
-
-  const text =
-    await providerResponse.text();
-
-  let body: any = {};
+  const raw = await response.text();
+  let body: JsonObject = {};
 
   try {
-    body =
-      text
-        ? JSON.parse(text)
-        : {};
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      body = parsed;
+    }
   } catch {
-    body = {
-      status:
-        "NON_JSON_RESPONSE",
-      raw:
-        text.slice(
-          0,
-          1000,
-        ),
-    };
+    body = { raw };
   }
 
-  console.log(
-    "ClubKonnect reconciliation response",
-    {
-      http_status:
-        providerResponse.status,
+  return { ok: response.ok, status: response.status, body };
+}
 
-      ok:
-        providerResponse.ok,
+async function isAdmin(admin: any, userId: string, write = false) {
+  const allowedRoles = write
+    ? ["super_admin", "operations_admin", "finance_admin"]
+    : [
+        "super_admin",
+        "operations_admin",
+        "finance_admin",
+        "support_admin",
+        "compliance_admin",
+        "read_only_admin",
+      ];
 
-      status:
-        statusText(body),
+  const { data, error } = await admin
+    .from("support_admins")
+    .select("role, is_active")
+    .eq("user_id", userId)
+    .eq("is_active", true)
+    .in("role", allowedRoles)
+    .limit(1)
+    .maybeSingle();
 
-      statuscode:
-        statusCode(body),
+  return !error && !!data;
+}
 
-      orderid:
-        orderId(body),
+async function refundWallet(admin: any, transaction: any, reason: string) {
+  const metadata =
+    transaction?.metadata &&
+    typeof transaction.metadata === "object" &&
+    !Array.isArray(transaction.metadata)
+      ? transaction.metadata
+      : {};
 
-      requestid:
-        requestId(body),
+  if (metadata.refunded === true || metadata.refund_completed === true) {
+    return { success: true, alreadyRefunded: true };
+  }
+
+  const userId = s(transaction?.user_id);
+  const amount = n(transaction?.amount);
+  const reference = s(transaction?.reference_number);
+
+  if (!userId || !reference || amount <= 0) {
+    return { success: false, alreadyRefunded: false, error: "Invalid transaction refund data." };
+  }
+
+  const refundReference = `REFUND_${reference}`;
+
+  const { error } = await admin.rpc("refund_wallet", {
+    _user_id: userId,
+    _amount: amount,
+    _description: "ClubKonnect service payment reversal",
+    _idempotency_key: refundReference,
+    _reference: refundReference,
+    _metadata: {
+      original_reference: reference,
+      refund_reference: refundReference,
+      provider: "clubkonnect",
+      reason,
     },
-  );
+  });
 
   return {
-    ok:
-      providerResponse.ok,
-
-    status:
-      providerResponse.status,
-
-    body,
+    success: !error,
+    alreadyRefunded: false,
+    error: error?.message ?? null,
   };
 }
 
-
-/* ================================================================
-   AUTHENTICATE ADMIN USER
-   ================================================================ */
-
-async function authenticateAdmin(
-  req: Request,
-) {
-  const authorization =
-    req.headers.get(
-      "Authorization",
-    );
-
-  if (
-    !authorization ||
-    !authorization
-      .toLowerCase()
-      .startsWith(
-        "bearer ",
-      )
-  ) {
-    throw new Error(
-      "Authentication required.",
-    );
-  }
-
-  if (
-    !SUPABASE_URL ||
-    !SUPABASE_ANON_KEY
-  ) {
-    throw new Error(
-      "Supabase authentication configuration is missing.",
-    );
-  }
-
-  const userClient =
-    createClient(
-      SUPABASE_URL,
-      SUPABASE_ANON_KEY,
-      {
-        global: {
-          headers: {
-            Authorization:
-              authorization,
-          },
-        },
-      },
-    );
-
-  const {
-    data,
-    error,
-  } =
-    await userClient.auth.getUser(
-      authorization.replace(
-        /^Bearer\s+/i,
-        "",
-      ),
-    );
-
-  if (
-    error ||
-    !data.user
-  ) {
-    throw new Error(
-      "Authentication required.",
-    );
-  }
-
-  const user =
-    data.user;
-
-  const admin =
-    adminClient();
-
-  /*
-   * Match the application's existing
-   * support_admins authorization model.
-   */
-  const {
-    data: adminRecord,
-    error:
-      adminError,
-  } =
-    await admin
-      .from(
-        "support_admins",
-      )
-      .select(
-        "id,user_id,role,is_active",
-      )
-      .eq(
-        "user_id",
-        user.id,
-      )
-      .eq(
-        "is_active",
-        true,
-      )
+async function findTransaction(admin: any, reference: string, transactionId?: string) {
+  if (transactionId) {
+    const { data } = await admin
+      .from("transactions")
+      .select("*")
+      .eq("id", transactionId)
+      .eq("provider", "clubkonnect")
       .maybeSingle();
-
-  if (
-    adminError
-  ) {
-    console.error(
-      "Admin authorization lookup failed",
-      adminError,
-    );
-
-    throw new Error(
-      "Unable to verify administrator permissions.",
-    );
+    if (data) return data;
   }
 
-  if (
-    !adminRecord
-  ) {
-    throw new Error(
-      "Administrator access required.",
-    );
-  }
+  const { data: byReference } = await admin
+    .from("transactions")
+    .select("*")
+    .eq("provider", "clubkonnect")
+    .eq("reference_number", reference)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
 
-  const role =
-    s(
-      adminRecord.role,
-    ).toLowerCase();
+  if (byReference) return byReference;
 
-  /*
-   * Read-only administrators can inspect
-   * reconciliation records but cannot alter
-   * transaction financial state.
-   */
-  if (
-    role ===
-    "read_only_admin"
-  ) {
-    throw new Error(
-      "Read-only administrators cannot reconcile transactions.",
-    );
-  }
+  const { data: byProviderReference } = await admin
+    .from("transactions")
+    .select("*")
+    .eq("provider", "clubkonnect")
+    .eq("provider_reference", reference)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
 
-  const allowedRoles =
-    new Set([
-      "super_admin",
-      "operations_admin",
-      "finance_admin",
-      "support_admin",
-      "compliance_admin",
-    ]);
-
-  if (
-    !allowedRoles.has(
-      role,
-    )
-  ) {
-    throw new Error(
-      "You do not have permission to reconcile transactions.",
-    );
-  }
-
-  return {
-    user,
-    adminRecord,
-    role,
-  };
+  return byProviderReference ?? null;
 }
 
-
-/* ================================================================
-   TRANSACTION LOOKUP
-   ================================================================ */
-
-async function findTransaction(
-  admin: any,
-  reference: string,
-) {
-  /*
-   * The admin action accepts the internal
-   * transaction reference, not an arbitrary
-   * provider reference.
-   */
-  const {
-    data,
-    error,
-  } =
-    await admin
-      .from(
-        "transactions",
-      )
-      .select(
-        "*",
-      )
-      .eq(
-        "reference_number",
-        reference,
-      )
-      .eq(
-        "provider",
-        "clubkonnect",
-      )
-      .maybeSingle();
-
-  if (
-    error
-  ) {
-    throw new Error(
-      `Unable to load transaction: ${error.message}`,
-    );
-  }
-
-  if (
-    !data
-  ) {
-    throw new Error(
-      "ClubKonnect transaction was not found.",
-    );
-  }
-
-  return data;
-}
-
-
-/* ================================================================
-   METADATA
-   ================================================================ */
-
-function transactionMetadata(
-  transaction: any,
-): JsonObject {
-  return object(
-    transaction?.metadata,
-  );
-}
-
-
-/* ================================================================
-   PROVIDER IDENTIFIERS
-   ================================================================ */
-
-function storedOrderId(
-  transaction: any,
-): string {
-  const metadata =
-    transactionMetadata(
-      transaction,
-    );
-
-  return s(
-    first(
-      metadata.clubkonnect_order_id,
-      metadata.order_id,
-      metadata.provider_order_id,
-      transaction.provider_reference,
-    ),
-  );
-}
-
-
-function storedRequestId(
-  transaction: any,
-): string {
-  const metadata =
-    transactionMetadata(
-      transaction,
-    );
-
-  return s(
-    first(
-      metadata.clubkonnect_request_id,
-      metadata.request_id,
-      transaction.reference_number,
-    ),
-  );
-}
-
-
-/* ================================================================
-   REFUND
-   ================================================================ */
-
-async function refundWallet(
+async function upsertReconciliation(
   admin: any,
   transaction: any,
-  reason: string,
+  providerBody: JsonObject,
+  classified: ReturnType<typeof classify>,
+  providerOrder: string | null,
+  providerRequest: string,
+  state: State,
 ) {
-  const reference =
-    s(
-      transaction.reference_number,
-    );
-
-  const userId =
-    s(
-      transaction.user_id,
-    );
-
-  const amount =
-    Number(
-      transaction.amount,
-    );
-
-  if (
-    !reference ||
-    !userId ||
-    !Number.isFinite(
-      amount,
-    ) ||
-    amount <= 0
-  ) {
-    throw new Error(
-      "Transaction does not contain a valid refund amount or user.",
-    );
-  }
-
+  const providerReference = providerOrder ?? providerRequest ?? transaction.reference_number;
   const metadata =
-    transactionMetadata(
-      transaction,
-    );
+    transaction?.metadata && typeof transaction.metadata === "object" && !Array.isArray(transaction.metadata)
+      ? transaction.metadata
+      : {};
 
-  /*
-   * Idempotency is enforced through the
-   * same refund reference used by the
-   * existing ClubKonnect service.
-   */
-  const refundReference =
-    `REFUND_${reference}`;
+  const reconciliationStatus =
+    state === "successful"
+      ? "matched"
+      : state === "failed"
+        ? "exception"
+        : "pending";
 
-  /*
-   * If our transaction metadata already
-   * records the refund, do not issue it again.
-   */
-  if (
-    metadata.refund_completed ===
-    true ||
-    metadata.refunded ===
-    true
-  ) {
-    return {
-      success:
-        true,
-      alreadyRefunded:
-        true,
-    };
-  }
-
-  const {
-    data,
-    error,
-  } =
-    await admin.rpc(
-      "refund_wallet",
+  const { error } = await admin
+    .from("reconciliation_records")
+    .upsert(
       {
-        _user_id:
-          userId,
-
-        _amount:
-          amount,
-
-        _description:
-          "ClubKonnect service payment reversal",
-
-        _idempotency_key:
-          refundReference,
-
-        _reference:
-          refundReference,
-
-        _metadata: {
+        source: "provider",
+        provider: "clubkonnect",
+        provider_reference: providerReference,
+        transaction_id: transaction.id,
+        internal_reference: transaction.reference_number,
+        transaction_type: transaction.transaction_type,
+        amount: n(transaction.amount),
+        currency: transaction.currency ?? "NGN",
+        provider_status: classified.text || String(classified.code ?? "UNKNOWN"),
+        internal_status: transaction.status,
+        reconciliation_status: reconciliationStatus,
+        amount_difference: 0,
+        provider_created_at: null,
+        provider_completed_at: state === "successful" ? new Date().toISOString() : null,
+        internal_created_at: transaction.created_at,
+        internal_completed_at: transaction.completed_at ?? null,
+        account_reference:
+          metadata.account_reference ??
+          metadata.phone_number ??
+          metadata.smartcard_number ??
+          metadata.meter_number ??
+          null,
+        metadata: {
           ...metadata,
-
-          original_reference:
-            reference,
-
-          refund_reference:
-            refundReference,
-
-          provider:
-            "clubkonnect",
-
-          reason,
-
-          reconciliation_source:
-            "admin_reconciliation",
+          clubkonnect_order_id: providerOrder,
+          clubkonnect_request_id: providerRequest,
+          clubkonnect_statuscode: classified.code,
+          clubkonnect_status: classified.text,
+          clubkonnect_response: safeResponse(providerBody),
+          reconciled_at: new Date().toISOString(),
         },
+        updated_at: new Date().toISOString(),
       },
+      { onConflict: "provider,provider_reference" },
     );
 
-  if (
-    error
-  ) {
-    console.error(
-      "ClubKonnect reconciliation refund failed",
-      error,
-    );
-
-    throw new Error(
-      `Wallet refund failed: ${error.message}`,
-    );
+  if (error) {
+    throw new Error(`Failed to update reconciliation record: ${error.message}`);
   }
-
-  return {
-    success:
-      true,
-
-    alreadyRefunded:
-      false,
-
-    data,
-  };
 }
 
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response("ok", { headers: CORS_HEADERS });
+  if (req.method !== "POST") return json({ success: false, error: "Method not allowed." }, 405);
 
-/* ================================================================
-   EVENT LOGGING
-   ================================================================ */
+  const supabaseUrl = s(Deno.env.get("SUPABASE_URL"));
+  const anonKey = s(Deno.env.get("SUPABASE_ANON_KEY"));
+  const serviceRoleKey = s(Deno.env.get("SUPABASE_SERVICE_ROLE_KEY"));
+  const userId = s(Deno.env.get("CLUBKONNECT_USER_ID") ?? Deno.env.get("CLUBKONNECT_USERID"));
+  const apiKey = s(Deno.env.get("CLUBKONNECT_API_KEY") ?? Deno.env.get("CLUBKONNECT_APIKEY"));
 
-async function recordReconciliationEvent(
-  admin: any,
-  transaction: any,
-  payload: JsonObject,
-) {
-  /*
-   * Reconciliation history tables differ
-   * slightly between deployments. The
-   * transaction metadata is therefore the
-   * authoritative audit trail for this
-   * operation.
-   *
-   * If reconciliation_events exists,
-   * record the event there as well.
-   */
+  if (!supabaseUrl || !anonKey || !serviceRoleKey) {
+    return json({ success: false, error: "Supabase function configuration is incomplete." }, 500);
+  }
+
+  if (!userId || !apiKey) {
+    return json({ success: false, error: "ClubKonnect credentials are not configured." }, 500);
+  }
+
+  const authorization = req.headers.get("Authorization");
+  if (!authorization) return json({ success: false, error: "Unauthorized." }, 401);
+
+  const userClient = createClient(supabaseUrl, anonKey, {
+    global: { headers: { Authorization: authorization } },
+  });
+
+  const { data: authData, error: authError } = await userClient.auth.getUser();
+  if (authError || !authData.user) return json({ success: false, error: "Unauthorized." }, 401);
+
+  const admin = createClient(supabaseUrl, serviceRoleKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+
+  if (!(await isAdmin(admin, authData.user.id, true))) {
+    return json({ success: false, error: "Financial admin authorization required." }, 403);
+  }
+
+  let payload: JsonObject;
   try {
-    await admin
-      .from(
-        "reconciliation_events",
-      )
-      .insert({
-        transaction_id:
-          transaction.id,
+    payload = await req.json();
+  } catch {
+    return json({ success: false, error: "Invalid JSON body." }, 400);
+  }
 
-        event_type:
-          "provider_reconciliation",
+  const reference = s(payload.reference ?? payload.internal_reference);
+  const transactionId = s(payload.transaction_id) || undefined;
 
-        notes:
-          s(
-            payload.message,
-          ) ||
-          "ClubKonnect transaction reconciled by administrator.",
+  if (!reference && !transactionId) {
+    return json({ success: false, error: "A transaction reference is required." }, 400);
+  }
 
-        metadata:
-          payload,
-      });
+  const transaction = await findTransaction(admin, reference, transactionId);
+  if (!transaction) {
+    return json({ success: false, error: "ClubKonnect transaction not found." }, 404);
+  }
+
+  if (normalize(transaction.provider) !== "clubkonnect") {
+    return json({ success: false, error: "This transaction is not a ClubKonnect transaction." }, 400);
+  }
+
+  const metadata =
+    transaction.metadata && typeof transaction.metadata === "object" && !Array.isArray(transaction.metadata)
+      ? transaction.metadata
+      : {};
+
+  const providerOrder = s(
+    metadata.clubkonnect_order_id ?? transaction.provider_reference,
+  ) || null;
+
+  const providerRequest = s(
+    metadata.clubkonnect_request_id ?? metadata.request_id ?? transaction.reference_number,
+  );
+
+  let providerResponse: { ok: boolean; status: number; body: JsonObject };
+  try {
+    providerResponse = await providerQuery(
+      userId,
+      apiKey,
+      providerOrder ? { OrderID: providerOrder } : { RequestID: providerRequest },
+    );
   } catch (error) {
-    console.warn(
-      "Optional reconciliation event insert failed",
-      error,
-    );
+    console.error("ClubKonnect reconciliation network error:", error);
+    return json({
+      success: true,
+      state: "pending",
+      reference: transaction.reference_number,
+      transaction_id: transaction.id,
+      message: "ClubKonnect could not be reached. The transaction remains pending.",
+    }, 200);
   }
-}
 
+  const classified = classify(providerResponse.body, providerResponse.ok);
+  const actualOrder = orderId(providerResponse.body) ?? providerOrder;
+  const actualRequest = requestId(providerResponse.body) ?? providerRequest;
+  const safe = safeResponse(providerResponse.body);
 
-/* ================================================================
-   UPDATE SUCCESS
-   ================================================================ */
+  try {
+    if (classified.state === "successful") {
+      const existingStatus = normalize(transaction.status);
 
-async function markSuccessful(
-  admin: any,
-  transaction: any,
-  providerBody: any,
-  code: number | null,
-) {
-  const oldMetadata =
-    transactionMetadata(
-      transaction,
-    );
-
-  const providerOrderId =
-    orderId(
-      providerBody,
-    ) ||
-    storedOrderId(
-      transaction,
-    );
-
-  const providerRequestId =
-    requestId(
-      providerBody,
-    ) ||
-    storedRequestId(
-      transaction,
-    );
-
-  const providerStatus =
-    statusText(
-      providerBody,
-    );
-
-  const remark =
-    orderRemark(
-      providerBody,
-    );
-
-  /*
-   * Never downgrade a successful transaction.
-   */
-  if (
-    String(
-      transaction.status ||
-      "",
-    ).toLowerCase() ===
-    "successful"
-  ) {
-    const metadata = {
-      ...oldMetadata,
-
-      clubkonnect_order_id:
-        providerOrderId ||
-        oldMetadata.clubkonnect_order_id ||
-        null,
-
-      clubkonnect_request_id:
-        providerRequestId ||
-        oldMetadata.clubkonnect_request_id ||
-        null,
-
-      clubkonnect_statuscode:
-        code,
-
-      clubkonnect_status:
-        providerStatus ||
-        null,
-
-      clubkonnect_orderremark:
-        remark ||
-        null,
-
-      last_reconciled_at:
-        new Date().toISOString(),
-
-      last_reconciliation_state:
+      if (![
         "successful",
-
-      reconciliation_required:
-        false,
-    };
-
-    const {
-      error,
-    } =
-      await admin
-        .from(
-          "transactions",
-        )
-        .update({
-          provider_reference:
-            providerOrderId ||
-            transaction.provider_reference ||
-            providerRequestId ||
-            transaction.reference_number,
-
-          metadata,
-        })
-        .eq(
-          "id",
-          transaction.id,
-        );
-
-    if (
-      error
-    ) {
-      throw new Error(
-        `Unable to record reconciliation: ${error.message}`,
-      );
-    }
-
-    return {
-      success:
-        true,
-
-      state:
-        "successful" as const,
-
-      alreadySuccessful:
-        true,
-
-      refunded:
-        false,
-
-      orderId:
-        providerOrderId ||
-        null,
-
-      requestId:
-        providerRequestId ||
-        null,
-    };
-  }
-
-  const metadata = {
-    ...oldMetadata,
-
-    clubkonnect_order_id:
-      providerOrderId ||
-      null,
-
-    clubkonnect_request_id:
-      providerRequestId ||
-      null,
-
-    clubkonnect_statuscode:
-      code,
-
-    clubkonnect_status:
-      providerStatus ||
-      null,
-
-    clubkonnect_orderremark:
-      remark ||
-      null,
-
-    clubkonnect_response:
-      {
-        statuscode:
-          code,
-
-        orderid:
-          providerOrderId ||
-          null,
-
-        requestid:
-          providerRequestId ||
-          null,
-
-        orderstatus:
-          providerStatus ||
-          null,
-
-        orderremark:
-          remark ||
-          null,
-      },
-
-    fulfillment:
-      oldMetadata.fulfillment ||
-      {},
-
-    reconciliation_required:
-      false,
-
-    last_reconciled_at:
-      new Date().toISOString(),
-
-    last_reconciliation_state:
-      "successful",
-
-    reconciliation_source:
-      "admin",
-  };
-
-  const {
-    error,
-  } =
-    await admin
-      .from(
-        "transactions",
-      )
-      .update({
-        status:
-          "successful",
-
-        provider_reference:
-          providerOrderId ||
-          transaction.provider_reference ||
-          providerRequestId ||
-          transaction.reference_number,
-
-        completed_at:
-          transaction.completed_at ||
-          new Date().toISOString(),
-
-        metadata,
-      })
-      .eq(
-        "id",
-        transaction.id,
-      );
-
-  if (
-    error
-  ) {
-    throw new Error(
-      `Unable to mark transaction successful: ${error.message}`,
-    );
-  }
-
-  await recordReconciliationEvent(
-    admin,
-    transaction,
-    {
-      state:
-        "successful",
-
-      statuscode:
-        code,
-
-      order_id:
-        providerOrderId ||
-        null,
-
-      request_id:
-        providerRequestId ||
-        null,
-
-      message:
-        "ClubKonnect confirmed transaction completion during administrator reconciliation.",
-    },
-  );
-
-  return {
-    success:
-      true,
-
-    state:
-      "successful" as const,
-
-    alreadySuccessful:
-      false,
-
-    refunded:
-      false,
-
-    orderId:
-      providerOrderId ||
-      null,
-
-    requestId:
-      providerRequestId ||
-      null,
-  };
-}
-
-
-/* ================================================================
-   UPDATE PENDING
-   ================================================================ */
-
-async function markPending(
-  admin: any,
-  transaction: any,
-  providerBody: any,
-  code: number | null,
-) {
-  const oldMetadata =
-    transactionMetadata(
-      transaction,
-    );
-
-  const providerOrderId =
-    orderId(
-      providerBody,
-    ) ||
-    storedOrderId(
-      transaction,
-    );
-
-  const providerRequestId =
-    requestId(
-      providerBody,
-    ) ||
-    storedRequestId(
-      transaction,
-    );
-
-  const providerStatus =
-    statusText(
-      providerBody,
-    );
-
-  const remark =
-    orderRemark(
-      providerBody,
-    );
-
-  const metadata = {
-    ...oldMetadata,
-
-    clubkonnect_order_id:
-      providerOrderId ||
-      null,
-
-    clubkonnect_request_id:
-      providerRequestId ||
-      null,
-
-    clubkonnect_statuscode:
-      code,
-
-    clubkonnect_status:
-      providerStatus ||
-      null,
-
-    clubkonnect_orderremark:
-      remark ||
-      null,
-
-    clubkonnect_response:
-      {
-        statuscode:
-          code,
-
-        orderid:
-          providerOrderId ||
-          null,
-
-        requestid:
-          providerRequestId ||
-          null,
-
-        orderstatus:
-          providerStatus ||
-          null,
-
-        orderremark:
-          remark ||
-          null,
-      },
-
-    reconciliation_required:
-      true,
-
-    last_reconciled_at:
-      new Date().toISOString(),
-
-    last_reconciliation_state:
-      "pending",
-
-    reconciliation_source:
-      "admin",
-  };
-
-  /*
-   * Do not turn an already-successful
-   * transaction back into pending.
-   */
-  if (
-    String(
-      transaction.status ||
-      "",
-    ).toLowerCase() ===
-    "successful"
-  ) {
-    return {
-      success:
-        true,
-
-      state:
-        "successful" as const,
-
-      alreadySuccessful:
-        true,
-
-      refunded:
-        false,
-
-      orderId:
-        providerOrderId ||
-        null,
-
-      requestId:
-        providerRequestId ||
-        null,
-    };
-  }
-
-  const {
-    error,
-  } =
-    await admin
-      .from(
-        "transactions",
-      )
-      .update({
-        status:
-          "pending",
-
-        provider_reference:
-          providerOrderId ||
-          transaction.provider_reference ||
-          providerRequestId ||
-          transaction.reference_number,
-
-        metadata,
-      })
-      .eq(
-        "id",
-        transaction.id,
-      );
-
-  if (
-    error
-  ) {
-    throw new Error(
-      `Unable to update pending transaction: ${error.message}`,
-    );
-  }
-
-  await recordReconciliationEvent(
-    admin,
-    transaction,
-    {
-      state:
-        "pending",
-
-      statuscode:
-        code,
-
-      order_id:
-        providerOrderId ||
-        null,
-
-      request_id:
-        providerRequestId ||
-        null,
-
-      message:
-        "ClubKonnect did not return a final successful or failed state. Transaction remains pending.",
-    },
-  );
-
-  return {
-    success:
-      true,
-
-    state:
-      "pending" as const,
-
-    alreadySuccessful:
-      false,
-
-    refunded:
-      false,
-
-    orderId:
-      providerOrderId ||
-      null,
-
-    requestId:
-      providerRequestId ||
-      null,
-  };
-}
-
-
-/* ================================================================
-   UPDATE FAILED + REFUND
-   ================================================================ */
-
-async function markFailedAndRefund(
-  admin: any,
-  transaction: any,
-  providerBody: any,
-  code: number | null,
-) {
-  const oldMetadata =
-    transactionMetadata(
-      transaction,
-    );
-
-  /*
-   * Never downgrade a successful
-   * transaction even if an old provider
-   * response is later replayed.
-   */
-  if (
-    String(
-      transaction.status ||
-      "",
-    ).toLowerCase() ===
-    "successful"
-  ) {
-    return {
-      success:
-        true,
-
-      state:
-        "successful" as const,
-
-      alreadySuccessful:
-        true,
-
-      refunded:
-        false,
-
-      orderId:
-        orderId(
-          providerBody,
-        ) ||
-        storedOrderId(
-          transaction,
-        ),
-
-      requestId:
-        requestId(
-          providerBody,
-        ) ||
-        storedRequestId(
-          transaction,
-        ),
-    };
-  }
-
-  const providerOrderId =
-    orderId(
-      providerBody,
-    ) ||
-    storedOrderId(
-      transaction,
-    );
-
-  const providerRequestId =
-    requestId(
-      providerBody,
-    ) ||
-    storedRequestId(
-      transaction,
-    );
-
-  const providerStatus =
-    statusText(
-      providerBody,
-    );
-
-  const remark =
-    orderRemark(
-      providerBody,
-    );
-
-  const refund =
-    await refundWallet(
-      admin,
-      transaction,
-      `ClubKonnect provider reconciliation confirmed failure. Status ${code ?? "unknown"}: ${providerStatus || remark || "provider failure"}`,
-    );
-
-  const metadata = {
-    ...oldMetadata,
-
-    clubkonnect_order_id:
-      providerOrderId ||
-      null,
-
-    clubkonnect_request_id:
-      providerRequestId ||
-      null,
-
-    clubkonnect_statuscode:
-      code,
-
-    clubkonnect_status:
-      providerStatus ||
-      null,
-
-    clubkonnect_orderremark:
-      remark ||
-      null,
-
-    clubkonnect_response:
-      {
-        statuscode:
-          code,
-
-        orderid:
-          providerOrderId ||
-          null,
-
-        requestid:
-          providerRequestId ||
-          null,
-
-        orderstatus:
-          providerStatus ||
-          null,
-
-        orderremark:
-          remark ||
-          null,
-      },
-
-    refund_completed:
-      true,
-
-    refunded:
-      true,
-
-    refund_reference:
-      `REFUND_${transaction.reference_number}`,
-
-    refund_reason:
-      "ClubKonnect provider reconciliation confirmed failure.",
-
-    reconciliation_required:
-      false,
-
-    last_reconciled_at:
-      new Date().toISOString(),
-
-    last_reconciliation_state:
-      "failed",
-
-    reconciliation_source:
-      "admin",
-  };
-
-  const {
-    error,
-  } =
-    await admin
-      .from(
-        "transactions",
-      )
-      .update({
-        status:
-          "failed",
-
-        provider_reference:
-          providerOrderId ||
-          transaction.provider_reference ||
-          providerRequestId ||
-          transaction.reference_number,
-
-        metadata,
-      })
-      .eq(
-        "id",
-        transaction.id,
-      );
-
-  if (
-    error
-  ) {
-    throw new Error(
-      `Wallet was refunded but transaction status could not be updated: ${error.message}`,
-    );
-  }
-
-  await recordReconciliationEvent(
-    admin,
-    transaction,
-    {
-      state:
-        "failed",
-
-      statuscode:
-        code,
-
-      order_id:
-        providerOrderId ||
-        null,
-
-      request_id:
-        providerRequestId ||
-        null,
-
-      refunded:
-        true,
-
-      message:
-        "ClubKonnect confirmed failure and the customer's wallet was refunded.",
-    },
-  );
-
-  return {
-    success:
-      true,
-
-    state:
-      "failed" as const,
-
-    alreadySuccessful:
-      false,
-
-    refunded:
-      !refund.alreadyRefunded,
-
-    orderId:
-      providerOrderId ||
-      null,
-
-    requestId:
-      providerRequestId ||
-      null,
-  };
-}
-
-
-/* ================================================================
-   MAIN RECONCILIATION
-   ================================================================ */
-
-async function reconcile(
-  admin: any,
-  reference: string,
-) {
-  const transaction =
-    await findTransaction(
-      admin,
-      reference,
-    );
-
-  /*
-   * If the transaction is already successful,
-   * return immediately but still perform a
-   * provider query below when possible so the
-   * administrator can see the current provider
-   * record.
-   */
-  const currentStatus =
-    String(
-      transaction.status ||
-      "",
-    ).toLowerCase();
-
-  const providerOrderId =
-    storedOrderId(
-      transaction,
-    );
-
-  const providerRequestId =
-    storedRequestId(
-      transaction,
-    );
-
-  /*
-   * ClubKonnect's APIQueryV1 accepts OrderID
-   * or RequestID. Prefer OrderID because it is
-   * the provider's persistent order identifier.
-   */
-  const queryParams =
-    providerOrderId
-      ? {
-          OrderID:
-            providerOrderId,
-        }
-      : {
-          RequestID:
-            providerRequestId ||
-            reference,
+        "success",
+        "completed",
+        "complete",
+        "succeeded",
+      ].includes(existingStatus)) {
+        const mergedMetadata = {
+          ...metadata,
+          clubkonnect_order_id: actualOrder,
+          clubkonnect_request_id: actualRequest,
+          clubkonnect_statuscode: classified.code,
+          clubkonnect_status: classified.text,
+          clubkonnect_response: safe,
+          reconciliation_required: false,
+          reconciled_at: new Date().toISOString(),
         };
 
-  const provider =
-    await clubKonnectRequest(
-      queryParams,
-    );
+        const { error: updateError } = await admin
+          .from("transactions")
+          .update({
+            status: "successful",
+            provider: "clubkonnect",
+            provider_reference: actualOrder ?? actualRequest,
+            completed_at: new Date().toISOString(),
+            metadata: mergedMetadata,
+          })
+          .eq("id", transaction.id);
 
-  const classification =
-    classify(
-      provider.body,
-      provider.ok,
-    );
-
-  console.log(
-    "ClubKonnect reconciliation classification",
-    {
-      reference,
-      current_status:
-        currentStatus,
-      provider_status:
-        classification.text,
-      provider_statuscode:
-        classification.code,
-      state:
-        classification.state,
-    },
-  );
-
-  if (
-    classification.state ===
-    "successful"
-  ) {
-    return await markSuccessful(
-      admin,
-      transaction,
-      provider.body,
-      classification.code,
-    );
-  }
-
-  if (
-    classification.state ===
-    "failed"
-  ) {
-    return await markFailedAndRefund(
-      admin,
-      transaction,
-      provider.body,
-      classification.code,
-    );
-  }
-
-  return await markPending(
-    admin,
-    transaction,
-    provider.body,
-    classification.code,
-  );
-}
-
-
-/* ================================================================
-   REQUEST PARSING
-   ================================================================ */
-
-async function parseBody(
-  req: Request,
-): Promise<any> {
-  const contentType =
-    (
-      req.headers.get(
-        "content-type",
-      ) || ""
-    ).toLowerCase();
-
-  if (
-    contentType.includes(
-      "application/json",
-    )
-  ) {
-    return await req
-      .json()
-      .catch(() => ({}));
-  }
-
-  if (
-    contentType.includes(
-      "application/x-www-form-urlencoded",
-    )
-  ) {
-    const text =
-      await req.text();
-
-    const params =
-      new URLSearchParams(
-        text,
-      );
-
-    return Object.fromEntries(
-      params.entries(),
-    );
-  }
-
-  const text =
-    await req.text();
-
-  if (!text) {
-    return {};
-  }
-
-  try {
-    return JSON.parse(
-      text,
-    );
-  } catch {
-    return {};
-  }
-}
-
-
-/* ================================================================
-   HANDLER
-   ================================================================ */
-
-Deno.serve(
-  async (
-    req,
-  ) => {
-    if (
-      req.method ===
-      "OPTIONS"
-    ) {
-      return new Response(
-        "ok",
-        {
-          headers:
-            corsHeaders,
-        },
-      );
-    }
-
-    if (
-      req.method !==
-      "POST" &&
-      req.method !==
-      "PUT"
-    ) {
-      return response(
-        {
-          success:
-            false,
-
-          error:
-            "Method not allowed.",
-        },
-        405,
-      );
-    }
-
-    try {
-      /*
-       * Authenticate and authorize the
-       * administrator before touching any
-       * transaction.
-       */
-      await authenticateAdmin(
-        req,
-      );
-
-      const body =
-        await parseBody(
-          req,
-        );
-
-      const reference =
-        s(
-          body?.reference ||
-          body?.transaction_reference ||
-          body?.internal_reference,
-        );
-
-      if (
-        !reference
-      ) {
-        return response(
-          {
-            success:
-              false,
-
-            error:
-              "Transaction reference is required.",
-          },
-          400,
-        );
+        if (updateError) throw updateError;
       }
 
-      /*
-       * Prevent arbitrary massive input.
-       */
-      if (
-        reference.length >
-        200
-      ) {
-        return response(
-          {
-            success:
-              false,
+      await upsertReconciliation(
+        admin,
+        transaction,
+        providerResponse.body,
+        classified,
+        actualOrder,
+        actualRequest,
+        "successful",
+      );
 
-            error:
-              "Invalid transaction reference.",
-          },
-          400,
-        );
-      }
-
-      const admin =
-        adminClient();
-
-      const result =
-        await reconcile(
-          admin,
-          reference,
-        );
-
-      return response({
-        success:
-          true,
-
-        state:
-          result.state,
-
-        reference,
-
-        order_id:
-          result.orderId ||
-          null,
-
-        request_id:
-          result.requestId ||
-          null,
-
-        refunded:
-          result.refunded ||
-          false,
-
-        already_successful:
-          result.alreadySuccessful ||
-          false,
-
-        message:
-          result.state ===
-          "successful"
-            ? result.alreadySuccessful
-              ? "Transaction was already successful."
-              : "ClubKonnect confirmed the transaction as successful."
-            : result.state ===
-                "failed"
-              ? result.refunded
-                ? "ClubKonnect confirmed failure and the customer's wallet was refunded."
-                : "ClubKonnect confirmed transaction failure."
-              : "ClubKonnect transaction remains pending.",
+      return json({
+        success: true,
+        state: "successful",
+        reference: transaction.reference_number,
+        transaction_id: transaction.id,
+        order_id: actualOrder,
+        request_id: actualRequest,
+        statuscode: classified.code,
+        orderstatus: classified.text,
+        orderremark: s(providerResponse.body?.orderremark ?? providerResponse.body?.OrderRemark) || null,
+        already_successful: ["successful", "success", "completed", "complete", "succeeded"].includes(existingStatus),
+        message: "ClubKonnect confirms the transaction as successful.",
       });
-
-    } catch (
-      error
-    ) {
-      console.error(
-        "clubkonnect-reconcile error",
-        error,
-      );
-
-      const message =
-        error instanceof Error
-          ? error.message
-          : "Unable to reconcile transaction.";
-
-      const status =
-        message.includes(
-          "Authentication required",
-        )
-          ? 401
-          : message.includes(
-                "Administrator access required",
-              ) ||
-              message.includes(
-                "do not have permission",
-              ) ||
-              message.includes(
-                "Read-only administrators",
-              )
-            ? 403
-            : message.includes(
-                  "not found",
-                )
-              ? 404
-              : 400;
-
-      return response(
-        {
-          success:
-            false,
-
-          error:
-            message,
-        },
-        status,
-      );
     }
-  },
-);
+
+    if (classified.state === "failed") {
+      const existingStatus = normalize(transaction.status);
+
+      if (["successful", "success", "completed", "complete", "succeeded"].includes(existingStatus)) {
+        await upsertReconciliation(
+          admin,
+          transaction,
+          providerResponse.body,
+          { ...classified, state: "successful" },
+          actualOrder,
+          actualRequest,
+          "successful",
+        );
+
+        return json({
+          success: true,
+          state: "successful",
+          reference: transaction.reference_number,
+          transaction_id: transaction.id,
+          order_id: actualOrder,
+          request_id: actualRequest,
+          statuscode: classified.code,
+          message: "The internal transaction was already successful; it was not downgraded.",
+          already_successful: true,
+        });
+      }
+
+      const refund = await refundWallet(
+        admin,
+        transaction,
+        `Manual ClubKonnect reconciliation returned ${classified.code ?? classified.text}.`,
+      );
+
+      const mergedMetadata = {
+        ...metadata,
+        clubkonnect_order_id: actualOrder,
+        clubkonnect_request_id: actualRequest,
+        clubkonnect_statuscode: classified.code,
+        clubkonnect_status: classified.text,
+        clubkonnect_response: safe,
+        refunded: refund.success || refund.alreadyRefunded,
+        refund_pending: !refund.success && !refund.alreadyRefunded,
+        reconciliation_required: !refund.success,
+        reconciled_at: new Date().toISOString(),
+      };
+
+      const { error: updateError } = await admin
+        .from("transactions")
+        .update({
+          status: "failed",
+          provider: "clubkonnect",
+          provider_reference: actualOrder ?? actualRequest,
+          metadata: mergedMetadata,
+        })
+        .eq("id", transaction.id);
+
+      if (updateError) throw updateError;
+
+      await upsertReconciliation(
+        admin,
+        transaction,
+        providerResponse.body,
+        classified,
+        actualOrder,
+        actualRequest,
+        "failed",
+      );
+
+      return json({
+        success: refund.success || refund.alreadyRefunded,
+        state: "failed",
+        reference: transaction.reference_number,
+        transaction_id: transaction.id,
+        order_id: actualOrder,
+        request_id: actualRequest,
+        statuscode: classified.code,
+        refunded: refund.success || refund.alreadyRefunded,
+        message: refund.success || refund.alreadyRefunded
+          ? "ClubKonnect confirms failure and the wallet refund is complete."
+          : "ClubKonnect confirms failure, but the refund still requires retry.",
+        error: refund.success || refund.alreadyRefunded ? undefined : refund.error,
+      }, refund.success || refund.alreadyRefunded ? 200 : 503);
+    }
+
+    const mergedMetadata = {
+      ...metadata,
+      clubkonnect_order_id: actualOrder,
+      clubkonnect_request_id: actualRequest,
+      clubkonnect_statuscode: classified.code,
+      clubkonnect_status: classified.text,
+      clubkonnect_response: safe,
+      reconciliation_required: true,
+      last_reconciled_at: new Date().toISOString(),
+    };
+
+    const { error: pendingError } = await admin
+      .from("transactions")
+      .update({
+        status: "pending",
+        provider: "clubkonnect",
+        provider_reference: actualOrder ?? actualRequest,
+        metadata: mergedMetadata,
+      })
+      .eq("id", transaction.id);
+
+    if (pendingError) throw pendingError;
+
+    await upsertReconciliation(
+      admin,
+      transaction,
+      providerResponse.body,
+      classified,
+      actualOrder,
+      actualRequest,
+      "pending",
+    );
+
+    return json({
+      success: true,
+      state: "pending",
+      reference: transaction.reference_number,
+      transaction_id: transaction.id,
+      order_id: actualOrder,
+      request_id: actualRequest,
+      statuscode: classified.code,
+      orderstatus: classified.text,
+      orderremark: s(providerResponse.body?.orderremark ?? providerResponse.body?.OrderRemark) || null,
+      message: "ClubKonnect has not returned a definitive final result. The transaction remains pending.",
+    });
+  } catch (error) {
+    console.error("ClubKonnect reconciliation update failed:", error);
+    return json({ success: false, error: "Unable to complete reconciliation safely." }, 500);
+  }
+});

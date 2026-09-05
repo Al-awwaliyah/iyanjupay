@@ -1723,7 +1723,6 @@ const Dashboard = () => {
         }}
       />
     );
-    );
   }
 
   /*
@@ -1751,7 +1750,6 @@ const Dashboard = () => {
         }
       />
     );
-    );
   }
 
   /*
@@ -1772,7 +1770,6 @@ const Dashboard = () => {
           )
         }
       />
-    );
     );
   }
 
@@ -1795,7 +1792,6 @@ const Dashboard = () => {
         }
       />
     );
-    );
   }
 
   /*
@@ -1816,7 +1812,6 @@ const Dashboard = () => {
           )
         }
       />
-    );
     );
   }
 
@@ -1839,7 +1834,6 @@ const Dashboard = () => {
         }
       />
     );
-    );
   }
 
   /*
@@ -1860,7 +1854,6 @@ const Dashboard = () => {
           )
         }
       />
-    );
     );
   }
 
@@ -1883,7 +1876,6 @@ const Dashboard = () => {
         }
       />
     );
-    );
   }
 
   /*
@@ -1904,7 +1896,6 @@ const Dashboard = () => {
           )
         }
       />
-    );
     );
   }
 
@@ -1927,7 +1918,6 @@ const Dashboard = () => {
         }
       />
     );
-    );
   }
 
   /*
@@ -1948,7 +1938,6 @@ const Dashboard = () => {
           )
         }
       />
-    );
     );
   }
 
@@ -2184,7 +2173,11 @@ const Dashboard = () => {
    * ============================================================
    */
 
-    <div
+  return (
+    <>
+      {dashboardThemeStyle}
+
+      <div
       className={`min-h-screen pb-24 iyanjupay-dashboard iyanjupay-theme-${dashboardTheme}`}
       data-theme={dashboardTheme}
     >
@@ -2876,7 +2869,8 @@ const Dashboard = () => {
       {/* ====================================================== */}
 
       <WhatsAppFloat />
-    </div>
+      </div>
+    </>
   );
 };
 

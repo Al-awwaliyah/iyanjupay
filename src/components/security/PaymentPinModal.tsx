@@ -160,87 +160,257 @@ const PaymentPinModal: React.FC<PaymentPinModalProps> = ({
   };
 
   return (
-    <Dialog
-      open={open}
-      onOpenChange={handleOpenChange}
-    >
-      <DialogContent
-        className="sm:max-w-md"
-        onInteractOutside={(event) => {
-          if (loading) {
-            event.preventDefault();
-          }
-        }}
-        onEscapeKeyDown={(event) => {
-          if (loading) {
-            event.preventDefault();
-          }
-        }}
+    <>
+      <style>{`
+        /* =====================================================
+           PAYMENT PIN MODAL
+           LIGHT / NORMAL / BLUE THEME
+           White background + dark text
+           ===================================================== */
+
+        .payment-pin-dialog {
+          background-color: #ffffff !important;
+          border-color: #e5e7eb !important;
+          color: #111827 !important;
+        }
+
+        .payment-pin-dialog-title {
+          color: #111827 !important;
+        }
+
+        .payment-pin-dialog-description {
+          color: #4b5563 !important;
+        }
+
+        .payment-pin-input {
+          background-color: #ffffff !important;
+          border-color: #d1d5db !important;
+          color: #111827 !important;
+          caret-color: #111827 !important;
+        }
+
+        .payment-pin-input::placeholder {
+          color: #9ca3af !important;
+          opacity: 1 !important;
+        }
+
+        .payment-pin-input:focus {
+          border-color: #818cf8 !important;
+          box-shadow:
+            0 0 0 2px
+            rgba(129, 140, 248, 0.15) !important;
+        }
+
+        .payment-pin-cancel {
+          background-color: #ffffff !important;
+          border-color: #d1d5db !important;
+          color: #111827 !important;
+        }
+
+        .payment-pin-cancel:hover {
+          background-color: #f3f4f6 !important;
+          color: #111827 !important;
+        }
+
+        /* =====================================================
+           BLUE THEME
+           Keep modal white and text dark
+           ===================================================== */
+
+        html[data-iyanjupay-theme="blue"]
+          .payment-pin-dialog {
+          background-color: #ffffff !important;
+          border-color: #dbeafe !important;
+          color: #111827 !important;
+        }
+
+        html[data-iyanjupay-theme="blue"]
+          .payment-pin-dialog-title {
+          color: #111827 !important;
+        }
+
+        html[data-iyanjupay-theme="blue"]
+          .payment-pin-dialog-description {
+          color: #4b5563 !important;
+        }
+
+        html[data-iyanjupay-theme="blue"]
+          .payment-pin-input {
+          background-color: #ffffff !important;
+          border-color: #d1d5db !important;
+          color: #111827 !important;
+          caret-color: #111827 !important;
+        }
+
+        html[data-iyanjupay-theme="blue"]
+          .payment-pin-cancel {
+          background-color: #ffffff !important;
+          border-color: #d1d5db !important;
+          color: #111827 !important;
+        }
+
+        /* =====================================================
+           DARK THEME
+           Dark background + white text
+           ===================================================== */
+
+        html[data-iyanjupay-theme="dark"]
+          .payment-pin-dialog {
+          background-color: #111827 !important;
+          border-color: #334155 !important;
+          color: #f8fafc !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+          .payment-pin-dialog-title {
+          color: #f8fafc !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+          .payment-pin-dialog-description {
+          color: #cbd5e1 !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+          .payment-pin-input {
+          background-color: #0f172a !important;
+          border-color: #334155 !important;
+          color: #f8fafc !important;
+          caret-color: #f8fafc !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+          .payment-pin-input::placeholder {
+          color: #64748b !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+          .payment-pin-input:focus {
+          border-color: #818cf8 !important;
+          box-shadow:
+            0 0 0 2px
+            rgba(129, 140, 248, 0.2) !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+          .payment-pin-cancel {
+          background-color: #111827 !important;
+          border-color: #475569 !important;
+          color: #f8fafc !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+          .payment-pin-cancel:hover {
+          background-color: #1e293b !important;
+          color: #ffffff !important;
+        }
+
+        /*
+         * Error messages remain readable in both themes.
+         */
+
+        html[data-iyanjupay-theme="dark"]
+          .payment-pin-error {
+          background-color: rgba(127, 29, 29, 0.28) !important;
+          border-color: rgba(248, 113, 113, 0.35) !important;
+          color: #fca5a5 !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+          .payment-pin-lock-message {
+          color: #cbd5e1 !important;
+        }
+      `}</style>
+
+      <Dialog
+        open={open}
+        onOpenChange={handleOpenChange}
       >
-        <DialogHeader>
-          <DialogTitle>{title}</DialogTitle>
+        <DialogContent
+          className="payment-pin-dialog sm:max-w-md"
+          onInteractOutside={(event) => {
+            if (loading) {
+              event.preventDefault();
+            }
+          }}
+          onEscapeKeyDown={(event) => {
+            if (loading) {
+              event.preventDefault();
+            }
+          }}
+        >
+          <DialogHeader>
+            <DialogTitle className="payment-pin-dialog-title">
+              {title}
+            </DialogTitle>
 
-          <DialogDescription>
-            {description}
-          </DialogDescription>
-        </DialogHeader>
+            <DialogDescription className="payment-pin-dialog-description">
+              {description}
+            </DialogDescription>
+          </DialogHeader>
 
-        <div className="space-y-4">
-          <div className="space-y-2">
-            <Input
-              ref={inputRef}
-              type="password"
-              inputMode="numeric"
-              autoComplete="off"
-              maxLength={4}
-              value={pin}
-              onChange={handlePinChange}
-              onKeyDown={handleKeyDown}
-              placeholder="••••"
-              disabled={loading}
-              className="text-center text-2xl tracking-[0.5em]"
-              aria-label="Payment PIN"
-            />
-          </div>
-
-          {error && (
-            <div
-              className="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive"
-              role="alert"
-            >
-              {error}
-
-              {lockedUntil && (
-                <div className="mt-1 text-xs">
-                  Please try again after the lock expires.
-                </div>
-              )}
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Input
+                ref={inputRef}
+                type="password"
+                inputMode="numeric"
+                autoComplete="off"
+                maxLength={4}
+                value={pin}
+                onChange={handlePinChange}
+                onKeyDown={handleKeyDown}
+                placeholder="••••"
+                disabled={loading}
+                className="payment-pin-input text-center text-2xl tracking-[0.5em]"
+                aria-label="Payment PIN"
+              />
             </div>
-          )}
 
-          <div className="flex gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              className="flex-1"
-              onClick={onCancel}
-              disabled={loading}
-            >
-              Cancel
-            </Button>
+            {error && (
+              <div
+                className="payment-pin-error rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive"
+                role="alert"
+              >
+                {error}
 
-            <Button
-              type="button"
-              className="flex-1"
-              onClick={handleVerify}
-              disabled={loading || pin.length !== 4}
-            >
-              {loading ? "Verifying..." : "Verify PIN"}
-            </Button>
+                {lockedUntil && (
+                  <div className="payment-pin-lock-message mt-1 text-xs">
+                    Please try again after the lock expires.
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                className="payment-pin-cancel flex-1"
+                onClick={onCancel}
+                disabled={loading}
+              >
+                Cancel
+              </Button>
+
+              <Button
+                type="button"
+                className="flex-1 text-white"
+                onClick={handleVerify}
+                disabled={
+                  loading ||
+                  pin.length !== 4
+                }
+              >
+                {loading
+                  ? "Verifying..."
+                  : "Verify PIN"}
+              </Button>
+            </div>
           </div>
-        </div>
-      </DialogContent>
-    </Dialog>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 };
 

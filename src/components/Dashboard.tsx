@@ -379,8 +379,7 @@ const Dashboard = () => {
    * blue  = blue IyanjuPay appearance
    * dark  = dark appearance
    *
-   * The selection is persisted locally so it remains active when
-   * the customer returns to the dashboard.
+   * Dashboard remains the single source of truth.
    */
 
   type DashboardTheme =
@@ -458,6 +457,465 @@ const Dashboard = () => {
     appearanceConfig[
       dashboardTheme
     ].icon;
+
+  /*
+   * ============================================================
+   * GLOBAL IYANJUPAY THEME
+   * ============================================================
+   *
+   * IMPORTANT:
+   * This style is rendered BEFORE all child-page early returns.
+   *
+   * Therefore Dashboard controls the appearance of:
+   * - Dashboard
+   * - Rewards
+   * - Cards
+   * - Me
+   * - Profile
+   * - History
+   * - Support
+   * - Customer Service
+   * - Transaction Limit
+   * - Payment PIN
+   * - Disputes
+   * - Send Money
+   * - Service Payment
+   *
+   * Child pages do not own theme state.
+   *
+   * White cards inside the Me/Rewards child pages remain white
+   * in Dark mode and their text remains dark/black.
+   */
+
+  const dashboardThemeStyles = (
+    <style>{`
+      .iyanjupay-dashboard {
+        background: #f7f8fc;
+        color: #0f172a;
+        transition:
+          background-color 180ms ease,
+          color 180ms ease;
+      }
+
+      .iyanjupay-theme-blue {
+        background: #f4f8ff;
+      }
+
+      .iyanjupay-theme-dark {
+        background: #090d18;
+        color: #f8fafc;
+      }
+
+      /*
+       * ==========================================================
+       * DARK THEME - MAIN DASHBOARD
+       * ==========================================================
+       */
+
+      .iyanjupay-theme-dark .bg-white {
+        background-color: #111827 !important;
+      }
+
+      .iyanjupay-theme-dark .bg-slate-50 {
+        background-color: #090d18 !important;
+      }
+
+      .iyanjupay-theme-dark .bg-slate-100 {
+        background-color: #1e293b !important;
+      }
+
+      .iyanjupay-theme-dark [class*="border-slate-200"] {
+        border-color: #334155 !important;
+      }
+
+      .iyanjupay-theme-dark .text-slate-950,
+      .iyanjupay-theme-dark .text-slate-900 {
+        color: #f8fafc !important;
+      }
+
+      .iyanjupay-theme-dark .text-slate-700 {
+        color: #e2e8f0 !important;
+      }
+
+      .iyanjupay-theme-dark .text-slate-600 {
+        color: #cbd5e1 !important;
+      }
+
+      .iyanjupay-theme-dark .text-slate-500 {
+        color: #94a3b8 !important;
+      }
+
+      .iyanjupay-theme-dark .text-slate-400 {
+        color: #64748b !important;
+      }
+
+      .iyanjupay-theme-dark [class*="hover:bg-slate-50"]:hover {
+        background-color: #1e293b !important;
+      }
+
+      .iyanjupay-theme-dark .bg-purple-50 {
+        background-color: #312e81 !important;
+      }
+
+      .iyanjupay-theme-dark .text-purple-700,
+      .iyanjupay-theme-dark .text-purple-600 {
+        color: #c4b5fd !important;
+      }
+
+      .iyanjupay-theme-dark .bg-blue-50 {
+        background-color: #172554 !important;
+      }
+
+      .iyanjupay-theme-dark .bg-emerald-50 {
+        background-color: #052e2b !important;
+      }
+
+      .iyanjupay-theme-dark .bg-orange-50 {
+        background-color: #431407 !important;
+      }
+
+      /*
+       * ==========================================================
+       * CHILD PAGES
+       * ==========================================================
+       *
+       * MePage and RewardsPage use these page root classes.
+       *
+       * They remain visually controlled by Dashboard.
+       */
+
+      [data-iyanjupay-theme="dark"] .iyanjupay-me-page,
+      [data-iyanjupay-theme="dark"] .iyanjupay-rewards-page {
+        background: #090d18;
+        color: #f8fafc;
+      }
+
+      /*
+       * White cards in child pages stay WHITE.
+       */
+      [data-iyanjupay-theme="dark"]
+        .iyanjupay-me-page
+        .bg-white,
+      [data-iyanjupay-theme="dark"]
+        .iyanjupay-rewards-page
+        .bg-white {
+        background-color: #ffffff !important;
+      }
+
+      /*
+       * ==========================================================
+       * WHITE CARD TEXT MUST STAY BLACK
+       * ==========================================================
+       *
+       * This is the central fix for the Me tabs.
+       *
+       * Even when the overall Dashboard theme is Dark, anything
+       * inside a white card remains dark/black and readable.
+       */
+
+      [data-iyanjupay-theme="dark"]
+        .iyanjupay-me-page
+        .bg-white,
+      [data-iyanjupay-theme="dark"]
+        .iyanjupay-me-page
+        .bg-white h1,
+      [data-iyanjupay-theme="dark"]
+        .iyanjupay-me-page
+        .bg-white h2,
+      [data-iyanjupay-theme="dark"]
+        .iyanjupay-me-page
+        .bg-white h3,
+      [data-iyanjupay-theme="dark"]
+        .iyanjupay-me-page
+        .bg-white h4,
+      [data-iyanjupay-theme="dark"]
+        .iyanjupay-me-page
+        .bg-white h5,
+      [data-iyanjupay-theme="dark"]
+        .iyanjupay-me-page
+        .bg-white h6,
+      [data-iyanjupay-theme="dark"]
+        .iyanjupay-me-page
+        .bg-white p,
+      [data-iyanjupay-theme="dark"]
+        .iyanjupay-me-page
+        .bg-white span,
+      [data-iyanjupay-theme="dark"]
+        .iyanjupay-me-page
+        .bg-white label,
+      [data-iyanjupay-theme="dark"]
+        .iyanjupay-me-page
+        .bg-white .text-gray-900,
+      [data-iyanjupay-theme="dark"]
+        .iyanjupay-me-page
+        .bg-white .text-gray-800,
+      [data-iyanjupay-theme="dark"]
+        .iyanjupay-me-page
+        .bg-white .text-gray-700,
+      [data-iyanjupay-theme="dark"]
+        .iyanjupay-me-page
+        .bg-white .text-gray-600 {
+        color: #111827 !important;
+      }
+
+      [data-iyanjupay-theme="dark"]
+        .iyanjupay-me-page
+        .bg-white
+        .text-gray-500 {
+        color: #4b5563 !important;
+      }
+
+      [data-iyanjupay-theme="dark"]
+        .iyanjupay-me-page
+        .bg-white
+        .text-gray-400 {
+        color: #6b7280 !important;
+      }
+
+      /*
+       * Rewards white cards receive the same treatment.
+       */
+      [data-iyanjupay-theme="dark"]
+        .iyanjupay-rewards-page
+        .bg-white,
+      [data-iyanjupay-theme="dark"]
+        .iyanjupay-rewards-page
+        .bg-white h1,
+      [data-iyanjupay-theme="dark"]
+        .iyanjupay-rewards-page
+        .bg-white h2,
+      [data-iyanjupay-theme="dark"]
+        .iyanjupay-rewards-page
+        .bg-white h3,
+      [data-iyanjupay-theme="dark"]
+        .iyanjupay-rewards-page
+        .bg-white h4,
+      [data-iyanjupay-theme="dark"]
+        .iyanjupay-rewards-page
+        .bg-white h5,
+      [data-iyanjupay-theme="dark"]
+        .iyanjupay-rewards-page
+        .bg-white h6,
+      [data-iyanjupay-theme="dark"]
+        .iyanjupay-rewards-page
+        .bg-white p,
+      [data-iyanjupay-theme="dark"]
+        .iyanjupay-rewards-page
+        .bg-white span,
+      [data-iyanjupay-theme="dark"]
+        .iyanjupay-rewards-page
+        .bg-white label,
+      [data-iyanjupay-theme="dark"]
+        .iyanjupay-rewards-page
+        .bg-white .text-gray-900,
+      [data-iyanjupay-theme="dark"]
+        .iyanjupay-rewards-page
+        .bg-white .text-gray-800,
+      [data-iyanjupay-theme="dark"]
+        .iyanjupay-rewards-page
+        .bg-white .text-gray-700,
+      [data-iyanjupay-theme="dark"]
+        .iyanjupay-rewards-page
+        .bg-white .text-gray-600 {
+        color: #111827 !important;
+      }
+
+      [data-iyanjupay-theme="dark"]
+        .iyanjupay-rewards-page
+        .bg-white
+        .text-gray-500 {
+        color: #4b5563 !important;
+      }
+
+      [data-iyanjupay-theme="dark"]
+        .iyanjupay-rewards-page
+        .bg-white
+        .text-gray-400 {
+        color: #6b7280 !important;
+      }
+
+      /*
+       * ==========================================================
+       * CHILD PAGE DARK BACKGROUNDS / BORDERS
+       * ==========================================================
+       */
+
+      [data-iyanjupay-theme="dark"]
+        .iyanjupay-me-page
+        .bg-slate-50,
+      [data-iyanjupay-theme="dark"]
+        .iyanjupay-rewards-page
+        .bg-slate-50 {
+        background-color: #090d18 !important;
+      }
+
+      [data-iyanjupay-theme="dark"]
+        .iyanjupay-me-page
+        .bg-slate-100,
+      [data-iyanjupay-theme="dark"]
+        .iyanjupay-rewards-page
+        .bg-slate-100 {
+        background-color: #1e293b !important;
+      }
+
+      [data-iyanjupay-theme="dark"]
+        .iyanjupay-me-page
+        [class*="border-gray-200"],
+      [data-iyanjupay-theme="dark"]
+        .iyanjupay-rewards-page
+        [class*="border-gray-200"] {
+        border-color: #334155 !important;
+      }
+
+      [data-iyanjupay-theme="dark"]
+        .iyanjupay-me-page
+        [class*="border-gray-100"],
+      [data-iyanjupay-theme="dark"]
+        .iyanjupay-rewards-page
+        [class*="border-gray-100"] {
+        border-color: #334155 !important;
+      }
+
+      /*
+       * ==========================================================
+       * DARK PURPLE ACCENTS
+       * ==========================================================
+       */
+
+      [data-iyanjupay-theme="dark"]
+        .iyanjupay-me-page
+        .bg-purple-50,
+      [data-iyanjupay-theme="dark"]
+        .iyanjupay-rewards-page
+        .bg-purple-50 {
+        background-color: #312e81 !important;
+      }
+
+      [data-iyanjupay-theme="dark"]
+        .iyanjupay-me-page
+        .bg-purple-100,
+      [data-iyanjupay-theme="dark"]
+        .iyanjupay-rewards-page
+        .bg-purple-100 {
+        background-color: #ede9fe !important;
+      }
+
+      [data-iyanjupay-theme="dark"]
+        .iyanjupay-me-page
+        .text-purple-700,
+      [data-iyanjupay-theme="dark"]
+        .iyanjupay-me-page
+        .text-purple-600,
+      [data-iyanjupay-theme="dark"]
+        .iyanjupay-rewards-page
+        .text-purple-700,
+      [data-iyanjupay-theme="dark"]
+        .iyanjupay-rewards-page
+        .text-purple-600 {
+        color: #c4b5fd !important;
+      }
+
+      [data-iyanjupay-theme="dark"]
+        .iyanjupay-me-page
+        .bg-purple-100
+        .text-purple-600,
+      [data-iyanjupay-theme="dark"]
+        .iyanjupay-rewards-page
+        .bg-purple-100
+        .text-purple-600 {
+        color: #7c3aed !important;
+      }
+
+      /*
+       * ==========================================================
+       * BLUE THEME
+       * ==========================================================
+       */
+
+      .iyanjupay-theme-blue .bg-purple-50 {
+        background-color: #dbeafe !important;
+      }
+
+      .iyanjupay-theme-blue .text-purple-700,
+      .iyanjupay-theme-blue .text-purple-600 {
+        color: #1d4ed8 !important;
+      }
+
+      .iyanjupay-theme-blue .bg-purple-600 {
+        background-color: #2563eb !important;
+      }
+
+      .iyanjupay-theme-blue [class*="hover:bg-purple-700"]:hover {
+        background-color: #1d4ed8 !important;
+      }
+
+      [data-iyanjupay-theme="blue"]
+        .iyanjupay-me-page
+        .bg-purple-50,
+      [data-iyanjupay-theme="blue"]
+        .iyanjupay-rewards-page
+        .bg-purple-50 {
+        background-color: #dbeafe !important;
+      }
+
+      [data-iyanjupay-theme="blue"]
+        .iyanjupay-me-page
+        .bg-purple-100,
+      [data-iyanjupay-theme="blue"]
+        .iyanjupay-rewards-page
+        .bg-purple-100 {
+        background-color: #dbeafe !important;
+      }
+
+      [data-iyanjupay-theme="blue"]
+        .iyanjupay-me-page
+        .text-purple-700,
+      [data-iyanjupay-theme="blue"]
+        .iyanjupay-me-page
+        .text-purple-600,
+      [data-iyanjupay-theme="blue"]
+        .iyanjupay-rewards-page
+        .text-purple-700,
+      [data-iyanjupay-theme="blue"]
+        .iyanjupay-rewards-page
+        .text-purple-600 {
+        color: #1d4ed8 !important;
+      }
+
+      [data-iyanjupay-theme="blue"]
+        .iyanjupay-me-page
+        .border-purple-100,
+      [data-iyanjupay-theme="blue"]
+        .iyanjupay-rewards-page
+        .border-purple-100 {
+        border-color: #bfdbfe !important;
+      }
+
+      /*
+       * ==========================================================
+       * SIGN-OUT
+       * ==========================================================
+       */
+
+      [data-iyanjupay-theme="dark"]
+        .iyanjupay-me-page
+        .text-red-600 {
+        color: #dc2626 !important;
+      }
+
+      [data-iyanjupay-theme="dark"]
+        .iyanjupay-me-page
+        .text-red-700 {
+        color: #b91c1c !important;
+      }
+
+      [data-iyanjupay-theme="dark"]
+        .iyanjupay-me-page
+        [class*="hover:bg-red-50"]:hover {
+        background-color: #fee2e2 !important;
+      }
+    `}</style>
+  );
 
   /*
    * ============================================================
@@ -1538,17 +1996,21 @@ const Dashboard = () => {
 
   if (authLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50">
-        <div className="text-center">
-          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-white shadow-lg">
-            <Loader2 className="h-8 w-8 animate-spin text-purple-600" />
-          </div>
+      <>
+        {dashboardThemeStyles}
 
-          <p className="mt-5 text-sm font-medium text-slate-600">
-            Preparing your IyanjuPay account...
-          </p>
+        <div className="min-h-screen flex items-center justify-center bg-slate-50">
+          <div className="text-center">
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-white shadow-lg">
+              <Loader2 className="h-8 w-8 animate-spin text-purple-600" />
+            </div>
+
+            <p className="mt-5 text-sm font-medium text-slate-600">
+              Preparing your IyanjuPay account...
+            </p>
+          </div>
         </div>
-      </div>
+      </>
     );
   }
 
@@ -1560,9 +2022,13 @@ const Dashboard = () => {
 
   if (!user) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50">
-        <Loader2 className="h-8 w-8 animate-spin text-purple-600" />
-      </div>
+      <>
+        {dashboardThemeStyles}
+
+        <div className="min-h-screen flex items-center justify-center bg-slate-50">
+          <Loader2 className="h-8 w-8 animate-spin text-purple-600" />
+        </div>
+      </>
     );
   }
 
@@ -1691,35 +2157,39 @@ const Dashboard = () => {
     "service-payment"
   ) {
     return (
-      <ServicePayment
-        service={
-          selectedService
-        }
-        walletBalance={Number(
-          wallet?.balance ?? 0
-        )}
-        onBack={() => {
-          setSelectedService(
-            null
-          );
+      <>
+        {dashboardThemeStyles}
 
-          setCurrentPage(
-            "home"
-          );
-        }}
-        onPurchase={
-          handlePurchase
-        }
-        onHistory={() => {
-          setSelectedService(
-            null
-          );
+        <ServicePayment
+          service={
+            selectedService
+          }
+          walletBalance={Number(
+            wallet?.balance ?? 0
+          )}
+          onBack={() => {
+            setSelectedService(
+              null
+            );
 
-          setCurrentPage(
-            "history"
-          );
-        }}
-      />
+            setCurrentPage(
+              "home"
+            );
+          }}
+          onPurchase={
+            handlePurchase
+          }
+          onHistory={() => {
+            setSelectedService(
+              null
+            );
+
+            setCurrentPage(
+              "history"
+            );
+          }}
+        />
+      </>
     );
   }
 
@@ -1734,19 +2204,23 @@ const Dashboard = () => {
     "send-money"
   ) {
     return (
-      <SendMoneyPage
-        onBack={() =>
-          setCurrentPage(
-            "home"
-          )
-        }
-        walletBalance={Number(
-          wallet?.balance ?? 0
-        )}
-        onTransfer={
-          handleTransfer
-        }
-      />
+      <>
+        {dashboardThemeStyles}
+
+        <SendMoneyPage
+          onBack={() =>
+            setCurrentPage(
+              "home"
+            )
+          }
+          walletBalance={Number(
+            wallet?.balance ?? 0
+          )}
+          onTransfer={
+            handleTransfer
+          }
+        />
+      </>
     );
   }
 
@@ -1761,13 +2235,17 @@ const Dashboard = () => {
     "profile"
   ) {
     return (
-      <ProfilePage
-        onBack={() =>
-          setCurrentPage(
-            "me"
-          )
-        }
-      />
+      <>
+        {dashboardThemeStyles}
+
+        <ProfilePage
+          onBack={() =>
+            setCurrentPage(
+              "me"
+            )
+          }
+        />
+      </>
     );
   }
 
@@ -1782,13 +2260,17 @@ const Dashboard = () => {
     "history"
   ) {
     return (
-      <TransactionHistory
-        onBack={() =>
-          setCurrentPage(
-            "me"
-          )
-        }
-      />
+      <>
+        {dashboardThemeStyles}
+
+        <TransactionHistory
+          onBack={() =>
+            setCurrentPage(
+              "me"
+            )
+          }
+        />
+      </>
     );
   }
 
@@ -1796,9 +2278,6 @@ const Dashboard = () => {
    * ============================================================
    * REWARDS
    * ============================================================
-   *
-   * Footer is intentionally rendered here so it remains visible
-   * while RewardsPage is open.
    */
 
   if (
@@ -1806,19 +2285,23 @@ const Dashboard = () => {
     "rewards"
   ) {
     return (
-      <div className="min-h-screen pb-20">
-        <RewardsPage
-          onBack={() =>
-            setCurrentPage(
-              "home"
-            )
-          }
-        />
+      <>
+        {dashboardThemeStyles}
 
-        {renderBottomNav(
-          "rewards"
-        )}
-      </div>
+        <div className="min-h-screen pb-20">
+          <RewardsPage
+            onBack={() =>
+              setCurrentPage(
+                "home"
+              )
+            }
+          />
+
+          {renderBottomNav(
+            "rewards"
+          )}
+        </div>
+      </>
     );
   }
 
@@ -1826,9 +2309,6 @@ const Dashboard = () => {
    * ============================================================
    * CARDS
    * ============================================================
-   *
-   * Footer is intentionally rendered here so it remains visible
-   * while CardsPage is open.
    */
 
   if (
@@ -1836,19 +2316,23 @@ const Dashboard = () => {
     "cards"
   ) {
     return (
-      <div className="min-h-screen pb-20">
-        <CardsPage
-          onBack={() =>
-            setCurrentPage(
-              "home"
-            )
-          }
-        />
+      <>
+        {dashboardThemeStyles}
 
-        {renderBottomNav(
-          "cards"
-        )}
-      </div>
+        <div className="min-h-screen pb-20">
+          <CardsPage
+            onBack={() =>
+              setCurrentPage(
+                "home"
+              )
+            }
+          />
+
+          {renderBottomNav(
+            "cards"
+          )}
+        </div>
+      </>
     );
   }
 
@@ -1863,13 +2347,17 @@ const Dashboard = () => {
     "customer-service"
   ) {
     return (
-      <CustomerServicePage
-        onBack={() =>
-          setCurrentPage(
-            "me"
-          )
-        }
-      />
+      <>
+        {dashboardThemeStyles}
+
+        <CustomerServicePage
+          onBack={() =>
+            setCurrentPage(
+              "me"
+            )
+          }
+        />
+      </>
     );
   }
 
@@ -1884,13 +2372,17 @@ const Dashboard = () => {
     "support"
   ) {
     return (
-      <SupportPage
-        onBack={() =>
-          setCurrentPage(
-            "me"
-          )
-        }
-      />
+      <>
+        {dashboardThemeStyles}
+
+        <SupportPage
+          onBack={() =>
+            setCurrentPage(
+              "me"
+            )
+          }
+        />
+      </>
     );
   }
 
@@ -1905,13 +2397,17 @@ const Dashboard = () => {
     "transaction-limit"
   ) {
     return (
-      <TransactionLimitPage
-        onBack={() =>
-          setCurrentPage(
-            "me"
-          )
-        }
-      />
+      <>
+        {dashboardThemeStyles}
+
+        <TransactionLimitPage
+          onBack={() =>
+            setCurrentPage(
+              "me"
+            )
+          }
+        />
+      </>
     );
   }
 
@@ -1926,13 +2422,17 @@ const Dashboard = () => {
     "payment-pin"
   ) {
     return (
-      <PaymentPinPage
-        onBack={() =>
-          setCurrentPage(
-            "me"
-          )
-        }
-      />
+      <>
+        {dashboardThemeStyles}
+
+        <PaymentPinPage
+          onBack={() =>
+            setCurrentPage(
+              "me"
+            )
+          }
+        />
+      </>
     );
   }
 
@@ -1947,13 +2447,17 @@ const Dashboard = () => {
     "disputes"
   ) {
     return (
-      <DisputesPage
-        onBack={() =>
-          setCurrentPage(
-            "me"
-          )
-        }
-      />
+      <>
+        {dashboardThemeStyles}
+
+        <DisputesPage
+          onBack={() =>
+            setCurrentPage(
+              "me"
+            )
+          }
+        />
+      </>
     );
   }
 
@@ -1961,9 +2465,6 @@ const Dashboard = () => {
    * ============================================================
    * ME
    * ============================================================
-   *
-   * Footer is intentionally rendered here so it remains visible
-   * while MePage is open.
    */
 
   if (
@@ -1971,54 +2472,58 @@ const Dashboard = () => {
     "me"
   ) {
     return (
-      <div className="min-h-screen pb-20">
-        <MePage
-          onBack={() =>
-            setCurrentPage(
-              "home"
-            )
-          }
-          onProfileClick={() =>
-            setCurrentPage(
-              "profile"
-            )
-          }
-          onHistoryClick={() =>
-            setCurrentPage(
-              "history"
-            )
-          }
-          onCustomerServiceClick={() =>
-            setCurrentPage(
-              "customer-service"
-            )
-          }
-          onSupportClick={() =>
-            setCurrentPage(
-              "support"
-            )
-          }
-          onTransactionLimitClick={() =>
-            setCurrentPage(
-              "transaction-limit"
-            )
-          }
-          onPaymentPinClick={() =>
-            setCurrentPage(
-              "payment-pin"
-            )
-          }
-          onDisputesClick={() =>
-            setCurrentPage(
-              "disputes"
-            )
-          }
-        />
+      <>
+        {dashboardThemeStyles}
 
-        {renderBottomNav(
-          "me"
-        )}
-      </div>
+        <div className="min-h-screen pb-20">
+          <MePage
+            onBack={() =>
+              setCurrentPage(
+                "home"
+              )
+            }
+            onProfileClick={() =>
+              setCurrentPage(
+                "profile"
+              )
+            }
+            onHistoryClick={() =>
+              setCurrentPage(
+                "history"
+              )
+            }
+            onCustomerServiceClick={() =>
+              setCurrentPage(
+                "customer-service"
+              )
+            }
+            onSupportClick={() =>
+              setCurrentPage(
+                "support"
+              )
+            }
+            onTransactionLimitClick={() =>
+              setCurrentPage(
+                "transaction-limit"
+              )
+            }
+            onPaymentPinClick={() =>
+              setCurrentPage(
+                "payment-pin"
+              )
+            }
+            onDisputesClick={() =>
+              setCurrentPage(
+                "disputes"
+              )
+            }
+          />
+
+          {renderBottomNav(
+            "me"
+          )}
+        </div>
+      </>
     );
   }
 
@@ -2030,17 +2535,21 @@ const Dashboard = () => {
 
   if (walletLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50">
-        <div className="text-center">
-          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-white shadow-lg">
-            <Loader2 className="h-8 w-8 animate-spin text-purple-600" />
-          </div>
+      <>
+        {dashboardThemeStyles}
 
-          <p className="mt-5 text-sm font-medium text-slate-600">
-            Loading your wallet...
-          </p>
+        <div className="min-h-screen flex items-center justify-center bg-slate-50">
+          <div className="text-center">
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-white shadow-lg">
+              <Loader2 className="h-8 w-8 animate-spin text-purple-600" />
+            </div>
+
+            <p className="mt-5 text-sm font-medium text-slate-600">
+              Loading your wallet...
+            </p>
+          </div>
         </div>
-      </div>
+      </>
     );
   }
 
@@ -2092,103 +2601,7 @@ const Dashboard = () => {
 
   return (
     <>
-      <style>{`
-        .iyanjupay-dashboard {
-          background: #f7f8fc;
-          color: #0f172a;
-          transition:
-            background-color 180ms ease,
-            color 180ms ease;
-        }
-
-        .iyanjupay-theme-blue {
-          background: #f4f8ff;
-        }
-
-        .iyanjupay-theme-dark {
-          background: #090d18;
-          color: #f8fafc;
-        }
-
-        .iyanjupay-theme-dark .bg-white {
-          background-color: #111827 !important;
-        }
-
-        .iyanjupay-theme-dark .bg-slate-50 {
-          background-color: #090d18 !important;
-        }
-
-        .iyanjupay-theme-dark .bg-slate-100 {
-          background-color: #1e293b !important;
-        }
-
-        .iyanjupay-theme-dark [class*="border-slate-200"] {
-          border-color: #334155 !important;
-        }
-
-        .iyanjupay-theme-dark .text-slate-950,
-        .iyanjupay-theme-dark .text-slate-900 {
-          color: #f8fafc !important;
-        }
-
-        .iyanjupay-theme-dark .text-slate-700 {
-          color: #e2e8f0 !important;
-        }
-
-        .iyanjupay-theme-dark .text-slate-600 {
-          color: #cbd5e1 !important;
-        }
-
-        .iyanjupay-theme-dark .text-slate-500 {
-          color: #94a3b8 !important;
-        }
-
-        .iyanjupay-theme-dark .text-slate-400 {
-          color: #64748b !important;
-        }
-
-        .iyanjupay-theme-dark [class*="hover:bg-slate-50"]:hover {
-          background-color: #1e293b !important;
-        }
-
-        .iyanjupay-theme-dark .bg-purple-50 {
-          background-color: #312e81 !important;
-        }
-
-        .iyanjupay-theme-dark .text-purple-700,
-        .iyanjupay-theme-dark .text-purple-600 {
-          color: #c4b5fd !important;
-        }
-
-        .iyanjupay-theme-dark .bg-blue-50 {
-          background-color: #172554 !important;
-        }
-
-        .iyanjupay-theme-dark .bg-emerald-50 {
-          background-color: #052e2b !important;
-        }
-
-        .iyanjupay-theme-dark .bg-orange-50 {
-          background-color: #431407 !important;
-        }
-
-        .iyanjupay-theme-blue .bg-purple-50 {
-          background-color: #dbeafe !important;
-        }
-
-        .iyanjupay-theme-blue .text-purple-700,
-        .iyanjupay-theme-blue .text-purple-600 {
-          color: #1d4ed8 !important;
-        }
-
-        .iyanjupay-theme-blue .bg-purple-600 {
-          background-color: #2563eb !important;
-        }
-
-        .iyanjupay-theme-blue [class*="hover:bg-purple-700"]:hover {
-          background-color: #1d4ed8 !important;
-        }
-      `}</style>
+      {dashboardThemeStyles}
 
       <div
         className={`min-h-screen pb-24 iyanjupay-dashboard iyanjupay-theme-${dashboardTheme}`}

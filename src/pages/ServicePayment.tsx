@@ -204,6 +204,195 @@ function getPlanName(item: Item): string {
   );
 }
 
+/*
+ * ============================================================
+ * DATA PLAN DISPLAY HELPERS
+ * ============================================================
+ *
+ * These functions are ONLY for customer-facing presentation.
+ *
+ * The original item object is still preserved and sent to the
+ * backend. Therefore removing SME/Awoof/Direct from the screen
+ * does NOT alter the actual ClubKonnect plan code or metadata.
+ */
+
+/**
+ * Extract only the data volume from the provider's plan name.
+ *
+ * Examples:
+ *
+ * "500 MB - Weekly (SME)"       -> "500 MB"
+ * "1GB Monthly Direct"          -> "1 GB"
+ * "2 GB - 7 Days - Awoof"       -> "2 GB"
+ * "10GB 30 Days SME"            -> "10 GB"
+ *
+ * If a recognizable data size cannot be found, we fall back
+ * to a cleaned version of the original name with common
+ * provider/category labels removed.
+ */
+function getDataPlanSize(item: Item): string {
+  const raw = getPlanName(item);
+
+  const normalized = raw
+    .replace(/\s+/g, " ")
+    .trim();
+
+  /*
+   * Match KB, MB, GB or TB.
+   *
+   * Supports:
+   * 500MB
+   * 500 MB
+   * 1GB
+   * 1 GB
+   * 1.5GB
+   * 2.5 GB
+   */
+  const sizeMatch = normalized.match(
+    /(\d+(?:\.\d+)?)\s*(KB|MB|GB|TB)\b/i
+  );
+
+  if (sizeMatch) {
+    return `${sizeMatch[1]} ${sizeMatch[2].toUpperCase()}`;
+  }
+
+  /*
+   * Some API responses may put the data amount in a separate
+   * field instead of the name.
+   */
+  const separateSize = [
+    item.data,
+    item.data_amount,
+    item.dataAmount,
+    item.volume,
+    item.bundle_size,
+    item.bundleSize,
+    item.size,
+  ]
+    .map(clean)
+    .find((value) =>
+      /\d+(?:\.\d+)?\s*(KB|MB|GB|TB)\b/i.test(value)
+    );
+
+  if (separateSize) {
+    const match = separateSize.match(
+      /(\d+(?:\.\d+)?)\s*(KB|MB|GB|TB)\b/i
+    );
+
+    if (match) {
+      return `${match[1]} ${match[2].toUpperCase()}`;
+    }
+  }
+
+  /*
+   * Final fallback.
+   *
+   * Remove provider/category terminology from the visible
+   * customer-facing label.
+   */
+  return normalized
+    .replace(
+      /\b(sme|awoof|direct|direct\s+data|gifting|gift|corporate|promo|promotion|bonus|hot\s*deal|hot)\b/gi,
+      ""
+    )
+    .replace(/\s*[-|–—]\s*/g, " ")
+    .replace(/\(\s*\)/g, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
+/**
+ * Convert the plan's available duration information into the
+ * simple customer-facing duration requested for the new cards.
+ *
+ * Examples:
+ * Weekly / 7 days -> Weekly
+ * Monthly / 30 days -> Monthly
+ * Daily / 1 day -> Daily
+ */
+function getDataPlanDuration(item: Item): string {
+  const text = [
+    item.period,
+    item.plan_period,
+    item.planPeriod,
+    item.plan_type,
+    item.planType,
+    item.validity,
+    item.validity_days,
+    item.validityDays,
+    item.duration,
+    item.validity_period,
+    item.validityPeriod,
+    item.name,
+    item.plan_name,
+    item.planName,
+    item.description,
+  ]
+    .map(clean)
+    .join(" ")
+    .toLowerCase();
+
+  if (
+    /monthly|\b30\s*days?\b|\b31\s*days?\b|\b1\s*month\b|\b2\s*months?\b|\b3\s*months?\b/.test(
+      text
+    )
+  ) {
+    return "Monthly";
+  }
+
+  if (
+    /weekly|\b7\s*days?\b|\b14\s*days?\b|\b1\s*week\b|\b2\s*weeks?\b/.test(
+      text
+    )
+  ) {
+    return "Weekly";
+  }
+
+  if (
+    /daily|\b1\s*day\b|\b2\s*days?\b|\b3\s*days?\b|\b24\s*hours?\b/.test(
+      text
+    )
+  ) {
+    return "Daily";
+  }
+
+  /*
+   * If the provider gives a duration we don't classify as
+   * daily/weekly/monthly, display that duration rather than
+   * exposing provider/category names.
+   */
+  const explicitDuration = clean(
+    item.validity ??
+      item.duration ??
+      item.period ??
+      item.plan_period ??
+      item.planPeriod ??
+      item.validity_period ??
+      item.validityPeriod
+  );
+
+  if (explicitDuration) {
+    return explicitDuration
+      .replace(
+        /\b(sme|awoof|direct|direct\s+data|gifting|gift|corporate)\b/gi,
+        ""
+      )
+      .replace(/\s{2,}/g, " ")
+      .trim();
+  }
+
+  const validityDays = num(
+    item.validity_days ??
+      item.validityDays
+  );
+
+  if (validityDays > 0) {
+    return `${validityDays} days`;
+  }
+
+  return "Data plan";
+}
+
 function planGroup(item: Item): Exclude<DataTab, "HOT DEALS"> {
   const text = [
     item.period,
@@ -576,18 +765,6 @@ function transactionStatusFromResult(
       result?.data?.transactionStatus
   ).toLowerCase();
 
-  /*
-   * The Edge Function's explicit success flag takes priority over
-   * a stale/secondary status field.
-   *
-   * This prevents a response such as:
-   * {
-   *   success: true,
-   *   status: "pending"
-   * }
-   *
-   * from being incorrectly displayed as Pending.
-   */
   if (explicitSuccess) {
     return "success";
   }
@@ -622,9 +799,6 @@ function transactionStatusFromResult(
     return "pending";
   }
 
-  /*
-   * Explicit successful status values are treated as completed.
-   */
   if (
     [
       "success",
@@ -637,10 +811,6 @@ function transactionStatusFromResult(
     return "success";
   }
 
-  /*
-   * Preserve the existing behaviour for responses that don't
-   * provide a recognizable status.
-   */
   return "success";
 }
 
@@ -773,20 +943,6 @@ function ServiceTransactionProcessing({
   return (
     <>
       <style>{`
-        /*
-         * ============================================================
-         * IYANJUPAY DASHBOARD THEME BRIDGE
-         * ============================================================
-         *
-         * Dashboard remains the single source of truth.
-         *
-         * It already writes:
-         *
-         * document.documentElement.dataset.iyanjupayTheme
-         *
-         * This component only consumes that value.
-         */
-
         .iyanjupay-service-page {
           background: #f9fafb;
           color: #111827;
@@ -795,17 +951,11 @@ function ServiceTransactionProcessing({
             color 180ms ease;
         }
 
-        /*
-         * BLUE
-         */
         [data-iyanjupay-theme="blue"]
           .iyanjupay-service-page {
           background: #f4f8ff;
         }
 
-        /*
-         * DARK
-         */
         [data-iyanjupay-theme="dark"]
           .iyanjupay-service-page {
           background: #090d18;
@@ -970,25 +1120,10 @@ function ServiceTransactionProcessing({
           border-color: #334155 !important;
         }
 
-        /*
-         * BLUE
-         */
         [data-iyanjupay-theme="blue"]
           .iyanjupay-service-page
           .bg-violet-50 {
           background-color: #dbeafe !important;
-        }
-
-        [data-iyanjupay-theme="blue"]
-          .iyanjupay-service-page
-          .text-gray-900 {
-          color: #0f172a;
-        }
-
-        [data-iyanjupay-theme="blue"]
-          .iyanjupay-service-page
-          .text-gray-800 {
-          color: #1e293b;
         }
 
         [data-iyanjupay-theme="blue"]
@@ -1000,9 +1135,6 @@ function ServiceTransactionProcessing({
           color: #1d4ed8 !important;
         }
 
-        /*
-         * Theme-aware header gradients.
-         */
         [data-iyanjupay-theme="blue"]
           .iyanjupay-service-page
           .iyanjupay-service-header {
@@ -1025,9 +1157,6 @@ function ServiceTransactionProcessing({
           ) !important;
         }
 
-        /*
-         * Theme-aware primary action gradients.
-         */
         [data-iyanjupay-theme="blue"]
           .iyanjupay-service-page
           .iyanjupay-service-primary {
@@ -1050,9 +1179,6 @@ function ServiceTransactionProcessing({
           ) !important;
         }
 
-        /*
-         * Selected provider / plan / amount states.
-         */
         [data-iyanjupay-theme="blue"]
           .iyanjupay-service-page
           .iyanjupay-service-selected {
@@ -1674,15 +1800,6 @@ export default function ServicePayment({
       ]
     );
 
-  /*
-   * IMPORTANT:
-   *
-   * Package-based services must load packages immediately
-   * after the customer selects the service option.
-   *
-   * Electricity is intentionally excluded because it is
-   * amount-based rather than package-based.
-   */
   const handleBillerSelect = async (
     code: string
   ) => {
@@ -1702,12 +1819,6 @@ export default function ServicePayment({
     resetVerification();
     setError("");
 
-    /*
-     * Electricity has no package catalogue.
-     *
-     * Cable TV and JAMB MUST continue through
-     * loadItems() immediately after provider selection.
-     */
     if (isElectricity) {
       return;
     }
@@ -1817,14 +1928,6 @@ export default function ServicePayment({
             "The number was verified successfully.",
         });
 
-        /*
-         * Keep these calls as a fallback in case the
-         * verification response changes the available
-         * package catalogue.
-         *
-         * Packages already load immediately when the
-         * provider is selected.
-         */
         if (isCable) {
           await loadItems(
             selectedBillerCode
@@ -1854,22 +1957,6 @@ export default function ServicePayment({
       }
     };
 
-  /*
-   * ==========================================================
-   * AUTOMATIC IDENTIFIER VERIFICATION
-   * ==========================================================
-   *
-   * Cable:
-   *   SmartCard/IUC -> automatic verification
-   *
-   * Electricity:
-   *   Meter Number + Meter Type -> automatic verification
-   *
-   * JAMB:
-   *   Profile Code -> automatic verification
-   *
-   * No Verify button is required.
-   */
   useEffect(() => {
     if (
       !requiresIdentifierVerification ||
@@ -2420,7 +2507,20 @@ export default function ServicePayment({
     );
   };
 
-  const renderPlan = (
+  /*
+   * ============================================================
+   * DATA PLAN CARD
+   * ============================================================
+   *
+   * Customer sees ONLY:
+   *
+   *   Data size
+   *   Price
+   *   Duration
+   *
+   * No SME, Awoof, Direct, Direct Data or provider metadata.
+   */
+  const renderDataPlan = (
     item: Item
   ) => {
     const code =
@@ -2432,7 +2532,84 @@ export default function ServicePayment({
     const selected =
       code === selectedItemCode;
 
-    const hot = isHot(item);
+    const size =
+      getDataPlanSize(item);
+
+    const duration =
+      getDataPlanDuration(item);
+
+    return (
+      <button
+        key={code}
+        type="button"
+        onClick={() =>
+          handleItemSelect(item)
+        }
+        disabled={
+          !!processingSession ||
+          verifyingPin ||
+          price <= 0
+        }
+        aria-pressed={selected}
+        className={`relative min-w-0 overflow-hidden rounded-xl border px-1.5 py-2.5 text-center transition active:scale-[0.98] ${
+          selected
+            ? "iyanjupay-service-selected border-[#6D28D9] bg-violet-50 ring-2 ring-violet-100"
+            : "border-gray-200 bg-white hover:border-violet-300 hover:bg-violet-50/30"
+        }`}
+      >
+        <div
+          className={`truncate text-[11px] font-extrabold leading-tight sm:text-xs ${
+            selected
+              ? "text-[#4C1D95]"
+              : "text-gray-900"
+          }`}
+          title={size}
+        >
+          {size}
+        </div>
+
+        <div
+          className={`mt-1 truncate text-[11px] font-extrabold leading-tight sm:text-xs ${
+            selected
+              ? "text-[#4C1D95]"
+              : "text-[#4C1D95]"
+          }`}
+          title={naira(price)}
+        >
+          {naira(price)}
+        </div>
+
+        <div
+          className={`mt-1 truncate text-[9px] font-semibold leading-tight sm:text-[10px] ${
+            selected
+              ? "text-[#4C1D95]"
+              : "text-gray-500"
+          }`}
+          title={duration}
+        >
+          {duration}
+        </div>
+      </button>
+    );
+  };
+
+  /*
+   * Existing package cards remain available for Cable,
+   * JAMB, E-pin and other package-based services.
+   *
+   * The compact 5-column design is specifically for DATA.
+   */
+  const renderPlan = (
+    item: Item
+  ) => {
+    const code =
+      getItemCode(item);
+
+    const price =
+      getItemPrice(item);
+
+    const selected =
+      code === selectedItemCode;
 
     return (
       <button
@@ -2447,14 +2624,7 @@ export default function ServicePayment({
             : "border-gray-200 hover:border-violet-300"
         }`}
       >
-        {hot && (
-          <span className="absolute right-3 top-3 inline-flex items-center gap-1 rounded-full bg-orange-50 px-2 py-1 text-[10px] font-bold text-orange-600">
-            <Flame className="h-3 w-3" />
-            HOT
-          </span>
-        )}
-
-        <div className="pr-12 text-sm font-bold text-gray-900">
+        <div className="text-sm font-bold text-gray-900">
           {getPlanName(item)}
         </div>
 
@@ -2510,18 +2680,6 @@ export default function ServicePayment({
   return (
     <>
       <style>{`
-        /*
-         * ============================================================
-         * IYANJUPAY DASHBOARD THEME BRIDGE
-         * ============================================================
-         *
-         * Dashboard remains the single source of truth.
-         *
-         * This page consumes:
-         *
-         * document.documentElement.dataset.iyanjupayTheme
-         */
-
         .iyanjupay-service-page {
           background: #f9fafb;
           color: #111827;
@@ -2530,17 +2688,11 @@ export default function ServicePayment({
             color 180ms ease;
         }
 
-        /*
-         * BLUE APPEARANCE
-         */
         [data-iyanjupay-theme="blue"]
           .iyanjupay-service-page {
           background: #f4f8ff;
         }
 
-        /*
-         * DARK APPEARANCE
-         */
         [data-iyanjupay-theme="dark"]
           .iyanjupay-service-page {
           background: #090d18;
@@ -2705,9 +2857,6 @@ export default function ServicePayment({
           border-color: #334155 !important;
         }
 
-        /*
-         * BLUE ACCENTS
-         */
         [data-iyanjupay-theme="blue"]
           .iyanjupay-service-page
           .bg-violet-50 {
@@ -2723,9 +2872,6 @@ export default function ServicePayment({
           color: #1d4ed8 !important;
         }
 
-        /*
-         * THEME-AWARE HEADER
-         */
         [data-iyanjupay-theme="blue"]
           .iyanjupay-service-page
           .iyanjupay-service-header {
@@ -2748,9 +2894,6 @@ export default function ServicePayment({
           ) !important;
         }
 
-        /*
-         * THEME-AWARE PRIMARY ACTIONS
-         */
         [data-iyanjupay-theme="blue"]
           .iyanjupay-service-page
           .iyanjupay-service-primary {
@@ -2773,9 +2916,6 @@ export default function ServicePayment({
           ) !important;
         }
 
-        /*
-         * SELECTED SERVICE / PLAN / AMOUNT
-         */
         [data-iyanjupay-theme="blue"]
           .iyanjupay-service-page
           .iyanjupay-service-selected {
@@ -2955,15 +3095,6 @@ export default function ServicePayment({
                     Loading service options...
                   </div>
                 ) : billers.length ? (
-                  /*
-                   * Four providers per row.
-                   *
-                   * Cable:
-                   * DStv | GOtv | Startimes | Showmax
-                   *
-                   * Mobile:
-                   * MTN | Glo | 9mobile | Airtel
-                   */
                   <div className="grid w-full grid-cols-4 gap-1">
                     {billers.map(
                       renderBillerCard
@@ -3147,8 +3278,8 @@ export default function ServicePayment({
               {/* DATA */}
               {isData &&
                 selectedBillerCode && (
-                  <section className="rounded-3xl border bg-white p-4 shadow-sm">
-                    <div className="mb-4 flex gap-2 overflow-x-auto pb-1">
+                  <section className="rounded-3xl border bg-white p-3 shadow-sm sm:p-4">
+                    <div className="mb-3 flex gap-2 overflow-x-auto pb-1">
                       {DATA_TABS.map(
                         (tab) => (
                           <button
@@ -3180,9 +3311,22 @@ export default function ServicePayment({
                         Loading data plans...
                       </div>
                     ) : visibleDataPlans.length ? (
-                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      /*
+                       * ==================================================
+                       * FIVE COMPACT DATA PLANS PER ROW
+                       * ==================================================
+                       *
+                       * grid-cols-5 is intentionally used at the base
+                       * breakpoint so phones display five cards across.
+                       *
+                       * Each card contains ONLY:
+                       *   1. Data size
+                       *   2. Price
+                       *   3. Duration
+                       */
+                      <div className="grid grid-cols-5 gap-1.5 sm:gap-2">
                         {visibleDataPlans.map(
-                          renderPlan
+                          renderDataPlan
                         )}
                       </div>
                     ) : (
@@ -3194,22 +3338,7 @@ export default function ServicePayment({
                   </section>
                 )}
 
-              {/* PACKAGE-BASED SERVICES
-               *
-               * IMPORTANT CHANGE:
-               *
-               * Previously this section used:
-               *
-               *   isCable && verified
-               *   isJamb && verified
-               *
-               * which prevented packages from appearing
-               * until verification completed.
-               *
-               * It now uses selectedBillerCode so packages
-               * appear immediately after selecting the
-               * provider/exam type.
-               */}
+              {/* PACKAGE-BASED SERVICES */}
               {(
                 (isCable &&
                   selectedBillerCode) ||

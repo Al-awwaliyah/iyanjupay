@@ -407,12 +407,14 @@ const isInternalProviderName = (
     return true;
   }
 
-  return INTERNAL_PROVIDER_NAMES.has(
-    normalized.replace(/_/g, " ")
-  ) ||
+  return (
+    INTERNAL_PROVIDER_NAMES.has(
+      normalized.replace(/_/g, " ")
+    ) ||
     INTERNAL_PROVIDER_NAMES.has(
       normalized
-    );
+    )
+  );
 };
 
 /**
@@ -1291,55 +1293,30 @@ const normalizeTransaction = (
 
   return {
     transaction,
-
     kind,
-
     direction,
-
     title,
-
     subtitle,
-
     serviceProviderName,
-
     recipientName,
-
     senderName,
-
     phoneNumber,
-
     accountNumber,
-
     accountName,
-
     bankCode,
-
     bankName,
-
     walletId,
-
     virtualAccountNumber,
-
     meterNumber,
-
     meterType,
-
     smartcardNumber,
-
     packageName,
-
     internetAccount,
-
     amount,
-
     fee,
-
     totalCharged,
-
     isSuccessful,
-
     isPending,
-
     isFailed,
   };
 };
@@ -1373,7 +1350,7 @@ const StatusBadge = ({
 }) => {
   if (transaction.isSuccessful) {
     return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-green-50 px-2.5 py-1 text-xs font-medium text-green-700">
+      <span className="transaction-history-status-success inline-flex items-center gap-1 rounded-full bg-green-50 px-2.5 py-1 text-xs font-medium text-green-700">
         <CheckCircle2 className="h-3.5 w-3.5" />
         Successful
       </span>
@@ -1382,7 +1359,7 @@ const StatusBadge = ({
 
   if (transaction.isFailed) {
     return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-red-50 px-2.5 py-1 text-xs font-medium text-red-700">
+      <span className="transaction-history-status-failed inline-flex items-center gap-1 rounded-full bg-red-50 px-2.5 py-1 text-xs font-medium text-red-700">
         <X className="h-3.5 w-3.5" />
         Failed
       </span>
@@ -1390,7 +1367,7 @@ const StatusBadge = ({
   }
 
   return (
-    <span className="inline-flex items-center gap-1 rounded-full bg-yellow-50 px-2.5 py-1 text-xs font-medium text-yellow-700">
+    <span className="transaction-history-status-pending inline-flex items-center gap-1 rounded-full bg-yellow-50 px-2.5 py-1 text-xs font-medium text-yellow-700">
       <Loader2 className="h-3.5 w-3.5 animate-spin" />
       Pending
     </span>
@@ -1452,7 +1429,7 @@ const TransactionIcon = ({
 
   return (
     <div
-      className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full ${
+      className={`transaction-history-icon flex h-11 w-11 shrink-0 items-center justify-center rounded-full ${
         transaction.direction ===
         "incoming"
           ? "bg-green-50 text-green-600"
@@ -1486,14 +1463,14 @@ const DetailRow = ({
   }
 
   return (
-    <div className="flex items-start justify-between gap-4 border-b border-gray-100 py-3 last:border-b-0">
-      <span className="text-sm text-gray-500">
+    <div className="transaction-history-detail-row flex items-start justify-between gap-4 border-b border-gray-100 py-3 last:border-b-0">
+      <span className="transaction-history-detail-label text-sm text-gray-500">
         {label}
       </span>
 
       <div className="flex min-w-0 items-center gap-2 text-right">
         <span
-          className={`break-all text-sm font-medium text-gray-900 ${
+          className={`transaction-history-detail-value break-all text-sm font-medium text-gray-900 ${
             mono
               ? "font-mono"
               : ""
@@ -1508,7 +1485,7 @@ const DetailRow = ({
               type="button"
               variant="ghost"
               size="icon"
-              className="h-7 w-7 shrink-0"
+              className="transaction-history-copy-button h-7 w-7 shrink-0"
               onClick={onCopy}
             >
               <Copy className="h-3.5 w-3.5" />
@@ -2811,10 +2788,725 @@ const TransactionHistory = ({
      ============================================================== */
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-10">
+    <div className="iyanjupay-transaction-history min-h-screen bg-gray-50 pb-10">
+      <style>{`
+        /* =========================================================
+           IYANJUPAY TRANSACTION HISTORY THEME
+           Theme is controlled by Dashboard through:
+           html[data-iyanjupay-theme="light"]
+           html[data-iyanjupay-theme="blue"]
+           html[data-iyanjupay-theme="dark"]
+           ========================================================= */
+
+        .iyanjupay-transaction-history {
+          min-height: 100vh;
+          background: #f8fafc;
+          color: #111827;
+        }
+
+        .iyanjupay-transaction-history
+        .transaction-history-header {
+          background: rgba(255,255,255,.95);
+          border-color: #e5e7eb;
+        }
+
+        .iyanjupay-transaction-history
+        .transaction-history-card {
+          background: #ffffff;
+          border-color: #e5e7eb;
+          color: #111827;
+        }
+
+        .iyanjupay-transaction-history
+        .transaction-history-input {
+          background: #ffffff;
+          color: #111827;
+          border-color: #d1d5db;
+        }
+
+        .iyanjupay-transaction-history
+        .transaction-history-input::placeholder {
+          color: #9ca3af;
+        }
+
+        .iyanjupay-transaction-history
+        .transaction-history-select {
+          background: #ffffff;
+          color: #111827;
+          border-color: #d1d5db;
+        }
+
+        .iyanjupay-transaction-history
+        .transaction-history-toolbar-button,
+        .iyanjupay-transaction-history
+        .transaction-history-pagination-button,
+        .iyanjupay-transaction-history
+        .transaction-history-action-button {
+          color: #111827;
+          border-color: #d1d5db;
+        }
+
+        .iyanjupay-transaction-history
+        .transaction-history-empty-icon {
+          background: #f3f4f6;
+        }
+
+        .iyanjupay-transaction-history
+        .transaction-history-pagination {
+          background: #ffffff;
+          border-color: #e5e7eb;
+        }
+
+        .iyanjupay-transaction-history
+        .transaction-history-error {
+          background: #fef2f2;
+          border-color: #fecaca;
+        }
+
+        .iyanjupay-transaction-history
+        .transaction-history-error-title {
+          color: #991b1b;
+        }
+
+        .iyanjupay-transaction-history
+        .transaction-history-error-text {
+          color: #dc2626;
+        }
+
+        /* BLUE THEME */
+
+        html[data-iyanjupay-theme="blue"]
+        .iyanjupay-transaction-history {
+          background: #f8fbff;
+          color: #0f172a;
+        }
+
+        html[data-iyanjupay-theme="blue"]
+        .iyanjupay-transaction-history
+        .transaction-history-header {
+          background: rgba(255,255,255,.96);
+          border-color: #bfdbfe;
+        }
+
+        html[data-iyanjupay-theme="blue"]
+        .iyanjupay-transaction-history
+        .transaction-history-card {
+          background: #ffffff;
+          border-color: #dbeafe;
+        }
+
+        html[data-iyanjupay-theme="blue"]
+        .iyanjupay-transaction-history
+        .transaction-history-input,
+        html[data-iyanjupay-theme="blue"]
+        .iyanjupay-transaction-history
+        .transaction-history-select {
+          background: #ffffff;
+          color: #0f172a;
+          border-color: #bfdbfe;
+        }
+
+        html[data-iyanjupay-theme="blue"]
+        .iyanjupay-transaction-history
+        .transaction-history-input:focus,
+        html[data-iyanjupay-theme="blue"]
+        .iyanjupay-transaction-history
+        .transaction-history-select:focus {
+          border-color: #3b82f6;
+          box-shadow: 0 0 0 2px rgba(59,130,246,.12);
+        }
+
+        html[data-iyanjupay-theme="blue"]
+        .iyanjupay-transaction-history
+        .transaction-history-pagination {
+          background: #ffffff;
+          border-color: #dbeafe;
+        }
+
+        html[data-iyanjupay-theme="blue"]
+        .iyanjupay-transaction-history
+        .transaction-history-icon.bg-purple-50 {
+          background: #dbeafe !important;
+        }
+
+        html[data-iyanjupay-theme="blue"]
+        .iyanjupay-transaction-history
+        .transaction-history-icon.text-purple-600 {
+          color: #1d4ed8 !important;
+        }
+
+        html[data-iyanjupay-theme="blue"]
+        .iyanjupay-transaction-history
+        .text-purple-600 {
+          color: #2563eb !important;
+        }
+
+        html[data-iyanjupay-theme="blue"]
+        .iyanjupay-transaction-history
+        .bg-purple-600 {
+          background-color: #2563eb !important;
+        }
+
+        html[data-iyanjupay-theme="blue"]
+        .iyanjupay-transaction-history
+        .hover\\:bg-purple-700:hover {
+          background-color: #1d4ed8 !important;
+        }
+
+        html[data-iyanjupay-theme="blue"]
+        .iyanjupay-transaction-history
+        .transaction-history-empty-icon {
+          background: #eff6ff;
+        }
+
+        /* DARK THEME */
+
+        html[data-iyanjupay-theme="dark"]
+        .iyanjupay-transaction-history {
+          background: #020617;
+          color: #f8fafc;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+        .iyanjupay-transaction-history
+        .transaction-history-header {
+          background: rgba(2,6,23,.96);
+          border-color: #1e293b;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+        .iyanjupay-transaction-history
+        .transaction-history-card {
+          background: #0f172a;
+          border-color: #1e293b;
+          color: #f8fafc;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+        .iyanjupay-transaction-history
+        .transaction-history-pagination {
+          background: #0f172a;
+          border-color: #1e293b;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+        .iyanjupay-transaction-history
+        .transaction-history-input,
+        html[data-iyanjupay-theme="dark"]
+        .iyanjupay-transaction-history
+        .transaction-history-select {
+          background: #0f172a;
+          color: #f8fafc;
+          border-color: #334155;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+        .iyanjupay-transaction-history
+        .transaction-history-input::placeholder {
+          color: #64748b;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+        .iyanjupay-transaction-history
+        .transaction-history-input:focus,
+        html[data-iyanjupay-theme="dark"]
+        .iyanjupay-transaction-history
+        .transaction-history-select:focus {
+          border-color: #64748b;
+          box-shadow: 0 0 0 2px rgba(100,116,139,.18);
+        }
+
+        html[data-iyanjupay-theme="dark"]
+        .iyanjupay-transaction-history
+        .text-gray-900 {
+          color: #f8fafc !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+        .iyanjupay-transaction-history
+        .text-gray-800 {
+          color: #f1f5f9 !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+        .iyanjupay-transaction-history
+        .text-gray-700 {
+          color: #e2e8f0 !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+        .iyanjupay-transaction-history
+        .text-gray-600 {
+          color: #cbd5e1 !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+        .iyanjupay-transaction-history
+        .text-gray-500 {
+          color: #94a3b8 !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+        .iyanjupay-transaction-history
+        .text-gray-400 {
+          color: #64748b !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+        .iyanjupay-transaction-history
+        .border-gray-100 {
+          border-color: #1e293b !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+        .iyanjupay-transaction-history
+        .border-gray-200 {
+          border-color: #334155 !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+        .iyanjupay-transaction-history
+        .bg-gray-50 {
+          background-color: #020617 !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+        .iyanjupay-transaction-history
+        .bg-gray-100 {
+          background-color: #1e293b !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+        .iyanjupay-transaction-history
+        .bg-white {
+          background-color: #0f172a !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+        .iyanjupay-transaction-history
+        .transaction-history-icon.bg-green-50 {
+          background: #052e2b !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+        .iyanjupay-transaction-history
+        .transaction-history-icon.text-green-600 {
+          color: #6ee7b7 !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+        .iyanjupay-transaction-history
+        .transaction-history-icon.bg-purple-50 {
+          background: #312e81 !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+        .iyanjupay-transaction-history
+        .transaction-history-icon.text-purple-600 {
+          color: #c4b5fd !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+        .iyanjupay-transaction-history
+        .text-green-600 {
+          color: #6ee7b7 !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+        .iyanjupay-transaction-history
+        .text-yellow-600 {
+          color: #fcd34d !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+        .iyanjupay-transaction-history
+        .text-red-600 {
+          color: #fca5a5 !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+        .iyanjupay-transaction-history
+        .text-red-500 {
+          color: #f87171 !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+        .iyanjupay-transaction-history
+        .bg-green-50 {
+          background-color: #052e2b !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+        .iyanjupay-transaction-history
+        .text-green-700 {
+          color: #6ee7b7 !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+        .iyanjupay-transaction-history
+        .bg-red-50 {
+          background-color: #450a0a !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+        .iyanjupay-transaction-history
+        .text-red-700 {
+          color: #fca5a5 !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+        .iyanjupay-transaction-history
+        .bg-yellow-50 {
+          background-color: #422006 !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+        .iyanjupay-transaction-history
+        .text-yellow-700 {
+          color: #fcd34d !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+        .iyanjupay-transaction-history
+        .transaction-history-error {
+          background: #3f1d1d !important;
+          border-color: #7f1d1d !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+        .iyanjupay-transaction-history
+        .transaction-history-error-title {
+          color: #fca5a5 !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+        .iyanjupay-transaction-history
+        .transaction-history-error-text {
+          color: #fca5a5 !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+        .iyanjupay-transaction-history
+        .transaction-history-empty-icon {
+          background: #1e293b !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+        .iyanjupay-transaction-history
+        .transaction-history-empty-icon
+        svg {
+          color: #64748b !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+        .iyanjupay-transaction-history
+        .hover\\:bg-gray-50:hover {
+          background-color: #1e293b !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+        .iyanjupay-transaction-history
+        .hover\\:text-gray-700:hover {
+          color: #e2e8f0 !important;
+        }
+
+        /* DETAIL ROWS */
+
+        html[data-iyanjupay-theme="dark"]
+        .iyanjupay-transaction-history
+        .transaction-history-detail-row {
+          border-color: #1e293b !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+        .iyanjupay-transaction-history
+        .transaction-history-detail-label {
+          color: #94a3b8 !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+        .iyanjupay-transaction-history
+        .transaction-history-detail-value {
+          color: #f8fafc !important;
+        }
+
+        /* BUTTONS */
+
+        html[data-iyanjupay-theme="dark"]
+        .iyanjupay-transaction-history
+        .transaction-history-toolbar-button,
+        html[data-iyanjupay-theme="dark"]
+        .iyanjupay-transaction-history
+        .transaction-history-pagination-button,
+        html[data-iyanjupay-theme="dark"]
+        .iyanjupay-transaction-history
+        .transaction-history-action-button,
+        html[data-iyanjupay-theme="dark"]
+        .iyanjupay-transaction-history
+        .transaction-history-copy-button {
+          color: #e2e8f0 !important;
+          border-color: #334155 !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+        .iyanjupay-transaction-history
+        .transaction-history-toolbar-button:hover,
+        html[data-iyanjupay-theme="dark"]
+        .iyanjupay-transaction-history
+        .transaction-history-pagination-button:hover,
+        html[data-iyanjupay-theme="dark"]
+        .iyanjupay-transaction-history
+        .transaction-history-action-button:hover,
+        html[data-iyanjupay-theme="dark"]
+        .iyanjupay-transaction-history
+        .transaction-history-copy-button:hover {
+          background: #1e293b !important;
+          color: #f8fafc !important;
+        }
+
+        /* DARK PURPLE PRIMARY BUTTON */
+
+        html[data-iyanjupay-theme="dark"]
+        .iyanjupay-transaction-history
+        .bg-purple-600 {
+          background-color: #4f46e5 !important;
+          color: #ffffff !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+        .iyanjupay-transaction-history
+        .hover\\:bg-purple-700:hover {
+          background-color: #4338ca !important;
+        }
+
+        /* STATUS BADGES */
+
+        html[data-iyanjupay-theme="dark"]
+        .transaction-history-status-success {
+          background: #052e2b !important;
+          color: #6ee7b7 !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+        .transaction-history-status-failed {
+          background: #450a0a !important;
+          color: #fca5a5 !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+        .transaction-history-status-pending {
+          background: #422006 !important;
+          color: #fcd34d !important;
+        }
+
+        /* =========================================================
+           DIALOG
+           Radix Dialog is rendered in a portal, so it is styled
+           directly from the html theme attribute.
+           ========================================================= */
+
+        html[data-iyanjupay-theme="light"]
+        .transaction-history-dialog,
+        html:not([data-iyanjupay-theme])
+        .transaction-history-dialog {
+          background: #ffffff !important;
+          color: #111827 !important;
+          border-color: #e5e7eb !important;
+        }
+
+        html[data-iyanjupay-theme="blue"]
+        .transaction-history-dialog {
+          background: #ffffff !important;
+          color: #0f172a !important;
+          border-color: #dbeafe !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+        .transaction-history-dialog {
+          background: #0f172a !important;
+          color: #f8fafc !important;
+          border-color: #334155 !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+        .transaction-history-dialog
+        .text-gray-900 {
+          color: #f8fafc !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+        .transaction-history-dialog
+        .text-gray-800 {
+          color: #f1f5f9 !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+        .transaction-history-dialog
+        .text-gray-700 {
+          color: #e2e8f0 !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+        .transaction-history-dialog
+        .text-gray-600 {
+          color: #cbd5e1 !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+        .transaction-history-dialog
+        .text-gray-500 {
+          color: #94a3b8 !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+        .transaction-history-dialog
+        .border-gray-100 {
+          border-color: #1e293b !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+        .transaction-history-dialog
+        .border-gray-200 {
+          border-color: #334155 !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+        .transaction-history-dialog
+        .bg-white {
+          background: #111827 !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+        .transaction-history-dialog
+        .bg-green-50 {
+          background: #052e2b !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+        .transaction-history-dialog
+        .bg-purple-50 {
+          background: #312e81 !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+        .transaction-history-dialog
+        .text-purple-600 {
+          color: #c4b5fd !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+        .transaction-history-dialog
+        .text-green-600 {
+          color: #6ee7b7 !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+        .transaction-history-dialog
+        .transaction-history-detail-row {
+          border-color: #1e293b !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+        .transaction-history-dialog
+        > button {
+          color: #cbd5e1 !important;
+          opacity: .9;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+        .transaction-history-dialog
+        > button:hover {
+          background: #1e293b !important;
+          color: #ffffff !important;
+        }
+
+        /* =========================================================
+           SELECT CONTENT
+           Radix Select is also rendered in a portal.
+           ========================================================= */
+
+        html[data-iyanjupay-theme="light"]
+        .transaction-history-select-content,
+        html:not([data-iyanjupay-theme])
+        .transaction-history-select-content {
+          background: #ffffff !important;
+          color: #111827 !important;
+          border-color: #e5e7eb !important;
+        }
+
+        html[data-iyanjupay-theme="blue"]
+        .transaction-history-select-content {
+          background: #ffffff !important;
+          color: #0f172a !important;
+          border-color: #dbeafe !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+        .transaction-history-select-content {
+          background: #0f172a !important;
+          color: #f8fafc !important;
+          border-color: #334155 !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+        .transaction-history-select-content
+        [role="option"] {
+          color: #e2e8f0 !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+        .transaction-history-select-content
+        [role="option"]:hover,
+        html[data-iyanjupay-theme="dark"]
+        .transaction-history-select-content
+        [role="option"][data-highlighted] {
+          background: #1e293b !important;
+          color: #ffffff !important;
+        }
+
+        /* BLUE SELECT OPTIONS */
+
+        html[data-iyanjupay-theme="blue"]
+        .transaction-history-select-content
+        [role="option"][data-highlighted] {
+          background: #eff6ff !important;
+          color: #1d4ed8 !important;
+        }
+
+        /* BLUE DETAIL CARDS */
+
+        html[data-iyanjupay-theme="blue"]
+        .transaction-history-dialog
+        .border-gray-200 {
+          border-color: #dbeafe !important;
+        }
+
+        /* DARK DETAIL CARDS */
+
+        html[data-iyanjupay-theme="dark"]
+        .transaction-history-dialog
+        .shadow-none {
+          box-shadow: none !important;
+        }
+
+        /* PRINT BUTTON */
+
+        html[data-iyanjupay-theme="blue"]
+        .transaction-history-dialog
+        .bg-purple-600 {
+          background-color: #2563eb !important;
+        }
+
+        html[data-iyanjupay-theme="blue"]
+        .transaction-history-dialog
+        .hover\\:bg-purple-700:hover {
+          background-color: #1d4ed8 !important;
+        }
+      `}</style>
+
       {/* HEADER */}
 
-      <div className="sticky top-0 z-30 border-b border-gray-200 bg-white/95 backdrop-blur">
+      <div className="transaction-history-header sticky top-0 z-30 border-b border-gray-200 bg-white/95 backdrop-blur">
         <div className="mx-auto max-w-5xl px-4 py-4 sm:px-6">
           <div className="flex items-center justify-between gap-3">
             <div className="flex min-w-0 items-center gap-3">
@@ -2823,7 +3515,7 @@ const TransactionHistory = ({
                 variant="ghost"
                 size="icon"
                 onClick={onBack}
-                className="shrink-0"
+                className="transaction-history-toolbar-button shrink-0"
               >
                 <ArrowLeft className="h-5 w-5" />
               </Button>
@@ -2854,6 +3546,7 @@ const TransactionHistory = ({
                   refreshing
                 }
                 title="Refresh"
+                className="transaction-history-toolbar-button"
               >
                 <RefreshCw
                   className={`h-4 w-4 ${
@@ -2876,6 +3569,7 @@ const TransactionHistory = ({
                   0
                 }
                 title="Export CSV"
+                className="transaction-history-toolbar-button"
               >
                 <Download className="h-4 w-4" />
               </Button>
@@ -2890,7 +3584,7 @@ const TransactionHistory = ({
         {/* SUMMARY */}
 
         <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <Card className="border-0 shadow-sm">
+          <Card className="transaction-history-card border-0 shadow-sm">
             <CardContent className="p-4">
               <p className="text-xs text-gray-500">
                 Total
@@ -2904,7 +3598,7 @@ const TransactionHistory = ({
             </CardContent>
           </Card>
 
-          <Card className="border-0 shadow-sm">
+          <Card className="transaction-history-card border-0 shadow-sm">
             <CardContent className="p-4">
               <p className="text-xs text-gray-500">
                 Successful
@@ -2921,7 +3615,7 @@ const TransactionHistory = ({
             </CardContent>
           </Card>
 
-          <Card className="border-0 shadow-sm">
+          <Card className="transaction-history-card border-0 shadow-sm">
             <CardContent className="p-4">
               <p className="text-xs text-gray-500">
                 Pending
@@ -2938,7 +3632,7 @@ const TransactionHistory = ({
             </CardContent>
           </Card>
 
-          <Card className="border-0 shadow-sm">
+          <Card className="transaction-history-card border-0 shadow-sm">
             <CardContent className="p-4">
               <p className="text-xs text-gray-500">
                 Failed
@@ -2958,7 +3652,7 @@ const TransactionHistory = ({
 
         {/* SEARCH */}
 
-        <Card className="mb-5 border-0 shadow-sm">
+        <Card className="transaction-history-card mb-5 border-0 shadow-sm">
           <CardContent className="space-y-4 p-4">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
@@ -2971,7 +3665,7 @@ const TransactionHistory = ({
                   )
                 }
                 placeholder="Search transactions, names, phone, account or reference..."
-                className="h-11 pl-10 pr-10"
+                className="transaction-history-input h-11 pl-10 pr-10"
               />
 
               {search && (
@@ -2996,11 +3690,11 @@ const TransactionHistory = ({
                   )
                 }
               >
-                <SelectTrigger>
+                <SelectTrigger className="transaction-history-select">
                   <SelectValue placeholder="Transaction type" />
                 </SelectTrigger>
 
-                <SelectContent>
+                <SelectContent className="transaction-history-select-content">
                   <SelectItem value="all">
                     All transactions
                   </SelectItem>
@@ -3039,11 +3733,11 @@ const TransactionHistory = ({
                   )
                 }
               >
-                <SelectTrigger>
+                <SelectTrigger className="transaction-history-select">
                   <SelectValue placeholder="Status" />
                 </SelectTrigger>
 
-                <SelectContent>
+                <SelectContent className="transaction-history-select-content">
                   <SelectItem value="all">
                     All statuses
                   </SelectItem>
@@ -3068,11 +3762,11 @@ const TransactionHistory = ({
                   setDateFilter
                 }
               >
-                <SelectTrigger>
+                <SelectTrigger className="transaction-history-select">
                   <SelectValue placeholder="Date" />
                 </SelectTrigger>
 
-                <SelectContent>
+                <SelectContent className="transaction-history-select-content">
                   <SelectItem value="all">
                     All dates
                   </SelectItem>
@@ -3117,6 +3811,7 @@ const TransactionHistory = ({
                   onClick={
                     clearFilters
                   }
+                  className="transaction-history-toolbar-button"
                 >
                   Clear filters
                 </Button>
@@ -3128,16 +3823,16 @@ const TransactionHistory = ({
         {/* ERROR */}
 
         {error && (
-          <Card className="mb-5 border-red-200 bg-red-50 shadow-sm">
+          <Card className="transaction-history-error mb-5 border-red-200 bg-red-50 shadow-sm">
             <CardContent className="flex flex-col items-center gap-3 p-6 text-center">
               <X className="h-8 w-8 text-red-500" />
 
               <div>
-                <p className="font-semibold text-red-800">
+                <p className="transaction-history-error-title font-semibold text-red-800">
                   Unable to load transactions
                 </p>
 
-                <p className="mt-1 text-sm text-red-600">
+                <p className="transaction-history-error-text mt-1 text-sm text-red-600">
                   {error}
                 </p>
               </div>
@@ -3148,6 +3843,7 @@ const TransactionHistory = ({
                 onClick={() =>
                   loadTransactions()
                 }
+                className="transaction-history-action-button"
               >
                 Try again
               </Button>
@@ -3175,9 +3871,9 @@ const TransactionHistory = ({
           !error &&
           filteredTransactions.length ===
             0 && (
-            <Card className="border-0 shadow-sm">
+            <Card className="transaction-history-card border-0 shadow-sm">
               <CardContent className="flex min-h-[320px] flex-col items-center justify-center px-6 text-center">
-                <div className="flex h-16 w-16 items-center justify-center rounded-full bg-gray-100">
+                <div className="transaction-history-empty-icon flex h-16 w-16 items-center justify-center rounded-full bg-gray-100">
                   <History className="h-8 w-8 text-gray-400" />
                 </div>
 
@@ -3197,7 +3893,7 @@ const TransactionHistory = ({
                   <Button
                     type="button"
                     variant="outline"
-                    className="mt-5"
+                    className="transaction-history-action-button mt-5"
                     onClick={
                       clearFilters
                     }
@@ -3234,7 +3930,7 @@ const TransactionHistory = ({
                       key={
                         item.transaction.id
                       }
-                      className="cursor-pointer border-0 shadow-sm transition hover:-translate-y-[1px] hover:shadow-md"
+                      className="transaction-history-card cursor-pointer border-0 shadow-sm transition hover:-translate-y-[1px] hover:shadow-md"
                       onClick={() =>
                         setSelectedTransaction(
                           item
@@ -3328,7 +4024,7 @@ const TransactionHistory = ({
         {!loading &&
           filteredTransactions.length >
             PAGE_SIZE && (
-            <div className="mt-6 flex items-center justify-between rounded-xl border border-gray-200 bg-white p-3">
+            <div className="transaction-history-pagination mt-6 flex items-center justify-between rounded-xl border border-gray-200 bg-white p-3">
               <p className="text-xs text-gray-500 sm:text-sm">
                 Page{" "}
                 {safePage} of{" "}
@@ -3353,6 +4049,7 @@ const TransactionHistory = ({
                         )
                     )
                   }
+                  className="transaction-history-pagination-button"
                 >
                   <ChevronLeft className="mr-1 h-4 w-4" />
                   Previous
@@ -3376,6 +4073,7 @@ const TransactionHistory = ({
                         )
                     )
                   }
+                  className="transaction-history-pagination-button"
                 >
                   Next
                   <ChevronRight className="ml-1 h-4 w-4" />
@@ -3426,7 +4124,7 @@ const TransactionHistory = ({
           }
         }}
       >
-        <DialogContent className="max-h-[92vh] max-w-lg overflow-y-auto">
+        <DialogContent className="transaction-history-dialog max-h-[92vh] max-w-lg overflow-y-auto">
           {selectedTransaction && (
             <>
               <DialogHeader>
@@ -4137,6 +4835,7 @@ const TransactionHistory = ({
                         "Reference"
                       )
                     }
+                    className="transaction-history-action-button"
                   >
                     <Copy className="mr-2 h-4 w-4" />
                     Copy reference
@@ -4149,7 +4848,7 @@ const TransactionHistory = ({
                         selectedTransaction
                       )
                     }
-                    className="bg-purple-600 hover:bg-purple-700"
+                    className="transaction-history-action-button bg-purple-600 hover:bg-purple-700"
                   >
                     <Printer className="mr-2 h-4 w-4" />
                     Print receipt

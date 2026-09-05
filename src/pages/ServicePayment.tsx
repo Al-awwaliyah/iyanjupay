@@ -1667,11 +1667,6 @@ function ServiceTransactionProcessing({
                         No successful purchase was confirmed
                       </p>
 
-                      <p className="mt-1 leading-6">
-                        You can retry this same transaction.
-                        The same idempotency key is reused to
-                        prevent accidental duplicate processing.
-                      </p>
                     </div>
                   </div>
                 </div>

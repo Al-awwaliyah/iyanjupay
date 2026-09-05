@@ -4,7 +4,10 @@ import React, {
   useState,
 } from "react";
 
-import { Banknote, CreditCard, Eye,
+import {
+  Banknote,
+  CreditCard,
+  Eye,
   EyeOff,
   Gift,
   GraduationCap,
@@ -372,11 +375,6 @@ const Dashboard = () => {
    * ============================================================
    * DASHBOARD APPEARANCE
    * ============================================================
-   * light = clean light appearance
-   * blue  = blue IyanjuPay appearance
-   * dark  = dark appearance
-   *
-   * Dashboard remains the single source of truth.
    */
 
   type DashboardTheme =
@@ -460,28 +458,12 @@ const Dashboard = () => {
    * GLOBAL IYANJUPAY THEME
    * ============================================================
    *
+   * Dashboard remains the single source of truth.
+   *
    * IMPORTANT:
-   * This style is rendered BEFORE all child-page early returns.
-   *
-   * Therefore Dashboard controls the appearance of:
-   * - Dashboard
-   * - Rewards
-   * - Cards
-   * - Me
-   * - Profile
-   * - History
-   * - Support
-   * - Customer Service
-   * - Transaction Limit
-   * - Payment PIN
-   * - Disputes
-   * - Send Money
-   * - Service Payment
-   *
-   * Child pages do not own theme state.
-   *
-   * White cards inside the Me/Rewards child pages remain white
-   * in Dark mode and their text remains dark/black.
+   * The Me-page white-card text rules below deliberately have
+   * higher specificity and use !important so the dark-theme
+   * neutral text rules cannot turn white-card text grey/white.
    */
 
   const dashboardThemeStyles = (
@@ -575,10 +557,6 @@ const Dashboard = () => {
        * ==========================================================
        * CHILD PAGES
        * ==========================================================
-       *
-       * MePage and RewardsPage use these page root classes.
-       *
-       * They remain visually controlled by Dashboard.
        */
 
       [data-iyanjupay-theme="dark"] .iyanjupay-me-page,
@@ -588,8 +566,9 @@ const Dashboard = () => {
       }
 
       /*
-       * White cards in child pages stay WHITE.
+       * White cards inside Me and Rewards remain WHITE.
        */
+
       [data-iyanjupay-theme="dark"]
         .iyanjupay-me-page
         .bg-white,
@@ -601,119 +580,196 @@ const Dashboard = () => {
 
       /*
        * ==========================================================
-       * WHITE CARD TEXT MUST STAY BLACK
+       * ME PAGE — BLACK TEXT ON WHITE CARDS
        * ==========================================================
        *
-       * This is the central fix for the Me tabs.
+       * This is the central fix.
        *
-       * Even when the overall Dashboard theme is Dark, anything
-       * inside a white card remains dark/black and readable.
+       * The white-card background remains #ffffff.
+       * All normal textual content inside those cards is forced
+       * to black regardless of whether the active Dashboard
+       * appearance is Light, Blue or Dark.
        */
 
-      [data-iyanjupay-theme="dark"]
+      [data-iyanjupay-theme]
         .iyanjupay-me-page
-        .bg-white,
-      [data-iyanjupay-theme="dark"]
-        .iyanjupay-me-page
-        .bg-white h1,
-      [data-iyanjupay-theme="dark"]
-        .iyanjupay-me-page
-        .bg-white h2,
-      [data-iyanjupay-theme="dark"]
-        .iyanjupay-me-page
-        .bg-white h3,
-      [data-iyanjupay-theme="dark"]
-        .iyanjupay-me-page
-        .bg-white h4,
-      [data-iyanjupay-theme="dark"]
-        .iyanjupay-me-page
-        .bg-white h5,
-      [data-iyanjupay-theme="dark"]
-        .iyanjupay-me-page
-        .bg-white h6,
-      [data-iyanjupay-theme="dark"]
-        .iyanjupay-me-page
-        .bg-white p,
-      [data-iyanjupay-theme="dark"]
-        .iyanjupay-me-page
-        .bg-white span,
-      [data-iyanjupay-theme="dark"]
-        .iyanjupay-me-page
-        .bg-white label,
-      [data-iyanjupay-theme="dark"]
-        .iyanjupay-me-page
-        .bg-white .text-gray-900,
-      [data-iyanjupay-theme="dark"]
-        .iyanjupay-me-page
-        .bg-white .text-gray-800,
-      [data-iyanjupay-theme="dark"]
-        .iyanjupay-me-page
-        .bg-white .text-gray-700,
-      [data-iyanjupay-theme="dark"]
-        .iyanjupay-me-page
-        .bg-white .text-gray-600 {
-        color: #111827 !important;
+        .bg-white {
+        color: #000000 !important;
       }
 
-      [data-iyanjupay-theme="dark"]
+      [data-iyanjupay-theme]
         .iyanjupay-me-page
         .bg-white
-        .text-gray-500 {
-        color: #4b5563 !important;
-      }
-
-      [data-iyanjupay-theme="dark"]
+        p,
+      [data-iyanjupay-theme]
         .iyanjupay-me-page
         .bg-white
-        .text-gray-400 {
-        color: #6b7280 !important;
+        span,
+      [data-iyanjupay-theme]
+        .iyanjupay-me-page
+        .bg-white
+        label,
+      [data-iyanjupay-theme]
+        .iyanjupay-me-page
+        .bg-white
+        h1,
+      [data-iyanjupay-theme]
+        .iyanjupay-me-page
+        .bg-white
+        h2,
+      [data-iyanjupay-theme]
+        .iyanjupay-me-page
+        .bg-white
+        h3,
+      [data-iyanjupay-theme]
+        .iyanjupay-me-page
+        .bg-white
+        h4,
+      [data-iyanjupay-theme]
+        .iyanjupay-me-page
+        .bg-white
+        h5,
+      [data-iyanjupay-theme]
+        .iyanjupay-me-page
+        .bg-white
+        h6 {
+        color: #000000 !important;
       }
 
       /*
-       * Rewards white cards receive the same treatment.
+       * Slate neutral text classes.
+       *
+       * These specifically override the dark Dashboard rules
+       * such as .text-slate-900 -> white/grey.
        */
+
+      [data-iyanjupay-theme]
+        .iyanjupay-me-page
+        .bg-white
+        .text-slate-950,
+      [data-iyanjupay-theme]
+        .iyanjupay-me-page
+        .bg-white
+        .text-slate-900,
+      [data-iyanjupay-theme]
+        .iyanjupay-me-page
+        .bg-white
+        .text-slate-800,
+      [data-iyanjupay-theme]
+        .iyanjupay-me-page
+        .bg-white
+        .text-slate-700,
+      [data-iyanjupay-theme]
+        .iyanjupay-me-page
+        .bg-white
+        .text-slate-600,
+      [data-iyanjupay-theme]
+        .iyanjupay-me-page
+        .bg-white
+        .text-slate-500,
+      [data-iyanjupay-theme]
+        .iyanjupay-me-page
+        .bg-white
+        .text-slate-400 {
+        color: #000000 !important;
+      }
+
+      /*
+       * Gray neutral text classes.
+       */
+
+      [data-iyanjupay-theme]
+        .iyanjupay-me-page
+        .bg-white
+        .text-gray-950,
+      [data-iyanjupay-theme]
+        .iyanjupay-me-page
+        .bg-white
+        .text-gray-900,
+      [data-iyanjupay-theme]
+        .iyanjupay-me-page
+        .bg-white
+        .text-gray-800,
+      [data-iyanjupay-theme]
+        .iyanjupay-me-page
+        .bg-white
+        .text-gray-700,
+      [data-iyanjupay-theme]
+        .iyanjupay-me-page
+        .bg-white
+        .text-gray-600,
+      [data-iyanjupay-theme]
+        .iyanjupay-me-page
+        .bg-white
+        .text-gray-500,
+      [data-iyanjupay-theme]
+        .iyanjupay-me-page
+        .bg-white
+        .text-gray-400 {
+        color: #000000 !important;
+      }
+
+      /*
+       * ==========================================================
+       * REWARDS WHITE CARDS
+       * ==========================================================
+       */
+
       [data-iyanjupay-theme="dark"]
         .iyanjupay-rewards-page
         .bg-white,
       [data-iyanjupay-theme="dark"]
         .iyanjupay-rewards-page
-        .bg-white h1,
+        .bg-white
+        h1,
       [data-iyanjupay-theme="dark"]
         .iyanjupay-rewards-page
-        .bg-white h2,
+        .bg-white
+        h2,
       [data-iyanjupay-theme="dark"]
         .iyanjupay-rewards-page
-        .bg-white h3,
+        .bg-white
+        h3,
       [data-iyanjupay-theme="dark"]
         .iyanjupay-rewards-page
-        .bg-white h4,
+        .bg-white
+        h4,
       [data-iyanjupay-theme="dark"]
         .iyanjupay-rewards-page
-        .bg-white h5,
+        .bg-white
+        h5,
       [data-iyanjupay-theme="dark"]
         .iyanjupay-rewards-page
-        .bg-white h6,
+        .bg-white
+        h6,
       [data-iyanjupay-theme="dark"]
         .iyanjupay-rewards-page
-        .bg-white p,
+        .bg-white
+        p,
       [data-iyanjupay-theme="dark"]
         .iyanjupay-rewards-page
-        .bg-white span,
+        .bg-white
+        span,
       [data-iyanjupay-theme="dark"]
         .iyanjupay-rewards-page
-        .bg-white label,
+        .bg-white
+        label,
       [data-iyanjupay-theme="dark"]
         .iyanjupay-rewards-page
-        .bg-white .text-gray-900,
+        .bg-white
+        .text-gray-900,
       [data-iyanjupay-theme="dark"]
         .iyanjupay-rewards-page
-        .bg-white .text-gray-800,
+        .bg-white
+        .text-gray-800,
       [data-iyanjupay-theme="dark"]
         .iyanjupay-rewards-page
-        .bg-white .text-gray-700,
+        .bg-white
+        .text-gray-700,
       [data-iyanjupay-theme="dark"]
         .iyanjupay-rewards-page
-        .bg-white .text-gray-600 {
+        .bg-white
+        .text-gray-600 {
         color: #111827 !important;
       }
 
@@ -2032,10 +2088,6 @@ const Dashboard = () => {
   /*
    * ============================================================
    * BOTTOM NAVIGATION
-   *
-   * IMPORTANT:
-   * This is declared BEFORE the early page returns so it can
-   * also be rendered on Rewards, Cards and Me.
    * ============================================================
    */
 

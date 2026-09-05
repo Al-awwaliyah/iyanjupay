@@ -8,8 +8,10 @@ import React, {
 import {
   ArrowDownLeft,
   ArrowLeft,
+  ArrowUpRight,
   Banknote,
   Building2,
+  CalendarDays,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
@@ -17,14 +19,17 @@ import {
   Copy,
   CreditCard,
   Download,
+  FileText,
   Globe,
   History,
   Loader2,
+  Phone,
   Printer,
   Receipt,
   RefreshCw,
   Search,
   Smartphone,
+  User,
   Wallet,
   Wifi,
   X,
@@ -125,13 +130,7 @@ type NormalizedTransaction = {
 
   subtitle: string;
 
-  /*
-   * IMPORTANT:
-   * This is the CUSTOMER-FACING service provider/biller/network.
-   * It must NEVER contain ClubKonnect, Flutterwave, or another
-   * internal fulfilment provider.
-   */
-  serviceProviderName: string;
+  providerName: string;
 
   recipientName: string;
 
@@ -220,21 +219,6 @@ const BILL_KINDS = new Set<TransactionKind>([
   "internet",
 ]);
 
-/*
- * Internal fulfilment providers must NEVER be displayed to the
- * customer as a service provider/network/biller.
- */
-const INTERNAL_PROVIDER_NAMES = new Set([
-  "clubkonnect",
-  "club konnect",
-  "club-konnect",
-  "flutterwave",
-  "flutter wave",
-  "flutter-wave",
-  "iyanjupay",
-  "iyanju pay",
-]);
-
 /* ================================================================
    HELPERS
    ================================================================ */
@@ -293,11 +277,7 @@ const formatCurrency = (
     currency: "NGN",
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
-  }).format(
-    Number.isFinite(value)
-      ? value
-      : 0
-  );
+  }).format(Number.isFinite(value) ? value : 0);
 };
 
 const formatDate = (
@@ -346,6 +326,20 @@ const normalizePhone = (
   return String(value ?? "").trim();
 };
 
+const maskAccountNumber = (
+  accountNumber: string
+): string => {
+  if (!accountNumber) {
+    return "";
+  }
+
+  if (accountNumber.length <= 4) {
+    return accountNumber;
+  }
+
+  return `****${accountNumber.slice(-4)}`;
+};
+
 const getNested = (
   object: JsonObject,
   paths: string[][]
@@ -382,155 +376,7 @@ const escapeCsv = (
 ): string => {
   const text = String(value ?? "");
 
-  return `"${text.replace(
-    /"/g,
-    '""'
-  )}"`;
-};
-
-/* ================================================================
-   CUSTOMER-FACING SERVICE PROVIDER
-   ================================================================ */
-
-/**
- * Returns true when a value represents an internal fulfilment
- * provider rather than the customer's actual network/biller.
- */
-const isInternalProviderName = (
-  value: unknown
-): boolean => {
-  const normalized = normalizeText(
-    value
-  );
-
-  if (!normalized) {
-    return true;
-  }
-
-  return (
-    INTERNAL_PROVIDER_NAMES.has(
-      normalized.replace(/_/g, " ")
-    ) ||
-    INTERNAL_PROVIDER_NAMES.has(
-      normalized
-    )
-  );
-};
-
-/**
- * Extract the customer-facing network/biller/service provider.
- *
- * IMPORTANT:
- * We deliberately DO NOT fall back to metadata.provider.
- * `metadata.provider` is commonly ClubKonnect/Flutterwave and is
- * an internal implementation detail.
- */
-const getCustomerServiceProvider = (
-  metadata: JsonObject,
-  service: string
-): string => {
-  const candidates: unknown[] = [];
-
-  /*
-   * Strong customer-facing fields first.
-   */
-  candidates.push(
-    metadata.network_name,
-    metadata.networkName,
-    metadata.network,
-    metadata.biller_name,
-    metadata.billerName,
-    metadata.service_provider_name,
-    metadata.serviceProviderName,
-    metadata.operator_name,
-    metadata.operatorName,
-    metadata.tv_service,
-    metadata.tvService,
-    metadata.cable_provider,
-    metadata.cableProvider,
-    metadata.electricity_company,
-    metadata.electricityCompany,
-    metadata.disco_name,
-    metadata.discoName,
-    metadata.disco,
-    metadata.provider_name,
-    metadata.providerName
-  );
-
-  /*
-   * Search nested customer-facing response data.
-   */
-  candidates.push(
-    getNested(metadata, [
-      ["flutterwave", "data", "network_name"],
-    ]),
-    getNested(metadata, [
-      ["flutterwave", "data", "networkName"],
-    ]),
-    getNested(metadata, [
-      ["flutterwave", "data", "network"],
-    ]),
-    getNested(metadata, [
-      ["flutterwave_response", "data", "network_name"],
-    ]),
-    getNested(metadata, [
-      ["flutterwave_response", "data", "networkName"],
-    ]),
-    getNested(metadata, [
-      ["flutterwave_response", "data", "network"],
-    ]),
-    getNested(metadata, [
-      ["flutterwave", "data", "biller_name"],
-    ]),
-    getNested(metadata, [
-      ["flutterwave_response", "data", "biller_name"],
-    ])
-  );
-
-  for (const candidate of candidates) {
-    const value = stringValue(
-      candidate
-    );
-
-    if (
-      value &&
-      !isInternalProviderName(value)
-    ) {
-      return value;
-    }
-  }
-
-  /*
-   * Do NOT use metadata.provider here.
-   *
-   * If the service is cable and no biller was persisted, we can
-   * still attempt to identify the TV service from the metadata.
-   */
-  if (service === "cable") {
-    const cableCandidates = [
-      metadata.tv,
-      metadata.tv_provider,
-      metadata.tvProvider,
-      metadata.cable,
-      metadata.cable_service,
-      metadata.cableService,
-    ];
-
-    for (const candidate of cableCandidates) {
-      const value = stringValue(
-        candidate
-      );
-
-      if (
-        value &&
-        !isInternalProviderName(value)
-      ) {
-        return value;
-      }
-    }
-  }
-
-  return "";
+  return `"${text.replace(/"/g, '""')}"`;
 };
 
 /* ================================================================
@@ -559,15 +405,13 @@ const determineKind = (
     metadata.type
   );
 
-  const metadataCategory =
-    normalizeText(
-      metadata.category
-    );
+  const metadataCategory = normalizeText(
+    metadata.category
+  );
 
-  const metadataService =
-    normalizeText(
-      metadata.service
-    );
+  const metadataService = normalizeText(
+    metadata.service
+  );
 
   const metadataTransactionType =
     normalizeText(
@@ -585,11 +429,8 @@ const determineKind = (
   ].join(" ");
 
   if (
-    combined.includes(
-      "transfer_refund"
-    ) ||
-    category ===
-      "transfer_refund" ||
+    combined.includes("transfer_refund") ||
+    category === "transfer_refund" ||
     rawType === "refund" ||
     combined.includes("refund")
   ) {
@@ -612,8 +453,7 @@ const determineKind = (
 
   if (
     combined.includes("electricity") ||
-    metadataService ===
-      "electricity"
+    metadataService === "electricity"
   ) {
     return "electricity";
   }
@@ -650,15 +490,9 @@ const determineKind = (
   if (
     recipient ||
     sender ||
-    combined.includes(
-      "wallet_transfer"
-    ) ||
-    combined.includes(
-      "wallet transfer"
-    ) ||
-    normalizeText(
-      metadata.provider
-    ) === "iyanjupay"
+    combined.includes("wallet_transfer") ||
+    combined.includes("wallet transfer") ||
+    metadata.provider === "iyanjupay"
   ) {
     return "wallet_transfer";
   }
@@ -666,9 +500,7 @@ const determineKind = (
   if (
     combined.includes("funding") ||
     combined.includes("deposit") ||
-    combined.includes(
-      "wallet_funding"
-    ) ||
+    combined.includes("wallet_funding") ||
     rawType === "credit" ||
     rawType === "funding" ||
     rawType === "deposit"
@@ -677,18 +509,12 @@ const determineKind = (
   }
 
   if (
-    combined.includes(
-      "bank_transfer"
-    ) ||
-    combined.includes(
-      "bank transfer"
-    ) ||
+    combined.includes("bank_transfer") ||
+    combined.includes("bank transfer") ||
     category === "transfer" ||
     rawType === "transfer" ||
     rawType === "debit" ||
-    normalizeText(
-      metadata.provider
-    ) === "flutterwave"
+    metadata.provider === "flutterwave"
   ) {
     return "bank_transfer";
   }
@@ -715,23 +541,18 @@ const determineDirection = (
     );
 
   if (
-    explicitDirection ===
-      "incoming" ||
+    explicitDirection === "incoming" ||
     explicitDirection === "in" ||
-    explicitDirection ===
-      "credit" ||
-    explicitDirection ===
-      "received"
+    explicitDirection === "credit" ||
+    explicitDirection === "received"
   ) {
     return "incoming";
   }
 
   if (
-    explicitDirection ===
-      "outgoing" ||
+    explicitDirection === "outgoing" ||
     explicitDirection === "out" ||
-    explicitDirection ===
-      "debit" ||
+    explicitDirection === "debit" ||
     explicitDirection === "sent"
   ) {
     return "outgoing";
@@ -801,34 +622,24 @@ const normalizeTransaction = (
       kind
     );
 
-  /* --------------------------------------------------------------
-     BANK TRANSFER
-     -------------------------------------------------------------- */
+  /*
+   * ------------------------------------------------------------
+   * BANK TRANSFER
+   * ------------------------------------------------------------
+   */
 
   const accountNumber =
     stringValue(
       metadata.account_number,
       metadata.accountNumber,
       getNested(metadata, [
-        [
-          "flutterwave_response",
-          "data",
-          "account_number",
-        ],
+        ["flutterwave_response", "data", "account_number"],
       ]),
       getNested(metadata, [
-        [
-          "flutterwave_response",
-          "data",
-          "accountNumber",
-        ],
+        ["flutterwave_response", "data", "accountNumber"],
       ]),
       getNested(metadata, [
-        [
-          "flutterwave",
-          "data",
-          "account_number",
-        ],
+        ["flutterwave", "data", "account_number"],
       ])
     );
 
@@ -837,25 +648,13 @@ const normalizeTransaction = (
       metadata.beneficiary_name,
       metadata.beneficiaryName,
       getNested(metadata, [
-        [
-          "flutterwave_response",
-          "data",
-          "full_name",
-        ],
+        ["flutterwave_response", "data", "full_name"],
       ]),
       getNested(metadata, [
-        [
-          "flutterwave_response",
-          "data",
-          "account_name",
-        ],
+        ["flutterwave_response", "data", "account_name"],
       ]),
       getNested(metadata, [
-        [
-          "flutterwave",
-          "data",
-          "full_name",
-        ],
+        ["flutterwave", "data", "full_name"],
       ])
     );
 
@@ -865,11 +664,7 @@ const normalizeTransaction = (
       metadata.bank_code,
       metadata.bankCode,
       getNested(metadata, [
-        [
-          "flutterwave_response",
-          "data",
-          "bank_code",
-        ],
+        ["flutterwave_response", "data", "bank_code"],
       ])
     );
 
@@ -878,24 +673,21 @@ const normalizeTransaction = (
       metadata.bank_name,
       metadata.bankName,
       getNested(metadata, [
-        [
-          "flutterwave_response",
-          "data",
-          "bank_name",
-        ],
+        ["flutterwave_response", "data", "bank_name"],
       ]),
       getNested(metadata, [
-        [
-          "flutterwave",
-          "data",
-          "bank_name",
-        ],
+        ["flutterwave_response", "data", "bank_name"],
+      ]),
+      getNested(metadata, [
+        ["flutterwave", "data", "bank_name"],
       ])
     );
 
-  /* --------------------------------------------------------------
-     INTERNAL WALLET TRANSFER
-     -------------------------------------------------------------- */
+  /*
+   * ------------------------------------------------------------
+   * INTERNAL WALLET TRANSFER
+   * ------------------------------------------------------------
+   */
 
   const recipient =
     metadata.recipient ?? {};
@@ -930,9 +722,11 @@ const normalizeTransaction = (
       metadata.sender_wallet_id
     );
 
-  /* --------------------------------------------------------------
-     BILL INFORMATION
-     -------------------------------------------------------------- */
+  /*
+   * ------------------------------------------------------------
+   * BILL INFORMATION
+   * ------------------------------------------------------------
+   */
 
   const service =
     normalizeText(
@@ -942,45 +736,33 @@ const normalizeTransaction = (
         ])
     );
 
-  /*
-   * CRITICAL:
-   *
-   * `serviceProviderName` is deliberately derived from customer-
-   * facing network/biller fields only.
-   *
-   * We NEVER fall back to metadata.provider.
-   */
-  const serviceProviderName =
-    getCustomerServiceProvider(
-      metadata,
-      service
+  const providerName =
+    stringValue(
+      metadata.provider_name,
+      metadata.network,
+      metadata.provider,
+      metadata.biller_name,
+      getNested(metadata, [
+        ["flutterwave", "data", "network"],
+      ]),
+      getNested(metadata, [
+        ["flutterwave", "data", "provider"],
+      ]),
+      getNested(metadata, [
+        ["flutterwave_response", "data", "network"],
+      ])
     );
 
   const phoneNumber =
     normalizePhone(
-      metadata.customer_phone ??
-        metadata.customerPhone ??
+      metadata.customer ??
         metadata.phone_number ??
         metadata.phone ??
-        (
-          service === "airtime" ||
-          service === "data"
-            ? metadata.customer
-            : undefined
-        ) ??
         getNested(metadata, [
-          [
-            "flutterwave",
-            "data",
-            "phone_number",
-          ],
+          ["flutterwave", "data", "phone_number"],
         ]) ??
         getNested(metadata, [
-          [
-            "flutterwave_response",
-            "data",
-            "phone_number",
-          ],
+          ["flutterwave_response", "data", "phone_number"],
         ]) ??
         recipient.phone_number ??
         sender.phone_number
@@ -990,10 +772,8 @@ const normalizeTransaction = (
     stringValue(
       metadata.meter_number,
       metadata.meterNumber,
-      metadata.meter,
-      service === "electricity"
-        ? metadata.customer
-        : undefined
+      metadata.customer,
+      metadata.meter
     );
 
   const meterType =
@@ -1010,9 +790,7 @@ const normalizeTransaction = (
       metadata.smartcardNumber,
       metadata.iuc_number,
       metadata.iucNumber,
-      service === "cable"
-        ? metadata.customer
-        : undefined
+      metadata.customer
     );
 
   const packageName =
@@ -1032,14 +810,14 @@ const normalizeTransaction = (
       metadata.account_number,
       metadata.internet_account,
       metadata.internetAccount,
-      service === "internet"
-        ? metadata.customer
-        : undefined
+      metadata.customer
     );
 
-  /* --------------------------------------------------------------
-     FUNDING
-     -------------------------------------------------------------- */
+  /*
+   * ------------------------------------------------------------
+   * FUNDING
+   * ------------------------------------------------------------
+   */
 
   const virtualAccountNumber =
     stringValue(
@@ -1047,47 +825,54 @@ const normalizeTransaction = (
       metadata.virtualAccountNumber,
       metadata.account_number,
       getNested(metadata, [
-        [
-          "virtual_account",
-          "account_number",
-        ],
+        ["virtual_account", "account_number"],
       ])
     );
 
-  /* --------------------------------------------------------------
-     ELECTRONIC TRANSFER FEE
-     -------------------------------------------------------------- */
+  /*
+   * ------------------------------------------------------------
+   * ELECTRONIC TRANSFER FEE
+   * ------------------------------------------------------------
+   *
+   * Electronic transfer fees are stored as separate transaction
+   * records. Their metadata also contains the original transfer
+   * amount, so we MUST NOT use metadata.transfer_amount as the
+   * displayed amount for these fee records.
+   *
+   * Example fee transaction metadata:
+   *
+   *   transfer_amount: 15461.25
+   *   electronic_fee: 50
+   *
+   * The transaction itself is the ₦50 wallet debit.
+   * ------------------------------------------------------------
+   */
 
   const isElectronicFee =
     kind === "fee" &&
     (
       normalizeText(
         transaction.category
-      ) ===
-        "electronic_transfer_fee" ||
+      ) === "electronic_transfer_fee" ||
       normalizeText(
         metadata.category
-      ) ===
-        "electronic_transfer_fee" ||
+      ) === "electronic_transfer_fee" ||
       normalizeText(
         metadata.fee_type
-      ) ===
-        "electronic_transfer_fee" ||
+      ) === "electronic_transfer_fee" ||
       normalizeText(
         transaction.description
-      ).includes(
-        "electronic_transfer_fee"
-      ) ||
+      ).includes("electronic_transfer_fee") ||
       normalizeText(
         transaction.description
-      ).includes(
-        "electronic_transfer_fee_for"
-      )
+      ).includes("electronic_transfer_fee_for")
     );
 
-  /* --------------------------------------------------------------
-     PRICING
-     -------------------------------------------------------------- */
+  /*
+   * ------------------------------------------------------------
+   * PRICING
+   * ------------------------------------------------------------
+   */
 
   const amount = isElectronicFee
     ? numberValue(
@@ -1110,18 +895,19 @@ const normalizeTransaction = (
         metadata.electronic_fee
       );
 
-  const totalCharged =
-    isElectronicFee
-      ? amount
-      : numberValue(
-          metadata.total_charged,
-          metadata.totalCharged,
-          amount + fee
-        );
+  const totalCharged = isElectronicFee
+    ? amount
+    : numberValue(
+        metadata.total_charged,
+        metadata.totalCharged,
+        amount + fee
+      );
 
-  /* --------------------------------------------------------------
-     STATUS
-     -------------------------------------------------------------- */
+  /*
+   * ------------------------------------------------------------
+   * STATUS
+   * ------------------------------------------------------------
+   */
 
   const normalizedStatus =
     normalizeText(
@@ -1142,12 +928,13 @@ const normalizeTransaction = (
     PENDING_STATUSES.has(
       normalizedStatus
     ) ||
-    (!isSuccessful &&
-      !isFailed);
+    (!isSuccessful && !isFailed);
 
-  /* --------------------------------------------------------------
-     DISPLAY TITLE
-     -------------------------------------------------------------- */
+  /*
+   * ------------------------------------------------------------
+   * DISPLAY TITLE
+   * ------------------------------------------------------------
+   */
 
   let title = "Transaction";
 
@@ -1161,8 +948,7 @@ const normalizeTransaction = (
     title =
       direction === "incoming"
         ? `Transfer from ${
-            senderName ||
-            "Bank account"
+            senderName || "Bank account"
           }`
         : `Transfer to ${
             accountName ||
@@ -1191,14 +977,13 @@ const normalizeTransaction = (
             "IyanjuPay user"
           }`;
 
-    subtitle =
-      "IyanjuPay Wallet";
+    subtitle = "IyanjuPay Wallet";
   }
 
   if (kind === "airtime") {
     title =
-      serviceProviderName
-        ? `Airtime — ${serviceProviderName}`
+      providerName
+        ? `Airtime — ${providerName}`
         : "Airtime";
 
     subtitle =
@@ -1208,8 +993,8 @@ const normalizeTransaction = (
 
   if (kind === "data") {
     title =
-      serviceProviderName
-        ? `Data — ${serviceProviderName}`
+      providerName
+        ? `Data — ${providerName}`
         : "Data";
 
     subtitle =
@@ -1218,12 +1003,10 @@ const normalizeTransaction = (
       "Data bundle";
   }
 
-  if (
-    kind === "electricity"
-  ) {
+  if (kind === "electricity") {
     title =
-      serviceProviderName
-        ? `Electricity — ${serviceProviderName}`
+      providerName
+        ? `Electricity — ${providerName}`
         : "Electricity";
 
     subtitle =
@@ -1234,8 +1017,8 @@ const normalizeTransaction = (
 
   if (kind === "cable") {
     title =
-      serviceProviderName
-        ? `Cable TV — ${serviceProviderName}`
+      providerName
+        ? `Cable TV — ${providerName}`
         : "Cable TV";
 
     subtitle =
@@ -1247,8 +1030,8 @@ const normalizeTransaction = (
 
   if (kind === "internet") {
     title =
-      serviceProviderName
-        ? `Internet — ${serviceProviderName}`
+      providerName
+        ? `Internet — ${providerName}`
         : "Internet";
 
     subtitle =
@@ -1293,30 +1076,55 @@ const normalizeTransaction = (
 
   return {
     transaction,
+
     kind,
+
     direction,
+
     title,
+
     subtitle,
-    serviceProviderName,
+
+    providerName,
+
     recipientName,
+
     senderName,
+
     phoneNumber,
+
     accountNumber,
+
     accountName,
+
     bankCode,
+
     bankName,
+
     walletId,
+
     virtualAccountNumber,
+
     meterNumber,
+
     meterType,
+
     smartcardNumber,
+
     packageName,
+
     internetAccount,
+
     amount,
+
     fee,
+
     totalCharged,
+
     isSuccessful,
+
     isPending,
+
     isFailed,
   };
 };
@@ -1340,7 +1148,7 @@ const getStatusLabel = (
 };
 
 /* ================================================================
-   STATUS BADGE
+   STATUS COLORS
    ================================================================ */
 
 const StatusBadge = ({
@@ -1350,7 +1158,7 @@ const StatusBadge = ({
 }) => {
   if (transaction.isSuccessful) {
     return (
-      <span className="transaction-history-status-success inline-flex items-center gap-1 rounded-full bg-green-50 px-2.5 py-1 text-xs font-medium text-green-700">
+      <span className="inline-flex items-center gap-1 rounded-full bg-green-50 px-2.5 py-1 text-xs font-medium text-green-700">
         <CheckCircle2 className="h-3.5 w-3.5" />
         Successful
       </span>
@@ -1359,7 +1167,7 @@ const StatusBadge = ({
 
   if (transaction.isFailed) {
     return (
-      <span className="transaction-history-status-failed inline-flex items-center gap-1 rounded-full bg-red-50 px-2.5 py-1 text-xs font-medium text-red-700">
+      <span className="inline-flex items-center gap-1 rounded-full bg-red-50 px-2.5 py-1 text-xs font-medium text-red-700">
         <X className="h-3.5 w-3.5" />
         Failed
       </span>
@@ -1367,7 +1175,7 @@ const StatusBadge = ({
   }
 
   return (
-    <span className="transaction-history-status-pending inline-flex items-center gap-1 rounded-full bg-yellow-50 px-2.5 py-1 text-xs font-medium text-yellow-700">
+    <span className="inline-flex items-center gap-1 rounded-full bg-yellow-50 px-2.5 py-1 text-xs font-medium text-yellow-700">
       <Loader2 className="h-3.5 w-3.5 animate-spin" />
       Pending
     </span>
@@ -1429,9 +1237,8 @@ const TransactionIcon = ({
 
   return (
     <div
-      className={`transaction-history-icon flex h-11 w-11 shrink-0 items-center justify-center rounded-full ${
-        transaction.direction ===
-        "incoming"
+      className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full ${
+        transaction.direction === "incoming"
           ? "bg-green-50 text-green-600"
           : "bg-purple-50 text-purple-600"
       }`}
@@ -1442,7 +1249,7 @@ const TransactionIcon = ({
 };
 
 /* ================================================================
-   DETAIL ROW
+   TRANSACTION DETAILS ROW
    ================================================================ */
 
 const DetailRow = ({
@@ -1463,34 +1270,31 @@ const DetailRow = ({
   }
 
   return (
-    <div className="transaction-history-detail-row flex items-start justify-between gap-4 border-b border-gray-100 py-3 last:border-b-0">
-      <span className="transaction-history-detail-label text-sm text-gray-500">
+    <div className="flex items-start justify-between gap-4 border-b border-gray-100 py-3 last:border-b-0">
+      <span className="text-sm text-gray-500">
         {label}
       </span>
 
       <div className="flex min-w-0 items-center gap-2 text-right">
         <span
-          className={`transaction-history-detail-value break-all text-sm font-medium text-gray-900 ${
-            mono
-              ? "font-mono"
-              : ""
+          className={`break-all text-sm font-medium text-gray-900 ${
+            mono ? "font-mono" : ""
           }`}
         >
           {value}
         </span>
 
-        {copyable &&
-          onCopy && (
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="transaction-history-copy-button h-7 w-7 shrink-0"
-              onClick={onCopy}
-            >
-              <Copy className="h-3.5 w-3.5" />
-            </Button>
-          )}
+        {copyable && onCopy && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 shrink-0"
+            onClick={onCopy}
+          >
+            <Copy className="h-3.5 w-3.5" />
+          </Button>
+        )}
       </div>
     </div>
   );
@@ -1510,9 +1314,7 @@ const TransactionHistory = ({
   const [
     transactions,
     setTransactions,
-  ] = useState<Transaction[]>(
-    []
-  );
+  ] = useState<Transaction[]>([]);
 
   const [
     loading,
@@ -1527,9 +1329,7 @@ const TransactionHistory = ({
   const [
     error,
     setError,
-  ] = useState<string | null>(
-    null
-  );
+  ] = useState<string | null>(null);
 
   const [
     search,
@@ -1539,16 +1339,12 @@ const TransactionHistory = ({
   const [
     filterType,
     setFilterType,
-  ] = useState<FilterType>(
-    "all"
-  );
+  ] = useState<FilterType>("all");
 
   const [
     statusFilter,
     setStatusFilter,
-  ] = useState<StatusFilter>(
-    "all"
-  );
+  ] = useState<StatusFilter>("all");
 
   const [
     dateFilter,
@@ -1568,90 +1364,88 @@ const TransactionHistory = ({
       null
     );
 
-  /* ============================================================== 
+  /* ==============================================================
      LOAD TRANSACTIONS
      ============================================================== */
 
-  const loadTransactions =
-    useCallback(
-      async (
-        showRefresh = false
-      ) => {
-        if (!user?.id) {
-          setTransactions([]);
-          setLoading(false);
-          return;
-        }
+  const loadTransactions = useCallback(
+    async (
+      showRefresh = false
+    ) => {
+      if (!user?.id) {
+        setTransactions([]);
+        setLoading(false);
+        return;
+      }
 
-        if (showRefresh) {
-          setRefreshing(true);
-        } else {
-          setLoading(true);
-        }
+      if (showRefresh) {
+        setRefreshing(true);
+      } else {
+        setLoading(true);
+      }
 
-        setError(null);
+      setError(null);
 
-        try {
-          const {
-            data,
-            error: queryError,
-          } = await supabase
-            .from("transactions")
-            .select(
-              `
-                id,
-                user_id,
-                wallet_id,
-                transaction_type,
-                amount,
-                description,
-                status,
-                reference_number,
-                provider,
-                provider_reference,
-                category,
-                metadata,
-                created_at
-              `
-            )
-            .eq(
-              "user_id",
-              user.id
-            )
-            .order(
-              "created_at",
-              {
-                ascending: false,
-              }
-            );
-
-          if (queryError) {
-            throw queryError;
-          }
-
-          setTransactions(
-            (data ??
-              []) as Transaction[]
-          );
-        } catch (err: any) {
-          console.error(
-            "Transaction history load error:",
-            err
+      try {
+        const {
+          data,
+          error: queryError,
+        } = await supabase
+          .from("transactions")
+          .select(
+            `
+              id,
+              user_id,
+              wallet_id,
+              transaction_type,
+              amount,
+              description,
+              status,
+              reference_number,
+              provider,
+              provider_reference,
+              category,
+              metadata,
+              created_at
+            `
+          )
+          .eq(
+            "user_id",
+            user.id
+          )
+          .order(
+            "created_at",
+            {
+              ascending: false,
+            }
           );
 
-          setError(
-            err?.message ||
-              "Unable to load transaction history."
-          );
-        } finally {
-          setLoading(false);
-          setRefreshing(false);
+        if (queryError) {
+          throw queryError;
         }
-      },
-      [user?.id]
-    );
 
-  /* ============================================================== 
+        setTransactions(
+          (data ?? []) as Transaction[]
+        );
+      } catch (err: any) {
+        console.error(
+          "Transaction history load error:",
+          err
+        );
+
+        setError(
+          err?.message ||
+            "Unable to load transaction history."
+        );
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
+      }
+    },
+    [user?.id]
+  );
+
+  /* ==============================================================
      INITIAL LOAD
      ============================================================== */
 
@@ -1659,7 +1453,7 @@ const TransactionHistory = ({
     loadTransactions();
   }, [loadTransactions]);
 
-  /* ============================================================== 
+  /* ==============================================================
      REALTIME
      ============================================================== */
 
@@ -1681,7 +1475,9 @@ const TransactionHistory = ({
             table: "transactions",
             filter: `user_id=eq.${user.id}`,
           },
-          payload => {
+          (
+            payload
+          ) => {
             if (
               payload.eventType ===
               "INSERT"
@@ -1768,16 +1564,18 @@ const TransactionHistory = ({
             }
           }
         )
-        .subscribe(status => {
-          if (
-            status ===
-            "CHANNEL_ERROR"
-          ) {
-            console.warn(
-              "Transaction realtime channel error."
-            );
+        .subscribe(
+          status => {
+            if (
+              status ===
+              "CHANNEL_ERROR"
+            ) {
+              console.warn(
+                "Transaction realtime channel error."
+              );
+            }
           }
-        });
+        );
 
     return () => {
       supabase.removeChannel(
@@ -1786,7 +1584,7 @@ const TransactionHistory = ({
     };
   }, [user?.id]);
 
-  /* ============================================================== 
+  /* ==============================================================
      NORMALIZED TRANSACTIONS
      ============================================================== */
 
@@ -1799,16 +1597,14 @@ const TransactionHistory = ({
       [transactions]
     );
 
-  /* ============================================================== 
+  /* ==============================================================
      FILTER
      ============================================================== */
 
   const filteredTransactions =
     useMemo(() => {
       const query =
-        search
-          .trim()
-          .toLowerCase();
+        search.trim().toLowerCase();
 
       const now = new Date();
 
@@ -1817,11 +1613,15 @@ const TransactionHistory = ({
           const raw =
             transaction.transaction;
 
+          /*
+           * SEARCH
+           */
+
           if (query) {
             const searchable = [
               transaction.title,
               transaction.subtitle,
-              transaction.serviceProviderName,
+              transaction.providerName,
               transaction.recipientName,
               transaction.senderName,
               transaction.phoneNumber,
@@ -1853,9 +1653,13 @@ const TransactionHistory = ({
             }
           }
 
+          /*
+           * TYPE FILTER
+           */
+
           if (
             filterType ===
-              "money_in" &&
+            "money_in" &&
             transaction.direction !==
               "incoming"
           ) {
@@ -1864,7 +1668,7 @@ const TransactionHistory = ({
 
           if (
             filterType ===
-              "money_out" &&
+            "money_out" &&
             transaction.direction !==
               "outgoing"
           ) {
@@ -1873,7 +1677,7 @@ const TransactionHistory = ({
 
           if (
             filterType ===
-              "transfers" &&
+            "transfers" &&
             transaction.kind !==
               "bank_transfer" &&
             transaction.kind !==
@@ -1884,7 +1688,7 @@ const TransactionHistory = ({
 
           if (
             filterType ===
-              "bills" &&
+            "bills" &&
             !BILL_KINDS.has(
               transaction.kind
             )
@@ -1894,7 +1698,7 @@ const TransactionHistory = ({
 
           if (
             filterType ===
-              "funding" &&
+            "funding" &&
             transaction.kind !==
               "funding"
           ) {
@@ -1903,12 +1707,16 @@ const TransactionHistory = ({
 
           if (
             filterType ===
-              "refunds" &&
+            "refunds" &&
             transaction.kind !==
               "refund"
           ) {
             return false;
           }
+
+          /*
+           * STATUS FILTER
+           */
 
           if (
             statusFilter ===
@@ -1933,6 +1741,10 @@ const TransactionHistory = ({
           ) {
             return false;
           }
+
+          /*
+           * DATE FILTER
+           */
 
           if (
             dateFilter !== "all"
@@ -2031,7 +1843,7 @@ const TransactionHistory = ({
       dateFilter,
     ]);
 
-  /* ============================================================== 
+  /* ==============================================================
      PAGINATION
      ============================================================== */
 
@@ -2071,6 +1883,10 @@ const TransactionHistory = ({
     }
   }, [page, totalPages]);
 
+  /* ==============================================================
+     RESET PAGE WHEN FILTERS CHANGE
+     ============================================================== */
+
   useEffect(() => {
     setPage(1);
   }, [
@@ -2080,7 +1896,7 @@ const TransactionHistory = ({
     dateFilter,
   ]);
 
-  /* ============================================================== 
+  /* ==============================================================
      COPY
      ============================================================== */
 
@@ -2111,7 +1927,8 @@ const TransactionHistory = ({
 
           toast({
             title: "Copy failed",
-            description: `Unable to copy ${label.toLowerCase()}.`,
+            description:
+              `Unable to copy ${label.toLowerCase()}.`,
             variant:
               "destructive",
           });
@@ -2120,7 +1937,7 @@ const TransactionHistory = ({
       [toast]
     );
 
-  /* ============================================================== 
+  /* ==============================================================
      CSV EXPORT
      ============================================================== */
 
@@ -2140,9 +1957,6 @@ const TransactionHistory = ({
         return;
       }
 
-      /*
-       * Deliberately no internal Provider column.
-       */
       const headers = [
         "Date",
         "Title",
@@ -2152,7 +1966,7 @@ const TransactionHistory = ({
         "Fee",
         "Total Charged",
         "Status",
-        "Service Provider",
+        "Provider",
         "Bank",
         "Account Name",
         "Account Number",
@@ -2161,37 +1975,39 @@ const TransactionHistory = ({
         "Meter Number",
         "Smartcard/IUC",
         "Reference",
+        "Provider Reference",
       ];
 
       const rows =
         filteredTransactions.map(
-          item =>
-            [
-              formatDateTime(
-                item.transaction.created_at
-              ),
-              item.title,
-              item.kind,
-              item.direction,
-              item.amount.toFixed(2),
-              item.fee.toFixed(2),
-              item.totalCharged.toFixed(
-                2
-              ),
-              getStatusLabel(item),
-              item.serviceProviderName,
-              item.bankName,
-              item.accountName,
-              item.accountNumber,
-              item.phoneNumber,
-              item.walletId,
-              item.meterNumber,
-              item.smartcardNumber,
-              item.transaction
-                .reference_number,
-            ]
-              .map(escapeCsv)
-              .join(",")
+          item => [
+            formatDateTime(
+              item.transaction.created_at
+            ),
+            item.title,
+            item.kind,
+            item.direction,
+            item.amount.toFixed(2),
+            item.fee.toFixed(2),
+            item.totalCharged.toFixed(
+              2
+            ),
+            getStatusLabel(item),
+            item.providerName,
+            item.bankName,
+            item.accountName,
+            item.accountNumber,
+            item.phoneNumber,
+            item.walletId,
+            item.meterNumber,
+            item.smartcardNumber,
+            item.transaction
+              .reference_number,
+            item.transaction
+              .provider_reference,
+          ]
+            .map(escapeCsv)
+            .join(",")
         );
 
       const csv = [
@@ -2255,7 +2071,7 @@ const TransactionHistory = ({
       toast,
     ]);
 
-  /* ============================================================== 
+  /* ==============================================================
      PRINT RECEIPT
      ============================================================== */
 
@@ -2362,8 +2178,8 @@ const TransactionHistory = ({
           "airtime"
         ) {
           details += detail(
-            "Service provider",
-            item.serviceProviderName
+            "Provider",
+            item.providerName
           );
 
           details += detail(
@@ -2376,8 +2192,8 @@ const TransactionHistory = ({
           item.kind === "data"
         ) {
           details += detail(
-            "Service provider",
-            item.serviceProviderName
+            "Provider",
+            item.providerName
           );
 
           details += detail(
@@ -2396,8 +2212,8 @@ const TransactionHistory = ({
           "electricity"
         ) {
           details += detail(
-            "Service provider",
-            item.serviceProviderName
+            "Provider",
+            item.providerName
           );
 
           details += detail(
@@ -2415,8 +2231,8 @@ const TransactionHistory = ({
           item.kind === "cable"
         ) {
           details += detail(
-            "Service provider",
-            item.serviceProviderName
+            "Provider",
+            item.providerName
           );
 
           details += detail(
@@ -2435,8 +2251,8 @@ const TransactionHistory = ({
           "internet"
         ) {
           details += detail(
-            "Service provider",
-            item.serviceProviderName
+            "Provider",
+            item.providerName
           );
 
           details += detail(
@@ -2466,8 +2282,6 @@ const TransactionHistory = ({
                 ?.sender_bank,
               transaction.metadata
                 ?.bank_name,
-              transaction.metadata
-                ?.sender_bank_name,
               "Bank transfer"
             )
           );
@@ -2734,7 +2548,7 @@ const TransactionHistory = ({
                 ${
                   transaction.provider_reference
                     ? detail(
-                        "Transaction reference",
+                        "Provider reference",
                         transaction.provider_reference
                       )
                     : ""
@@ -2762,7 +2576,7 @@ const TransactionHistory = ({
       [toast]
     );
 
-  /* ============================================================== 
+  /* ==============================================================
      CLEAR FILTERS
      ============================================================== */
 
@@ -2783,730 +2597,331 @@ const TransactionHistory = ({
         dateFilter !== "all"
     );
 
-  /* ============================================================== 
+  /* ==============================================================
      RENDER
      ============================================================== */
 
   return (
-    <div className="iyanjupay-transaction-history min-h-screen bg-gray-50 pb-10">
+    <div className="iyanjupay-transaction-history min-h-screen bg-white pb-10">
       <style>{`
-        /* =========================================================
+        /* ============================================================
            IYANJUPAY TRANSACTION HISTORY THEME
-           Theme is controlled by Dashboard through:
-           html[data-iyanjupay-theme="light"]
-           html[data-iyanjupay-theme="blue"]
-           html[data-iyanjupay-theme="dark"]
-           ========================================================= */
+           Matches the Send Money page: light = white/dark text,
+           dark = dark background/white text.
+           ============================================================ */
 
         .iyanjupay-transaction-history {
-          min-height: 100vh;
-          background: #f8fafc;
-          color: #111827;
+          background: #ffffff !important;
+          color: #0f172a !important;
         }
 
-        .iyanjupay-transaction-history
-        .transaction-history-header {
-          background: rgba(255,255,255,.95);
-          border-color: #e5e7eb;
+        .iyanjupay-transaction-history .bg-white,
+        .iyanjupay-transaction-history .bg-white\/95 {
+          background-color: #ffffff !important;
         }
 
-        .iyanjupay-transaction-history
-        .transaction-history-card {
-          background: #ffffff;
-          border-color: #e5e7eb;
-          color: #111827;
+        .iyanjupay-transaction-history .text-gray-900,
+        .iyanjupay-transaction-history .text-gray-800,
+        .iyanjupay-transaction-history .text-gray-700 {
+          color: #0f172a !important;
         }
 
-        .iyanjupay-transaction-history
-        .transaction-history-input {
-          background: #ffffff;
-          color: #111827;
-          border-color: #d1d5db;
+        .iyanjupay-transaction-history .text-gray-600 {
+          color: #334155 !important;
         }
 
-        .iyanjupay-transaction-history
-        .transaction-history-input::placeholder {
-          color: #9ca3af;
-        }
-
-        .iyanjupay-transaction-history
-        .transaction-history-select {
-          background: #ffffff;
-          color: #111827;
-          border-color: #d1d5db;
-        }
-
-        .iyanjupay-transaction-history
-        .transaction-history-toolbar-button,
-        .iyanjupay-transaction-history
-        .transaction-history-pagination-button,
-        .iyanjupay-transaction-history
-        .transaction-history-action-button {
-          color: #111827;
-          border-color: #d1d5db;
-        }
-
-        .iyanjupay-transaction-history
-        .transaction-history-empty-icon {
-          background: #f3f4f6;
-        }
-
-        .iyanjupay-transaction-history
-        .transaction-history-pagination {
-          background: #ffffff;
-          border-color: #e5e7eb;
-        }
-
-        .iyanjupay-transaction-history
-        .transaction-history-error {
-          background: #fef2f2;
-          border-color: #fecaca;
-        }
-
-        .iyanjupay-transaction-history
-        .transaction-history-error-title {
-          color: #991b1b;
-        }
-
-        .iyanjupay-transaction-history
-        .transaction-history-error-text {
-          color: #dc2626;
-        }
-
-        /* BLUE THEME */
-
-        html[data-iyanjupay-theme="blue"]
-        .iyanjupay-transaction-history {
-          background: #f8fbff;
-          color: #0f172a;
-        }
-
-        html[data-iyanjupay-theme="blue"]
-        .iyanjupay-transaction-history
-        .transaction-history-header {
-          background: rgba(255,255,255,.96);
-          border-color: #bfdbfe;
-        }
-
-        html[data-iyanjupay-theme="blue"]
-        .iyanjupay-transaction-history
-        .transaction-history-card {
-          background: #ffffff;
-          border-color: #dbeafe;
-        }
-
-        html[data-iyanjupay-theme="blue"]
-        .iyanjupay-transaction-history
-        .transaction-history-input,
-        html[data-iyanjupay-theme="blue"]
-        .iyanjupay-transaction-history
-        .transaction-history-select {
-          background: #ffffff;
-          color: #0f172a;
-          border-color: #bfdbfe;
-        }
-
-        html[data-iyanjupay-theme="blue"]
-        .iyanjupay-transaction-history
-        .transaction-history-input:focus,
-        html[data-iyanjupay-theme="blue"]
-        .iyanjupay-transaction-history
-        .transaction-history-select:focus {
-          border-color: #3b82f6;
-          box-shadow: 0 0 0 2px rgba(59,130,246,.12);
-        }
-
-        html[data-iyanjupay-theme="blue"]
-        .iyanjupay-transaction-history
-        .transaction-history-pagination {
-          background: #ffffff;
-          border-color: #dbeafe;
-        }
-
-        html[data-iyanjupay-theme="blue"]
-        .iyanjupay-transaction-history
-        .transaction-history-icon.bg-purple-50 {
-          background: #dbeafe !important;
-        }
-
-        html[data-iyanjupay-theme="blue"]
-        .iyanjupay-transaction-history
-        .transaction-history-icon.text-purple-600 {
-          color: #1d4ed8 !important;
-        }
-
-        html[data-iyanjupay-theme="blue"]
-        .iyanjupay-transaction-history
-        .text-purple-600 {
-          color: #2563eb !important;
-        }
-
-        html[data-iyanjupay-theme="blue"]
-        .iyanjupay-transaction-history
-        .bg-purple-600 {
-          background-color: #2563eb !important;
-        }
-
-        html[data-iyanjupay-theme="blue"]
-        .iyanjupay-transaction-history
-        .hover\\:bg-purple-700:hover {
-          background-color: #1d4ed8 !important;
-        }
-
-        html[data-iyanjupay-theme="blue"]
-        .iyanjupay-transaction-history
-        .transaction-history-empty-icon {
-          background: #eff6ff;
-        }
-
-        /* DARK THEME */
-
-        html[data-iyanjupay-theme="dark"]
-        .iyanjupay-transaction-history {
-          background: #020617;
-          color: #f8fafc;
-        }
-
-        html[data-iyanjupay-theme="dark"]
-        .iyanjupay-transaction-history
-        .transaction-history-header {
-          background: rgba(2,6,23,.96);
-          border-color: #1e293b;
-        }
-
-        html[data-iyanjupay-theme="dark"]
-        .iyanjupay-transaction-history
-        .transaction-history-card {
-          background: #0f172a;
-          border-color: #1e293b;
-          color: #f8fafc;
-        }
-
-        html[data-iyanjupay-theme="dark"]
-        .iyanjupay-transaction-history
-        .transaction-history-pagination {
-          background: #0f172a;
-          border-color: #1e293b;
-        }
-
-        html[data-iyanjupay-theme="dark"]
-        .iyanjupay-transaction-history
-        .transaction-history-input,
-        html[data-iyanjupay-theme="dark"]
-        .iyanjupay-transaction-history
-        .transaction-history-select {
-          background: #0f172a;
-          color: #f8fafc;
-          border-color: #334155;
-        }
-
-        html[data-iyanjupay-theme="dark"]
-        .iyanjupay-transaction-history
-        .transaction-history-input::placeholder {
-          color: #64748b;
-        }
-
-        html[data-iyanjupay-theme="dark"]
-        .iyanjupay-transaction-history
-        .transaction-history-input:focus,
-        html[data-iyanjupay-theme="dark"]
-        .iyanjupay-transaction-history
-        .transaction-history-select:focus {
-          border-color: #64748b;
-          box-shadow: 0 0 0 2px rgba(100,116,139,.18);
-        }
-
-        html[data-iyanjupay-theme="dark"]
-        .iyanjupay-transaction-history
-        .text-gray-900 {
-          color: #f8fafc !important;
-        }
-
-        html[data-iyanjupay-theme="dark"]
-        .iyanjupay-transaction-history
-        .text-gray-800 {
-          color: #f1f5f9 !important;
-        }
-
-        html[data-iyanjupay-theme="dark"]
-        .iyanjupay-transaction-history
-        .text-gray-700 {
-          color: #e2e8f0 !important;
-        }
-
-        html[data-iyanjupay-theme="dark"]
-        .iyanjupay-transaction-history
-        .text-gray-600 {
-          color: #cbd5e1 !important;
-        }
-
-        html[data-iyanjupay-theme="dark"]
-        .iyanjupay-transaction-history
-        .text-gray-500 {
-          color: #94a3b8 !important;
-        }
-
-        html[data-iyanjupay-theme="dark"]
-        .iyanjupay-transaction-history
-        .text-gray-400 {
+        .iyanjupay-transaction-history .text-gray-500 {
           color: #64748b !important;
         }
 
-        html[data-iyanjupay-theme="dark"]
-        .iyanjupay-transaction-history
-        .border-gray-100 {
-          border-color: #1e293b !important;
+        .iyanjupay-transaction-history .text-gray-400 {
+          color: #94a3b8 !important;
         }
 
-        html[data-iyanjupay-theme="dark"]
-        .iyanjupay-transaction-history
-        .border-gray-200 {
-          border-color: #334155 !important;
+        .iyanjupay-transaction-history .border-gray-100 {
+          border-color: #f1f5f9 !important;
         }
 
-        html[data-iyanjupay-theme="dark"]
-        .iyanjupay-transaction-history
-        .bg-gray-50 {
-          background-color: #020617 !important;
+        .iyanjupay-transaction-history .border-gray-200 {
+          border-color: #e2e8f0 !important;
         }
 
-        html[data-iyanjupay-theme="dark"]
-        .iyanjupay-transaction-history
-        .bg-gray-100 {
-          background-color: #1e293b !important;
+        .iyanjupay-transaction-history input,
+        .iyanjupay-transaction-history button,
+        .iyanjupay-transaction-history [role="combobox"] {
+          color: #0f172a;
         }
 
-        html[data-iyanjupay-theme="dark"]
-        .iyanjupay-transaction-history
-        .bg-white {
+        .iyanjupay-transaction-history input {
+          background-color: #ffffff !important;
+          border-color: #e2e8f0 !important;
+        }
+
+        .iyanjupay-transaction-history input::placeholder {
+          color: #94a3b8 !important;
+        }
+
+        .iyanjupay-transaction-history .bg-gray-100 {
+          background-color: #f1f5f9 !important;
+        }
+
+        /* ------------------------------------------------------------
+           DARK THEME
+           ------------------------------------------------------------ */
+
+        [data-iyanjupay-theme="dark"] .iyanjupay-transaction-history {
+          background: #020617 !important;
+          color: #f8fafc !important;
+        }
+
+        [data-iyanjupay-theme="dark"] .iyanjupay-transaction-history .bg-white,
+        [data-iyanjupay-theme="dark"] .iyanjupay-transaction-history .bg-white\/95 {
           background-color: #0f172a !important;
         }
 
-        html[data-iyanjupay-theme="dark"]
-        .iyanjupay-transaction-history
-        .transaction-history-icon.bg-green-50 {
-          background: #052e2b !important;
+        [data-iyanjupay-theme="dark"] .iyanjupay-transaction-history .border-gray-100 {
+          border-color: #1e293b !important;
         }
 
-        html[data-iyanjupay-theme="dark"]
-        .iyanjupay-transaction-history
-        .transaction-history-icon.text-green-600 {
-          color: #6ee7b7 !important;
+        [data-iyanjupay-theme="dark"] .iyanjupay-transaction-history .border-gray-200 {
+          border-color: #334155 !important;
         }
 
-        html[data-iyanjupay-theme="dark"]
-        .iyanjupay-transaction-history
-        .transaction-history-icon.bg-purple-50 {
-          background: #312e81 !important;
+        [data-iyanjupay-theme="dark"] .iyanjupay-transaction-history .text-gray-900,
+        [data-iyanjupay-theme="dark"] .iyanjupay-transaction-history .text-gray-800,
+        [data-iyanjupay-theme="dark"] .iyanjupay-transaction-history .text-gray-700,
+        [data-iyanjupay-theme="dark"] .iyanjupay-transaction-history .text-gray-600,
+        [data-iyanjupay-theme="dark"] .iyanjupay-transaction-history .text-gray-500 {
+          color: #f8fafc !important;
         }
 
-        html[data-iyanjupay-theme="dark"]
-        .iyanjupay-transaction-history
-        .transaction-history-icon.text-purple-600 {
-          color: #c4b5fd !important;
+        [data-iyanjupay-theme="dark"] .iyanjupay-transaction-history .text-gray-400 {
+          color: #94a3b8 !important;
         }
 
-        html[data-iyanjupay-theme="dark"]
-        .iyanjupay-transaction-history
-        .text-green-600 {
-          color: #6ee7b7 !important;
-        }
-
-        html[data-iyanjupay-theme="dark"]
-        .iyanjupay-transaction-history
-        .text-yellow-600 {
-          color: #fcd34d !important;
-        }
-
-        html[data-iyanjupay-theme="dark"]
-        .iyanjupay-transaction-history
-        .text-red-600 {
-          color: #fca5a5 !important;
-        }
-
-        html[data-iyanjupay-theme="dark"]
-        .iyanjupay-transaction-history
-        .text-red-500 {
-          color: #f87171 !important;
-        }
-
-        html[data-iyanjupay-theme="dark"]
-        .iyanjupay-transaction-history
-        .bg-green-50 {
-          background-color: #052e2b !important;
-        }
-
-        html[data-iyanjupay-theme="dark"]
-        .iyanjupay-transaction-history
-        .text-green-700 {
-          color: #6ee7b7 !important;
-        }
-
-        html[data-iyanjupay-theme="dark"]
-        .iyanjupay-transaction-history
-        .bg-red-50 {
-          background-color: #450a0a !important;
-        }
-
-        html[data-iyanjupay-theme="dark"]
-        .iyanjupay-transaction-history
-        .text-red-700 {
-          color: #fca5a5 !important;
-        }
-
-        html[data-iyanjupay-theme="dark"]
-        .iyanjupay-transaction-history
-        .bg-yellow-50 {
-          background-color: #422006 !important;
-        }
-
-        html[data-iyanjupay-theme="dark"]
-        .iyanjupay-transaction-history
-        .text-yellow-700 {
-          color: #fcd34d !important;
-        }
-
-        html[data-iyanjupay-theme="dark"]
-        .iyanjupay-transaction-history
-        .transaction-history-error {
-          background: #3f1d1d !important;
-          border-color: #7f1d1d !important;
-        }
-
-        html[data-iyanjupay-theme="dark"]
-        .iyanjupay-transaction-history
-        .transaction-history-error-title {
-          color: #fca5a5 !important;
-        }
-
-        html[data-iyanjupay-theme="dark"]
-        .iyanjupay-transaction-history
-        .transaction-history-error-text {
-          color: #fca5a5 !important;
-        }
-
-        html[data-iyanjupay-theme="dark"]
-        .iyanjupay-transaction-history
-        .transaction-history-empty-icon {
-          background: #1e293b !important;
-        }
-
-        html[data-iyanjupay-theme="dark"]
-        .iyanjupay-transaction-history
-        .transaction-history-empty-icon
-        svg {
-          color: #64748b !important;
-        }
-
-        html[data-iyanjupay-theme="dark"]
-        .iyanjupay-transaction-history
-        .hover\\:bg-gray-50:hover {
+        [data-iyanjupay-theme="dark"] .iyanjupay-transaction-history .bg-gray-100 {
           background-color: #1e293b !important;
         }
 
-        html[data-iyanjupay-theme="dark"]
-        .iyanjupay-transaction-history
-        .hover\\:text-gray-700:hover {
-          color: #e2e8f0 !important;
-        }
-
-        /* DETAIL ROWS */
-
-        html[data-iyanjupay-theme="dark"]
-        .iyanjupay-transaction-history
-        .transaction-history-detail-row {
-          border-color: #1e293b !important;
-        }
-
-        html[data-iyanjupay-theme="dark"]
-        .iyanjupay-transaction-history
-        .transaction-history-detail-label {
-          color: #94a3b8 !important;
-        }
-
-        html[data-iyanjupay-theme="dark"]
-        .iyanjupay-transaction-history
-        .transaction-history-detail-value {
+        [data-iyanjupay-theme="dark"] .iyanjupay-transaction-history input,
+        [data-iyanjupay-theme="dark"] .iyanjupay-transaction-history [role="combobox"] {
+          background-color: #0f172a !important;
           color: #f8fafc !important;
-        }
-
-        /* BUTTONS */
-
-        html[data-iyanjupay-theme="dark"]
-        .iyanjupay-transaction-history
-        .transaction-history-toolbar-button,
-        html[data-iyanjupay-theme="dark"]
-        .iyanjupay-transaction-history
-        .transaction-history-pagination-button,
-        html[data-iyanjupay-theme="dark"]
-        .iyanjupay-transaction-history
-        .transaction-history-action-button,
-        html[data-iyanjupay-theme="dark"]
-        .iyanjupay-transaction-history
-        .transaction-history-copy-button {
-          color: #e2e8f0 !important;
           border-color: #334155 !important;
         }
 
-        html[data-iyanjupay-theme="dark"]
-        .iyanjupay-transaction-history
-        .transaction-history-toolbar-button:hover,
-        html[data-iyanjupay-theme="dark"]
-        .iyanjupay-transaction-history
-        .transaction-history-pagination-button:hover,
-        html[data-iyanjupay-theme="dark"]
-        .iyanjupay-transaction-history
-        .transaction-history-action-button:hover,
-        html[data-iyanjupay-theme="dark"]
-        .iyanjupay-transaction-history
-        .transaction-history-copy-button:hover {
-          background: #1e293b !important;
-          color: #f8fafc !important;
+        [data-iyanjupay-theme="dark"] .iyanjupay-transaction-history input::placeholder {
+          color: #64748b !important;
         }
 
-        /* DARK PURPLE PRIMARY BUTTON */
-
-        html[data-iyanjupay-theme="dark"]
-        .iyanjupay-transaction-history
-        .bg-purple-600 {
-          background-color: #4f46e5 !important;
-          color: #ffffff !important;
+        [data-iyanjupay-theme="dark"] .iyanjupay-transaction-history button {
+          color: #f8fafc;
         }
 
-        html[data-iyanjupay-theme="dark"]
-        .iyanjupay-transaction-history
-        .hover\\:bg-purple-700:hover {
-          background-color: #4338ca !important;
+        [data-iyanjupay-theme="dark"] .iyanjupay-transaction-history button:hover {
+          background-color: #1e293b;
         }
 
-        /* STATUS BADGES */
-
-        html[data-iyanjupay-theme="dark"]
-        .transaction-history-status-success {
-          background: #052e2b !important;
-          color: #6ee7b7 !important;
+        /* Keep semantic status colors readable in both themes. */
+        [data-iyanjupay-theme="dark"] .iyanjupay-transaction-history .bg-green-50 {
+          background-color: #052e16 !important;
         }
 
-        html[data-iyanjupay-theme="dark"]
-        .transaction-history-status-failed {
-          background: #450a0a !important;
+        [data-iyanjupay-theme="dark"] .iyanjupay-transaction-history .text-green-700,
+        [data-iyanjupay-theme="dark"] .iyanjupay-transaction-history .text-green-600 {
+          color: #4ade80 !important;
+        }
+
+        [data-iyanjupay-theme="dark"] .iyanjupay-transaction-history .bg-red-50 {
+          background-color: #450a0a !important;
+        }
+
+        [data-iyanjupay-theme="dark"] .iyanjupay-transaction-history .text-red-800,
+        [data-iyanjupay-theme="dark"] .iyanjupay-transaction-history .text-red-700,
+        [data-iyanjupay-theme="dark"] .iyanjupay-transaction-history .text-red-600,
+        [data-iyanjupay-theme="dark"] .iyanjupay-transaction-history .text-red-500 {
           color: #fca5a5 !important;
         }
 
-        html[data-iyanjupay-theme="dark"]
-        .transaction-history-status-pending {
-          background: #422006 !important;
-          color: #fcd34d !important;
+        [data-iyanjupay-theme="dark"] .iyanjupay-transaction-history .bg-yellow-50 {
+          background-color: #422006 !important;
         }
 
-        /* =========================================================
-           DIALOG
-           Radix Dialog is rendered in a portal, so it is styled
-           directly from the html theme attribute.
-           ========================================================= */
-
-        html[data-iyanjupay-theme="light"]
-        .transaction-history-dialog,
-        html:not([data-iyanjupay-theme])
-        .transaction-history-dialog {
-          background: #ffffff !important;
-          color: #111827 !important;
-          border-color: #e5e7eb !important;
+        [data-iyanjupay-theme="dark"] .iyanjupay-transaction-history .text-yellow-700,
+        [data-iyanjupay-theme="dark"] .iyanjupay-transaction-history .text-yellow-600 {
+          color: #fde68a !important;
         }
 
-        html[data-iyanjupay-theme="blue"]
-        .transaction-history-dialog {
-          background: #ffffff !important;
-          color: #0f172a !important;
-          border-color: #dbeafe !important;
+        [data-iyanjupay-theme="dark"] .iyanjupay-transaction-history .bg-purple-50 {
+          background-color: #2e1065 !important;
         }
 
-        html[data-iyanjupay-theme="dark"]
-        .transaction-history-dialog {
-          background: #0f172a !important;
-          color: #f8fafc !important;
-          border-color: #334155 !important;
-        }
-
-        html[data-iyanjupay-theme="dark"]
-        .transaction-history-dialog
-        .text-gray-900 {
-          color: #f8fafc !important;
-        }
-
-        html[data-iyanjupay-theme="dark"]
-        .transaction-history-dialog
-        .text-gray-800 {
-          color: #f1f5f9 !important;
-        }
-
-        html[data-iyanjupay-theme="dark"]
-        .transaction-history-dialog
-        .text-gray-700 {
-          color: #e2e8f0 !important;
-        }
-
-        html[data-iyanjupay-theme="dark"]
-        .transaction-history-dialog
-        .text-gray-600 {
-          color: #cbd5e1 !important;
-        }
-
-        html[data-iyanjupay-theme="dark"]
-        .transaction-history-dialog
-        .text-gray-500 {
-          color: #94a3b8 !important;
-        }
-
-        html[data-iyanjupay-theme="dark"]
-        .transaction-history-dialog
-        .border-gray-100 {
-          border-color: #1e293b !important;
-        }
-
-        html[data-iyanjupay-theme="dark"]
-        .transaction-history-dialog
-        .border-gray-200 {
-          border-color: #334155 !important;
-        }
-
-        html[data-iyanjupay-theme="dark"]
-        .transaction-history-dialog
-        .bg-white {
-          background: #111827 !important;
-        }
-
-        html[data-iyanjupay-theme="dark"]
-        .transaction-history-dialog
-        .bg-green-50 {
-          background: #052e2b !important;
-        }
-
-        html[data-iyanjupay-theme="dark"]
-        .transaction-history-dialog
-        .bg-purple-50 {
-          background: #312e81 !important;
-        }
-
-        html[data-iyanjupay-theme="dark"]
-        .transaction-history-dialog
-        .text-purple-600 {
+        [data-iyanjupay-theme="dark"] .iyanjupay-transaction-history .text-purple-600 {
           color: #c4b5fd !important;
         }
 
-        html[data-iyanjupay-theme="dark"]
-        .transaction-history-dialog
-        .text-green-600 {
-          color: #6ee7b7 !important;
-        }
+        /* ============================================================
+           RADIX PORTALS
+           These render outside the page root, so they need their own
+           theme selectors.
+           ============================================================ */
 
-        html[data-iyanjupay-theme="dark"]
-        .transaction-history-dialog
-        .transaction-history-detail-row {
-          border-color: #1e293b !important;
-        }
-
-        html[data-iyanjupay-theme="dark"]
-        .transaction-history-dialog
-        > button {
-          color: #cbd5e1 !important;
-          opacity: .9;
-        }
-
-        html[data-iyanjupay-theme="dark"]
-        .transaction-history-dialog
-        > button:hover {
-          background: #1e293b !important;
-          color: #ffffff !important;
-        }
-
-        /* =========================================================
-           SELECT CONTENT
-           Radix Select is also rendered in a portal.
-           ========================================================= */
-
-        html[data-iyanjupay-theme="light"]
-        .transaction-history-select-content,
-        html:not([data-iyanjupay-theme])
         .transaction-history-select-content {
-          background: #ffffff !important;
-          color: #111827 !important;
-          border-color: #e5e7eb !important;
-        }
-
-        html[data-iyanjupay-theme="blue"]
-        .transaction-history-select-content {
-          background: #ffffff !important;
+          background-color: #ffffff !important;
           color: #0f172a !important;
-          border-color: #dbeafe !important;
+          border-color: #e2e8f0 !important;
         }
 
-        html[data-iyanjupay-theme="dark"]
-        .transaction-history-select-content {
-          background: #0f172a !important;
+        .transaction-history-select-content [role="option"] {
+          color: #0f172a !important;
+        }
+
+        .transaction-history-select-content [role="option"]:hover,
+        .transaction-history-select-content [role="option"][data-highlighted] {
+          background-color: #f1f5f9 !important;
+        }
+
+        [data-iyanjupay-theme="dark"] .transaction-history-select-content {
+          background-color: #0f172a !important;
           color: #f8fafc !important;
           border-color: #334155 !important;
         }
 
-        html[data-iyanjupay-theme="dark"]
-        .transaction-history-select-content
-        [role="option"] {
-          color: #e2e8f0 !important;
+        [data-iyanjupay-theme="dark"] .transaction-history-select-content [role="option"] {
+          color: #f8fafc !important;
         }
 
-        html[data-iyanjupay-theme="dark"]
-        .transaction-history-select-content
-        [role="option"]:hover,
-        html[data-iyanjupay-theme="dark"]
-        .transaction-history-select-content
-        [role="option"][data-highlighted] {
-          background: #1e293b !important;
-          color: #ffffff !important;
+        [data-iyanjupay-theme="dark"] .transaction-history-select-content [role="option"]:hover,
+        [data-iyanjupay-theme="dark"] .transaction-history-select-content [role="option"][data-highlighted] {
+          background-color: #1e293b !important;
         }
 
-        /* BLUE SELECT OPTIONS */
-
-        html[data-iyanjupay-theme="blue"]
-        .transaction-history-select-content
-        [role="option"][data-highlighted] {
-          background: #eff6ff !important;
-          color: #1d4ed8 !important;
+        .transaction-history-dialog {
+          background-color: #ffffff !important;
+          color: #0f172a !important;
+          border-color: #e2e8f0 !important;
         }
 
-        /* BLUE DETAIL CARDS */
-
-        html[data-iyanjupay-theme="blue"]
-        .transaction-history-dialog
-        .border-gray-200 {
-          border-color: #dbeafe !important;
+        [data-iyanjupay-theme="dark"] .transaction-history-dialog {
+          background-color: #0f172a !important;
+          color: #f8fafc !important;
+          border-color: #334155 !important;
         }
 
-        /* DARK DETAIL CARDS */
-
-        html[data-iyanjupay-theme="dark"]
-        .transaction-history-dialog
-        .shadow-none {
-          box-shadow: none !important;
+        [data-iyanjupay-theme="dark"] .transaction-history-dialog .text-gray-900,
+        [data-iyanjupay-theme="dark"] .transaction-history-dialog .text-gray-800,
+        [data-iyanjupay-theme="dark"] .transaction-history-dialog .text-gray-700,
+        [data-iyanjupay-theme="dark"] .transaction-history-dialog .text-gray-600,
+        [data-iyanjupay-theme="dark"] .transaction-history-dialog .text-gray-500 {
+          color: #f8fafc !important;
         }
 
-        /* PRINT BUTTON */
-
-        html[data-iyanjupay-theme="blue"]
-        .transaction-history-dialog
-        .bg-purple-600 {
-          background-color: #2563eb !important;
+        [data-iyanjupay-theme="dark"] .transaction-history-dialog .text-gray-400 {
+          color: #94a3b8 !important;
         }
 
-        html[data-iyanjupay-theme="blue"]
-        .transaction-history-dialog
-        .hover\\:bg-purple-700:hover {
-          background-color: #1d4ed8 !important;
+        [data-iyanjupay-theme="dark"] .transaction-history-dialog .border-gray-100,
+        [data-iyanjupay-theme="dark"] .transaction-history-dialog .border-gray-200 {
+          border-color: #334155 !important;
+        }
+        /* SEND MONEY-MATCHED THEME: light/blue = white + dark text; dark = dark + white text. */
+        .iyanjupay-theme-light .iyanjupay-transaction-history,
+        .iyanjupay-theme-blue .iyanjupay-transaction-history,
+        [data-iyanjupay-theme="light"] .iyanjupay-transaction-history,
+        [data-iyanjupay-theme="blue"] .iyanjupay-transaction-history {
+          background-color: #ffffff !important;
+          color: #0f172a !important;
+        }
+
+        .iyanjupay-theme-dark .iyanjupay-transaction-history,
+        [data-iyanjupay-theme="dark"] .iyanjupay-transaction-history {
+          background-color: #090d18 !important;
+          color: #f8fafc !important;
+        }
+
+        .iyanjupay-theme-dark .iyanjupay-transaction-history .bg-white,
+        [data-iyanjupay-theme="dark"] .iyanjupay-transaction-history .bg-white {
+          background-color: #111827 !important;
+          color: #f8fafc !important;
+        }
+
+        .iyanjupay-theme-dark .iyanjupay-transaction-history .bg-gray-50,
+        [data-iyanjupay-theme="dark"] .iyanjupay-transaction-history .bg-gray-50 {
+          background-color: #090d18 !important;
+        }
+
+        .iyanjupay-theme-dark .iyanjupay-transaction-history .bg-gray-100,
+        [data-iyanjupay-theme="dark"] .iyanjupay-transaction-history .bg-gray-100 {
+          background-color: #1e293b !important;
+        }
+
+        .iyanjupay-theme-dark .iyanjupay-transaction-history .text-gray-900,
+        .iyanjupay-theme-dark .iyanjupay-transaction-history .text-gray-800,
+        .iyanjupay-theme-dark .iyanjupay-transaction-history .text-gray-700,
+        .iyanjupay-theme-dark .iyanjupay-transaction-history .text-gray-600,
+        .iyanjupay-theme-dark .iyanjupay-transaction-history .text-gray-500,
+        [data-iyanjupay-theme="dark"] .iyanjupay-transaction-history .text-gray-900,
+        [data-iyanjupay-theme="dark"] .iyanjupay-transaction-history .text-gray-800,
+        [data-iyanjupay-theme="dark"] .iyanjupay-transaction-history .text-gray-700,
+        [data-iyanjupay-theme="dark"] .iyanjupay-transaction-history .text-gray-600,
+        [data-iyanjupay-theme="dark"] .iyanjupay-transaction-history .text-gray-500 {
+          color: #f8fafc !important;
+        }
+
+        .iyanjupay-theme-dark .iyanjupay-transaction-history .text-gray-400,
+        [data-iyanjupay-theme="dark"] .iyanjupay-transaction-history .text-gray-400 {
+          color: #94a3b8 !important;
+        }
+
+        .iyanjupay-theme-dark .iyanjupay-transaction-history [class*="border-gray-"],
+        [data-iyanjupay-theme="dark"] .iyanjupay-transaction-history [class*="border-gray-"] {
+          border-color: #334155 !important;
+        }
+
+        .iyanjupay-theme-dark .iyanjupay-transaction-history input,
+        .iyanjupay-theme-dark .iyanjupay-transaction-history textarea,
+        .iyanjupay-theme-dark .iyanjupay-transaction-history [role="combobox"],
+        [data-iyanjupay-theme="dark"] .iyanjupay-transaction-history input,
+        [data-iyanjupay-theme="dark"] .iyanjupay-transaction-history textarea,
+        [data-iyanjupay-theme="dark"] .iyanjupay-transaction-history [role="combobox"] {
+          background-color: #0f172a !important;
+          color: #f8fafc !important;
+          border-color: #334155 !important;
+        }
+
+        .iyanjupay-theme-dark .iyanjupay-transaction-history input::placeholder,
+        [data-iyanjupay-theme="dark"] .iyanjupay-transaction-history input::placeholder {
+          color: #64748b !important;
+        }
+
+        .iyanjupay-theme-dark .iyanjupay-transaction-history button,
+        [data-iyanjupay-theme="dark"] .iyanjupay-transaction-history button {
+          color: #f8fafc;
+        }
+
+        .iyanjupay-theme-dark .iyanjupay-transaction-history button:hover,
+        [data-iyanjupay-theme="dark"] .iyanjupay-transaction-history button:hover {
+          background-color: #1e293b;
+        }
+
+        .iyanjupay-theme-dark .iyanjupay-transaction-history .bg-purple-50,
+        [data-iyanjupay-theme="dark"] .iyanjupay-transaction-history .bg-purple-50 {
+          background-color: #312e81 !important;
+        }
+
+        .iyanjupay-theme-dark .iyanjupay-transaction-history .text-purple-700,
+        .iyanjupay-theme-dark .iyanjupay-transaction-history .text-purple-600,
+        [data-iyanjupay-theme="dark"] .iyanjupay-transaction-history .text-purple-700,
+        [data-iyanjupay-theme="dark"] .iyanjupay-transaction-history .text-purple-600 {
+          color: #c4b5fd !important;
         }
       `}</style>
 
-      {/* HEADER */}
+      {/* ==========================================================
+          HEADER
+          ========================================================== */}
 
-      <div className="transaction-history-header sticky top-0 z-30 border-b border-gray-200 bg-white/95 backdrop-blur">
+      <div className="sticky top-0 z-30 border-b border-gray-200 bg-white/95 backdrop-blur">
         <div className="mx-auto max-w-5xl px-4 py-4 sm:px-6">
           <div className="flex items-center justify-between gap-3">
             <div className="flex min-w-0 items-center gap-3">
@@ -3515,7 +2930,7 @@ const TransactionHistory = ({
                 variant="ghost"
                 size="icon"
                 onClick={onBack}
-                className="transaction-history-toolbar-button shrink-0"
+                className="shrink-0"
               >
                 <ArrowLeft className="h-5 w-5" />
               </Button>
@@ -3546,7 +2961,6 @@ const TransactionHistory = ({
                   refreshing
                 }
                 title="Refresh"
-                className="transaction-history-toolbar-button"
               >
                 <RefreshCw
                   className={`h-4 w-4 ${
@@ -3561,15 +2975,12 @@ const TransactionHistory = ({
                 type="button"
                 variant="outline"
                 size="icon"
-                onClick={
-                  exportCsv
-                }
+                onClick={exportCsv}
                 disabled={
                   filteredTransactions.length ===
                   0
                 }
                 title="Export CSV"
-                className="transaction-history-toolbar-button"
               >
                 <Download className="h-4 w-4" />
               </Button>
@@ -3578,13 +2989,17 @@ const TransactionHistory = ({
         </div>
       </div>
 
-      {/* CONTENT */}
+      {/* ==========================================================
+          CONTENT
+          ========================================================== */}
 
       <main className="mx-auto max-w-5xl px-4 py-5 sm:px-6 sm:py-7">
-        {/* SUMMARY */}
+        {/* ========================================================
+            SUMMARY
+            ======================================================== */}
 
         <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <Card className="transaction-history-card border-0 shadow-sm">
+          <Card className="border-0 shadow-sm">
             <CardContent className="p-4">
               <p className="text-xs text-gray-500">
                 Total
@@ -3598,7 +3013,7 @@ const TransactionHistory = ({
             </CardContent>
           </Card>
 
-          <Card className="transaction-history-card border-0 shadow-sm">
+          <Card className="border-0 shadow-sm">
             <CardContent className="p-4">
               <p className="text-xs text-gray-500">
                 Successful
@@ -3615,7 +3030,7 @@ const TransactionHistory = ({
             </CardContent>
           </Card>
 
-          <Card className="transaction-history-card border-0 shadow-sm">
+          <Card className="border-0 shadow-sm">
             <CardContent className="p-4">
               <p className="text-xs text-gray-500">
                 Pending
@@ -3632,7 +3047,7 @@ const TransactionHistory = ({
             </CardContent>
           </Card>
 
-          <Card className="transaction-history-card border-0 shadow-sm">
+          <Card className="border-0 shadow-sm">
             <CardContent className="p-4">
               <p className="text-xs text-gray-500">
                 Failed
@@ -3650,9 +3065,11 @@ const TransactionHistory = ({
           </Card>
         </div>
 
-        {/* SEARCH */}
+        {/* ========================================================
+            SEARCH
+            ======================================================== */}
 
-        <Card className="transaction-history-card mb-5 border-0 shadow-sm">
+        <Card className="mb-5 border-0 shadow-sm">
           <CardContent className="space-y-4 p-4">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
@@ -3665,7 +3082,7 @@ const TransactionHistory = ({
                   )
                 }
                 placeholder="Search transactions, names, phone, account or reference..."
-                className="transaction-history-input h-11 pl-10 pr-10"
+                className="h-11 pl-10 pr-10"
               />
 
               {search && (
@@ -3681,6 +3098,10 @@ const TransactionHistory = ({
               )}
             </div>
 
+            {/* ====================================================
+                FILTERS
+                ==================================================== */}
+
             <div className="grid gap-3 sm:grid-cols-3">
               <Select
                 value={filterType}
@@ -3690,7 +3111,7 @@ const TransactionHistory = ({
                   )
                 }
               >
-                <SelectTrigger className="transaction-history-select">
+                <SelectTrigger>
                   <SelectValue placeholder="Transaction type" />
                 </SelectTrigger>
 
@@ -3733,7 +3154,7 @@ const TransactionHistory = ({
                   )
                 }
               >
-                <SelectTrigger className="transaction-history-select">
+                <SelectTrigger>
                   <SelectValue placeholder="Status" />
                 </SelectTrigger>
 
@@ -3762,7 +3183,7 @@ const TransactionHistory = ({
                   setDateFilter
                 }
               >
-                <SelectTrigger className="transaction-history-select">
+                <SelectTrigger>
                   <SelectValue placeholder="Date" />
                 </SelectTrigger>
 
@@ -3811,7 +3232,6 @@ const TransactionHistory = ({
                   onClick={
                     clearFilters
                   }
-                  className="transaction-history-toolbar-button"
                 >
                   Clear filters
                 </Button>
@@ -3820,19 +3240,21 @@ const TransactionHistory = ({
           </CardContent>
         </Card>
 
-        {/* ERROR */}
+        {/* ========================================================
+            ERROR
+            ======================================================== */}
 
         {error && (
-          <Card className="transaction-history-error mb-5 border-red-200 bg-red-50 shadow-sm">
+          <Card className="mb-5 border-red-200 bg-red-50 shadow-sm">
             <CardContent className="flex flex-col items-center gap-3 p-6 text-center">
               <X className="h-8 w-8 text-red-500" />
 
               <div>
-                <p className="transaction-history-error-title font-semibold text-red-800">
+                <p className="font-semibold text-red-800">
                   Unable to load transactions
                 </p>
 
-                <p className="transaction-history-error-text mt-1 text-sm text-red-600">
+                <p className="mt-1 text-sm text-red-600">
                   {error}
                 </p>
               </div>
@@ -3843,7 +3265,6 @@ const TransactionHistory = ({
                 onClick={() =>
                   loadTransactions()
                 }
-                className="transaction-history-action-button"
               >
                 Try again
               </Button>
@@ -3851,7 +3272,9 @@ const TransactionHistory = ({
           </Card>
         )}
 
-        {/* LOADING */}
+        {/* ========================================================
+            LOADING
+            ======================================================== */}
 
         {loading && (
           <div className="flex min-h-[300px] items-center justify-center">
@@ -3865,15 +3288,17 @@ const TransactionHistory = ({
           </div>
         )}
 
-        {/* EMPTY */}
+        {/* ========================================================
+            EMPTY
+            ======================================================== */}
 
         {!loading &&
           !error &&
           filteredTransactions.length ===
             0 && (
-            <Card className="transaction-history-card border-0 shadow-sm">
+            <Card className="border-0 shadow-sm">
               <CardContent className="flex min-h-[320px] flex-col items-center justify-center px-6 text-center">
-                <div className="transaction-history-empty-icon flex h-16 w-16 items-center justify-center rounded-full bg-gray-100">
+                <div className="flex h-16 w-16 items-center justify-center rounded-full bg-gray-100">
                   <History className="h-8 w-8 text-gray-400" />
                 </div>
 
@@ -3893,7 +3318,7 @@ const TransactionHistory = ({
                   <Button
                     type="button"
                     variant="outline"
-                    className="transaction-history-action-button mt-5"
+                    className="mt-5"
                     onClick={
                       clearFilters
                     }
@@ -3905,7 +3330,9 @@ const TransactionHistory = ({
             </Card>
           )}
 
-        {/* TRANSACTION LIST */}
+        {/* ========================================================
+            TRANSACTION LIST
+            ======================================================== */}
 
         {!loading &&
           !error &&
@@ -3930,7 +3357,7 @@ const TransactionHistory = ({
                       key={
                         item.transaction.id
                       }
-                      className="transaction-history-card cursor-pointer border-0 shadow-sm transition hover:-translate-y-[1px] hover:shadow-md"
+                      className="cursor-pointer border-0 shadow-sm transition hover:-translate-y-[1px] hover:shadow-md"
                       onClick={() =>
                         setSelectedTransaction(
                           item
@@ -3990,6 +3417,7 @@ const TransactionHistory = ({
                                   transaction={
                                     item
                                   }
+
                                 />
 
                                 <span className="text-xs text-gray-400">
@@ -4019,12 +3447,14 @@ const TransactionHistory = ({
             </div>
           )}
 
-        {/* PAGINATION */}
+        {/* ========================================================
+            PAGINATION
+            ======================================================== */}
 
         {!loading &&
           filteredTransactions.length >
             PAGE_SIZE && (
-            <div className="transaction-history-pagination mt-6 flex items-center justify-between rounded-xl border border-gray-200 bg-white p-3">
+            <div className="mt-6 flex items-center justify-between rounded-xl border border-gray-200 bg-white p-3">
               <p className="text-xs text-gray-500 sm:text-sm">
                 Page{" "}
                 {safePage} of{" "}
@@ -4049,7 +3479,6 @@ const TransactionHistory = ({
                         )
                     )
                   }
-                  className="transaction-history-pagination-button"
                 >
                   <ChevronLeft className="mr-1 h-4 w-4" />
                   Previous
@@ -4073,7 +3502,6 @@ const TransactionHistory = ({
                         )
                     )
                   }
-                  className="transaction-history-pagination-button"
                 >
                   Next
                   <ChevronRight className="ml-1 h-4 w-4" />
@@ -4134,6 +3562,10 @@ const TransactionHistory = ({
               </DialogHeader>
 
               <div className="pb-2">
+                {/* ==================================================
+                    DETAILS HEADER
+                    ================================================== */}
+
                 <div className="flex flex-col items-center text-center">
                   <TransactionIcon
                     transaction={
@@ -4189,7 +3621,9 @@ const TransactionHistory = ({
                   )}
                 </div>
 
-                {/* BANK TRANSFER */}
+                {/* ==================================================
+                    BANK TRANSFER
+                    ================================================== */}
 
                 {selectedTransaction.kind ===
                   "bank_transfer" && (
@@ -4236,9 +3670,11 @@ const TransactionHistory = ({
                           selectedTransaction.accountNumber
                         }
                         mono
-                        copyable={Boolean(
-                          selectedTransaction.accountNumber
-                        )}
+                        copyable={
+                          Boolean(
+                            selectedTransaction.accountNumber
+                          )
+                        }
                         onCopy={() =>
                           copyToClipboard(
                             selectedTransaction.accountNumber,
@@ -4277,7 +3713,9 @@ const TransactionHistory = ({
                   </Card>
                 )}
 
-                {/* IYANJUPAY WALLET TRANSFER */}
+                {/* ==================================================
+                    IYANJUPAY TRANSFER
+                    ================================================== */}
 
                 {selectedTransaction.kind ===
                   "wallet_transfer" && (
@@ -4310,9 +3748,11 @@ const TransactionHistory = ({
                           selectedTransaction.phoneNumber
                         }
                         mono
-                        copyable={Boolean(
-                          selectedTransaction.phoneNumber
-                        )}
+                        copyable={
+                          Boolean(
+                            selectedTransaction.phoneNumber
+                          )
+                        }
                         onCopy={() =>
                           copyToClipboard(
                             selectedTransaction.phoneNumber,
@@ -4327,9 +3767,11 @@ const TransactionHistory = ({
                           selectedTransaction.walletId
                         }
                         mono
-                        copyable={Boolean(
-                          selectedTransaction.walletId
-                        )}
+                        copyable={
+                          Boolean(
+                            selectedTransaction.walletId
+                          )
+                        }
                         onCopy={() =>
                           copyToClipboard(
                             selectedTransaction.walletId,
@@ -4355,7 +3797,9 @@ const TransactionHistory = ({
                   </Card>
                 )}
 
-                {/* AIRTIME */}
+                {/* ==================================================
+                    AIRTIME
+                    ================================================== */}
 
                 {selectedTransaction.kind ===
                   "airtime" && (
@@ -4368,9 +3812,9 @@ const TransactionHistory = ({
 
                     <CardContent>
                       <DetailRow
-                        label="Service provider"
+                        label="Provider"
                         value={
-                          selectedTransaction.serviceProviderName
+                          selectedTransaction.providerName
                         }
                       />
 
@@ -4380,9 +3824,7 @@ const TransactionHistory = ({
                           selectedTransaction.phoneNumber
                         }
                         mono
-                        copyable={Boolean(
-                          selectedTransaction.phoneNumber
-                        )}
+                        copyable
                         onCopy={() =>
                           copyToClipboard(
                             selectedTransaction.phoneNumber,
@@ -4401,7 +3843,9 @@ const TransactionHistory = ({
                   </Card>
                 )}
 
-                {/* DATA */}
+                {/* ==================================================
+                    DATA
+                    ================================================== */}
 
                 {selectedTransaction.kind ===
                   "data" && (
@@ -4414,9 +3858,9 @@ const TransactionHistory = ({
 
                     <CardContent>
                       <DetailRow
-                        label="Service provider"
+                        label="Provider"
                         value={
-                          selectedTransaction.serviceProviderName
+                          selectedTransaction.providerName
                         }
                       />
 
@@ -4426,9 +3870,7 @@ const TransactionHistory = ({
                           selectedTransaction.phoneNumber
                         }
                         mono
-                        copyable={Boolean(
-                          selectedTransaction.phoneNumber
-                        )}
+                        copyable
                         onCopy={() =>
                           copyToClipboard(
                             selectedTransaction.phoneNumber,
@@ -4454,7 +3896,9 @@ const TransactionHistory = ({
                   </Card>
                 )}
 
-                {/* ELECTRICITY */}
+                {/* ==================================================
+                    ELECTRICITY
+                    ================================================== */}
 
                 {selectedTransaction.kind ===
                   "electricity" && (
@@ -4467,9 +3911,9 @@ const TransactionHistory = ({
 
                     <CardContent>
                       <DetailRow
-                        label="Service provider"
+                        label="Provider"
                         value={
-                          selectedTransaction.serviceProviderName
+                          selectedTransaction.providerName
                         }
                       />
 
@@ -4479,9 +3923,7 @@ const TransactionHistory = ({
                           selectedTransaction.meterNumber
                         }
                         mono
-                        copyable={Boolean(
-                          selectedTransaction.meterNumber
-                        )}
+                        copyable
                         onCopy={() =>
                           copyToClipboard(
                             selectedTransaction.meterNumber,
@@ -4507,7 +3949,9 @@ const TransactionHistory = ({
                   </Card>
                 )}
 
-                {/* CABLE */}
+                {/* ==================================================
+                    CABLE
+                    ================================================== */}
 
                 {selectedTransaction.kind ===
                   "cable" && (
@@ -4520,9 +3964,9 @@ const TransactionHistory = ({
 
                     <CardContent>
                       <DetailRow
-                        label="Service provider"
+                        label="Provider"
                         value={
-                          selectedTransaction.serviceProviderName
+                          selectedTransaction.providerName
                         }
                       />
 
@@ -4532,9 +3976,7 @@ const TransactionHistory = ({
                           selectedTransaction.smartcardNumber
                         }
                         mono
-                        copyable={Boolean(
-                          selectedTransaction.smartcardNumber
-                        )}
+                        copyable
                         onCopy={() =>
                           copyToClipboard(
                             selectedTransaction.smartcardNumber,
@@ -4560,7 +4002,9 @@ const TransactionHistory = ({
                   </Card>
                 )}
 
-                {/* INTERNET */}
+                {/* ==================================================
+                    INTERNET
+                    ================================================== */}
 
                 {selectedTransaction.kind ===
                   "internet" && (
@@ -4573,9 +4017,9 @@ const TransactionHistory = ({
 
                     <CardContent>
                       <DetailRow
-                        label="Service provider"
+                        label="Provider"
                         value={
-                          selectedTransaction.serviceProviderName
+                          selectedTransaction.providerName
                         }
                       />
 
@@ -4585,9 +4029,7 @@ const TransactionHistory = ({
                           selectedTransaction.internetAccount
                         }
                         mono
-                        copyable={Boolean(
-                          selectedTransaction.internetAccount
-                        )}
+                        copyable
                         onCopy={() =>
                           copyToClipboard(
                             selectedTransaction.internetAccount,
@@ -4613,7 +4055,9 @@ const TransactionHistory = ({
                   </Card>
                 )}
 
-                {/* FUNDING */}
+                {/* ==================================================
+                    FUNDING
+                    ================================================== */}
 
                 {selectedTransaction.kind ===
                   "funding" && (
@@ -4687,7 +4131,9 @@ const TransactionHistory = ({
                   </Card>
                 )}
 
-                {/* REFUND */}
+                {/* ==================================================
+                    REFUND
+                    ================================================== */}
 
                 {selectedTransaction.kind ===
                   "refund" && (
@@ -4731,7 +4177,9 @@ const TransactionHistory = ({
                   </Card>
                 )}
 
-                {/* AMOUNT */}
+                {/* ==================================================
+                    AMOUNT
+                    ================================================== */}
 
                 <Card className="mt-4 border-gray-200 shadow-none">
                   <CardContent className="p-4">
@@ -4764,7 +4212,9 @@ const TransactionHistory = ({
                   </CardContent>
                 </Card>
 
-                {/* TRANSACTION INFORMATION */}
+                {/* ==================================================
+                    TRANSACTION INFORMATION
+                    ================================================== */}
 
                 <Card className="mt-4 border-gray-200 shadow-none">
                   <CardHeader className="pb-2">
@@ -4810,6 +4260,33 @@ const TransactionHistory = ({
                     />
 
                     <DetailRow
+                      label="Provider reference"
+                      value={
+                        selectedTransaction
+                          .transaction
+                          .provider_reference ||
+                        ""
+                      }
+                      mono
+                      copyable={
+                        Boolean(
+                          selectedTransaction
+                            .transaction
+                            .provider_reference
+                        )
+                      }
+                      onCopy={() =>
+                        copyToClipboard(
+                          selectedTransaction
+                            .transaction
+                            .provider_reference ||
+                            "",
+                          "Provider reference"
+                        )
+                      }
+                    />
+
+                    <DetailRow
                       label="Description"
                       value={
                         selectedTransaction
@@ -4821,7 +4298,9 @@ const TransactionHistory = ({
                   </CardContent>
                 </Card>
 
-                {/* ACTIONS */}
+                {/* ==================================================
+                    ACTIONS
+                    ================================================== */}
 
                 <div className="mt-5 grid grid-cols-2 gap-3">
                   <Button
@@ -4835,7 +4314,6 @@ const TransactionHistory = ({
                         "Reference"
                       )
                     }
-                    className="transaction-history-action-button"
                   >
                     <Copy className="mr-2 h-4 w-4" />
                     Copy reference
@@ -4848,7 +4326,7 @@ const TransactionHistory = ({
                         selectedTransaction
                       )
                     }
-                    className="transaction-history-action-button bg-purple-600 hover:bg-purple-700"
+                    className="bg-purple-600 hover:bg-purple-700"
                   >
                     <Printer className="mr-2 h-4 w-4" />
                     Print receipt

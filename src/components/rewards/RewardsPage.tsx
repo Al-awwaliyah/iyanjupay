@@ -33,8 +33,15 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 
 
+type DashboardTheme =
+  | "light"
+  | "blue"
+  | "dark";
+
+
 interface RewardsPageProps {
   onBack: () => void;
+  dashboardTheme?: DashboardTheme;
 }
 
 
@@ -62,6 +69,7 @@ const REFERRAL_REWARD = 500;
 
 const RewardsPage = ({
   onBack,
+  dashboardTheme = "light",
 }: RewardsPageProps) => {
 
   const { user } = useAuth();
@@ -595,11 +603,96 @@ const RewardsPage = ({
     };
 
 
+  // ============================================================
+  // THEME CLASSES
+  // ============================================================
+
+  const isDark =
+    dashboardTheme === "dark";
+
+  const isBlue =
+    dashboardTheme === "blue";
+
+
+  const pageBackground =
+    isDark
+      ? "bg-[#090d18] text-slate-100"
+      : isBlue
+        ? "bg-[#f4f8ff] text-slate-900"
+        : "bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-50";
+
+
+  const standardCard =
+    isDark
+      ? "border-slate-700 bg-[#111827] text-slate-100"
+      : "border-slate-200 bg-white text-slate-900";
+
+
+  const standardMutedText =
+    isDark
+      ? "text-slate-400"
+      : "text-gray-500";
+
+
+  const standardHeading =
+    isDark
+      ? "text-slate-100"
+      : "text-gray-900";
+
+
+  const standardLabel =
+    isDark
+      ? "text-slate-300"
+      : "text-gray-700";
+
+
+  const inputClasses =
+    isDark
+      ? "border-slate-700 bg-slate-900 text-slate-100"
+      : "bg-white";
+
+
+  const inviteBoxClasses =
+    isDark
+      ? "border-indigo-900 bg-indigo-950/60"
+      : isBlue
+        ? "border-blue-100 bg-blue-50"
+        : "border-purple-100 bg-purple-50";
+
+
+  const inviteHeadingClasses =
+    isDark
+      ? "text-indigo-200"
+      : isBlue
+        ? "text-blue-900"
+        : "text-purple-900";
+
+
+  const primaryButtonClasses =
+    isBlue
+      ? "bg-blue-600 hover:bg-blue-700"
+      : "bg-purple-600 hover:bg-purple-700";
+
+
+  const historyRowClasses =
+    isDark
+      ? "border-slate-700 bg-slate-900/40"
+      : "border-slate-200 bg-white";
+
+
+  const historyIconClasses =
+    isDark
+      ? "bg-indigo-950 text-indigo-300"
+      : "bg-purple-100 text-purple-600";
+
+
   return (
 
-    <div className="min-h-screen bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-50">
+    <div
+      className={`min-h-screen transition-colors duration-200 ${pageBackground}`}
+    >
 
-      <div className="max-w-4xl mx-auto px-4 py-6">
+      <div className="max-w-4xl mx-auto px-4 py-6 pb-24">
 
 
         {/* ======================================================
@@ -612,14 +705,22 @@ const RewardsPage = ({
             variant="ghost"
             size="sm"
             onClick={onBack}
-            className="text-purple-600"
+            className={
+              isDark
+                ? "text-indigo-300 hover:bg-slate-800"
+                : isBlue
+                  ? "text-blue-600 hover:bg-blue-50"
+                  : "text-purple-600"
+            }
           >
             <ArrowLeft className="h-4 w-4 mr-2" />
             Back
           </Button>
 
 
-          <h1 className="text-2xl font-bold text-gray-900">
+          <h1
+            className={`text-2xl font-bold ${standardHeading}`}
+          >
             Rewards
           </h1>
 
@@ -630,7 +731,15 @@ const RewardsPage = ({
             REWARD OVERVIEW
         ====================================================== */}
 
-        <Card className="mb-6 bg-gradient-to-r from-purple-600 to-blue-600 text-white border-0">
+        <Card
+          className={`mb-6 bg-gradient-to-r ${
+            isDark
+              ? "from-[#111827] via-[#312e81] to-[#1e40af]"
+              : isBlue
+                ? "from-[#082A63] via-[#1554B8] to-[#2563EB]"
+                : "from-purple-600 to-blue-600"
+          } text-white border-0`}
+        >
 
           <CardContent className="p-6">
 
@@ -719,11 +828,19 @@ const RewardsPage = ({
             INVITE
         ====================================================== */}
 
-        <Card className="mb-6">
+        <Card
+          className={`mb-6 ${standardCard}`}
+        >
 
           <CardHeader>
 
-            <CardTitle className="flex items-center gap-2">
+            <CardTitle
+              className={`flex items-center gap-2 ${
+                isDark
+                  ? "text-slate-100"
+                  : ""
+              }`}
+            >
 
               <Users className="h-5 w-5" />
 
@@ -739,13 +856,23 @@ const RewardsPage = ({
             <div className="space-y-5">
 
 
-              <div className="rounded-xl bg-purple-50 border border-purple-100 p-4">
+              <div
+                className={`rounded-xl border p-4 ${inviteBoxClasses}`}
+              >
 
-                <h4 className="font-semibold text-purple-900 mb-2">
+                <h4
+                  className={`font-semibold mb-2 ${inviteHeadingClasses}`}
+                >
                   Earn ₦500 for every successful referral
                 </h4>
 
-                <ul className="text-sm text-gray-600 space-y-2">
+                <ul
+                  className={`text-sm space-y-2 ${
+                    isDark
+                      ? "text-slate-300"
+                      : "text-gray-600"
+                  }`}
+                >
 
                   <li>
                     • Share your referral link.
@@ -776,7 +903,9 @@ const RewardsPage = ({
 
               <div>
 
-                <label className="block text-sm font-medium mb-2">
+                <label
+                  className={`block text-sm font-medium mb-2 ${standardLabel}`}
+                >
                   Your Referral Code
                 </label>
 
@@ -787,7 +916,7 @@ const RewardsPage = ({
                       referralCode
                     }
                     readOnly
-                    className="font-mono text-lg font-bold text-center"
+                    className={`font-mono text-lg font-bold text-center ${inputClasses}`}
                   />
 
                   <Button
@@ -796,6 +925,11 @@ const RewardsPage = ({
                       copyReferralCode
                     }
                     variant="outline"
+                    className={
+                      isDark
+                        ? "border-slate-700 bg-slate-900 text-slate-200 hover:bg-slate-800"
+                        : ""
+                    }
                   >
 
                     {copied ? (
@@ -815,7 +949,9 @@ const RewardsPage = ({
 
               <div>
 
-                <label className="block text-sm font-medium mb-2">
+                <label
+                  className={`block text-sm font-medium mb-2 ${standardLabel}`}
+                >
                   Your Referral Link
                 </label>
 
@@ -826,7 +962,7 @@ const RewardsPage = ({
                       referralLink
                     }
                     readOnly
-                    className="text-sm"
+                    className={`text-sm ${inputClasses}`}
                   />
 
                   <Button
@@ -835,6 +971,11 @@ const RewardsPage = ({
                       copyReferralLink
                     }
                     variant="outline"
+                    className={
+                      isDark
+                        ? "border-slate-700 bg-slate-900 text-slate-200 hover:bg-slate-800"
+                        : ""
+                    }
                   >
 
                     <Link2 className="h-4 w-4" />
@@ -857,7 +998,7 @@ const RewardsPage = ({
                   sharing ||
                   !referralLink
                 }
-                className="w-full bg-purple-600 hover:bg-purple-700 h-12"
+                className={`w-full h-12 ${primaryButtonClasses}`}
               >
 
                 {sharing ? (
@@ -881,11 +1022,19 @@ const RewardsPage = ({
             REFERRAL HISTORY
         ====================================================== */}
 
-        <Card>
+        <Card
+          className={standardCard}
+        >
 
           <CardHeader>
 
-            <CardTitle>
+            <CardTitle
+              className={
+                isDark
+                  ? "text-slate-100"
+                  : ""
+              }
+            >
               Referral History
             </CardTitle>
 
@@ -900,7 +1049,9 @@ const RewardsPage = ({
 
                 <Loader2 className="h-8 w-8 animate-spin mx-auto text-purple-600" />
 
-                <p className="text-sm text-gray-500 mt-3">
+                <p
+                  className={`text-sm mt-3 ${standardMutedText}`}
+                >
                   Loading referrals...
                 </p>
 
@@ -910,13 +1061,27 @@ const RewardsPage = ({
 
               <div className="text-center py-10">
 
-                <Users className="h-12 w-12 mx-auto text-gray-400 mb-4" />
+                <Users
+                  className={`h-12 w-12 mx-auto mb-4 ${
+                    isDark
+                      ? "text-slate-600"
+                      : "text-gray-400"
+                  }`}
+                />
 
-                <p className="text-gray-500">
+                <p
+                  className={standardMutedText}
+                >
                   No referrals yet
                 </p>
 
-                <p className="text-sm text-gray-400 mt-1">
+                <p
+                  className={`text-sm mt-1 ${
+                    isDark
+                      ? "text-slate-500"
+                      : "text-gray-400"
+                  }`}
+                >
                   Start inviting friends to earn ₦500.
                 </p>
 
@@ -933,25 +1098,35 @@ const RewardsPage = ({
                       key={
                         referral.id
                       }
-                      className="flex items-center justify-between border rounded-xl p-4"
+                      className={`flex items-center justify-between border rounded-xl p-4 ${historyRowClasses}`}
                     >
 
                       <div className="flex items-center gap-3">
 
-                        <div className="h-10 w-10 rounded-full bg-purple-100 flex items-center justify-center">
+                        <div
+                          className={`h-10 w-10 rounded-full flex items-center justify-center ${historyIconClasses}`}
+                        >
 
-                          <Users className="h-5 w-5 text-purple-600" />
+                          <Users className="h-5 w-5" />
 
                         </div>
 
 
                         <div>
 
-                          <p className="font-medium text-gray-900">
+                          <p
+                            className={`font-medium ${
+                              isDark
+                                ? "text-slate-100"
+                                : "text-gray-900"
+                            }`}
+                          >
                             Referred User
                           </p>
 
-                          <p className="text-xs text-gray-500">
+                          <p
+                            className={`text-xs ${standardMutedText}`}
+                          >
                             {new Date(
                               referral.created_at
                             ).toLocaleDateString()}

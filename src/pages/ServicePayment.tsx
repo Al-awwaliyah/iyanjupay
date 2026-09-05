@@ -100,9 +100,6 @@ const DATA_TABS: DataTab[] = [
  * ============================================================
  *
  * Customer-facing Electricity must show ONLY these 11 DISCOs.
- *
- * Any additional electricity company returned by ClubKonnect
- * will be filtered out before it reaches the UI.
  */
 const ELECTRICITY_DISCO_NAMES = [
   "AEDC Abuja Disco",
@@ -307,18 +304,6 @@ function getPlanName(item: Item): string {
       getItemCode(item)
   );
 }
-
-/*
- * ============================================================
- * DATA PLAN DISPLAY HELPERS
- * ============================================================
- *
- * These functions are ONLY for customer-facing presentation.
- *
- * The original item object is still preserved and sent to the
- * backend. Therefore removing SME/Awoof/Direct from the screen
- * does NOT alter the actual ClubKonnect plan code or metadata.
- */
 
 function getDataPlanSize(item: Item): string {
   const raw = getPlanName(item);
@@ -679,12 +664,6 @@ const OFFLINE_BILLERS: Record<string, Biller[]> = {
   ],
 };
 
-/*
- * ============================================================
- * ELECTRICITY DISCO FILTERING
- * ============================================================
- */
-
 function normaliseDiscoText(value: unknown): string {
   return clean(value)
     .toLowerCase()
@@ -702,9 +681,6 @@ function canonicalElectricityDisco(
 
   const combined = `${name} ${code}`;
 
-  /*
-   * Check the strongest DISCO abbreviations first.
-   */
   for (const [alias, canonical] of Object.entries(
     ELECTRICITY_DISCO_ALIASES
   )) {
@@ -721,9 +697,6 @@ function canonicalElectricityDisco(
     }
   }
 
-  /*
-   * Also recognise the canonical names themselves.
-   */
   for (const canonical of ELECTRICITY_DISCO_NAMES) {
     const normalizedCanonical =
       normaliseDiscoText(canonical);
@@ -755,25 +728,16 @@ function filterElectricityDiscos(
 
     seen.add(canonical);
 
-    /*
-     * Keep the original live biller object because it may contain
-     * the real ClubKonnect biller code, meter types and other
-     * provider metadata needed by verification/purchase.
-     */
     allowed.push({
       ...biller,
       display_name: canonical,
     });
   }
 
-  /*
-   * Add our known 11 DISCOs if the live response omitted any.
-   *
-   * This ensures the UI remains limited to exactly the
-   * configured Nigerian DISCO list.
-   */
-  for (const offlineBiller of OFFLINE_BILLERS.electricity ??
-    []) {
+  for (
+    const offlineBiller of
+    OFFLINE_BILLERS.electricity ?? []
+  ) {
     const canonical =
       canonicalElectricityDisco(
         offlineBiller
@@ -784,27 +748,13 @@ function filterElectricityDiscos(
     }
 
     seen.add(canonical);
+
     allowed.push({
       ...offlineBiller,
       display_name: canonical,
     });
   }
 
-  /*
-   * Always use the configured order:
-   *
-   * AEDC
-   * BEDC
-   * EEDC
-   * EKEDC
-   * IBEDC
-   * IKEDC
-   * JED
-   * KAEDCO
-   * KEDCO
-   * PHED
-   * YEDC
-   */
   const byCanonical = new Map(
     allowed.map((biller) => [
       canonicalElectricityDisco(biller) ||
@@ -849,12 +799,6 @@ function mergeBillers(
     (b) => !isPlaceholderBiller(b)
   );
 
-  /*
-   * Electricity is handled separately.
-   *
-   * This prevents ClubKonnect from adding extra electricity
-   * companies outside the 11 DISCOs configured by IyanjuPay.
-   */
   if (service === "electricity") {
     return filterElectricityDiscos(cleaned);
   }
@@ -915,7 +859,6 @@ function mergeBillers(
   };
 
   cleaned.forEach(add);
-
   (OFFLINE_BILLERS[service] ?? []).forEach(add);
 
   return result;
@@ -1157,243 +1100,94 @@ function ServiceTransactionProcessing({
   return (
     <>
       <style>{`
+        /*
+         * =====================================================
+         * IYANJUPAY SERVICE THEME
+         * =====================================================
+         *
+         * IMPORTANT:
+         * All theme rules are scoped to
+         * .iyanjupay-service-page.
+         *
+         * This prevents ServicePayment from changing unrelated
+         * application pages/components.
+         */
+
         .iyanjupay-service-page {
-          background: #f9fafb;
+          background-color: #f9fafb;
           color: #111827;
           transition:
             background-color 180ms ease,
             color 180ms ease;
         }
 
-        [data-iyanjupay-theme="blue"]
+        /*
+         * =====================================================
+         * LIGHT / NORMAL THEME
+         * =====================================================
+         */
+
+        html[data-iyanjupay-theme="light"]
+          .iyanjupay-service-page,
+        html[data-iyanjupay-theme="normal"]
           .iyanjupay-service-page {
-          background: #f4f8ff;
+          background-color: #f9fafb;
+          color: #111827;
         }
 
-        [data-iyanjupay-theme="dark"]
+        /*
+         * =====================================================
+         * BLUE THEME
+         * =====================================================
+         *
+         * Surfaces remain white/light.
+         * Text remains dark.
+         */
+
+        html[data-iyanjupay-theme="blue"]
           .iyanjupay-service-page {
-          background: #090d18;
-          color: #f8fafc;
+          background-color: #f4f8ff;
+          color: #111827;
         }
 
-        [data-iyanjupay-theme="dark"]
+        html[data-iyanjupay-theme="blue"]
           .iyanjupay-service-page
-          .bg-white {
-          background-color: #111827 !important;
+          .iyanjupay-service-header {
+          background-image: linear-gradient(
+            to right,
+            #082a63,
+            #1554b8,
+            #2563eb
+          ) !important;
         }
 
-        [data-iyanjupay-theme="dark"]
+        html[data-iyanjupay-theme="blue"]
           .iyanjupay-service-page
-          .bg-gray-50 {
-          background-color: #090d18 !important;
+          .iyanjupay-service-primary {
+          background-image: linear-gradient(
+            to right,
+            #082a63,
+            #1554b8,
+            #2563eb
+          ) !important;
         }
 
-        [data-iyanjupay-theme="dark"]
-          .iyanjupay-service-page
-          .bg-gray-100 {
-          background-color: #1e293b !important;
-        }
-
-        [data-iyanjupay-theme="dark"]
-          .iyanjupay-service-page
-          [class*="border-gray-200"] {
-          border-color: #334155 !important;
-        }
-
-        [data-iyanjupay-theme="dark"]
-          .iyanjupay-service-page
-          [class*="border-gray-100"] {
-          border-color: #334155 !important;
-        }
-
-        [data-iyanjupay-theme="dark"]
-          .iyanjupay-service-page
-          .text-gray-900 {
-          color: #f8fafc !important;
-        }
-
-        [data-iyanjupay-theme="dark"]
-          .iyanjupay-service-page
-          .text-gray-800 {
-          color: #f1f5f9 !important;
-        }
-
-        [data-iyanjupay-theme="dark"]
-          .iyanjupay-service-page
-          .text-gray-700 {
-          color: #e2e8f0 !important;
-        }
-
-        [data-iyanjupay-theme="dark"]
-          .iyanjupay-service-page
-          .text-gray-600 {
-          color: #cbd5e1 !important;
-        }
-
-        [data-iyanjupay-theme="dark"]
-          .iyanjupay-service-page
-          .text-gray-500 {
-          color: #94a3b8 !important;
-        }
-
-        [data-iyanjupay-theme="dark"]
-          .iyanjupay-service-page
-          .text-gray-400 {
-          color: #64748b !important;
-        }
-
-        [data-iyanjupay-theme="dark"]
-          .iyanjupay-service-page
-          .bg-violet-50 {
-          background-color: #312e81 !important;
-        }
-
-        [data-iyanjupay-theme="dark"]
-          .iyanjupay-service-page
-          .bg-green-50 {
-          background-color: #052e2b !important;
-        }
-
-        [data-iyanjupay-theme="dark"]
-          .iyanjupay-service-page
-          .text-green-700 {
-          color: #86efac !important;
-        }
-
-        [data-iyanjupay-theme="dark"]
-          .iyanjupay-service-page
-          .text-green-800 {
-          color: #bbf7d0 !important;
-        }
-
-        [data-iyanjupay-theme="dark"]
-          .iyanjupay-service-page
-          .bg-amber-50 {
-          background-color: #451a03 !important;
-        }
-
-        [data-iyanjupay-theme="dark"]
-          .iyanjupay-service-page
-          .text-amber-600 {
-          color: #fbbf24 !important;
-        }
-
-        [data-iyanjupay-theme="dark"]
-          .iyanjupay-service-page
-          .text-amber-800 {
-          color: #fde68a !important;
-        }
-
-        [data-iyanjupay-theme="dark"]
-          .iyanjupay-service-page
-          .bg-red-50 {
-          background-color: #450a0a !important;
-        }
-
-        [data-iyanjupay-theme="dark"]
-          .iyanjupay-service-page
-          .text-red-600 {
-          color: #fca5a5 !important;
-        }
-
-        [data-iyanjupay-theme="dark"]
-          .iyanjupay-service-page
-          .text-red-700,
-        [data-iyanjupay-theme="dark"]
-          .iyanjupay-service-page
-          .text-red-800 {
-          color: #fecaca !important;
-        }
-
-        [data-iyanjupay-theme="dark"]
-          .iyanjupay-service-page
-          .border-red-200 {
-          border-color: #7f1d1d !important;
-        }
-
-        [data-iyanjupay-theme="dark"]
-          .iyanjupay-service-page
-          .border-amber-200 {
-          border-color: #92400e !important;
-        }
-
-        [data-iyanjupay-theme="dark"]
-          .iyanjupay-service-page
-          .border-green-100 {
-          border-color: #14532d !important;
-        }
-
-        [data-iyanjupay-theme="dark"]
-          .iyanjupay-service-page
-          input,
-        [data-iyanjupay-theme="dark"]
-          .iyanjupay-service-page
-          select {
-          background-color: #111827 !important;
-          color: #f8fafc !important;
-          border-color: #334155 !important;
-        }
-
-        [data-iyanjupay-theme="blue"]
+        html[data-iyanjupay-theme="blue"]
           .iyanjupay-service-page
           .bg-violet-50 {
           background-color: #dbeafe !important;
         }
 
-        [data-iyanjupay-theme="blue"]
+        html[data-iyanjupay-theme="blue"]
           .iyanjupay-service-page
           .text-purple-600,
-        [data-iyanjupay-theme="blue"]
+        html[data-iyanjupay-theme="blue"]
           .iyanjupay-service-page
           .text-purple-700 {
           color: #1d4ed8 !important;
         }
 
-        [data-iyanjupay-theme="blue"]
-          .iyanjupay-service-page
-          .iyanjupay-service-header {
-          background-image: linear-gradient(
-            to right,
-            #082a63,
-            #1554b8,
-            #2563eb
-          ) !important;
-        }
-
-        [data-iyanjupay-theme="dark"]
-          .iyanjupay-service-page
-          .iyanjupay-service-header {
-          background-image: linear-gradient(
-            to right,
-            #111827,
-            #312e81,
-            #1e40af
-          ) !important;
-        }
-
-        [data-iyanjupay-theme="blue"]
-          .iyanjupay-service-page
-          .iyanjupay-service-primary {
-          background-image: linear-gradient(
-            to right,
-            #082a63,
-            #1554b8,
-            #2563eb
-          ) !important;
-        }
-
-        [data-iyanjupay-theme="dark"]
-          .iyanjupay-service-page
-          .iyanjupay-service-primary {
-          background-image: linear-gradient(
-            to right,
-            #111827,
-            #312e81,
-            #1e40af
-          ) !important;
-        }
-
-        [data-iyanjupay-theme="blue"]
+        html[data-iyanjupay-theme="blue"]
           .iyanjupay-service-page
           .iyanjupay-service-selected {
           border-color: #2563eb !important;
@@ -1401,12 +1195,259 @@ function ServiceTransactionProcessing({
           background-color: #dbeafe !important;
         }
 
-        [data-iyanjupay-theme="dark"]
+        /*
+         * =====================================================
+         * DARK THEME
+         * =====================================================
+         *
+         * ONLY ServicePayment receives these dark overrides.
+         * Text becomes light and surfaces become dark.
+         */
+
+        html[data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page {
+          background-color: #090d18;
+          color: #f8fafc;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .bg-white {
+          background-color: #111827 !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .bg-gray-50 {
+          background-color: #090d18 !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .bg-gray-100 {
+          background-color: #1e293b !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          [class*="border-gray-200"] {
+          border-color: #334155 !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          [class*="border-gray-100"] {
+          border-color: #334155 !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .text-gray-900 {
+          color: #f8fafc !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .text-gray-800 {
+          color: #f1f5f9 !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .text-gray-700 {
+          color: #e2e8f0 !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .text-gray-600 {
+          color: #cbd5e1 !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .text-gray-500 {
+          color: #94a3b8 !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .text-gray-400 {
+          color: #64748b !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .bg-violet-50 {
+          background-color: #312e81 !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .bg-green-50 {
+          background-color: #052e2b !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .text-green-700 {
+          color: #86efac !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .text-green-800 {
+          color: #bbf7d0 !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .bg-amber-50 {
+          background-color: #451a03 !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .text-amber-600 {
+          color: #fbbf24 !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .text-amber-800 {
+          color: #fde68a !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .bg-red-50 {
+          background-color: #450a0a !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .text-red-600 {
+          color: #fca5a5 !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .text-red-700,
+        html[data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .text-red-800 {
+          color: #fecaca !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .border-red-200 {
+          border-color: #7f1d1d !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .border-amber-200 {
+          border-color: #92400e !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .border-green-100 {
+          border-color: #14532d !important;
+        }
+
+        /*
+         * Inputs/selects in dark mode.
+         */
+
+        html[data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          input,
+        html[data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          select {
+          background-color: #111827 !important;
+          color: #f8fafc !important;
+          border-color: #334155 !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          input::placeholder {
+          color: #64748b !important;
+          opacity: 1 !important;
+        }
+
+        /*
+         * Selected service / plan cards.
+         */
+
+        html[data-iyanjupay-theme="dark"]
           .iyanjupay-service-page
           .iyanjupay-service-selected {
           border-color: #6366f1 !important;
           color: #c4b5fd !important;
           background-color: #312e81 !important;
+        }
+
+        /*
+         * Header and primary buttons in dark mode.
+         */
+
+        html[data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .iyanjupay-service-header {
+          background-image: linear-gradient(
+            to right,
+            #111827,
+            #312e81,
+            #1e40af
+          ) !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .iyanjupay-service-primary {
+          background-image: linear-gradient(
+            to right,
+            #111827,
+            #312e81,
+            #1e40af
+          ) !important;
+        }
+
+        /*
+         * Keep the service provider circles white enough for
+         * provider logos to remain visible in dark mode.
+         */
+
+        html[data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .iyanjupay-service-biller-logo {
+          background-color: #ffffff !important;
+          color: #111827 !important;
+          border-color: #475569 !important;
+        }
+
+        /*
+         * =====================================================
+         * TRANSACTION PROCESSING THEME
+         * =====================================================
+         */
+
+        html[data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .iyanjupay-processing-card {
+          background-color: #111827 !important;
+          border-color: #334155 !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .iyanjupay-processing-summary {
+          background-color: #0f172a !important;
+          border-color: #334155 !important;
         }
       `}</style>
 
@@ -1433,7 +1474,7 @@ function ServiceTransactionProcessing({
         </header>
 
         <main className="mx-auto max-w-3xl px-4 py-6 pb-10">
-          <section className="overflow-hidden rounded-[2rem] border bg-white shadow-sm">
+          <section className="iyanjupay-processing-card overflow-hidden rounded-[2rem] border bg-white shadow-sm">
             <div className="border-b bg-gradient-to-b from-gray-50 to-white px-5 py-8 text-center sm:px-8">
               <div
                 className={`mx-auto flex h-20 w-20 items-center justify-center rounded-full ${
@@ -1488,7 +1529,7 @@ function ServiceTransactionProcessing({
             </div>
 
             <div className="space-y-4 p-5 sm:p-7">
-              <div className="rounded-2xl border bg-gray-50 p-4">
+              <div className="iyanjupay-processing-summary rounded-2xl border bg-gray-50 p-4">
                 <div className="mb-3 flex items-center gap-2 text-sm font-bold">
                   <Receipt className="h-4 w-4" />
                   Transaction summary
@@ -2656,10 +2697,6 @@ export default function ServicePayment({
   ) => {
     const code = getCode(biller);
 
-    /*
-     * For electricity, display the canonical 11-DISCO name.
-     * The original biller code remains untouched for backend use.
-     */
     const name =
       serviceType === "electricity"
         ? clean(
@@ -2698,7 +2735,7 @@ export default function ServicePayment({
         className="flex min-w-0 flex-col items-center gap-0.5 rounded-full bg-transparent p-0.5 transition"
       >
         <span
-          className={`flex h-10 w-10 items-center justify-center overflow-hidden rounded-full border-2 bg-white text-sm font-bold text-gray-600 shadow-sm ${
+          className={`iyanjupay-service-biller-logo flex h-10 w-10 items-center justify-center overflow-hidden rounded-full border-2 bg-white text-sm font-bold text-gray-600 shadow-sm ${
             selected
               ? "iyanjupay-service-selected border-[#6D28D9] ring-4 ring-violet-100"
               : "border-gray-200"
@@ -2733,24 +2770,6 @@ export default function ServicePayment({
     );
   };
 
-  /*
-   * ============================================================
-   * DATA PLAN CARD
-   * ============================================================
-   *
-   * Customer sees ONLY:
-   *
-   *   Data size
-   *   Price
-   *   Duration
-   *
-   * SME/Awoof/Direct/provider metadata is never displayed.
-   *
-   * HOT badge is shown ONLY when:
-   *
-   *   1. The HOT DEALS tab is active
-   *   2. The actual plan is identified as hot by isHot()
-   */
   const renderDataPlan = (
     item: Item,
     showHotBadge = false
@@ -2835,10 +2854,6 @@ export default function ServicePayment({
     );
   };
 
-  /*
-   * Existing package cards remain available for Cable,
-   * JAMB, E-pin and other package-based services.
-   */
   const renderPlan = (
     item: Item
   ) => {
@@ -2920,199 +2935,123 @@ export default function ServicePayment({
   return (
     <>
       <style>{`
+        /*
+         * =====================================================
+         * IYANJUPAY SERVICE PAYMENT THEME
+         * =====================================================
+         *
+         * Base = LIGHT / NORMAL
+         * Blue = LIGHT SURFACES + DARK TEXT
+         * Dark = DARK SURFACES + LIGHT TEXT
+         *
+         * Everything is scoped to the ServicePayment root.
+         */
+
         .iyanjupay-service-page {
-          background: #f9fafb;
+          background-color: #f9fafb;
           color: #111827;
           transition:
             background-color 180ms ease,
             color 180ms ease;
         }
 
-        [data-iyanjupay-theme="blue"]
+        /*
+         * -----------------------------------------------------
+         * LIGHT / NORMAL
+         * -----------------------------------------------------
+         */
+
+        html[data-iyanjupay-theme="light"]
+          .iyanjupay-service-page,
+        html[data-iyanjupay-theme="normal"]
           .iyanjupay-service-page {
-          background: #f4f8ff;
+          background-color: #f9fafb;
+          color: #111827;
         }
 
-        [data-iyanjupay-theme="dark"]
+        /*
+         * -----------------------------------------------------
+         * BLUE
+         * -----------------------------------------------------
+         */
+
+        html[data-iyanjupay-theme="blue"]
           .iyanjupay-service-page {
-          background: #090d18;
-          color: #f8fafc;
+          background-color: #f4f8ff;
+          color: #111827;
         }
 
-        [data-iyanjupay-theme="dark"]
+        html[data-iyanjupay-theme="blue"]
           .iyanjupay-service-page
           .bg-white {
-          background-color: #111827 !important;
+          background-color: #ffffff !important;
+          color: #111827 !important;
         }
 
-        [data-iyanjupay-theme="dark"]
+        html[data-iyanjupay-theme="blue"]
           .iyanjupay-service-page
           .bg-gray-50 {
-          background-color: #090d18 !important;
+          background-color: #f8fbff !important;
         }
 
-        [data-iyanjupay-theme="dark"]
+        html[data-iyanjupay-theme="blue"]
           .iyanjupay-service-page
           .bg-gray-100 {
-          background-color: #1e293b !important;
+          background-color: #eaf2ff !important;
         }
 
-        [data-iyanjupay-theme="dark"]
-          .iyanjupay-service-page
-          [class*="border-gray-200"] {
-          border-color: #334155 !important;
-        }
-
-        [data-iyanjupay-theme="dark"]
-          .iyanjupay-service-page
-          [class*="border-gray-100"] {
-          border-color: #334155 !important;
-        }
-
-        [data-iyanjupay-theme="dark"]
+        html[data-iyanjupay-theme="blue"]
           .iyanjupay-service-page
           .text-gray-900 {
-          color: #f8fafc !important;
+          color: #111827 !important;
         }
 
-        [data-iyanjupay-theme="dark"]
+        html[data-iyanjupay-theme="blue"]
           .iyanjupay-service-page
           .text-gray-800 {
-          color: #f1f5f9 !important;
+          color: #1f2937 !important;
         }
 
-        [data-iyanjupay-theme="dark"]
+        html[data-iyanjupay-theme="blue"]
           .iyanjupay-service-page
           .text-gray-700 {
-          color: #e2e8f0 !important;
+          color: #374151 !important;
         }
 
-        [data-iyanjupay-theme="dark"]
+        html[data-iyanjupay-theme="blue"]
           .iyanjupay-service-page
           .text-gray-600 {
-          color: #cbd5e1 !important;
+          color: #4b5563 !important;
         }
 
-        [data-iyanjupay-theme="dark"]
+        html[data-iyanjupay-theme="blue"]
           .iyanjupay-service-page
           .text-gray-500 {
-          color: #94a3b8 !important;
+          color: #6b7280 !important;
         }
 
-        [data-iyanjupay-theme="dark"]
+        html[data-iyanjupay-theme="blue"]
           .iyanjupay-service-page
           .text-gray-400 {
-          color: #64748b !important;
+          color: #9ca3af !important;
         }
 
-        [data-iyanjupay-theme="dark"]
-          .iyanjupay-service-page
-          .bg-violet-50 {
-          background-color: #312e81 !important;
-        }
-
-        [data-iyanjupay-theme="dark"]
-          .iyanjupay-service-page
-          .bg-green-50 {
-          background-color: #052e2b !important;
-        }
-
-        [data-iyanjupay-theme="dark"]
-          .iyanjupay-service-page
-          .text-green-700 {
-          color: #86efac !important;
-        }
-
-        [data-iyanjupay-theme="dark"]
-          .iyanjupay-service-page
-          .text-green-800 {
-          color: #bbf7d0 !important;
-        }
-
-        [data-iyanjupay-theme="dark"]
-          .iyanjupay-service-page
-          .bg-amber-50 {
-          background-color: #451a03 !important;
-        }
-
-        [data-iyanjupay-theme="dark"]
-          .iyanjupay-service-page
-          .text-amber-600 {
-          color: #fbbf24 !important;
-        }
-
-        [data-iyanjupay-theme="dark"]
-          .iyanjupay-service-page
-          .text-amber-800 {
-          color: #fde68a !important;
-        }
-
-        [data-iyanjupay-theme="dark"]
-          .iyanjupay-service-page
-          .bg-red-50 {
-          background-color: #450a0a !important;
-        }
-
-        [data-iyanjupay-theme="dark"]
-          .iyanjupay-service-page
-          .text-red-600 {
-          color: #fca5a5 !important;
-        }
-
-        [data-iyanjupay-theme="dark"]
-          .iyanjupay-service-page
-          .text-red-700,
-        [data-iyanjupay-theme="dark"]
-          .iyanjupay-service-page
-          .text-red-800 {
-          color: #fecaca !important;
-        }
-
-        [data-iyanjupay-theme="dark"]
-          .iyanjupay-service-page
-          .border-red-200 {
-          border-color: #7f1d1d !important;
-        }
-
-        [data-iyanjupay-theme="dark"]
-          .iyanjupay-service-page
-          .border-amber-200 {
-          border-color: #92400e !important;
-        }
-
-        [data-iyanjupay-theme="dark"]
-          .iyanjupay-service-page
-          .border-green-100 {
-          border-color: #14532d !important;
-        }
-
-        [data-iyanjupay-theme="dark"]
-          .iyanjupay-service-page
-          input,
-        [data-iyanjupay-theme="dark"]
-          .iyanjupay-service-page
-          select {
-          background-color: #111827 !important;
-          color: #f8fafc !important;
-          border-color: #334155 !important;
-        }
-
-        [data-iyanjupay-theme="blue"]
+        html[data-iyanjupay-theme="blue"]
           .iyanjupay-service-page
           .bg-violet-50 {
           background-color: #dbeafe !important;
         }
 
-        [data-iyanjupay-theme="blue"]
+        html[data-iyanjupay-theme="blue"]
           .iyanjupay-service-page
           .text-purple-600,
-        [data-iyanjupay-theme="blue"]
+        html[data-iyanjupay-theme="blue"]
           .iyanjupay-service-page
           .text-purple-700 {
           color: #1d4ed8 !important;
         }
 
-        [data-iyanjupay-theme="blue"]
+        html[data-iyanjupay-theme="blue"]
           .iyanjupay-service-page
           .iyanjupay-service-header {
           background-image: linear-gradient(
@@ -3123,18 +3062,7 @@ export default function ServicePayment({
           ) !important;
         }
 
-        [data-iyanjupay-theme="dark"]
-          .iyanjupay-service-page
-          .iyanjupay-service-header {
-          background-image: linear-gradient(
-            to right,
-            #111827,
-            #312e81,
-            #1e40af
-          ) !important;
-        }
-
-        [data-iyanjupay-theme="blue"]
+        html[data-iyanjupay-theme="blue"]
           .iyanjupay-service-page
           .iyanjupay-service-primary {
           background-image: linear-gradient(
@@ -3145,18 +3073,7 @@ export default function ServicePayment({
           ) !important;
         }
 
-        [data-iyanjupay-theme="dark"]
-          .iyanjupay-service-page
-          .iyanjupay-service-primary {
-          background-image: linear-gradient(
-            to right,
-            #111827,
-            #312e81,
-            #1e40af
-          ) !important;
-        }
-
-        [data-iyanjupay-theme="blue"]
+        html[data-iyanjupay-theme="blue"]
           .iyanjupay-service-page
           .iyanjupay-service-selected {
           border-color: #2563eb !important;
@@ -3164,12 +3081,219 @@ export default function ServicePayment({
           background-color: #dbeafe !important;
         }
 
-        [data-iyanjupay-theme="dark"]
+        /*
+         * -----------------------------------------------------
+         * DARK
+         * -----------------------------------------------------
+         */
+
+        html[data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page {
+          background-color: #090d18;
+          color: #f8fafc;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .bg-white {
+          background-color: #111827 !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .bg-gray-50 {
+          background-color: #090d18 !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .bg-gray-100 {
+          background-color: #1e293b !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          [class*="border-gray-200"] {
+          border-color: #334155 !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          [class*="border-gray-100"] {
+          border-color: #334155 !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .text-gray-900 {
+          color: #f8fafc !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .text-gray-800 {
+          color: #f1f5f9 !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .text-gray-700 {
+          color: #e2e8f0 !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .text-gray-600 {
+          color: #cbd5e1 !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .text-gray-500 {
+          color: #94a3b8 !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .text-gray-400 {
+          color: #64748b !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .bg-violet-50 {
+          background-color: #312e81 !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .bg-green-50 {
+          background-color: #052e2b !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .text-green-700 {
+          color: #86efac !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .text-green-800 {
+          color: #bbf7d0 !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .bg-amber-50 {
+          background-color: #451a03 !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .text-amber-600 {
+          color: #fbbf24 !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .text-amber-800 {
+          color: #fde68a !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .bg-red-50 {
+          background-color: #450a0a !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .text-red-600 {
+          color: #fca5a5 !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .text-red-700,
+        html[data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .text-red-800 {
+          color: #fecaca !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .border-red-200 {
+          border-color: #7f1d1d !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .border-amber-200 {
+          border-color: #92400e !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .border-green-100 {
+          border-color: #14532d !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          input,
+        html[data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          select {
+          background-color: #111827 !important;
+          color: #f8fafc !important;
+          border-color: #334155 !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          input::placeholder {
+          color: #64748b !important;
+          opacity: 1 !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .iyanjupay-service-header {
+          background-image: linear-gradient(
+            to right,
+            #111827,
+            #312e81,
+            #1e40af
+          ) !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .iyanjupay-service-primary {
+          background-image: linear-gradient(
+            to right,
+            #111827,
+            #312e81,
+            #1e40af
+          ) !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
           .iyanjupay-service-page
           .iyanjupay-service-selected {
           border-color: #6366f1 !important;
           color: #c4b5fd !important;
           background-color: #312e81 !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .iyanjupay-service-biller-logo {
+          background-color: #ffffff !important;
+          color: #111827 !important;
+          border-color: #475569 !important;
         }
       `}</style>
 
@@ -3296,7 +3420,6 @@ export default function ServicePayment({
             </section>
           ) : (
             <>
-              {/* SERVICE PROVIDERS */}
               <section className="rounded-xl border bg-white p-2 shadow-sm">
                 <div className="mb-1.5 flex items-center justify-between">
                   <div>
@@ -3348,7 +3471,6 @@ export default function ServicePayment({
                 )}
               </section>
 
-              {/* ELECTRICITY METER TYPE */}
               {isElectricity &&
                 selectedBiller && (
                   <section className="rounded-3xl border bg-white p-5 shadow-sm">
@@ -3420,7 +3542,6 @@ export default function ServicePayment({
                   </section>
                 )}
 
-              {/* CABLE / ELECTRICITY / JAMB IDENTIFIER */}
               {(isCable ||
                 isElectricity ||
                 isJamb) &&
@@ -3486,7 +3607,6 @@ export default function ServicePayment({
                   </section>
                 )}
 
-              {/* JAMB PHONE NUMBER */}
               {(isAirtime ||
                 isData ||
                 isEpin ||
@@ -3515,7 +3635,6 @@ export default function ServicePayment({
                 </section>
               )}
 
-              {/* DATA */}
               {isData &&
                 selectedBillerCode && (
                   <section className="rounded-3xl border bg-white p-3 shadow-sm sm:p-4">
@@ -3551,19 +3670,6 @@ export default function ServicePayment({
                         Loading data plans...
                       </div>
                     ) : visibleDataPlans.length ? (
-                      /*
-                       * ==================================================
-                       * FOUR COMPACT DATA PLANS PER ROW
-                       * ==================================================
-                       *
-                       * Each card contains ONLY:
-                       *   1. Data size
-                       *   2. Price
-                       *   3. Duration
-                       *
-                       * The HOT badge is only rendered when the
-                       * individual plan is actually hot.
-                       */
                       <div className="grid grid-cols-4 gap-2 sm:gap-2.5">
                         {visibleDataPlans.map(
                           (item) =>
@@ -3583,7 +3689,6 @@ export default function ServicePayment({
                   </section>
                 )}
 
-              {/* PACKAGE-BASED SERVICES */}
               {(
                 (isCable &&
                   selectedBillerCode) ||
@@ -3630,7 +3735,6 @@ export default function ServicePayment({
                 </section>
               )}
 
-              {/* AMOUNT */}
               {canEnterAmount &&
                 ((isElectricity &&
                   verified) ||
@@ -3717,14 +3821,12 @@ export default function ServicePayment({
                   </section>
                 )}
 
-              {/* ERROR */}
               {error && (
                 <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
                   {error}
                 </div>
               )}
 
-              {/* CONTINUE TO PAYMENT */}
               <section className="rounded-3xl border bg-white p-5 shadow-sm">
                 <Button
                   className="iyanjupay-service-primary h-12 w-full bg-gradient-to-r from-[#4C1D95] via-[#6D28D9] to-[#2563EB] text-base font-bold text-white shadow-sm hover:brightness-105"

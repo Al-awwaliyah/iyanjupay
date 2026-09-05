@@ -94,6 +94,110 @@ const DATA_TABS: DataTab[] = [
   "OTHER",
 ];
 
+/*
+ * ============================================================
+ * ELECTRICITY DISCO CONFIGURATION
+ * ============================================================
+ *
+ * Customer-facing Electricity must show ONLY these 11 DISCOs.
+ *
+ * Any additional electricity company returned by ClubKonnect
+ * will be filtered out before it reaches the UI.
+ */
+const ELECTRICITY_DISCO_NAMES = [
+  "AEDC Abuja Disco",
+  "BEDC Benin Disco",
+  "EEDC Enugu Disco",
+  "EKEDC Eko Disco",
+  "IBEDC Ibadan Disco",
+  "IKEDC Ikeja Disco",
+  "JED Jos Disco",
+  "KAEDCO Kaduna Disco",
+  "KEDCO Kano Disco",
+  "PHED Port Harcourt Disco",
+  "YEDC Yola Disco",
+] as const;
+
+const ELECTRICITY_DISCO_ALIASES: Record<string, string> = {
+  aedc: "AEDC Abuja Disco",
+  abuja: "AEDC Abuja Disco",
+  "abuja disco": "AEDC Abuja Disco",
+  "abuja electricity": "AEDC Abuja Disco",
+  "abuja electricity distribution company":
+    "AEDC Abuja Disco",
+
+  bedc: "BEDC Benin Disco",
+  benin: "BEDC Benin Disco",
+  "benin disco": "BEDC Benin Disco",
+  "benin electricity": "BEDC Benin Disco",
+  "benin electricity distribution company":
+    "BEDC Benin Disco",
+
+  eedc: "EEDC Enugu Disco",
+  enugu: "EEDC Enugu Disco",
+  "enugu disco": "EEDC Enugu Disco",
+  "enugu electricity": "EEDC Enugu Disco",
+  "enugu electricity distribution company":
+    "EEDC Enugu Disco",
+
+  ekedc: "EKEDC Eko Disco",
+  eko: "EKEDC Eko Disco",
+  "eko disco": "EKEDC Eko Disco",
+  "eko electricity": "EKEDC Eko Disco",
+  "eko electricity distribution company":
+    "EKEDC Eko Disco",
+
+  ibedc: "IBEDC Ibadan Disco",
+  ibadan: "IBEDC Ibadan Disco",
+  "ibadan disco": "IBEDC Ibadan Disco",
+  "ibadan electricity": "IBEDC Ibadan Disco",
+  "ibadan electricity distribution company":
+    "IBEDC Ibadan Disco",
+
+  ikedc: "IKEDC Ikeja Disco",
+  ikeja: "IKEDC Ikeja Disco",
+  "ikeja disco": "IKEDC Ikeja Disco",
+  "ikeja electricity": "IKEDC Ikeja Disco",
+  "ikeja electricity distribution company":
+    "IKEDC Ikeja Disco",
+
+  jed: "JED Jos Disco",
+  jos: "JED Jos Disco",
+  "jos disco": "JED Jos Disco",
+  "jos electricity": "JED Jos Disco",
+  "jos electricity distribution company":
+    "JED Jos Disco",
+
+  kaedco: "KAEDCO Kaduna Disco",
+  kaduna: "KAEDCO Kaduna Disco",
+  "kaduna disco": "KAEDCO Kaduna Disco",
+  "kaduna electricity": "KAEDCO Kaduna Disco",
+  "kaduna electricity distribution company":
+    "KAEDCO Kaduna Disco",
+
+  kedco: "KEDCO Kano Disco",
+  kano: "KEDCO Kano Disco",
+  "kano disco": "KEDCO Kano Disco",
+  "kano electricity": "KEDCO Kano Disco",
+  "kano electricity distribution company":
+    "KEDCO Kano Disco",
+
+  phed: "PHED Port Harcourt Disco",
+  "port harcourt": "PHED Port Harcourt Disco",
+  "port harcourt disco": "PHED Port Harcourt Disco",
+  "port harcourt electricity":
+    "PHED Port Harcourt Disco",
+  "port harcourt electricity distribution company":
+    "PHED Port Harcourt Disco",
+
+  yedc: "YEDC Yola Disco",
+  yola: "YEDC Yola Disco",
+  "yola disco": "YEDC Yola Disco",
+  "yola electricity": "YEDC Yola Disco",
+  "yola electricity distribution company":
+    "YEDC Yola Disco",
+};
+
 function clean(value: unknown): string {
   return String(value ?? "").trim();
 }
@@ -524,16 +628,6 @@ function providerLogo(
   return null;
 }
 
-/*
- * ============================================================
- * FIXED SERVICE OPTIONS
- * ============================================================
- *
- * Electricity is intentionally restricted to these 11 DisCos.
- * Live provider responses are NOT allowed to add additional
- * electricity companies to the customer-facing list.
- */
-
 const OFFLINE_BILLERS: Record<string, Biller[]> = {
   airtime: [
     { biller_code: "01", name: "MTN" },
@@ -570,12 +664,6 @@ const OFFLINE_BILLERS: Record<string, Biller[]> = {
     { biller_code: "showmax", name: "Showmax" },
   ],
 
-  /*
-   * EXACTLY THE 11 DISCOS TO DISPLAY.
-   *
-   * These are also used when the live API returns additional
-   * electricity providers, ensuring they never appear in UI.
-   */
   electricity: [
     { biller_code: "01", name: "AEDC Abuja Disco" },
     { biller_code: "02", name: "BEDC Benin Disco" },
@@ -590,6 +678,154 @@ const OFFLINE_BILLERS: Record<string, Biller[]> = {
     { biller_code: "11", name: "YEDC Yola Disco" },
   ],
 };
+
+/*
+ * ============================================================
+ * ELECTRICITY DISCO FILTERING
+ * ============================================================
+ */
+
+function normaliseDiscoText(value: unknown): string {
+  return clean(value)
+    .toLowerCase()
+    .replace(/&/g, "and")
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function canonicalElectricityDisco(
+  biller: Biller
+): string {
+  const name = normaliseDiscoText(getName(biller));
+  const code = normaliseDiscoText(getCode(biller));
+
+  const combined = `${name} ${code}`;
+
+  /*
+   * Check the strongest DISCO abbreviations first.
+   */
+  for (const [alias, canonical] of Object.entries(
+    ELECTRICITY_DISCO_ALIASES
+  )) {
+    const normalizedAlias =
+      normaliseDiscoText(alias);
+
+    if (
+      name === normalizedAlias ||
+      code === normalizedAlias ||
+      name.includes(normalizedAlias) ||
+      combined.includes(normalizedAlias)
+    ) {
+      return canonical;
+    }
+  }
+
+  /*
+   * Also recognise the canonical names themselves.
+   */
+  for (const canonical of ELECTRICITY_DISCO_NAMES) {
+    const normalizedCanonical =
+      normaliseDiscoText(canonical);
+
+    if (
+      name === normalizedCanonical ||
+      name.includes(normalizedCanonical)
+    ) {
+      return canonical;
+    }
+  }
+
+  return "";
+}
+
+function filterElectricityDiscos(
+  live: Biller[]
+): Biller[] {
+  const allowed: Biller[] = [];
+  const seen = new Set<string>();
+
+  for (const biller of live) {
+    const canonical =
+      canonicalElectricityDisco(biller);
+
+    if (!canonical || seen.has(canonical)) {
+      continue;
+    }
+
+    seen.add(canonical);
+
+    /*
+     * Keep the original live biller object because it may contain
+     * the real ClubKonnect biller code, meter types and other
+     * provider metadata needed by verification/purchase.
+     */
+    allowed.push({
+      ...biller,
+      display_name: canonical,
+    });
+  }
+
+  /*
+   * Add our known 11 DISCOs if the live response omitted any.
+   *
+   * This ensures the UI remains limited to exactly the
+   * configured Nigerian DISCO list.
+   */
+  for (const offlineBiller of OFFLINE_BILLERS.electricity ??
+    []) {
+    const canonical =
+      canonicalElectricityDisco(
+        offlineBiller
+      );
+
+    if (!canonical || seen.has(canonical)) {
+      continue;
+    }
+
+    seen.add(canonical);
+    allowed.push({
+      ...offlineBiller,
+      display_name: canonical,
+    });
+  }
+
+  /*
+   * Always use the configured order:
+   *
+   * AEDC
+   * BEDC
+   * EEDC
+   * EKEDC
+   * IBEDC
+   * IKEDC
+   * JED
+   * KAEDCO
+   * KEDCO
+   * PHED
+   * YEDC
+   */
+  const byCanonical = new Map(
+    allowed.map((biller) => [
+      canonicalElectricityDisco(biller) ||
+        clean(biller.display_name),
+      biller,
+    ])
+  );
+
+  return ELECTRICITY_DISCO_NAMES
+    .map((name) => {
+      const found = byCanonical.get(name);
+
+      if (!found) return null;
+
+      return {
+        ...found,
+        display_name: name,
+      };
+    })
+    .filter(Boolean) as Biller[];
+}
 
 function isPlaceholderBiller(value: Biller): boolean {
   const name = getName(value)
@@ -614,14 +850,13 @@ function mergeBillers(
   );
 
   /*
-   * Electricity is intentionally different.
+   * Electricity is handled separately.
    *
-   * We do not merge live electricity providers with the
-   * frontend list. This guarantees ONLY the 11 supported
-   * DisCos are displayed.
+   * This prevents ClubKonnect from adding extra electricity
+   * companies outside the 11 DISCOs configured by IyanjuPay.
    */
   if (service === "electricity") {
-    return [...(OFFLINE_BILLERS.electricity ?? [])];
+    return filterElectricityDiscos(cleaned);
   }
 
   const result: Biller[] = [];
@@ -835,7 +1070,8 @@ function ServiceTransactionProcessing({
 
   const serviceName =
     clean(
-      details?.biller?.name ??
+      details?.biller?.display_name ??
+        details?.biller?.name ??
         details?.biller?.label ??
         details?.biller?.title
     ) ||
@@ -940,20 +1176,10 @@ function ServiceTransactionProcessing({
           color: #f8fafc;
         }
 
-        /*
-         * WHITE CARDS IN DARK MODE
-         *
-         * White cards remain genuinely white.
-         * Their inherited/default text remains black.
-         *
-         * We intentionally do NOT globally force their
-         * background to dark in dark mode.
-         */
         [data-iyanjupay-theme="dark"]
           .iyanjupay-service-page
           .bg-white {
-          background-color: #ffffff !important;
-          color: #111827;
+          background-color: #111827 !important;
         }
 
         [data-iyanjupay-theme="dark"]
@@ -980,27 +1206,40 @@ function ServiceTransactionProcessing({
           border-color: #334155 !important;
         }
 
-        /*
-         * Keep the normal explicit Tailwind text colors
-         * available inside white cards. Headings and normal
-         * black text therefore stay black in dark mode.
-         */
-
         [data-iyanjupay-theme="dark"]
           .iyanjupay-service-page
-          input,
-        [data-iyanjupay-theme="dark"]
-          .iyanjupay-service-page
-          select {
-          background-color: #ffffff !important;
-          color: #111827 !important;
-          border-color: #334155 !important;
+          .text-gray-900 {
+          color: #f8fafc !important;
         }
 
         [data-iyanjupay-theme="dark"]
           .iyanjupay-service-page
-          input::placeholder {
-          color: #6b7280 !important;
+          .text-gray-800 {
+          color: #f1f5f9 !important;
+        }
+
+        [data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .text-gray-700 {
+          color: #e2e8f0 !important;
+        }
+
+        [data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .text-gray-600 {
+          color: #cbd5e1 !important;
+        }
+
+        [data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .text-gray-500 {
+          color: #94a3b8 !important;
+        }
+
+        [data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .text-gray-400 {
+          color: #64748b !important;
         }
 
         [data-iyanjupay-theme="dark"]
@@ -1082,6 +1321,17 @@ function ServiceTransactionProcessing({
           .iyanjupay-service-page
           .border-green-100 {
           border-color: #14532d !important;
+        }
+
+        [data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          input,
+        [data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          select {
+          background-color: #111827 !important;
+          color: #f8fafc !important;
+          border-color: #334155 !important;
         }
 
         [data-iyanjupay-theme="blue"]
@@ -1640,17 +1890,10 @@ export default function ServicePayment({
           data.examTypes
         );
 
-        /*
-         * Electricity is deliberately restricted to the
-         * exact 11 supported DisCos.
-         */
-        const merged =
-          serviceType === "electricity"
-            ? [...(OFFLINE_BILLERS.electricity ?? [])]
-            : mergeBillers(
-                serviceType,
-                loaded
-              );
+        const merged = mergeBillers(
+          serviceType,
+          loaded
+        );
 
         setBillers(merged);
 
@@ -1663,21 +1906,6 @@ export default function ServicePayment({
           );
         }
       } catch (e: any) {
-        /*
-         * Even if the live electricity request fails,
-         * still show the exact 11 supported DisCos.
-         */
-        if (serviceType === "electricity") {
-          const fallback =
-            OFFLINE_BILLERS.electricity ?? [];
-
-          setBillers([...fallback]);
-
-          setError("");
-
-          return;
-        }
-
         const message =
           e?.message ||
           "Unable to load service options.";
@@ -2427,8 +2655,19 @@ export default function ServicePayment({
     biller: Biller
   ) => {
     const code = getCode(biller);
+
+    /*
+     * For electricity, display the canonical 11-DISCO name.
+     * The original biller code remains untouched for backend use.
+     */
     const name =
-      getName(biller) || code;
+      serviceType === "electricity"
+        ? clean(
+            biller.display_name
+          ) ||
+          getName(biller) ||
+          code
+        : getName(biller) || code;
 
     const selected =
       code === selectedBillerCode;
@@ -2481,11 +2720,12 @@ export default function ServicePayment({
         </span>
 
         <span
-          className={`max-w-[64px] truncate text-[9px] font-semibold ${
+          className={`max-w-[72px] truncate text-[9px] font-semibold ${
             selected
               ? "text-[#4C1D95]"
               : "text-gray-800"
           }`}
+          title={name}
         >
           {name}
         </span>
@@ -2495,7 +2735,7 @@ export default function ServicePayment({
 
   /*
    * ============================================================
-   * COMPACT DATA PLAN CARD
+   * DATA PLAN CARD
    * ============================================================
    *
    * Customer sees ONLY:
@@ -2504,13 +2744,12 @@ export default function ServicePayment({
    *   Price
    *   Duration
    *
-   * HOT is shown ONLY when:
+   * SME/Awoof/Direct/provider metadata is never displayed.
+   *
+   * HOT badge is shown ONLY when:
    *
    *   1. The HOT DEALS tab is active
-   *   2. The actual plan is classified as hot
-   *
-   * This prevents normal plans from receiving a HOT badge merely
-   * because they are being displayed in the HOT DEALS fallback.
+   *   2. The actual plan is identified as hot by isHot()
    */
   const renderDataPlan = (
     item: Item,
@@ -2525,17 +2764,14 @@ export default function ServicePayment({
     const selected =
       code === selectedItemCode;
 
+    const actualHotPlan =
+      isHot(item);
+
     const size =
       getDataPlanSize(item);
 
     const duration =
       getDataPlanDuration(item);
-
-    const actualHotPlan =
-      isHot(item);
-
-    const displayHotBadge =
-      showHotBadge && actualHotPlan;
 
     return (
       <button
@@ -2550,18 +2786,19 @@ export default function ServicePayment({
           price <= 0
         }
         aria-pressed={selected}
-        className={`relative min-w-0 overflow-hidden rounded-xl border bg-white px-1.5 py-2.5 text-center transition active:scale-[0.98] ${
+        className={`relative min-w-0 overflow-hidden rounded-xl border px-1.5 py-2.5 text-center transition active:scale-[0.98] ${
           selected
             ? "iyanjupay-service-selected border-[#6D28D9] bg-violet-50 ring-2 ring-violet-100"
-            : "border-gray-200 hover:border-violet-300 hover:bg-violet-50/30"
+            : "border-gray-200 bg-white hover:border-violet-300 hover:bg-violet-50/30"
         }`}
       >
-        {displayHotBadge && (
-          <span className="absolute right-1 top-1 inline-flex items-center gap-0.5 rounded-full bg-red-500 px-1.5 py-0.5 text-[8px] font-extrabold uppercase leading-none text-white shadow-sm">
-            <Flame className="h-2.5 w-2.5" />
-            HOT
-          </span>
-        )}
+        {showHotBadge &&
+          actualHotPlan && (
+            <span className="absolute right-1 top-1 inline-flex items-center gap-0.5 rounded-full bg-red-500 px-1.5 py-0.5 text-[8px] font-extrabold uppercase leading-none text-white shadow-sm">
+              <Flame className="h-2.5 w-2.5" />
+              HOT
+            </span>
+          )}
 
         <div
           className={`truncate text-[11px] font-extrabold leading-tight sm:text-xs ${
@@ -2703,19 +2940,10 @@ export default function ServicePayment({
           color: #f8fafc;
         }
 
-        /*
-         * ==========================================================
-         * DARK MODE WHITE-CARD RULE
-         * ==========================================================
-         *
-         * White cards remain white in dark mode and normal text
-         * inherited by the card remains black.
-         */
         [data-iyanjupay-theme="dark"]
           .iyanjupay-service-page
           .bg-white {
-          background-color: #ffffff !important;
-          color: #111827;
+          background-color: #111827 !important;
         }
 
         [data-iyanjupay-theme="dark"]
@@ -2744,19 +2972,38 @@ export default function ServicePayment({
 
         [data-iyanjupay-theme="dark"]
           .iyanjupay-service-page
-          input,
-        [data-iyanjupay-theme="dark"]
-          .iyanjupay-service-page
-          select {
-          background-color: #ffffff !important;
-          color: #111827 !important;
-          border-color: #334155 !important;
+          .text-gray-900 {
+          color: #f8fafc !important;
         }
 
         [data-iyanjupay-theme="dark"]
           .iyanjupay-service-page
-          input::placeholder {
-          color: #6b7280 !important;
+          .text-gray-800 {
+          color: #f1f5f9 !important;
+        }
+
+        [data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .text-gray-700 {
+          color: #e2e8f0 !important;
+        }
+
+        [data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .text-gray-600 {
+          color: #cbd5e1 !important;
+        }
+
+        [data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .text-gray-500 {
+          color: #94a3b8 !important;
+        }
+
+        [data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .text-gray-400 {
+          color: #64748b !important;
         }
 
         [data-iyanjupay-theme="dark"]
@@ -2838,6 +3085,17 @@ export default function ServicePayment({
           .iyanjupay-service-page
           .border-green-100 {
           border-color: #14532d !important;
+        }
+
+        [data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          input,
+        [data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          select {
+          background-color: #111827 !important;
+          color: #f8fafc !important;
+          border-color: #334155 !important;
         }
 
         [data-iyanjupay-theme="blue"]
@@ -3299,24 +3557,21 @@ export default function ServicePayment({
                        * FOUR COMPACT DATA PLANS PER ROW
                        * ==================================================
                        *
-                       * Four cards are displayed per row at the base
-                       * breakpoint and above.
-                       *
                        * Each card contains ONLY:
                        *   1. Data size
                        *   2. Price
                        *   3. Duration
                        *
-                       * HOT badge is passed only while HOT DEALS
-                       * is the active tab, and renderDataPlan performs
-                       * a second check with isHot(item).
+                       * The HOT badge is only rendered when the
+                       * individual plan is actually hot.
                        */
                       <div className="grid grid-cols-4 gap-2 sm:gap-2.5">
                         {visibleDataPlans.map(
                           (item) =>
                             renderDataPlan(
                               item,
-                              dataTab === "HOT DEALS"
+                              dataTab ===
+                                "HOT DEALS"
                             )
                         )}
                       </div>

@@ -771,246 +771,546 @@ function ServiceTransactionProcessing({
   const isFailed = status === "failed";
 
   return (
-    <div className="min-h-screen bg-gray-50 text-gray-900">
-      <header className="sticky top-0 z-20 border-b border-violet-900/20 bg-gradient-to-r from-[#4C1D95] via-[#6D28D9] to-[#2563EB] text-white shadow-md">
-        <div className="mx-auto flex max-w-3xl items-center justify-between px-4 py-3.5">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={onBack}
-            disabled={isProcessing}
-            aria-label="Back"
-            className="text-white hover:bg-white/15 hover:text-white"
-          >
-            <ArrowLeft className="h-5 w-5" />
-          </Button>
+    <>
+      <style>{`
+        /*
+         * ============================================================
+         * IYANJUPAY DASHBOARD THEME BRIDGE
+         * ============================================================
+         *
+         * Dashboard remains the single source of truth.
+         *
+         * It already writes:
+         *
+         * document.documentElement.dataset.iyanjupayTheme
+         *
+         * This component only consumes that value.
+         */
 
-          <h1 className="text-base font-bold text-white sm:text-lg">
-            Transaction
-          </h1>
+        .iyanjupay-service-page {
+          background: #f9fafb;
+          color: #111827;
+          transition:
+            background-color 180ms ease,
+            color 180ms ease;
+        }
 
-          <span className="w-9" />
-        </div>
-      </header>
+        /*
+         * BLUE
+         */
+        [data-iyanjupay-theme="blue"]
+          .iyanjupay-service-page {
+          background: #f4f8ff;
+        }
 
-      <main className="mx-auto max-w-3xl px-4 py-6 pb-10">
-        <section className="overflow-hidden rounded-[2rem] border bg-white shadow-sm">
-          <div className="border-b bg-gradient-to-b from-gray-50 to-white px-5 py-8 text-center sm:px-8">
-            <div
-              className={`mx-auto flex h-20 w-20 items-center justify-center rounded-full ${
-                isFailed
-                  ? "bg-red-50 text-red-600"
-                  : isPending
-                    ? "bg-amber-50 text-amber-600"
-                    : "bg-green-50 text-green-600"
-              }`}
+        /*
+         * DARK
+         */
+        [data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page {
+          background: #090d18;
+          color: #f8fafc;
+        }
+
+        [data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .bg-white {
+          background-color: #111827 !important;
+        }
+
+        [data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .bg-gray-50 {
+          background-color: #090d18 !important;
+        }
+
+        [data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .bg-gray-100 {
+          background-color: #1e293b !important;
+        }
+
+        [data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          [class*="border-gray-200"] {
+          border-color: #334155 !important;
+        }
+
+        [data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          [class*="border-gray-100"] {
+          border-color: #334155 !important;
+        }
+
+        [data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .text-gray-900 {
+          color: #f8fafc !important;
+        }
+
+        [data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .text-gray-800 {
+          color: #f1f5f9 !important;
+        }
+
+        [data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .text-gray-700 {
+          color: #e2e8f0 !important;
+        }
+
+        [data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .text-gray-600 {
+          color: #cbd5e1 !important;
+        }
+
+        [data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .text-gray-500 {
+          color: #94a3b8 !important;
+        }
+
+        [data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .text-gray-400 {
+          color: #64748b !important;
+        }
+
+        [data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .bg-violet-50 {
+          background-color: #312e81 !important;
+        }
+
+        [data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .bg-green-50 {
+          background-color: #052e2b !important;
+        }
+
+        [data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .text-green-700 {
+          color: #86efac !important;
+        }
+
+        [data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .text-green-800 {
+          color: #bbf7d0 !important;
+        }
+
+        [data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .bg-amber-50 {
+          background-color: #451a03 !important;
+        }
+
+        [data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .text-amber-600 {
+          color: #fbbf24 !important;
+        }
+
+        [data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .text-amber-800 {
+          color: #fde68a !important;
+        }
+
+        [data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .bg-red-50 {
+          background-color: #450a0a !important;
+        }
+
+        [data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .text-red-600 {
+          color: #fca5a5 !important;
+        }
+
+        [data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .text-red-700,
+        [data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .text-red-800 {
+          color: #fecaca !important;
+        }
+
+        [data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .border-red-200 {
+          border-color: #7f1d1d !important;
+        }
+
+        [data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .border-amber-200 {
+          border-color: #92400e !important;
+        }
+
+        [data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .border-green-100 {
+          border-color: #14532d !important;
+        }
+
+        [data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          input,
+        [data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          select {
+          background-color: #111827 !important;
+          color: #f8fafc !important;
+          border-color: #334155 !important;
+        }
+
+        /*
+         * BLUE
+         */
+        [data-iyanjupay-theme="blue"]
+          .iyanjupay-service-page
+          .bg-violet-50 {
+          background-color: #dbeafe !important;
+        }
+
+        [data-iyanjupay-theme="blue"]
+          .iyanjupay-service-page
+          .text-gray-900 {
+          color: #0f172a;
+        }
+
+        [data-iyanjupay-theme="blue"]
+          .iyanjupay-service-page
+          .text-gray-800 {
+          color: #1e293b;
+        }
+
+        [data-iyanjupay-theme="blue"]
+          .iyanjupay-service-page
+          .text-purple-600,
+        [data-iyanjupay-theme="blue"]
+          .iyanjupay-service-page
+          .text-purple-700 {
+          color: #1d4ed8 !important;
+        }
+
+        /*
+         * Theme-aware header gradients.
+         */
+        [data-iyanjupay-theme="blue"]
+          .iyanjupay-service-page
+          .iyanjupay-service-header {
+          background-image: linear-gradient(
+            to right,
+            #082a63,
+            #1554b8,
+            #2563eb
+          ) !important;
+        }
+
+        [data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .iyanjupay-service-header {
+          background-image: linear-gradient(
+            to right,
+            #111827,
+            #312e81,
+            #1e40af
+          ) !important;
+        }
+
+        /*
+         * Theme-aware primary action gradients.
+         */
+        [data-iyanjupay-theme="blue"]
+          .iyanjupay-service-page
+          .iyanjupay-service-primary {
+          background-image: linear-gradient(
+            to right,
+            #082a63,
+            #1554b8,
+            #2563eb
+          ) !important;
+        }
+
+        [data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .iyanjupay-service-primary {
+          background-image: linear-gradient(
+            to right,
+            #111827,
+            #312e81,
+            #1e40af
+          ) !important;
+        }
+
+        /*
+         * Selected provider / plan / amount states.
+         */
+        [data-iyanjupay-theme="blue"]
+          .iyanjupay-service-page
+          .iyanjupay-service-selected {
+          border-color: #2563eb !important;
+          color: #1d4ed8 !important;
+          background-color: #dbeafe !important;
+        }
+
+        [data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .iyanjupay-service-selected {
+          border-color: #6366f1 !important;
+          color: #c4b5fd !important;
+          background-color: #312e81 !important;
+        }
+      `}</style>
+
+      <div className="iyanjupay-service-page min-h-screen bg-gray-50 text-gray-900">
+        <header className="iyanjupay-service-header sticky top-0 z-20 border-b border-violet-900/20 bg-gradient-to-r from-[#4C1D95] via-[#6D28D9] to-[#2563EB] text-white shadow-md">
+          <div className="mx-auto flex max-w-3xl items-center justify-between px-4 py-3.5">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={onBack}
+              disabled={isProcessing}
+              aria-label="Back"
+              className="text-white hover:bg-white/15 hover:text-white"
             >
-              {isProcessing ? (
-                <Loader2 className="h-9 w-9 animate-spin" />
-              ) : isSuccess ? (
-                <Check className="h-10 w-10" />
-              ) : isPending ? (
-                <Clock3 className="h-9 w-9" />
-              ) : (
-                <XCircle className="h-10 w-10" />
+              <ArrowLeft className="h-5 w-5" />
+            </Button>
+
+            <h1 className="text-base font-bold text-white sm:text-lg">
+              Transaction
+            </h1>
+
+            <span className="w-9" />
+          </div>
+        </header>
+
+        <main className="mx-auto max-w-3xl px-4 py-6 pb-10">
+          <section className="overflow-hidden rounded-[2rem] border bg-white shadow-sm">
+            <div className="border-b bg-gradient-to-b from-gray-50 to-white px-5 py-8 text-center sm:px-8">
+              <div
+                className={`mx-auto flex h-20 w-20 items-center justify-center rounded-full ${
+                  isFailed
+                    ? "bg-red-50 text-red-600"
+                    : isPending
+                      ? "bg-amber-50 text-amber-600"
+                      : "bg-green-50 text-green-600"
+                }`}
+              >
+                {isProcessing ? (
+                  <Loader2 className="h-9 w-9 animate-spin" />
+                ) : isSuccess ? (
+                  <Check className="h-10 w-10" />
+                ) : isPending ? (
+                  <Clock3 className="h-9 w-9" />
+                ) : (
+                  <XCircle className="h-10 w-10" />
+                )}
+              </div>
+
+              <p className="mt-5 text-sm font-semibold text-gray-500">
+                {isProcessing
+                  ? "Processing payment"
+                  : isSuccess
+                    ? "Payment successful"
+                    : isPending
+                      ? "Payment pending"
+                      : "Payment failed"}
+              </p>
+
+              <h2 className="mt-1 text-2xl font-extrabold tracking-tight">
+                {isProcessing
+                  ? "Please wait..."
+                  : isSuccess
+                    ? "Purchase completed"
+                    : isPending
+                      ? "We're still processing it"
+                      : "We couldn't complete it"}
+              </h2>
+
+              <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-gray-500">
+                {message}
+              </p>
+
+              {isProcessing && (
+                <div className="mx-auto mt-6 flex max-w-sm items-center justify-center gap-2 rounded-2xl border border-green-100 bg-green-50 px-4 py-3 text-sm font-medium text-green-800">
+                  <LockKeyhole className="h-4 w-4" />
+                  Securing your transaction...
+                </div>
               )}
             </div>
 
-            <p className="mt-5 text-sm font-semibold text-gray-500">
-              {isProcessing
-                ? "Processing payment"
-                : isSuccess
-                  ? "Payment successful"
-                  : isPending
-                    ? "Payment pending"
-                    : "Payment failed"}
-            </p>
-
-            <h2 className="mt-1 text-2xl font-extrabold tracking-tight">
-              {isProcessing
-                ? "Please wait..."
-                : isSuccess
-                  ? "Purchase completed"
-                  : isPending
-                    ? "We're still processing it"
-                    : "We couldn't complete it"}
-            </h2>
-
-            <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-gray-500">
-              {message}
-            </p>
-
-            {isProcessing && (
-              <div className="mx-auto mt-6 flex max-w-sm items-center justify-center gap-2 rounded-2xl border border-green-100 bg-green-50 px-4 py-3 text-sm font-medium text-green-800">
-                <LockKeyhole className="h-4 w-4" />
-                Securing your transaction...
-              </div>
-            )}
-          </div>
-
-          <div className="space-y-4 p-5 sm:p-7">
-            <div className="rounded-2xl border bg-gray-50 p-4">
-              <div className="mb-3 flex items-center gap-2 text-sm font-bold">
-                <Receipt className="h-4 w-4" />
-                Transaction summary
-              </div>
-
-              <div className="space-y-3 text-sm">
-                <div className="flex justify-between gap-4">
-                  <span className="text-gray-500">
-                    Service
-                  </span>
-
-                  <span className="text-right font-semibold">
-                    {serviceName}
-                  </span>
+            <div className="space-y-4 p-5 sm:p-7">
+              <div className="rounded-2xl border bg-gray-50 p-4">
+                <div className="mb-3 flex items-center gap-2 text-sm font-bold">
+                  <Receipt className="h-4 w-4" />
+                  Transaction summary
                 </div>
 
-                {customerValue && (
+                <div className="space-y-3 text-sm">
                   <div className="flex justify-between gap-4">
                     <span className="text-gray-500">
-                      Customer
+                      Service
                     </span>
 
-                    <span className="max-w-[65%] break-all text-right font-semibold">
-                      {customerValue}
+                    <span className="text-right font-semibold">
+                      {serviceName}
                     </span>
                   </div>
-                )}
 
-                {itemName && (
-                  <div className="flex justify-between gap-4">
+                  {customerValue && (
+                    <div className="flex justify-between gap-4">
+                      <span className="text-gray-500">
+                        Customer
+                      </span>
+
+                      <span className="max-w-[65%] break-all text-right font-semibold">
+                        {customerValue}
+                      </span>
+                    </div>
+                  )}
+
+                  {itemName && (
+                    <div className="flex justify-between gap-4">
+                      <span className="text-gray-500">
+                        Package
+                      </span>
+
+                      <span className="max-w-[65%] text-right font-semibold">
+                        {itemName}
+                      </span>
+                    </div>
+                  )}
+
+                  <div className="flex items-center justify-between border-t pt-3">
                     <span className="text-gray-500">
-                      Package
+                      Amount
                     </span>
 
-                    <span className="max-w-[65%] text-right font-semibold">
-                      {itemName}
+                    <span className="text-lg font-extrabold">
+                      {naira(amount)}
                     </span>
                   </div>
-                )}
-
-                <div className="flex items-center justify-between border-t pt-3">
-                  <span className="text-gray-500">
-                    Amount
-                  </span>
-
-                  <span className="text-lg font-extrabold">
-                    {naira(amount)}
-                  </span>
                 </div>
               </div>
-            </div>
 
-            {reference && (
-              <div className="rounded-2xl border p-4">
-                <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
-                  <Sparkles className="h-3.5 w-3.5" />
-                  Transaction reference
-                </div>
+              {reference && (
+                <div className="rounded-2xl border p-4">
+                  <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
+                    <Sparkles className="h-3.5 w-3.5" />
+                    Transaction reference
+                  </div>
 
-                <div className="flex items-center gap-2 rounded-xl bg-gray-50 px-3 py-3">
-                  <span className="min-w-0 flex-1 break-all text-sm font-semibold">
-                    {reference}
-                  </span>
+                  <div className="flex items-center gap-2 rounded-xl bg-gray-50 px-3 py-3">
+                    <span className="min-w-0 flex-1 break-all text-sm font-semibold">
+                      {reference}
+                    </span>
 
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() =>
-                      void copyReference()
-                    }
-                    aria-label="Copy reference"
-                  >
-                    {copied ? (
-                      <Check className="h-4 w-4 text-green-600" />
-                    ) : (
-                      <Copy className="h-4 w-4" />
-                    )}
-                  </Button>
-                </div>
-              </div>
-            )}
-
-            {isPending && (
-              <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-                <div className="flex items-start gap-3">
-                  <Clock3 className="mt-0.5 h-5 w-5 shrink-0" />
-
-                  <div>
-                    <p className="font-bold">
-                      Do not pay again yet
-                    </p>
-
-                    <p className="mt-1 leading-6">
-                      The transaction has been submitted.
-                      Check your transaction history before
-                      trying again.
-                    </p>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() =>
+                        void copyReference()
+                      }
+                      aria-label="Copy reference"
+                    >
+                      {copied ? (
+                        <Check className="h-4 w-4 text-green-600" />
+                      ) : (
+                        <Copy className="h-4 w-4" />
+                      )}
+                    </Button>
                   </div>
                 </div>
-              </div>
-            )}
+              )}
 
-            {isFailed && (
-              <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">
-                <div className="flex items-start gap-3">
-                  <XCircle className="mt-0.5 h-5 w-5 shrink-0" />
+              {isPending && (
+                <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+                  <div className="flex items-start gap-3">
+                    <Clock3 className="mt-0.5 h-5 w-5 shrink-0" />
 
-                  <div>
-                    <p className="font-bold">
-                      No successful purchase was confirmed
-                    </p>
+                    <div>
+                      <p className="font-bold">
+                        Do not pay again yet
+                      </p>
 
-                    <p className="mt-1 leading-6">
-                      You can retry this same transaction.
-                      The same idempotency key is reused to
-                      prevent accidental duplicate processing.
-                    </p>
+                      <p className="mt-1 leading-6">
+                        The transaction has been submitted.
+                        Check your transaction history before
+                        trying again.
+                      </p>
+                    </div>
                   </div>
                 </div>
-              </div>
-            )}
+              )}
 
-            <div className="space-y-2 pt-1">
               {isFailed && (
-                <Button
-                  className="h-12 w-full bg-gradient-to-r from-[#4C1D95] via-[#6D28D9] to-[#2563EB] font-bold text-white shadow-sm hover:brightness-105"
-                  onClick={() => void run()}
-                >
-                  <ArrowUpRight className="mr-2 h-4 w-4" />
-                  Retry transaction
-                </Button>
+                <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+                  <div className="flex items-start gap-3">
+                    <XCircle className="mt-0.5 h-5 w-5 shrink-0" />
+
+                    <div>
+                      <p className="font-bold">
+                        No successful purchase was confirmed
+                      </p>
+
+                      <p className="mt-1 leading-6">
+                        You can retry this same transaction.
+                        The same idempotency key is reused to
+                        prevent accidental duplicate processing.
+                      </p>
+                    </div>
+                  </div>
+                </div>
               )}
 
-              {!isProcessing && (
-                <Button
-                  variant={
-                    isFailed ? "outline" : "default"
-                  }
-                  className={`h-12 w-full font-bold ${
-                    !isFailed
-                      ? "bg-gradient-to-r from-[#4C1D95] via-[#6D28D9] to-[#2563EB] text-white shadow-sm hover:brightness-105"
-                      : ""
-                  }`}
-                  onClick={onDone}
-                >
-                  {isPending
-                    ? "Continue to Services"
-                    : "Done"}
-                </Button>
-              )}
+              <div className="space-y-2 pt-1">
+                {isFailed && (
+                  <Button
+                    className="iyanjupay-service-primary h-12 w-full bg-gradient-to-r from-[#4C1D95] via-[#6D28D9] to-[#2563EB] font-bold text-white shadow-sm hover:brightness-105"
+                    onClick={() => void run()}
+                  >
+                    <ArrowUpRight className="mr-2 h-4 w-4" />
+                    Retry transaction
+                  </Button>
+                )}
+
+                {!isProcessing && (
+                  <Button
+                    variant={
+                      isFailed ? "outline" : "default"
+                    }
+                    className={`${
+                      !isFailed
+                        ? "iyanjupay-service-primary bg-gradient-to-r from-[#4C1D95] via-[#6D28D9] to-[#2563EB] text-white shadow-sm hover:brightness-105"
+                        : ""
+                    } h-12 w-full font-bold`}
+                    onClick={onDone}
+                  >
+                    {isPending
+                      ? "Continue to Services"
+                      : "Done"}
+                  </Button>
+                )}
+              </div>
+
+              <p className="flex items-center justify-center gap-1.5 text-center text-xs text-gray-400">
+                <ShieldCheck className="h-3.5 w-3.5" />
+                Your payment is protected by IyanjuPay's
+                secure transaction flow.
+              </p>
             </div>
-
-            <p className="flex items-center justify-center gap-1.5 text-center text-xs text-gray-400">
-              <ShieldCheck className="h-3.5 w-3.5" />
-              Your payment is protected by IyanjuPay's
-              secure transaction flow.
-            </p>
-          </div>
-        </section>
-      </main>
-    </div>
+          </section>
+        </main>
+      </div>
+    </>
   );
 }
 
@@ -2088,7 +2388,7 @@ export default function ServicePayment({
         <span
           className={`flex h-10 w-10 items-center justify-center overflow-hidden rounded-full border-2 bg-white text-sm font-bold text-gray-600 shadow-sm ${
             selected
-              ? "border-[#6D28D9] ring-4 ring-violet-100"
+              ? "iyanjupay-service-selected border-[#6D28D9] ring-4 ring-violet-100"
               : "border-gray-200"
           }`}
         >
@@ -2143,7 +2443,7 @@ export default function ServicePayment({
         }
         className={`relative rounded-2xl border bg-white p-4 text-left transition ${
           selected
-            ? "border-[#6D28D9] ring-2 ring-violet-100"
+            ? "iyanjupay-service-selected border-[#6D28D9] ring-2 ring-violet-100"
             : "border-gray-200 hover:border-violet-300"
         }`}
       >
@@ -2208,585 +2508,871 @@ export default function ServicePayment({
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 text-gray-900">
-      <header className="sticky top-0 z-20 border-b border-violet-900/20 bg-gradient-to-r from-[#4C1D95] via-[#6D28D9] to-[#2563EB] text-white shadow-md">
-        <div className="mx-auto flex max-w-3xl items-center justify-between px-4 py-3.5">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={onBack}
-            aria-label="Back"
-            className="text-white hover:bg-white/15 hover:text-white"
-          >
-            <ArrowLeft className="h-5 w-5" />
-          </Button>
+    <>
+      <style>{`
+        /*
+         * ============================================================
+         * IYANJUPAY DASHBOARD THEME BRIDGE
+         * ============================================================
+         *
+         * Dashboard remains the single source of truth.
+         *
+         * This page consumes:
+         *
+         * document.documentElement.dataset.iyanjupayTheme
+         */
 
-          <div className="min-w-0 text-center">
-            <h1 className="truncate text-base font-bold sm:text-lg">
-              {serviceTitle}
-            </h1>
+        .iyanjupay-service-page {
+          background: #f9fafb;
+          color: #111827;
+          transition:
+            background-color 180ms ease,
+            color 180ms ease;
+        }
 
-            <p className="text-[10px] text-violet-100 sm:text-xs">
-              Secure service purchase
-            </p>
-          </div>
+        /*
+         * BLUE APPEARANCE
+         */
+        [data-iyanjupay-theme="blue"]
+          .iyanjupay-service-page {
+          background: #f4f8ff;
+        }
 
-          {onHistory ? (
+        /*
+         * DARK APPEARANCE
+         */
+        [data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page {
+          background: #090d18;
+          color: #f8fafc;
+        }
+
+        [data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .bg-white {
+          background-color: #111827 !important;
+        }
+
+        [data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .bg-gray-50 {
+          background-color: #090d18 !important;
+        }
+
+        [data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .bg-gray-100 {
+          background-color: #1e293b !important;
+        }
+
+        [data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          [class*="border-gray-200"] {
+          border-color: #334155 !important;
+        }
+
+        [data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          [class*="border-gray-100"] {
+          border-color: #334155 !important;
+        }
+
+        [data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .text-gray-900 {
+          color: #f8fafc !important;
+        }
+
+        [data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .text-gray-800 {
+          color: #f1f5f9 !important;
+        }
+
+        [data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .text-gray-700 {
+          color: #e2e8f0 !important;
+        }
+
+        [data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .text-gray-600 {
+          color: #cbd5e1 !important;
+        }
+
+        [data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .text-gray-500 {
+          color: #94a3b8 !important;
+        }
+
+        [data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .text-gray-400 {
+          color: #64748b !important;
+        }
+
+        [data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .bg-violet-50 {
+          background-color: #312e81 !important;
+        }
+
+        [data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .bg-green-50 {
+          background-color: #052e2b !important;
+        }
+
+        [data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .text-green-700 {
+          color: #86efac !important;
+        }
+
+        [data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .text-green-800 {
+          color: #bbf7d0 !important;
+        }
+
+        [data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .bg-amber-50 {
+          background-color: #451a03 !important;
+        }
+
+        [data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .text-amber-600 {
+          color: #fbbf24 !important;
+        }
+
+        [data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .text-amber-800 {
+          color: #fde68a !important;
+        }
+
+        [data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .bg-red-50 {
+          background-color: #450a0a !important;
+        }
+
+        [data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .text-red-600 {
+          color: #fca5a5 !important;
+        }
+
+        [data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .text-red-700,
+        [data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .text-red-800 {
+          color: #fecaca !important;
+        }
+
+        [data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .border-red-200 {
+          border-color: #7f1d1d !important;
+        }
+
+        [data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .border-amber-200 {
+          border-color: #92400e !important;
+        }
+
+        [data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .border-green-100 {
+          border-color: #14532d !important;
+        }
+
+        [data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          input,
+        [data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          select {
+          background-color: #111827 !important;
+          color: #f8fafc !important;
+          border-color: #334155 !important;
+        }
+
+        /*
+         * BLUE ACCENTS
+         */
+        [data-iyanjupay-theme="blue"]
+          .iyanjupay-service-page
+          .bg-violet-50 {
+          background-color: #dbeafe !important;
+        }
+
+        [data-iyanjupay-theme="blue"]
+          .iyanjupay-service-page
+          .text-purple-600,
+        [data-iyanjupay-theme="blue"]
+          .iyanjupay-service-page
+          .text-purple-700 {
+          color: #1d4ed8 !important;
+        }
+
+        /*
+         * THEME-AWARE HEADER
+         */
+        [data-iyanjupay-theme="blue"]
+          .iyanjupay-service-page
+          .iyanjupay-service-header {
+          background-image: linear-gradient(
+            to right,
+            #082a63,
+            #1554b8,
+            #2563eb
+          ) !important;
+        }
+
+        [data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .iyanjupay-service-header {
+          background-image: linear-gradient(
+            to right,
+            #111827,
+            #312e81,
+            #1e40af
+          ) !important;
+        }
+
+        /*
+         * THEME-AWARE PRIMARY ACTIONS
+         */
+        [data-iyanjupay-theme="blue"]
+          .iyanjupay-service-page
+          .iyanjupay-service-primary {
+          background-image: linear-gradient(
+            to right,
+            #082a63,
+            #1554b8,
+            #2563eb
+          ) !important;
+        }
+
+        [data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .iyanjupay-service-primary {
+          background-image: linear-gradient(
+            to right,
+            #111827,
+            #312e81,
+            #1e40af
+          ) !important;
+        }
+
+        /*
+         * SELECTED SERVICE / PLAN / AMOUNT
+         */
+        [data-iyanjupay-theme="blue"]
+          .iyanjupay-service-page
+          .iyanjupay-service-selected {
+          border-color: #2563eb !important;
+          color: #1d4ed8 !important;
+          background-color: #dbeafe !important;
+        }
+
+        [data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page
+          .iyanjupay-service-selected {
+          border-color: #6366f1 !important;
+          color: #c4b5fd !important;
+          background-color: #312e81 !important;
+        }
+      `}</style>
+
+      <div className="iyanjupay-service-page min-h-screen bg-gray-50 text-gray-900">
+        <header className="iyanjupay-service-header sticky top-0 z-20 border-b border-violet-900/20 bg-gradient-to-r from-[#4C1D95] via-[#6D28D9] to-[#2563EB] text-white shadow-md">
+          <div className="mx-auto flex max-w-3xl items-center justify-between px-4 py-3.5">
             <Button
               variant="ghost"
-              size="sm"
-              onClick={onHistory}
+              size="icon"
+              onClick={onBack}
+              aria-label="Back"
               className="text-white hover:bg-white/15 hover:text-white"
             >
-              <History className="mr-1.5 h-4 w-4" />
-              History
+              <ArrowLeft className="h-5 w-5" />
             </Button>
-          ) : (
-            <span className="w-9" />
-          )}
-        </div>
-      </header>
 
-      <main className="mx-auto max-w-3xl space-y-4 px-4 py-5 pb-10">
-        {showPin ? (
-          <section className="rounded-3xl border bg-white p-6 shadow-sm">
-            <div className="mx-auto max-w-sm text-center">
-              <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-green-50 text-green-700">
-                <ShieldCheck className="h-7 w-7" />
-              </div>
+            <div className="min-w-0 text-center">
+              <h1 className="truncate text-base font-bold sm:text-lg">
+                {serviceTitle}
+              </h1>
 
-              <h2 className="text-xl font-bold">
-                Confirm payment
-              </h2>
-
-              <p className="mt-1 text-sm text-gray-500">
-                Enter your 4-digit payment PIN to
-                continue.
+              <p className="text-[10px] text-violet-100 sm:text-xs">
+                Secure service purchase
               </p>
-
-              <div className="mt-6">
-                <Input
-                  autoFocus
-                  inputMode="numeric"
-                  maxLength={4}
-                  type="password"
-                  value={paymentPin}
-                  onChange={(e) =>
-                    setPaymentPin(
-                      e.target.value
-                        .replace(/\D/g, "")
-                        .slice(0, 4)
-                    )
-                  }
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      void confirmPurchase();
-                    }
-                  }}
-                  placeholder="••••"
-                  className="h-14 text-center text-2xl tracking-[0.5em]"
-                  disabled={verifyingPin}
-                />
-              </div>
-
-              {error && (
-                <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-                  {error}
-                </div>
-              )}
-
-              <div className="mt-5 space-y-2">
-                <Button
-                  className="h-12 w-full bg-gradient-to-r from-[#4C1D95] via-[#6D28D9] to-[#2563EB] font-bold text-white shadow-sm hover:brightness-105"
-                  onClick={() =>
-                    void confirmPurchase()
-                  }
-                  disabled={
-                    verifyingPin ||
-                    paymentPin.length !== 4
-                  }
-                >
-                  {verifyingPin ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Verifying PIN...
-                    </>
-                  ) : (
-                    "Confirm Payment"
-                  )}
-                </Button>
-
-                <Button
-                  variant="outline"
-                  className="h-12 w-full"
-                  onClick={() =>
-                    setShowPin(false)
-                  }
-                  disabled={verifyingPin}
-                >
-                  Back
-                </Button>
-              </div>
             </div>
-          </section>
-        ) : (
-          <>
-            {/* SERVICE PROVIDERS */}
-            <section className="rounded-xl border bg-white p-2 shadow-sm">
-              <div className="mb-1.5 flex items-center justify-between">
-                <div>
-                  <h2 className="text-sm font-bold">
-                    Choose service option
-                  </h2>
 
-                  <p className="text-xs text-gray-500">
-                    Select the network, company or TV
-                    service you want.
-                  </p>
+            {onHistory ? (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={onHistory}
+                className="text-white hover:bg-white/15 hover:text-white"
+              >
+                <History className="mr-1.5 h-4 w-4" />
+                History
+              </Button>
+            ) : (
+              <span className="w-9" />
+            )}
+          </div>
+        </header>
+
+        <main className="mx-auto max-w-3xl space-y-4 px-4 py-5 pb-10">
+          {showPin ? (
+            <section className="rounded-3xl border bg-white p-6 shadow-sm">
+              <div className="mx-auto max-w-sm text-center">
+                <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-green-50 text-green-700">
+                  <ShieldCheck className="h-7 w-7" />
                 </div>
 
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() =>
-                    void loadBillers()
-                  }
-                  disabled={loadingBillers}
-                >
-                  <RefreshCw
-                    className={`mr-1.5 h-4 w-4 ${
-                      loadingBillers
-                        ? "animate-spin"
-                        : ""
-                    }`}
+                <h2 className="text-xl font-bold">
+                  Confirm payment
+                </h2>
+
+                <p className="mt-1 text-sm text-gray-500">
+                  Enter your 4-digit payment PIN to
+                  continue.
+                </p>
+
+                <div className="mt-6">
+                  <Input
+                    autoFocus
+                    inputMode="numeric"
+                    maxLength={4}
+                    type="password"
+                    value={paymentPin}
+                    onChange={(e) =>
+                      setPaymentPin(
+                        e.target.value
+                          .replace(/\D/g, "")
+                          .slice(0, 4)
+                      )
+                    }
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        void confirmPurchase();
+                      }
+                    }}
+                    placeholder="••••"
+                    className="h-14 text-center text-2xl tracking-[0.5em]"
+                    disabled={verifyingPin}
                   />
-                  Refresh
-                </Button>
+                </div>
+
+                {error && (
+                  <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                    {error}
+                  </div>
+                )}
+
+                <div className="mt-5 space-y-2">
+                  <Button
+                    className="iyanjupay-service-primary h-12 w-full bg-gradient-to-r from-[#4C1D95] via-[#6D28D9] to-[#2563EB] font-bold text-white shadow-sm hover:brightness-105"
+                    onClick={() =>
+                      void confirmPurchase()
+                    }
+                    disabled={
+                      verifyingPin ||
+                      paymentPin.length !== 4
+                    }
+                  >
+                    {verifyingPin ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Verifying PIN...
+                      </>
+                    ) : (
+                      "Confirm Payment"
+                    )}
+                  </Button>
+
+                  <Button
+                    variant="outline"
+                    className="h-12 w-full"
+                    onClick={() =>
+                      setShowPin(false)
+                    }
+                    disabled={verifyingPin}
+                  >
+                    Back
+                  </Button>
+                </div>
               </div>
-
-              {loadingBillers ? (
-                <div className="flex items-center justify-center py-8 text-sm text-gray-500">
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Loading service options...
-                </div>
-              ) : billers.length ? (
-                /*
-                 * Four providers per row.
-                 *
-                 * Cable:
-                 * DStv | GOtv | Startimes | Showmax
-                 *
-                 * Mobile:
-                 * MTN | Glo | 9mobile | Airtel
-                 */
-                <div className="grid w-full grid-cols-4 gap-1">
-                  {billers.map(
-                    renderBillerCard
-                  )}
-                </div>
-              ) : (
-                <div className="rounded-2xl bg-gray-50 p-5 text-center text-sm text-gray-500">
-                  No service options available
-                  right now.
-                </div>
-              )}
             </section>
+          ) : (
+            <>
+              {/* SERVICE PROVIDERS */}
+              <section className="rounded-xl border bg-white p-2 shadow-sm">
+                <div className="mb-1.5 flex items-center justify-between">
+                  <div>
+                    <h2 className="text-sm font-bold">
+                      Choose service option
+                    </h2>
 
-            {/* ELECTRICITY METER TYPE */}
-            {isElectricity &&
-              selectedBiller && (
+                    <p className="text-xs text-gray-500">
+                      Select the network, company or TV
+                      service you want.
+                    </p>
+                  </div>
+
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() =>
+                      void loadBillers()
+                    }
+                    disabled={loadingBillers}
+                  >
+                    <RefreshCw
+                      className={`mr-1.5 h-4 w-4 ${
+                        loadingBillers
+                          ? "animate-spin"
+                          : ""
+                      }`}
+                    />
+                    Refresh
+                  </Button>
+                </div>
+
+                {loadingBillers ? (
+                  <div className="flex items-center justify-center py-8 text-sm text-gray-500">
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Loading service options...
+                  </div>
+                ) : billers.length ? (
+                  /*
+                   * Four providers per row.
+                   *
+                   * Cable:
+                   * DStv | GOtv | Startimes | Showmax
+                   *
+                   * Mobile:
+                   * MTN | Glo | 9mobile | Airtel
+                   */
+                  <div className="grid w-full grid-cols-4 gap-1">
+                    {billers.map(
+                      renderBillerCard
+                    )}
+                  </div>
+                ) : (
+                  <div className="rounded-2xl bg-gray-50 p-5 text-center text-sm text-gray-500">
+                    No service options available
+                    right now.
+                  </div>
+                )}
+              </section>
+
+              {/* ELECTRICITY METER TYPE */}
+              {isElectricity &&
+                selectedBiller && (
+                  <section className="rounded-3xl border bg-white p-5 shadow-sm">
+                    <Label className="text-sm font-bold">
+                      Meter Type
+                    </Label>
+
+                    {meterTypes.length ? (
+                      <div className="mt-2 grid grid-cols-2 gap-2">
+                        {meterTypes.map(
+                          (
+                            meter: Biller
+                          ) => {
+                            const code =
+                              getCode(
+                                meter
+                              );
+
+                            const name =
+                              getName(
+                                meter
+                              );
+
+                            return (
+                              <button
+                                key={code}
+                                type="button"
+                                onClick={() =>
+                                  handleMeterType(
+                                    code
+                                  )
+                                }
+                                className={`rounded-xl border p-3 text-sm font-semibold ${
+                                  meterType ===
+                                  code
+                                    ? "iyanjupay-service-primary border-[#6D28D9] bg-gradient-to-r from-[#4C1D95] via-[#6D28D9] to-[#2563EB] text-white"
+                                    : "border-gray-200"
+                                }`}
+                              >
+                                {name}
+                              </button>
+                            );
+                          }
+                        )}
+                      </div>
+                    ) : (
+                      <select
+                        value={meterType}
+                        onChange={(e) =>
+                          handleMeterType(
+                            e.target.value
+                          )
+                        }
+                        className="mt-2 h-11 w-full rounded-xl border bg-white px-3 text-sm"
+                      >
+                        <option value="">
+                          Select meter type
+                        </option>
+
+                        <option value="PREPAID">
+                          Prepaid
+                        </option>
+
+                        <option value="POSTPAID">
+                          Postpaid
+                        </option>
+                      </select>
+                    )}
+                  </section>
+                )}
+
+              {/* CABLE / ELECTRICITY / JAMB IDENTIFIER */}
+              {(isCable ||
+                isElectricity ||
+                isJamb) &&
+                selectedBillerCode && (
+                  <section className="rounded-3xl border bg-white p-5 shadow-sm">
+                    <Label className="text-sm font-bold">
+                      {isJamb
+                        ? "JAMB Profile Code"
+                        : customerLabel}
+                    </Label>
+
+                    {isJamb ? (
+                      <Input
+                        value={profileCode}
+                        onChange={(e) => {
+                          setProfileCode(
+                            e.target.value
+                          );
+
+                          resetVerification();
+                        }}
+                        placeholder="Enter JAMB Profile Code"
+                        className="mt-2 h-12"
+                      />
+                    ) : (
+                      <Input
+                        value={customer}
+                        onChange={(e) => {
+                          setCustomer(
+                            e.target.value.replace(
+                              /\s+/g,
+                              ""
+                            )
+                          );
+
+                          resetVerification();
+                        }}
+                        placeholder={
+                          customerPlaceholder
+                        }
+                        inputMode="numeric"
+                        className="mt-2 h-12"
+                      />
+                    )}
+
+                    {verifyingIdentifier && (
+                      <div className="mt-2 flex items-center gap-2 text-xs font-medium text-[#6D28D9]">
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        Verifying details...
+                      </div>
+                    )}
+
+                    {verified && (
+                      <div className="mt-2 flex items-center gap-2 rounded-xl border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800">
+                        <CheckCircle2 className="h-4 w-4 shrink-0" />
+
+                        <span className="font-semibold">
+                          {verifiedName ||
+                            "Account verified"}
+                        </span>
+                      </div>
+                    )}
+                  </section>
+                )}
+
+              {/* JAMB PHONE NUMBER */}
+              {(isAirtime ||
+                isData ||
+                isEpin ||
+                (isJamb && verified)) && (
                 <section className="rounded-3xl border bg-white p-5 shadow-sm">
                   <Label className="text-sm font-bold">
-                    Meter Type
+                    {customerLabel}
                   </Label>
 
-                  {meterTypes.length ? (
-                    <div className="mt-2 grid grid-cols-2 gap-2">
-                      {meterTypes.map(
-                        (
-                          meter: Biller
-                        ) => {
-                          const code =
-                            getCode(
-                              meter
-                            );
+                  <Input
+                    value={customer}
+                    onChange={(e) =>
+                      setCustomer(
+                        e.target.value
+                      )
+                    }
+                    placeholder={
+                      customerPlaceholder
+                    }
+                    inputMode="tel"
+                    className="mt-2 h-12"
+                    disabled={
+                      !!processingSession
+                    }
+                  />
+                </section>
+              )}
 
-                          const name =
-                            getName(
-                              meter
-                            );
+              {/* DATA */}
+              {isData &&
+                selectedBillerCode && (
+                  <section className="rounded-3xl border bg-white p-4 shadow-sm">
+                    <div className="mb-4 flex gap-2 overflow-x-auto pb-1">
+                      {DATA_TABS.map(
+                        (tab) => (
+                          <button
+                            key={tab}
+                            type="button"
+                            onClick={() =>
+                              setDataTab(tab)
+                            }
+                            className={`whitespace-nowrap rounded-full px-4 py-2 text-xs font-bold ${
+                              dataTab === tab
+                                ? "iyanjupay-service-primary bg-gradient-to-r from-[#4C1D95] via-[#6D28D9] to-[#2563EB] text-white"
+                                : "bg-gray-100 text-gray-600"
+                            }`}
+                          >
+                            {tab ===
+                              "HOT DEALS" && (
+                              <Flame className="mr-1 inline h-3.5 w-3.5" />
+                            )}
 
-                          return (
-                            <button
-                              key={code}
-                              type="button"
-                              onClick={() =>
-                                handleMeterType(
-                                  code
-                                )
-                              }
-                              className={`rounded-xl border p-3 text-sm font-semibold ${
-                                meterType ===
-                                code
-                                  ? "border-[#6D28D9] bg-gradient-to-r from-[#4C1D95] via-[#6D28D9] to-[#2563EB] text-white"
-                                  : "border-gray-200"
-                              }`}
-                            >
-                              {name}
-                            </button>
-                          );
-                        }
+                            {tab}
+                          </button>
+                        )
                       )}
                     </div>
-                  ) : (
-                    <select
-                      value={meterType}
-                      onChange={(e) =>
-                        handleMeterType(
-                          e.target.value
-                        )
-                      }
-                      className="mt-2 h-11 w-full rounded-xl border bg-white px-3 text-sm"
-                    >
-                      <option value="">
-                        Select meter type
-                      </option>
 
-                      <option value="PREPAID">
-                        Prepaid
-                      </option>
-
-                      <option value="POSTPAID">
-                        Postpaid
-                      </option>
-                    </select>
-                  )}
-                </section>
-              )}
-
-            {/* CABLE / ELECTRICITY / JAMB IDENTIFIER */}
-            {(isCable ||
-              isElectricity ||
-              isJamb) &&
-              selectedBillerCode && (
-                <section className="rounded-3xl border bg-white p-5 shadow-sm">
-                  <Label className="text-sm font-bold">
-                    {isJamb
-                      ? "JAMB Profile Code"
-                      : customerLabel}
-                  </Label>
-
-                  {isJamb ? (
-                    <Input
-                      value={profileCode}
-                      onChange={(e) => {
-                        setProfileCode(
-                          e.target.value
-                        );
-
-                        resetVerification();
-                      }}
-                      placeholder="Enter JAMB Profile Code"
-                      className="mt-2 h-12"
-                    />
-                  ) : (
-                    <Input
-                      value={customer}
-                      onChange={(e) => {
-                        setCustomer(
-                          e.target.value.replace(
-                            /\s+/g,
-                            ""
-                          )
-                        );
-
-                        resetVerification();
-                      }}
-                      placeholder={
-                        customerPlaceholder
-                      }
-                      inputMode="numeric"
-                      className="mt-2 h-12"
-                    />
-                  )}
-
-                  {verifyingIdentifier && (
-                    <div className="mt-2 flex items-center gap-2 text-xs font-medium text-[#6D28D9]">
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      Verifying details...
-                    </div>
-                  )}
-
-                  {verified && (
-                    <div className="mt-2 flex items-center gap-2 rounded-xl border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800">
-                      <CheckCircle2 className="h-4 w-4 shrink-0" />
-
-                      <span className="font-semibold">
-                        {verifiedName ||
-                          "Account verified"}
-                      </span>
-                    </div>
-                  )}
-                </section>
-              )}
-
-            {/* JAMB PHONE NUMBER */}
-            {(isAirtime ||
-              isData ||
-              isEpin ||
-              (isJamb && verified)) && (
-              <section className="rounded-3xl border bg-white p-5 shadow-sm">
-                <Label className="text-sm font-bold">
-                  {customerLabel}
-                </Label>
-
-                <Input
-                  value={customer}
-                  onChange={(e) =>
-                    setCustomer(
-                      e.target.value
-                    )
-                  }
-                  placeholder={
-                    customerPlaceholder
-                  }
-                  inputMode="tel"
-                  className="mt-2 h-12"
-                  disabled={
-                    !!processingSession
-                  }
-                />
-              </section>
-            )}
-
-            {/* DATA */}
-            {isData &&
-              selectedBillerCode && (
-                <section className="rounded-3xl border bg-white p-4 shadow-sm">
-                  <div className="mb-4 flex gap-2 overflow-x-auto pb-1">
-                    {DATA_TABS.map(
-                      (tab) => (
-                        <button
-                          key={tab}
-                          type="button"
-                          onClick={() =>
-                            setDataTab(tab)
-                          }
-                          className={`whitespace-nowrap rounded-full px-4 py-2 text-xs font-bold ${
-                            dataTab === tab
-                              ? "bg-gradient-to-r from-[#4C1D95] via-[#6D28D9] to-[#2563EB] text-white"
-                              : "bg-gray-100 text-gray-600"
-                          }`}
-                        >
-                          {tab ===
-                            "HOT DEALS" && (
-                            <Flame className="mr-1 inline h-3.5 w-3.5" />
-                          )}
-
-                          {tab}
-                        </button>
-                      )
+                    {loadingItems ? (
+                      <div className="flex items-center justify-center py-8 text-sm text-gray-500">
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Loading data plans...
+                      </div>
+                    ) : visibleDataPlans.length ? (
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        {visibleDataPlans.map(
+                          renderPlan
+                        )}
+                      </div>
+                    ) : (
+                      <div className="rounded-2xl bg-gray-50 p-5 text-center text-sm text-gray-500">
+                        No plans in this
+                        category.
+                      </div>
                     )}
+                  </section>
+                )}
+
+              {/* PACKAGE-BASED SERVICES
+               *
+               * IMPORTANT CHANGE:
+               *
+               * Previously this section used:
+               *
+               *   isCable && verified
+               *   isJamb && verified
+               *
+               * which prevented packages from appearing
+               * until verification completed.
+               *
+               * It now uses selectedBillerCode so packages
+               * appear immediately after selecting the
+               * provider/exam type.
+               */}
+              {(
+                (isCable &&
+                  selectedBillerCode) ||
+                (isJamb &&
+                  selectedBillerCode) ||
+                (isEpin &&
+                  selectedBillerCode) ||
+                (serviceType === "smile" &&
+                  selectedBillerCode) ||
+                (serviceType === "waec" &&
+                  selectedBillerCode)
+              ) && (
+                <section className="rounded-3xl border bg-white p-5 shadow-sm">
+                  <div className="mb-3">
+                    <h2 className="text-sm font-bold">
+                      Choose package
+                    </h2>
+
+                    <p className="text-xs text-gray-500">
+                      Select the package you want to
+                      purchase.
+                    </p>
                   </div>
 
                   {loadingItems ? (
                     <div className="flex items-center justify-center py-8 text-sm text-gray-500">
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Loading data plans...
+                      Loading packages...
                     </div>
-                  ) : visibleDataPlans.length ? (
+                  ) : items.length ? (
                     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                      {visibleDataPlans.map(
-                        renderPlan
-                      )}
+                      {items
+                        .filter(
+                          (i) =>
+                            !isVariable(i)
+                        )
+                        .map(renderPlan)}
                     </div>
                   ) : (
                     <div className="rounded-2xl bg-gray-50 p-5 text-center text-sm text-gray-500">
-                      No plans in this
-                      category.
+                      No packages available.
                     </div>
                   )}
                 </section>
               )}
 
-            {/* PACKAGE-BASED SERVICES
-             *
-             * IMPORTANT CHANGE:
-             *
-             * Previously this section used:
-             *
-             *   isCable && verified
-             *   isJamb && verified
-             *
-             * which prevented packages from appearing
-             * until verification completed.
-             *
-             * It now uses selectedBillerCode so packages
-             * appear immediately after selecting the
-             * provider/exam type.
-             */}
-            {(
-              (isCable &&
-                selectedBillerCode) ||
-              (isJamb &&
-                selectedBillerCode) ||
-              (isEpin &&
-                selectedBillerCode) ||
-              (serviceType === "smile" &&
-                selectedBillerCode) ||
-              (serviceType === "waec" &&
-                selectedBillerCode)
-            ) && (
-              <section className="rounded-3xl border bg-white p-5 shadow-sm">
-                <div className="mb-3">
-                  <h2 className="text-sm font-bold">
-                    Choose package
-                  </h2>
+              {/* AMOUNT */}
+              {canEnterAmount &&
+                ((isElectricity &&
+                  verified) ||
+                  isAirtime) && (
+                  <section className="rounded-3xl border bg-white p-5 shadow-sm">
+                    <div className="mb-3 flex items-center justify-between">
+                      <div>
+                        <h2 className="text-sm font-bold">
+                          Enter amount
+                        </h2>
 
-                  <p className="text-xs text-gray-500">
-                    Select the package you want to
-                    purchase.
-                  </p>
-                </div>
-
-                {loadingItems ? (
-                  <div className="flex items-center justify-center py-8 text-sm text-gray-500">
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Loading packages...
-                  </div>
-                ) : items.length ? (
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    {items
-                      .filter(
-                        (i) =>
-                          !isVariable(i)
-                      )
-                      .map(renderPlan)}
-                  </div>
-                ) : (
-                  <div className="rounded-2xl bg-gray-50 p-5 text-center text-sm text-gray-500">
-                    No packages available.
-                  </div>
-                )}
-              </section>
-            )}
-
-            {/* AMOUNT */}
-            {canEnterAmount &&
-              ((isElectricity &&
-                verified) ||
-                isAirtime) && (
-                <section className="rounded-3xl border bg-white p-5 shadow-sm">
-                  <div className="mb-3 flex items-center justify-between">
-                    <div>
-                      <h2 className="text-sm font-bold">
-                        Enter amount
-                      </h2>
-
-                      <p className="text-xs text-gray-500">
-                        Choose an amount or enter a
-                        custom amount.
-                      </p>
+                        <p className="text-xs text-gray-500">
+                          Choose an amount or enter a
+                          custom amount.
+                        </p>
+                      </div>
                     </div>
-                  </div>
 
-                  <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
-                    {(
-                      isAirtime
-                        ? AIRTIME_AMOUNTS
-                        : BILL_AMOUNTS
-                    ).map((value) => (
+                    <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+                      {(
+                        isAirtime
+                          ? AIRTIME_AMOUNTS
+                          : BILL_AMOUNTS
+                      ).map((value) => (
+                        <button
+                          key={value}
+                          type="button"
+                          onClick={() => {
+                            setAmount(
+                              String(value)
+                            );
+
+                            setCustomAmount(
+                              false
+                            );
+                          }}
+                          className={`${
+                            amount ===
+                              String(
+                                value
+                              ) &&
+                            !customAmount
+                              ? "iyanjupay-service-selected border-[#6D28D9] bg-violet-50 text-[#4C1D95] ring-1 ring-[#6D28D9]/20"
+                              : "border-gray-200"
+                          } rounded-xl border p-3 text-sm font-bold`}
+                        >
+                          {naira(value)}
+                        </button>
+                      ))}
+
                       <button
-                        key={value}
                         type="button"
                         onClick={() => {
-                          setAmount(
-                            String(value)
-                          );
-
                           setCustomAmount(
-                            false
+                            true
                           );
+                          setAmount("");
                         }}
-                        className={`rounded-xl border p-3 text-sm font-bold ${
-                          amount ===
-                            String(
-                              value
-                            ) &&
-                          !customAmount
-                            ? "border-[#6D28D9] bg-violet-50 text-[#4C1D95] ring-1 ring-[#6D28D9]/20"
+                        className={`${
+                          customAmount
+                            ? "iyanjupay-service-selected border-[#6D28D9] bg-violet-50 text-[#4C1D95] ring-1 ring-[#6D28D9]/20"
                             : "border-gray-200"
-                        }`}
+                        } rounded-xl border p-3 text-sm font-bold`}
                       >
-                        {naira(value)}
+                        Custom
                       </button>
-                    ))}
+                    </div>
 
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setCustomAmount(
-                          true
-                        );
-                        setAmount("");
-                      }}
-                      className={`rounded-xl border p-3 text-sm font-bold ${
-                        customAmount
-                          ? "border-[#6D28D9] bg-violet-50 text-[#4C1D95] ring-1 ring-[#6D28D9]/20"
-                          : "border-gray-200"
-                      }`}
-                    >
-                      Custom
-                    </button>
-                  </div>
+                    {customAmount && (
+                      <Input
+                        type="number"
+                        min="1"
+                        step="1"
+                        value={amount}
+                        onChange={(e) =>
+                          setAmount(
+                            e.target.value
+                          )
+                        }
+                        placeholder="Enter amount"
+                        className="mt-3 h-12"
+                      />
+                    )}
+                  </section>
+                )}
 
-                  {customAmount && (
-                    <Input
-                      type="number"
-                      min="1"
-                      step="1"
-                      value={amount}
-                      onChange={(e) =>
-                        setAmount(
-                          e.target.value
-                        )
-                      }
-                      placeholder="Enter amount"
-                      className="mt-3 h-12"
-                    />
-                  )}
-                </section>
+              {/* ERROR */}
+              {error && (
+                <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+                  {error}
+                </div>
               )}
 
-            {/* ERROR */}
-            {error && (
-              <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-                {error}
-              </div>
-            )}
+              {/* CONTINUE TO PAYMENT */}
+              <section className="rounded-3xl border bg-white p-5 shadow-sm">
+                <Button
+                  className="iyanjupay-service-primary h-12 w-full bg-gradient-to-r from-[#4C1D95] via-[#6D28D9] to-[#2563EB] text-base font-bold text-white shadow-sm hover:brightness-105"
+                  onClick={startPurchase}
+                  disabled={!canPurchase}
+                >
+                  {`Continue to Pay ${
+                    hasAmount
+                      ? naira(amount)
+                      : ""
+                  }`}
+                </Button>
 
-            {/* CONTINUE TO PAYMENT */}
-            <section className="rounded-3xl border bg-white p-5 shadow-sm">
-              <Button
-                className="h-12 w-full bg-gradient-to-r from-[#4C1D95] via-[#6D28D9] to-[#2563EB] text-base font-bold text-white shadow-sm hover:brightness-105"
-                onClick={startPurchase}
-                disabled={!canPurchase}
-              >
-                {`Continue to Pay ${
-                  hasAmount
-                    ? naira(amount)
-                    : ""
-                }`}
-              </Button>
-
-              <p className="mt-3 text-center text-xs text-gray-500">
-                Your payment PIN is required before
-                the purchase is processed.
-              </p>
-            </section>
-          </>
-        )}
-      </main>
-    </div>
+                <p className="mt-3 text-center text-xs text-gray-500">
+                  Your payment PIN is required before
+                  the purchase is processed.
+                </p>
+              </section>
+            </>
+          )}
+        </main>
+      </div>
+    </>
   );
 }

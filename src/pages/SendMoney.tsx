@@ -1671,47 +1671,227 @@ const SendMoneyPage = ({
 
   return (
     <>
-      {/* ====================================================
-          SEND MONEY THEME
-          ====================================================
-          
-          This consumes the SAME Dashboard theme state.
-          Dashboard sets:
-          
-          html[data-iyanjupay-theme="light"]
-          html[data-iyanjupay-theme="blue"]
-          html[data-iyanjupay-theme="dark"]
-
-          The purple -> blue gradient is intentionally NOT
-          overridden in dark mode.
-          ==================================================== */}
-
       <style>{`
-        /*
-         * ------------------------------------------------------
-         * BASE SEND MONEY PAGE
-         * ------------------------------------------------------
-         */
+        /* =====================================================
+           BASE / LIGHT / BLUE THEME
+           White surfaces + dark text
+           ===================================================== */
 
         .send-money-page {
-          color: #0f172a;
+          color: #111827;
+          background-color: #ffffff;
           transition:
             background-color 180ms ease,
             color 180ms ease;
         }
 
+        .send-money-page .send-money-content-card {
+          background-color: #ffffff;
+          border-color: #e5e7eb;
+          color: #111827;
+        }
+
+        .send-money-page .send-money-heading {
+          color: #111827;
+        }
+
+        .send-money-page .send-money-description {
+          color: #4b5563;
+        }
+
+        .send-money-page .send-money-label {
+          color: #111827;
+        }
+
+        .send-money-page .send-money-muted {
+          color: #6b7280;
+        }
+
+        .send-money-page .send-money-input {
+          background-color: #ffffff !important;
+          border-color: #d1d5db !important;
+          color: #111827 !important;
+        }
+
+        .send-money-page .send-money-input::placeholder {
+          color: #9ca3af !important;
+          opacity: 1 !important;
+        }
+
+        .send-money-page .send-money-input:focus {
+          border-color: #818cf8 !important;
+          box-shadow:
+            0 0 0 2px
+            rgba(129, 140, 248, 0.15) !important;
+        }
+
+        .send-money-page .send-money-type-switcher {
+          background-color: #f3f4f6;
+          color: #111827;
+        }
+
+        .send-money-page .send-money-type-inactive {
+          color: #374151 !important;
+        }
+
+        .send-money-page .send-money-summary {
+          background-color: #f9fafb;
+          border-color: #e5e7eb;
+          color: #111827;
+        }
+
+        .send-money-page .send-money-summary-muted {
+          color: #4b5563;
+        }
+
+        .send-money-page .send-money-bank-search {
+          background-color: #ffffff !important;
+          border-color: #e5e7eb !important;
+          color: #111827;
+        }
+
+        .send-money-page .send-money-bank-icon {
+          background-color: #f3f4f6;
+        }
+
+        .send-money-page .send-money-bank-icon svg {
+          color: #6b7280;
+        }
+
+        .send-money-page .send-money-select-search {
+          background-color: #ffffff;
+          border-color: #e5e7eb;
+        }
+
         /*
-         * ------------------------------------------------------
-         * DARK THEME
-         * ------------------------------------------------------
-         *
-         * Keep the existing gradient header.
-         * Only the surrounding page surfaces are changed.
+         * Radix Select uses a portal, so the dropdown is outside
+         * .send-money-page. These rules are scoped by our
+         * dedicated select-content class.
          */
+
+        .send-money-select-content {
+          background-color: #ffffff !important;
+          border-color: #e5e7eb !important;
+          color: #111827 !important;
+        }
+
+        .send-money-select-content [role="option"] {
+          color: #111827 !important;
+        }
+
+        .send-money-select-content [role="option"]:hover,
+        .send-money-select-content [role="option"][data-highlighted] {
+          background-color: #f3f4f6 !important;
+          color: #111827 !important;
+        }
+
+        .send-money-select-content .text-gray-900 {
+          color: #111827 !important;
+        }
+
+        .send-money-select-content .text-gray-700 {
+          color: #374151 !important;
+        }
+
+        .send-money-select-content .text-gray-600 {
+          color: #4b5563 !important;
+        }
+
+        /*
+         * Dialog base theme:
+         * white background + dark text.
+         */
+
+        .send-money-dialog {
+          background-color: #ffffff !important;
+          border-color: #e5e7eb !important;
+          color: #111827 !important;
+        }
+
+        .send-money-dialog .send-money-dialog-title {
+          color: #111827 !important;
+        }
+
+        .send-money-dialog .send-money-dialog-description {
+          color: #4b5563 !important;
+        }
+
+        .send-money-dialog .send-money-dialog-label {
+          color: #111827 !important;
+        }
+
+        .send-money-dialog .send-money-dialog-input {
+          background-color: #ffffff !important;
+          border-color: #d1d5db !important;
+          color: #111827 !important;
+        }
+
+        .send-money-dialog .send-money-dialog-input::placeholder {
+          color: #9ca3af !important;
+        }
+
+        .send-money-dialog .send-money-pin-info {
+          background-color: #eff6ff !important;
+          border-color: #bfdbfe !important;
+        }
+
+        .send-money-dialog .send-money-pin-info-text {
+          color: #1e40af !important;
+        }
+
+        /*
+         * Blue theme keeps white surfaces and dark text.
+         */
+
+        html[data-iyanjupay-theme="blue"]
+          .send-money-page {
+          color: #111827;
+          background-color: #ffffff;
+        }
+
+        html[data-iyanjupay-theme="blue"]
+          .send-money-page
+          .send-money-content-card {
+          background-color: #ffffff !important;
+          border-color: #dbeafe !important;
+          color: #111827 !important;
+        }
+
+        html[data-iyanjupay-theme="blue"]
+          .send-money-page
+          .send-money-heading {
+          color: #111827 !important;
+        }
+
+        html[data-iyanjupay-theme="blue"]
+          .send-money-page
+          .send-money-description {
+          color: #4b5563 !important;
+        }
+
+        html[data-iyanjupay-theme="blue"]
+          .send-money-page
+          .send-money-label {
+          color: #111827 !important;
+        }
+
+        html[data-iyanjupay-theme="blue"]
+          .send-money-page
+          .send-money-input {
+          background-color: #ffffff !important;
+          color: #111827 !important;
+          border-color: #d1d5db !important;
+        }
+
+        /* =====================================================
+           DARK THEME
+           Dark surfaces + white/light text
+           ===================================================== */
 
         html[data-iyanjupay-theme="dark"]
           .send-money-page {
           color: #f8fafc;
+          background-color: #020617;
         }
 
         html[data-iyanjupay-theme="dark"]
@@ -1773,6 +1953,7 @@ const SendMoneyPage = ({
           .send-money-page
           .send-money-type-switcher {
           background-color: #1e293b !important;
+          color: #f8fafc !important;
         }
 
         html[data-iyanjupay-theme="dark"]
@@ -1786,6 +1967,7 @@ const SendMoneyPage = ({
           .send-money-summary {
           background-color: #0f172a !important;
           border-color: #334155 !important;
+          color: #f8fafc !important;
         }
 
         html[data-iyanjupay-theme="dark"]
@@ -1799,6 +1981,7 @@ const SendMoneyPage = ({
           .send-money-bank-search {
           background-color: #111827 !important;
           border-color: #334155 !important;
+          color: #f8fafc !important;
         }
 
         html[data-iyanjupay-theme="dark"]
@@ -1813,11 +1996,57 @@ const SendMoneyPage = ({
           color: #94a3b8 !important;
         }
 
-        /*
-         * ------------------------------------------------------
-         * VERIFIED / INFORMATION CARDS
-         * ------------------------------------------------------
-         */
+        html[data-iyanjupay-theme="dark"]
+          .send-money-page
+          .send-money-select-search {
+          background-color: #111827 !important;
+          border-color: #334155 !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+          .send-money-select-content {
+          background-color: #111827 !important;
+          border-color: #334155 !important;
+          color: #f8fafc !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+          .send-money-select-content
+          [role="option"] {
+          color: #e2e8f0 !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+          .send-money-select-content
+          [role="option"]:hover,
+        html[data-iyanjupay-theme="dark"]
+          .send-money-select-content
+          [role="option"][data-highlighted] {
+          background-color: #1e293b !important;
+          color: #f8fafc !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+          .send-money-select-content
+          .text-gray-900 {
+          color: #f8fafc !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+          .send-money-select-content
+          .text-gray-700 {
+          color: #e2e8f0 !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+          .send-money-select-content
+          .text-gray-600 {
+          color: #cbd5e1 !important;
+        }
+
+        /* =====================================================
+           DARK VERIFICATION / STATUS SECTIONS
+           ===================================================== */
 
         html[data-iyanjupay-theme="dark"]
           .send-money-page
@@ -1870,12 +2099,6 @@ const SendMoneyPage = ({
           color: #fdba74 !important;
         }
 
-        /*
-         * ------------------------------------------------------
-         * FEE INFORMATION
-         * ------------------------------------------------------
-         */
-
         html[data-iyanjupay-theme="dark"]
           .send-money-page
           .send-money-fee-info {
@@ -1915,130 +2138,65 @@ const SendMoneyPage = ({
           color: #fdba74 !important;
         }
 
-        /*
-         * ------------------------------------------------------
-         * SELECT / POPOVER SURFACES
-         * ------------------------------------------------------
-         */
+        /* =====================================================
+           DARK DIALOG
+           ===================================================== */
 
         html[data-iyanjupay-theme="dark"]
-          .send-money-page
-          [data-radix-select-content] {
+          .send-money-dialog {
           background-color: #111827 !important;
           border-color: #334155 !important;
           color: #f8fafc !important;
         }
 
         html[data-iyanjupay-theme="dark"]
-          .send-money-page
-          .send-money-select-search {
-          background-color: #111827 !important;
-          border-color: #334155 !important;
-        }
-
-        /*
-         * ------------------------------------------------------
-         * BLUE THEME
-         * ------------------------------------------------------
-         *
-         * Preserve the gradient header while giving blue theme
-         * its own light page treatment.
-         */
-
-        html[data-iyanjupay-theme="blue"]
-          .send-money-page
-          .send-money-content-card {
-          border-color: #dbeafe !important;
-        }
-
-        /*
-         * ------------------------------------------------------
-         * DARK THEME + SHADCN SELECT FALLBACKS
-         * ------------------------------------------------------
-         */
-
-        html[data-iyanjupay-theme="dark"]
-          [role="listbox"] {
-          background-color: #111827 !important;
-          border-color: #334155 !important;
+          .send-money-dialog
+          .send-money-dialog-title {
           color: #f8fafc !important;
         }
 
         html[data-iyanjupay-theme="dark"]
-          [role="option"] {
-          color: #e2e8f0 !important;
-        }
-
-        html[data-iyanjupay-theme="dark"]
-          [role="option"]:hover,
-        html[data-iyanjupay-theme="dark"]
-          [role="option"][data-highlighted] {
-          background-color: #1e293b !important;
-          color: #f8fafc !important;
-        }
-
-        /*
-         * ------------------------------------------------------
-         * DIALOG SUPPORT
-         * ------------------------------------------------------
-         */
-
-        html[data-iyanjupay-theme="dark"]
-          [role="dialog"] {
-          background-color: #111827 !important;
-          border-color: #334155 !important;
-          color: #f8fafc !important;
-        }
-
-        html[data-iyanjupay-theme="dark"]
-          [role="dialog"]
-          .text-gray-900 {
-          color: #f8fafc !important;
-        }
-
-        html[data-iyanjupay-theme="dark"]
-          [role="dialog"]
-          .text-gray-700 {
-          color: #e2e8f0 !important;
-        }
-
-        html[data-iyanjupay-theme="dark"]
-          [role="dialog"]
-          .text-gray-600 {
+          .send-money-dialog
+          .send-money-dialog-description {
           color: #cbd5e1 !important;
         }
 
         html[data-iyanjupay-theme="dark"]
-          [role="dialog"]
-          .bg-white {
-          background-color: #111827 !important;
+          .send-money-dialog
+          .send-money-dialog-label {
+          color: #e2e8f0 !important;
         }
 
         html[data-iyanjupay-theme="dark"]
-          [role="dialog"]
-          .bg-blue-50 {
+          .send-money-dialog
+          .send-money-dialog-input {
+          background-color: #0f172a !important;
+          border-color: #334155 !important;
+          color: #f8fafc !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+          .send-money-dialog
+          .send-money-dialog-input::placeholder {
+          color: #64748b !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+          .send-money-dialog
+          .send-money-pin-info {
           background-color: #172554 !important;
-        }
-
-        html[data-iyanjupay-theme="dark"]
-          [role="dialog"]
-          .border-blue-200 {
           border-color: #1e40af !important;
         }
 
         html[data-iyanjupay-theme="dark"]
-          [role="dialog"]
-          .text-blue-800 {
+          .send-money-dialog
+          .send-money-pin-info-text {
           color: #93c5fd !important;
         }
 
-        /*
-         * ------------------------------------------------------
-         * PRESERVE THE EXISTING GRADIENT
-         * ------------------------------------------------------
-         *
-         * Nothing in dark/blue theme overrides this header.
-         */
+        /* =====================================================
+           HEADER MUST ALWAYS KEEP PURPLE → BLUE GRADIENT
+           ===================================================== */
 
         .send-money-gradient-header {
           background-image:
@@ -2049,12 +2207,18 @@ const SendMoneyPage = ({
             ) !important;
         }
 
+        /* =====================================================
+           SEND BUTTON
+           ===================================================== */
+
         .send-money-gradient-button {
           background-color: rgb(22 163 74) !important;
+          color: #ffffff !important;
         }
 
         .send-money-gradient-button:hover {
           background-color: rgb(21 128 61) !important;
+          color: #ffffff !important;
         }
       `}</style>
 
@@ -2068,17 +2232,11 @@ const SendMoneyPage = ({
           to-indigo-50
         "
       >
-
-        {/* ====================================================
-            OFFLINE BANNER
-        ==================================================== */}
-
         {!isOnline && (
           <div className="sticky top-0 z-50 bg-red-600 text-white">
             <div className="max-w-3xl mx-auto px-4 sm:px-6 py-2.5">
               <div className="flex items-center justify-center gap-2 text-sm font-medium">
                 <WifiOff className="h-4 w-4 shrink-0" />
-
                 <span>
                   No internet connection. Reconnect to continue.
                 </span>
@@ -2087,20 +2245,13 @@ const SendMoneyPage = ({
           </div>
         )}
 
-        {/* ====================================================
-            HEADER
-        ==================================================== */}
-
         <header className="send-money-gradient-header sticky top-0 z-30 bg-gradient-to-r from-purple-600 to-blue-600 text-white shadow-md">
           <div className="max-w-3xl mx-auto px-4 sm:px-6">
             <div className="flex items-center h-16">
-
               <Button
                 type="button"
                 variant="ghost"
-                onClick={
-                  handleBack
-                }
+                onClick={handleBack}
                 className="text-white hover:bg-white/20 mr-2"
               >
                 <ArrowLeft className="h-5 w-5 mr-2" />
@@ -2109,31 +2260,23 @@ const SendMoneyPage = ({
 
               <div className="flex items-center gap-2">
                 <Send className="h-5 w-5" />
-
                 <h1 className="text-lg sm:text-xl font-bold">
                   Send Money
                 </h1>
               </div>
-
             </div>
           </div>
         </header>
 
-        {/* ====================================================
-            CONTENT
-        ==================================================== */}
-
         <main className="max-w-3xl mx-auto px-4 sm:px-6 py-6 pb-12">
-
           <div className="mb-6">
             <div className="flex items-center justify-between gap-3">
-
               <div>
-                <h2 className="send-money-heading text-2xl font-bold text-gray-900">
+                <h2 className="send-money-heading text-2xl font-bold">
                   Send Money
                 </h2>
 
-                <p className="send-money-description text-gray-600 mt-1">
+                <p className="send-money-description mt-1">
                   Send money securely to an IyanjuPay user or bank account.
                 </p>
               </div>
@@ -2157,28 +2300,20 @@ const SendMoneyPage = ({
                   </>
                 )}
               </div>
-
             </div>
           </div>
 
-          <div className="send-money-content-card bg-white rounded-2xl shadow-sm border p-5 sm:p-6 space-y-6">
-
-            {/* ==================================================
-                TRANSFER TYPE
-            ================================================== */}
-
+          <div className="send-money-content-card rounded-2xl shadow-sm border p-5 sm:p-6 space-y-6">
             <div className="space-y-2">
               <Label className="send-money-label">
                 Send Money To
               </Label>
 
-              <div className="send-money-type-switcher grid grid-cols-2 gap-2 p-1 bg-gray-100 rounded-lg">
-
+              <div className="send-money-type-switcher grid grid-cols-2 gap-2 p-1 rounded-lg">
                 <Button
                   type="button"
                   variant={
-                    transferType ===
-                    "iyanjupay"
+                    transferType === "iyanjupay"
                       ? "default"
                       : "ghost"
                   }
@@ -2188,9 +2323,8 @@ const SendMoneyPage = ({
                     )
                   }
                   className={
-                    transferType ===
-                    "iyanjupay"
-                      ? "bg-green-600 hover:bg-green-700"
+                    transferType === "iyanjupay"
+                      ? "bg-green-600 hover:bg-green-700 text-white"
                       : "send-money-type-inactive"
                   }
                 >
@@ -2201,8 +2335,7 @@ const SendMoneyPage = ({
                 <Button
                   type="button"
                   variant={
-                    transferType ===
-                    "bank"
+                    transferType === "bank"
                       ? "default"
                       : "ghost"
                   }
@@ -2212,25 +2345,18 @@ const SendMoneyPage = ({
                     )
                   }
                   className={
-                    transferType ===
-                    "bank"
-                      ? "bg-green-600 hover:bg-green-700"
+                    transferType === "bank"
+                      ? "bg-green-600 hover:bg-green-700 text-white"
                       : "send-money-type-inactive"
                   }
                 >
                   <Building2 className="h-4 w-4 mr-2" />
                   Bank Account
                 </Button>
-
               </div>
             </div>
 
-            {/* ==================================================
-                BALANCE
-            ================================================== */}
-
             <div className="bg-green-50 border border-green-100 p-4 rounded-xl">
-
               <p className="text-sm text-green-700">
                 Available Wallet Balance
               </p>
@@ -2245,19 +2371,11 @@ const SendMoneyPage = ({
                   }
                 )}
               </p>
-
             </div>
 
-            {/* ==================================================
-                IYANJUPAY
-            ================================================== */}
-
-            {transferType ===
-              "iyanjupay" && (
+            {transferType === "iyanjupay" && (
               <div className="space-y-4">
-
                 <div className="space-y-2">
-
                   <Label
                     htmlFor="iyanjupayWalletId"
                     className="send-money-label"
@@ -2267,9 +2385,7 @@ const SendMoneyPage = ({
 
                   <Input
                     id="iyanjupayWalletId"
-                    value={
-                      iyanjupayWalletId
-                    }
+                    value={iyanjupayWalletId}
                     onChange={(e) => {
                       const value =
                         e.target.value.replace(
@@ -2280,10 +2396,7 @@ const SendMoneyPage = ({
                       iyanjuPayResolveRequestRef.current++;
 
                       setIyanjuPayWalletId(
-                        value.slice(
-                          0,
-                          8
-                        )
+                        value.slice(0, 8)
                       );
 
                       setResolvedIyanjuPayRecipient(
@@ -2302,94 +2415,70 @@ const SendMoneyPage = ({
                     className="send-money-input"
                   />
 
-                  <p className="send-money-muted text-xs text-gray-500">
+                  <p className="send-money-muted text-xs">
                     Enter the recipient's 8-digit IyanjuPay Wallet ID.
                   </p>
 
-                  {iyanjupayWalletId.length >
-                    0 &&
-                    iyanjupayWalletId.length <
-                      8 && (
-                    <p className="text-xs text-orange-600">
-                      Wallet ID must contain exactly 8 digits.
-                    </p>
-                  )}
+                  {iyanjupayWalletId.length > 0 &&
+                    iyanjupayWalletId.length < 8 && (
+                      <p className="text-xs text-orange-600">
+                        Wallet ID must contain exactly 8 digits.
+                      </p>
+                    )}
 
                   {resolvingIyanjuPayRecipient &&
-                    iyanjupayWalletId.length ===
-                      8 && (
-                    <div className="send-money-verifying rounded-lg border border-blue-200 bg-blue-50 p-4">
-                      <div className="flex items-center gap-2">
-                        <Loader2 className="h-4 w-4 text-blue-600 animate-spin" />
-
-                        <p className="send-money-verifying-text text-sm text-blue-700">
-                          Verifying recipient...
-                        </p>
+                    iyanjupayWalletId.length === 8 && (
+                      <div className="send-money-verifying rounded-lg border border-blue-200 bg-blue-50 p-4">
+                        <div className="flex items-center gap-2">
+                          <Loader2 className="h-4 w-4 text-blue-600 animate-spin" />
+                          <p className="send-money-verifying-text text-sm text-blue-700">
+                            Verifying recipient...
+                          </p>
+                        </div>
                       </div>
-                    </div>
-                  )}
+                    )}
 
                   {!resolvingIyanjuPayRecipient &&
                     resolvedIyanjuPayRecipient && (
-                    <div className="send-money-verified rounded-lg border border-green-200 bg-green-50 p-4">
-                      <div className="flex items-start gap-3">
+                      <div className="send-money-verified rounded-lg border border-green-200 bg-green-50 p-4">
+                        <div className="flex items-start gap-3">
+                          <CheckCircle2 className="h-5 w-5 text-green-600 mt-0.5 shrink-0" />
 
-                        <CheckCircle2 className="h-5 w-5 text-green-600 mt-0.5 shrink-0" />
+                          <div className="min-w-0">
+                            <p className="send-money-verified-title text-xs text-green-700 font-medium">
+                              VERIFIED RECIPIENT
+                            </p>
 
-                        <div className="min-w-0">
+                            <p className="send-money-verified-name font-semibold text-gray-900 mt-1 break-words">
+                              {resolvedIyanjuPayRecipient.name}
+                            </p>
 
-                          <p className="send-money-verified-title text-xs text-green-700 font-medium">
-                            VERIFIED RECIPIENT
-                          </p>
-
-                          <p className="send-money-verified-name font-semibold text-gray-900 mt-1 break-words">
-                            {
-                              resolvedIyanjuPayRecipient.name
-                            }
-                          </p>
-
-                          <p className="send-money-verified-muted text-sm text-gray-600">
-                            Wallet ID:{" "}
-                            {
-                              resolvedIyanjuPayRecipient.wallet_id
-                            }
-                          </p>
-
+                            <p className="send-money-verified-muted text-sm text-gray-600">
+                              Wallet ID:{" "}
+                              {resolvedIyanjuPayRecipient.wallet_id}
+                            </p>
+                          </div>
                         </div>
-
                       </div>
-                    </div>
-                  )}
+                    )}
 
                   {!resolvingIyanjuPayRecipient &&
-                    iyanjupayWalletId.length ===
-                      8 &&
+                    iyanjupayWalletId.length === 8 &&
                     !resolvedIyanjuPayRecipient &&
                     isOnline && (
-                    <div className="send-money-warning rounded-lg border border-red-200 bg-red-50 p-3">
-                      <p className="send-money-warning-text text-sm text-red-700">
-                        Wallet ID could not be verified. Please check the recipient's Wallet ID.
-                      </p>
-                    </div>
-                  )}
-
+                      <div className="send-money-warning rounded-lg border border-red-200 bg-red-50 p-3">
+                        <p className="send-money-warning-text text-sm text-red-700">
+                          Wallet ID could not be verified. Please check the recipient's Wallet ID.
+                        </p>
+                      </div>
+                    )}
                 </div>
-
               </div>
             )}
 
-            {/* ==================================================
-                BANK
-            ================================================== */}
-
-            {transferType ===
-              "bank" && (
+            {transferType === "bank" && (
               <div className="space-y-5">
-
-                {/* BANK SELECT */}
-
                 <div className="space-y-2">
-
                   <Label
                     htmlFor="bank"
                     className="send-money-label"
@@ -2403,14 +2492,8 @@ const SendMoneyPage = ({
                       resolveRequestRef.current++;
 
                       setBank(value);
-                      setResolvedAccount(
-                        null
-                      );
-
-                      setResolving(
-                        false
-                      );
-
+                      setResolvedAccount(null);
+                      setResolving(false);
                       setBankSearch("");
                     }}
                     disabled={
@@ -2419,13 +2502,11 @@ const SendMoneyPage = ({
                       banks.length === 0
                     }
                   >
-
                     <SelectTrigger
                       id="bank"
                       className="h-12 send-money-input"
                     >
                       <div className="flex items-center gap-2 min-w-0">
-
                         <Building2 className="h-4 w-4 text-gray-400 shrink-0" />
 
                         {selectedBankName ? (
@@ -2441,16 +2522,14 @@ const SendMoneyPage = ({
                                 : "Search and select your bank"}
                           </span>
                         )}
-
                       </div>
                     </SelectTrigger>
 
-                    <SelectContent className="max-h-[420px]">
-
-                      {/* SEARCH */}
-
+                    <SelectContent
+                      className="send-money-select-content max-h-[420px]"
+                    >
                       <div
-                        className="send-money-bank-search sticky top-0 z-20 bg-white p-2 border-b"
+                        className="send-money-bank-search sticky top-0 z-20 p-2 border-b"
                         onPointerDown={(e) =>
                           e.stopPropagation()
                         }
@@ -2459,13 +2538,10 @@ const SendMoneyPage = ({
                         }
                       >
                         <div className="relative">
-
                           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
 
                           <Input
-                            value={
-                              bankSearch
-                            }
+                            value={bankSearch}
                             onChange={(e) =>
                               setBankSearch(
                                 e.target.value
@@ -2479,23 +2555,18 @@ const SendMoneyPage = ({
                             autoComplete="off"
                             autoFocus
                           />
-
                         </div>
                       </div>
-
-                      {/* LOADING */}
 
                       {banksLoading ? (
                         <div className="flex flex-col items-center justify-center gap-2 p-6 text-sm text-gray-500">
                           <Loader2 className="h-5 w-5 animate-spin text-green-600" />
-
                           <span>
                             Loading banks...
                           </span>
                         </div>
                       ) : !isOnline ? (
                         <div className="flex flex-col items-center justify-center p-6 text-center">
-
                           <WifiOff className="h-8 w-8 text-red-300 mb-2" />
 
                           <p className="text-sm font-medium text-gray-700">
@@ -2505,57 +2576,39 @@ const SendMoneyPage = ({
                           <p className="text-xs text-gray-500 mt-1">
                             Reconnect to load the bank list.
                           </p>
-
                         </div>
-                      ) : filteredBanks.length >
-                        0 ? (
+                      ) : filteredBanks.length > 0 ? (
                         <>
-
                           <div className="px-3 py-2 text-xs text-gray-400">
                             {filteredBanks.length}{" "}
-                            {filteredBanks.length ===
-                            1
+                            {filteredBanks.length === 1
                               ? "bank"
                               : "banks"}{" "}
                             found
                           </div>
 
                           {filteredBanks.map(
-                            (
-                              bankItem
-                            ) => (
+                            (bankItem) => (
                               <SelectItem
-                                key={
-                                  bankItem.code
-                                }
-                                value={
-                                  bankItem.code
-                                }
-                                className="py-3"
+                                key={bankItem.code}
+                                value={bankItem.code}
+                                className="py-3 text-gray-900"
                               >
-
                                 <div className="flex items-center gap-2 min-w-0">
-
-                                  <div className="send-money-bank-icon w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center shrink-0">
-                                    <Building2 className="h-4 w-4 text-gray-500" />
+                                  <div className="send-money-bank-icon w-8 h-8 rounded-lg flex items-center justify-center shrink-0">
+                                    <Building2 className="h-4 w-4" />
                                   </div>
 
                                   <span className="truncate">
-                                    {
-                                      bankItem.name
-                                    }
+                                    {bankItem.name}
                                   </span>
-
                                 </div>
-
                               </SelectItem>
                             )
                           )}
-
                         </>
                       ) : (
                         <div className="flex flex-col items-center justify-center p-6 text-center">
-
                           <Building2 className="h-8 w-8 text-gray-300 mb-2" />
 
                           <p className="text-sm font-medium text-gray-700">
@@ -2565,23 +2618,17 @@ const SendMoneyPage = ({
                           <p className="text-xs text-gray-500 mt-1">
                             Try another bank name.
                           </p>
-
                         </div>
                       )}
-
                     </SelectContent>
                   </Select>
 
-                  <p className="send-money-muted text-xs text-gray-500">
+                  <p className="send-money-muted text-xs">
                     Search by bank name and select the recipient's bank.
                   </p>
-
                 </div>
 
-                {/* ACCOUNT NUMBER */}
-
                 <div className="space-y-2">
-
                   <Label
                     htmlFor="accountNumber"
                     className="send-money-label"
@@ -2591,9 +2638,7 @@ const SendMoneyPage = ({
 
                   <Input
                     id="accountNumber"
-                    value={
-                      accountNumber
-                    }
+                    value={accountNumber}
                     onChange={(e) => {
                       const value =
                         e.target.value.replace(
@@ -2604,33 +2649,22 @@ const SendMoneyPage = ({
                       resolveRequestRef.current++;
 
                       setAccountNumber(
-                        value.slice(
-                          0,
-                          10
-                        )
+                        value.slice(0, 10)
                       );
 
-                      setResolvedAccount(
-                        null
-                      );
-
-                      setResolving(
-                        false
-                      );
+                      setResolvedAccount(null);
+                      setResolving(false);
                     }}
                     placeholder="Enter 10-digit account number"
                     maxLength={10}
                     inputMode="numeric"
-                    disabled={
-                      !isOnline
-                    }
+                    disabled={!isOnline}
                     className="send-money-input"
                   />
 
                   {resolving && (
                     <div className="flex items-center gap-2 text-sm text-blue-600">
                       <Loader2 className="h-4 w-4 animate-spin" />
-
                       <span>
                         Verifying account...
                       </span>
@@ -2638,42 +2672,30 @@ const SendMoneyPage = ({
                   )}
 
                   {!resolving &&
-                    accountNumber.length >
-                      0 &&
-                    accountNumber.length <
-                      10 && (
-                    <p className="send-money-muted text-xs text-gray-500">
-                      Enter all 10 digits to automatically verify the account.
-                    </p>
-                  )}
-
+                    accountNumber.length > 0 &&
+                    accountNumber.length < 10 && (
+                      <p className="send-money-muted text-xs">
+                        Enter all 10 digits to automatically verify the account.
+                      </p>
+                    )}
                 </div>
-
-                {/* VERIFIED ACCOUNT */}
 
                 {resolvedAccount && (
                   <div className="send-money-verified rounded-lg border border-green-200 bg-green-50 p-4">
-
                     <div className="flex items-start gap-3">
-
                       <CheckCircle2 className="h-5 w-5 text-green-600 mt-0.5 shrink-0" />
 
                       <div className="min-w-0">
-
                         <p className="send-money-verified-title text-xs text-green-700 font-medium">
                           VERIFIED ACCOUNT
                         </p>
 
                         <p className="send-money-verified-name font-semibold text-gray-900 mt-1 break-words">
-                          {
-                            resolvedAccount.account_name
-                          }
+                          {resolvedAccount.account_name}
                         </p>
 
                         <p className="send-money-verified-muted text-sm text-gray-600">
-                          {
-                            resolvedAccount.account_number
-                          }
+                          {resolvedAccount.account_number}
                         </p>
 
                         {selectedBankName && (
@@ -2681,23 +2703,14 @@ const SendMoneyPage = ({
                             {selectedBankName}
                           </p>
                         )}
-
                       </div>
-
                     </div>
-
                   </div>
                 )}
-
               </div>
             )}
 
-            {/* ==================================================
-                AMOUNT
-            ================================================== */}
-
             <div className="space-y-2">
-
               <Label
                 htmlFor="amount"
                 className="send-money-label"
@@ -2710,31 +2723,20 @@ const SendMoneyPage = ({
                 type="number"
                 value={amount}
                 onChange={(e) =>
-                  setAmount(
-                    e.target.value
-                  )
+                  setAmount(e.target.value)
                 }
                 placeholder="Enter amount"
                 min="1"
                 step="0.01"
-                disabled={
-                  !isOnline
-                }
+                disabled={!isOnline}
                 className="send-money-input"
               />
-
             </div>
 
-            {/* ==================================================
-                FEE SUMMARY
-            ================================================== */}
-
             {transferAmount > 0 && (
-              <div className="send-money-summary rounded-xl border bg-gray-50 p-4 space-y-3">
-
+              <div className="send-money-summary rounded-xl border p-4 space-y-3">
                 <div className="flex justify-between text-sm">
-
-                  <span className="send-money-summary-muted text-gray-600">
+                  <span className="send-money-summary-muted">
                     Transfer amount
                   </span>
 
@@ -2748,12 +2750,10 @@ const SendMoneyPage = ({
                       }
                     )}
                   </span>
-
                 </div>
 
                 <div className="flex justify-between text-sm">
-
-                  <span className="send-money-summary-muted text-gray-600">
+                  <span className="send-money-summary-muted">
                     Transfer fee
                   </span>
 
@@ -2767,11 +2767,9 @@ const SendMoneyPage = ({
                       }
                     )}
                   </span>
-
                 </div>
 
                 <div className="border-t pt-3 flex justify-between">
-
                   <span className="font-semibold">
                     Total to be deducted
                   </span>
@@ -2786,11 +2784,9 @@ const SendMoneyPage = ({
                       }
                     )}
                   </span>
-
                 </div>
 
-                {transferType ===
-                  "bank" && (
+                {transferType === "bank" && (
                   <div className="send-money-bank-fee-info rounded-md bg-yellow-50 border border-yellow-200 p-3">
                     <p className="send-money-bank-fee-info-text text-xs text-yellow-800">
                       A ₦10 IyanjuPay transfer fee will be deducted from your wallet in addition to the transfer amount.
@@ -2798,21 +2794,15 @@ const SendMoneyPage = ({
                   </div>
                 )}
 
-                {transferType ===
-                  "iyanjupay" && (
+                {transferType === "iyanjupay" && (
                   <div className="send-money-free-info rounded-md bg-violet-50 border border-green-200 p-3">
                     <p className="send-money-free-info-text text-xs text-green-800">
                       IyanjuPay-to-IyanjuPay transfers are completely free. No transfer fee will be deducted.
                     </p>
                   </div>
                 )}
-
               </div>
             )}
-
-            {/* ==================================================
-                INSUFFICIENT
-            ================================================== */}
 
             {hasInsufficientBalance && (
               <div className="send-money-warning rounded-md bg-red-50 border border-red-200 p-3">
@@ -2831,12 +2821,7 @@ const SendMoneyPage = ({
               </div>
             )}
 
-            {/* ==================================================
-                NARRATION
-            ================================================== */}
-
             <div className="space-y-2">
-
               <Label
                 htmlFor="narration"
                 className="send-money-label"
@@ -2853,26 +2838,15 @@ const SendMoneyPage = ({
                   )
                 }
                 placeholder="Enter transaction description"
-                disabled={
-                  !isOnline
-                }
+                disabled={!isOnline}
                 className="send-money-input"
               />
-
             </div>
-
-            {/* ==================================================
-                SEND
-            ================================================== */}
 
             <Button
               type="button"
-              onClick={
-                handleTransfer
-              }
-              disabled={
-                isTransferDisabled
-              }
+              onClick={handleTransfer}
+              disabled={isTransferDisabled}
               className="send-money-gradient-button w-full h-12 text-base font-semibold"
             >
               {!isOnline ? (
@@ -2893,7 +2867,6 @@ const SendMoneyPage = ({
               ) : (
                 <>
                   <Send className="h-4 w-4 mr-2" />
-
                   Send ₦
                   {transferAmount > 0
                     ? transferAmount.toLocaleString(
@@ -2903,30 +2876,20 @@ const SendMoneyPage = ({
                 </>
               )}
             </Button>
-
           </div>
         </main>
       </div>
 
-      {/* ======================================================
-          CREATE PAYMENT PIN
-          ====================================================== */}
-
       <Dialog
-        open={
-          createPinOpen
-        }
+        open={createPinOpen}
         onOpenChange={(open) => {
-          if (
-            !open &&
-            !creatingPin
-          ) {
+          if (!open && !creatingPin) {
             handleCreatePinCancel();
           }
         }}
       >
         <DialogContent
-          className="sm:max-w-md"
+          className="send-money-dialog sm:max-w-md"
           onInteractOutside={(event) => {
             if (creatingPin) {
               event.preventDefault();
@@ -2939,36 +2902,33 @@ const SendMoneyPage = ({
           }}
         >
           <DialogHeader>
-
-            <DialogTitle className="flex items-center gap-2">
+            <DialogTitle className="send-money-dialog-title flex items-center gap-2">
               <ShieldCheck className="h-5 w-5 text-green-600" />
               Create Payment PIN
             </DialogTitle>
 
-            <DialogDescription>
+            <DialogDescription className="send-money-dialog-description">
               You need a 4-digit Payment PIN before you can make payments or transfers.
             </DialogDescription>
-
           </DialogHeader>
 
           <div className="space-y-4">
-
-            <div className="rounded-lg border border-blue-200 bg-blue-50 p-3">
-              <p className="text-sm text-blue-800">
+            <div className="send-money-pin-info rounded-lg border p-3">
+              <p className="send-money-pin-info-text text-sm">
                 Your Payment PIN is used to authorize transactions securely. Do not share it with anyone.
               </p>
             </div>
 
             <div className="space-y-2">
-
-              <Label htmlFor="newPaymentPin">
+              <Label
+                htmlFor="newPaymentPin"
+                className="send-money-dialog-label"
+              >
                 Create 4-digit PIN
               </Label>
 
               <Input
-                ref={
-                  createPinInputRef
-                }
+                ref={createPinInputRef}
                 id="newPaymentPin"
                 type="password"
                 inputMode="numeric"
@@ -2987,30 +2947,23 @@ const SendMoneyPage = ({
                         4
                       );
 
-                  setNewPin(
-                    value
-                  );
+                  setNewPin(value);
 
-                  if (
-                    createPinError
-                  ) {
-                    setCreatePinError(
-                      ""
-                    );
+                  if (createPinError) {
+                    setCreatePinError("");
                   }
                 }}
                 placeholder="••••"
-                disabled={
-                  creatingPin
-                }
-                className="send-money-input text-center text-2xl tracking-[0.5em]"
+                disabled={creatingPin}
+                className="send-money-dialog-input text-center text-2xl tracking-[0.5em]"
               />
-
             </div>
 
             <div className="space-y-2">
-
-              <Label htmlFor="confirmPaymentPin">
+              <Label
+                htmlFor="confirmPaymentPin"
+                className="send-money-dialog-label"
+              >
                 Confirm Payment PIN
               </Label>
 
@@ -3020,9 +2973,7 @@ const SendMoneyPage = ({
                 inputMode="numeric"
                 autoComplete="new-password"
                 maxLength={4}
-                value={
-                  confirmPin
-                }
+                value={confirmPin}
                 onChange={(e) => {
                   const value =
                     e.target.value
@@ -3035,36 +2986,25 @@ const SendMoneyPage = ({
                         4
                       );
 
-                  setConfirmPin(
-                    value
-                  );
+                  setConfirmPin(value);
 
-                  if (
-                    createPinError
-                  ) {
-                    setCreatePinError(
-                      ""
-                    );
+                  if (createPinError) {
+                    setCreatePinError("");
                   }
                 }}
                 onKeyDown={(e) => {
                   if (
-                    e.key ===
-                      "Enter" &&
+                    e.key === "Enter" &&
                     !creatingPin
                   ) {
                     e.preventDefault();
-
                     handleCreatePin();
                   }
                 }}
                 placeholder="••••"
-                disabled={
-                  creatingPin
-                }
-                className="send-money-input text-center text-2xl tracking-[0.5em]"
+                disabled={creatingPin}
+                className="send-money-dialog-input text-center text-2xl tracking-[0.5em]"
               />
-
             </div>
 
             {createPinError && (
@@ -3075,37 +3015,27 @@ const SendMoneyPage = ({
                 {createPinError}
               </div>
             )}
-
           </div>
 
           <DialogFooter className="flex gap-2 sm:gap-2">
-
             <Button
               type="button"
               variant="outline"
               className="flex-1"
-              onClick={
-                handleCreatePinCancel
-              }
-              disabled={
-                creatingPin
-              }
+              onClick={handleCreatePinCancel}
+              disabled={creatingPin}
             >
               Cancel
             </Button>
 
             <Button
               type="button"
-              className="flex-1 bg-violet-600 hover:bg-blue-700"
-              onClick={
-                handleCreatePin
-              }
+              className="flex-1 bg-violet-600 hover:bg-blue-700 text-white"
+              onClick={handleCreatePin}
               disabled={
                 creatingPin ||
-                newPin.length !==
-                  4 ||
-                confirmPin.length !==
-                  4 ||
+                newPin.length !== 4 ||
+                confirmPin.length !== 4 ||
                 !isOnline
               }
             >
@@ -3118,25 +3048,14 @@ const SendMoneyPage = ({
                 "Create PIN"
               )}
             </Button>
-
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* ======================================================
-          PAYMENT PIN VERIFICATION
-          ====================================================== */}
-
       <PaymentPinModal
-        open={
-          paymentPinOpen
-        }
-        onCancel={
-          handlePaymentPinCancel
-        }
-        onVerified={
-          handlePaymentPinVerified
-        }
+        open={paymentPinOpen}
+        onCancel={handlePaymentPinCancel}
+        onVerified={handlePaymentPinVerified}
         title="Authorize Transfer"
         description="Enter your 4-digit Payment PIN to authorize this transfer."
       />

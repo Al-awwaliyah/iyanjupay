@@ -122,7 +122,7 @@ const MePage = ({
         }
 
         /*
-         * BLUE
+         * BLUE THEME
          */
         [data-iyanjupay-theme="blue"]
           .iyanjupay-me-page {
@@ -130,7 +130,7 @@ const MePage = ({
         }
 
         /*
-         * DARK
+         * DARK THEME
          */
         [data-iyanjupay-theme="dark"]
           .iyanjupay-me-page {
@@ -138,11 +138,79 @@ const MePage = ({
           color: #f8fafc;
         }
 
+        /*
+         * ============================================================
+         * WHITE CARDS
+         * ============================================================
+         *
+         * Cards remain white in Dark mode.
+         * Therefore their text must remain dark for readability.
+         */
+
         [data-iyanjupay-theme="dark"]
           .iyanjupay-me-page
           .bg-white {
-          background-color: #111827 !important;
+          background-color: #ffffff !important;
         }
+
+        [data-iyanjupay-theme="dark"]
+          .iyanjupay-me-page
+          .bg-white .text-gray-900,
+        [data-iyanjupay-theme="dark"]
+          .iyanjupay-me-page
+          .bg-white .text-gray-800,
+        [data-iyanjupay-theme="dark"]
+          .iyanjupay-me-page
+          .bg-white .text-gray-700,
+        [data-iyanjupay-theme="dark"]
+          .iyanjupay-me-page
+          .bg-white .text-gray-600,
+        [data-iyanjupay-theme="dark"]
+          .iyanjupay-me-page
+          .bg-white .text-gray-500 {
+          color: #111827 !important;
+        }
+
+        /*
+         * Any headings/paragraphs/spans inside white cards
+         * remain dark regardless of the global Dark theme.
+         */
+        [data-iyanjupay-theme="dark"]
+          .iyanjupay-me-page
+          .bg-white h1,
+        [data-iyanjupay-theme="dark"]
+          .iyanjupay-me-page
+          .bg-white h2,
+        [data-iyanjupay-theme="dark"]
+          .iyanjupay-me-page
+          .bg-white h3,
+        [data-iyanjupay-theme="dark"]
+          .iyanjupay-me-page
+          .bg-white h4,
+        [data-iyanjupay-theme="dark"]
+          .iyanjupay-me-page
+          .bg-white p,
+        [data-iyanjupay-theme="dark"]
+          .iyanjupay-me-page
+          .bg-white span {
+          color: #111827 !important;
+        }
+
+        /*
+         * Secondary gray text inside white cards.
+         */
+        [data-iyanjupay-theme="dark"]
+          .iyanjupay-me-page
+          .bg-white
+          .text-gray-400 {
+          color: #6b7280 !important;
+        }
+
+        /*
+         * ============================================================
+         * GENERAL DARK MODE BACKGROUND/BORDER OVERRIDES
+         * ============================================================
+         */
 
         [data-iyanjupay-theme="dark"]
           .iyanjupay-me-page
@@ -174,42 +242,9 @@ const MePage = ({
           border-color: #334155 !important;
         }
 
-        [data-iyanjupay-theme="dark"]
-          .iyanjupay-me-page
-          .text-gray-900 {
-          color: #f8fafc !important;
-        }
-
-        [data-iyanjupay-theme="dark"]
-          .iyanjupay-me-page
-          .text-gray-800 {
-          color: #f1f5f9 !important;
-        }
-
-        [data-iyanjupay-theme="dark"]
-          .iyanjupay-me-page
-          .text-gray-700 {
-          color: #e2e8f0 !important;
-        }
-
-        [data-iyanjupay-theme="dark"]
-          .iyanjupay-me-page
-          .text-gray-600 {
-          color: #cbd5e1 !important;
-        }
-
-        [data-iyanjupay-theme="dark"]
-          .iyanjupay-me-page
-          .text-gray-500 {
-          color: #94a3b8 !important;
-        }
-
-        [data-iyanjupay-theme="dark"]
-          .iyanjupay-me-page
-          .text-gray-400 {
-          color: #64748b !important;
-        }
-
+        /*
+         * Purple accents in Dark mode.
+         */
         [data-iyanjupay-theme="dark"]
           .iyanjupay-me-page
           .bg-purple-50 {
@@ -219,7 +254,7 @@ const MePage = ({
         [data-iyanjupay-theme="dark"]
           .iyanjupay-me-page
           .bg-purple-100 {
-          background-color: #312e81 !important;
+          background-color: #ede9fe !important;
         }
 
         [data-iyanjupay-theme="dark"]
@@ -239,22 +274,26 @@ const MePage = ({
 
         [data-iyanjupay-theme="dark"]
           .iyanjupay-me-page
-          .border-purple-100 {
-          border-color: #4338ca !important;
+          .bg-purple-100
+          .text-purple-600 {
+          color: #7c3aed !important;
         }
 
         [data-iyanjupay-theme="dark"]
           .iyanjupay-me-page
-          .border-red-200 {
-          border-color: #7f1d1d !important;
+          .border-purple-100 {
+          border-color: #4338ca !important;
         }
 
         /*
-         * BLUE
+         * ============================================================
+         * BLUE THEME
+         * ============================================================
          *
-         * Match the Dashboard blue appearance by changing
-         * purple interface accents to IyanjuPay blue.
+         * Match Dashboard Blue appearance by changing purple
+         * interface accents to IyanjuPay blue.
          */
+
         [data-iyanjupay-theme="blue"]
           .iyanjupay-me-page
           .bg-purple-50 {
@@ -289,25 +328,27 @@ const MePage = ({
         }
 
         /*
-         * Keep the existing red sign-out treatment readable
-         * in dark mode.
+         * ============================================================
+         * SIGN-OUT
+         * ============================================================
          */
+
         [data-iyanjupay-theme="dark"]
           .iyanjupay-me-page
           .text-red-600 {
-          color: #fca5a5 !important;
+          color: #dc2626 !important;
         }
 
         [data-iyanjupay-theme="dark"]
           .iyanjupay-me-page
           .text-red-700 {
-          color: #fecaca !important;
+          color: #b91c1c !important;
         }
 
         [data-iyanjupay-theme="dark"]
           .iyanjupay-me-page
           [class*="hover:bg-red-50"]:hover {
-          background-color: #450a0a !important;
+          background-color: #fee2e2 !important;
         }
       `}</style>
 

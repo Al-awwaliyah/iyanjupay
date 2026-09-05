@@ -54,8 +54,8 @@ import {
  *   ../_shared/clubkonnect.ts
  *
  * Pricing:
- *   airtime       = 0%
- *   all other services = 10%
+ *   all services = 10% markup
+ *   selling price is rounded UP to the nearest ₦5
  *
  * SECURITY:
  *   ClubKonnect credentials remain server-side.
@@ -120,16 +120,7 @@ const NETWORKS: Record<string, string> = {
 };
 
 const STANDARD_MARKUP = 0.10;
-const PREMIUM_MARKUP = 0.10;
-
-const PREMIUM_SERVICES =
-  new Set<ServiceType>([
-    "airtime-card",
-    "data-card",
-    "smile",
-    "waec",
-    "jamb",
-  ]);
+const PRICE_ROUNDING_UNIT = 5;
 
 const SUPPORTED_SERVICES: ServiceType[] = [
   "airtime",
@@ -365,20 +356,9 @@ function roundMoney(
 }
 
 function markupRate(
-  service: ServiceType
+  _service: ServiceType
 ): number {
-  if (
-    service === "airtime"
-  ) {
-    return 0;
-  }
-
-  if (
-    PREMIUM_SERVICES.has(service)
-  ) {
-    return PREMIUM_MARKUP;
-  }
-
+  // Every supported ClubKonnect service uses the same 10% markup.
   return STANDARD_MARKUP;
 }
 
@@ -386,9 +366,22 @@ function sellingPrice(
   service: ServiceType,
   providerPrice: number
 ): number {
-  return roundMoney(
-    providerPrice *
-      (1 + markupRate(service))
+  const cost = Math.max(0, n(providerPrice));
+
+  if (cost <= 0) {
+    return 0;
+  }
+
+  const markedUp =
+    cost * (1 + markupRate(service));
+
+  // Always round the final selling price UP to the nearest ₦5.
+  // Examples: ₦533 → ₦535 and ₦5,868.50 → ₦5,870.
+  return (
+    Math.ceil(
+      (markedUp - Number.EPSILON) /
+        PRICE_ROUNDING_UNIT
+    ) * PRICE_ROUNDING_UNIT
   );
 }
 

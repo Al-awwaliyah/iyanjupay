@@ -4,6 +4,35 @@ import React, {
   useState,
 } from "react";
 
+import {
+  Banknote,
+  CreditCard,
+  Eye,
+  EyeOff,
+  Gift,
+  GraduationCap,
+  Headphones,
+  History,
+  Home,
+  Loader2,
+  LogOut,
+  Plus,
+  PiggyBank,
+  QrCode,
+  Receipt,
+  Radio,
+  Send,
+  Shield,
+  Smartphone,
+  User,
+  Wifi,
+  Zap,
+  Sun,
+  Moon,
+  Palette,
+  Check,
+} from "lucide-react";
+
 import { Button } from "@/components/ui/button";
 
 import {
@@ -11,34 +40,13 @@ import {
   CardContent,
 } from "@/components/ui/card";
 
-import {
-  LogOut,
-  User,
-  History,
-  Send,
-  QrCode,
-  Shield,
-  Gift,
-  Banknote,
-  Car,
-  Gamepad2,
-  Plane,
-  Home,
-  Plus,
-  Eye,
-  EyeOff,
-  Smartphone,
-  Wifi,
-  Zap,
-  CreditCard,
-} from "lucide-react";
-
 import ServiceCard from "./services/ServiceCard";
 import FundWalletModal from "./modals/FundWalletModal";
 import ServicePayment from "@/pages/ServicePayment";
-import TransferModal from "./modals/TransferModal";
 import QRCodeModal from "./modals/QRCodeModal";
 import WhatsAppFloat from "./WhatsAppFloat";
+import SupportChat from "./support/SupportChat";
+import SendMoneyPage from "@/pages/SendMoney";
 
 import ProfilePage from "./profile/ProfilePage";
 import TransactionHistory from "./transactions/TransactionHistory";
@@ -49,20 +57,33 @@ import MePage from "./me/MePage";
 import CustomerServicePage from "./me/CustomerServicePage";
 import SupportPage from "./me/SupportPage";
 import TransactionLimitPage from "./me/TransactionLimitPage";
+import PaymentPinPage from "./me/PaymentPinPage";
+import DisputesPage from "./disputes/UserDisputesPage";
 
 import { useAuth } from "@/hooks/useAuth";
 import { useWallet } from "@/hooks/useWallet";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 
+/*
+ * ============================================================
+ * SERVICE TYPES
+ * ============================================================
+ */
 
 type BillService =
   | "airtime"
   | "data"
   | "electricity"
   | "cable"
-  | "internet";
-
+  | "airtime-card"
+  | "data-card"
+  | "smile"
+  | "waec"
+  | "jamb"
+  | "internet"
+  | "insurance"
+  | "savings";
 
 type CurrentPage =
   | "home"
@@ -75,27 +96,20 @@ type CurrentPage =
   | "support"
   | "transaction-limit"
   | "payment-pin"
+  | "disputes"
+  | "send-money"
   | "service-payment";
-
 
 type SelectedService = {
   title: string;
   type: BillService;
 };
 
-
-/*
- * ============================================================
- * DASHBOARD STATISTICS TYPES
- * ============================================================
- */
-
 type TransactionStats = {
   monthlySpent: number;
   monthlyTransactions: number;
   successRate: number;
 };
-
 
 type DashboardTransaction = {
   id: string;
@@ -108,10 +122,9 @@ type DashboardTransaction = {
   created_at: string;
 };
 
-
 /*
  * ============================================================
- * SUPPORTED BILL SERVICES
+ * SUPPORTED SERVICES
  * ============================================================
  */
 
@@ -120,13 +133,22 @@ const SUPPORTED_BILL_SERVICES: BillService[] = [
   "data",
   "electricity",
   "cable",
-  "internet",
+  "airtime-card",
+  "data-card",
+  "smile",
+  "waec",
+  "jamb",
 ];
 
+const COMING_SOON_SERVICES: BillService[] = [
+  "internet",
+  "insurance",
+  "savings",
+];
 
 /*
  * ============================================================
- * SUCCESSFUL STATUSES
+ * TRANSACTION HELPERS
  * ============================================================
  */
 
@@ -138,13 +160,6 @@ const SUCCESS_STATUSES = new Set([
   "succeeded",
 ]);
 
-
-/*
- * ============================================================
- * FAILED STATUSES
- * ============================================================
- */
-
 const FAILED_STATUSES = new Set([
   "failed",
   "failure",
@@ -154,20 +169,6 @@ const FAILED_STATUSES = new Set([
   "canceled",
   "reversed",
 ]);
-
-
-/*
- * ============================================================
- * MONEY-OUT TRANSACTION TYPES
- *
- * These are the transaction types that should contribute
- * to "Total Spent".
- *
- * The helper also checks metadata/category/description so
- * your existing transaction records remain compatible even
- * if the exact transaction_type naming differs.
- * ============================================================
- */
 
 const MONEY_OUT_TYPES = new Set([
   "debit",
@@ -185,14 +186,16 @@ const MONEY_OUT_TYPES = new Set([
   "withdrawal",
   "withdraw",
   "payout",
+  "service_payment",
+  "service-payment",
+  "airtime_card",
+  "airtime-card",
+  "data_card",
+  "data-card",
+  "smile",
+  "waec",
+  "jamb",
 ]);
-
-
-/*
- * ============================================================
- * HELPER: NORMALIZE TEXT
- * ============================================================
- */
 
 const normalizeText = (
   value: unknown
@@ -203,13 +206,6 @@ const normalizeText = (
     .replace(/\s+/g, "_");
 };
 
-
-/*
- * ============================================================
- * HELPER: IS SUCCESSFUL
- * ============================================================
- */
-
 const isSuccessfulTransaction = (
   transaction: DashboardTransaction
 ): boolean => {
@@ -218,13 +214,6 @@ const isSuccessfulTransaction = (
   );
 };
 
-
-/*
- * ============================================================
- * HELPER: IS FAILED
- * ============================================================
- */
-
 const isFailedTransaction = (
   transaction: DashboardTransaction
 ): boolean => {
@@ -232,16 +221,6 @@ const isFailedTransaction = (
     normalizeText(transaction.status)
   );
 };
-
-
-/*
- * ============================================================
- * HELPER: IS MONEY OUT
- *
- * This prevents wallet funding/deposit transactions from
- * being counted as "Total Spent".
- * ============================================================
- */
 
 const isMoneyOutTransaction = (
   transaction: DashboardTransaction
@@ -276,11 +255,6 @@ const isMoneyOutTransaction = (
       metadata?.transaction_type
     );
 
-  /*
-   * Explicit credit/deposit/funding transactions
-   * should NEVER be considered spending.
-   */
-
   if (
     type === "credit" ||
     type === "funding" ||
@@ -295,10 +269,6 @@ const isMoneyOutTransaction = (
     return false;
   }
 
-  /*
-   * Explicit debit/outgoing transactions.
-   */
-
   if (
     type === "debit" ||
     metadataDirection === "debit" ||
@@ -307,10 +277,6 @@ const isMoneyOutTransaction = (
   ) {
     return true;
   }
-
-  /*
-   * Known money-out transaction types.
-   */
 
   if (
     MONEY_OUT_TYPES.has(type) ||
@@ -323,10 +289,6 @@ const isMoneyOutTransaction = (
     return true;
   }
 
-  /*
-   * Fallback based on description.
-   */
-
   const moneyOutWords = [
     "transfer",
     "airtime",
@@ -338,204 +300,304 @@ const isMoneyOutTransaction = (
     "withdraw",
     "payout",
     "debit",
+    "service",
+    "smile",
+    "waec",
+    "jamb",
   ];
 
   return moneyOutWords.some(
-    word =>
+    (word) =>
       description.includes(word)
   );
 };
 
-
 /*
  * ============================================================
- * DASHBOARD COMPONENT
+ * DASHBOARD
  * ============================================================
  */
 
 const Dashboard = () => {
-  const { user, signOut } = useAuth();
-
   const {
-    wallet,
-    loading,
-    refreshWallet,
-  } = useWallet(user?.id);
-
-  const [
-    fundModalOpen,
-    setFundModalOpen,
-  ] = useState(false);
-
-  const [
-    transferModalOpen,
-    setTransferModalOpen,
-  ] = useState(false);
-
-  const [
-    qrModalOpen,
-    setQrModalOpen,
-  ] = useState(false);
-
-  const [
-    selectedService,
-    setSelectedService,
-  ] = useState<SelectedService | null>(
-    null
-  );
-
-  const [
-    showBalance,
-    setShowBalance,
-  ] = useState(true);
-
-  const [
-    currentPage,
-    setCurrentPage,
-  ] = useState<CurrentPage>("home");
-
-  /*
-   * ==========================================================
-   * DASHBOARD STATS STATE
-   * ==========================================================
-   */
-
-  const [
-    stats,
-    setStats,
-  ] = useState<TransactionStats>({
-    monthlySpent: 0,
-    monthlyTransactions: 0,
-    successRate: 100,
-  });
-
-  const [
-    statsLoading,
-    setStatsLoading,
-  ] = useState(true);
+    user,
+    loading: authLoading,
+    signOut,
+  } = useAuth();
 
   const { toast } = useToast();
 
   /*
-   * ==========================================================
-   * EXTRACT EDGE FUNCTION ERROR
-   * ==========================================================
+   * ============================================================
+   * PAGE
+   * ============================================================
    */
 
-  const extractFunctionError = async (
-    error: any,
-    fallback = "Unable to process your request."
-  ): Promise<string> => {
-    console.error(
-      "Supabase function error:",
-      error
-    );
-
-    try {
-      if (
-        error?.context &&
-        typeof error.context.json ===
-          "function"
-      ) {
-        const response =
-          error.context;
-
-        let payload: any = null;
-
-        try {
-          payload =
-            await response.json();
-        } catch {
-          payload = null;
-        }
-
-        console.error(
-          "Edge Function response:",
-          payload
-        );
-
-        if (payload?.error) {
-          return String(
-            payload.error
-          );
-        }
-
-        if (payload?.message) {
-          return String(
-            payload.message
-          );
-        }
-
-        if (payload?.provider_message) {
-          return String(
-            payload.provider_message
-          );
-        }
-
-        if (
-          payload?.provider_response
-            ?.message
-        ) {
-          return String(
-            payload.provider_response
-              .message
-          );
-        }
-
-        if (
-          payload?.provider_response
-            ?.data?.message
-        ) {
-          return String(
-            payload.provider_response
-              .data.message
-          );
-        }
-
-        if (
-          payload?.validation_data
-            ?.response_message
-        ) {
-          return String(
-            payload.validation_data
-              .response_message
-          );
-        }
-
-        if (
-          payload?.provider_response
-            ?.data?.response_message
-        ) {
-          return String(
-            payload.provider_response.data
-              .response_message
-          );
-        }
-      }
-    } catch (parseError) {
-      console.error(
-        "Could not parse Edge Function error:",
-        parseError
-      );
-    }
-
-    if (
-      error?.message &&
-      error.message !==
-        "Edge Function returned a non-2xx status code"
-    ) {
-      return String(
-        error.message
-      );
-    }
-
-    return fallback;
-  };
+  const [currentPage, setCurrentPage] =
+    useState<CurrentPage>("home");
 
   /*
-   * ==========================================================
-   * LOAD DASHBOARD STATISTICS
-   * ==========================================================
+   * ============================================================
+   * WALLET
+   * ============================================================
+   */
+
+  const {
+    wallet,
+    loading: walletLoading,
+    refreshWallet,
+  } = useWallet(user?.id);
+
+  /*
+   * ============================================================
+   * MODALS
+   * ============================================================
+   */
+
+  const [fundModalOpen, setFundModalOpen] =
+    useState(false);
+
+  const [qrModalOpen, setQrModalOpen] =
+    useState(false);
+
+  const [
+    supportChatOpen,
+    setSupportChatOpen,
+  ] = useState(false);
+
+  const [selectedService, setSelectedService] =
+    useState<SelectedService | null>(null);
+
+  const [showBalance, setShowBalance] =
+    useState(true);
+
+  /*
+   * ============================================================
+   * DASHBOARD APPEARANCE
+   * ============================================================
+   * light = clean light appearance
+   * blue  = blue IyanjuPay appearance
+   * dark  = dark appearance
+   *
+   * The selection is persisted locally so it remains active when
+   * the customer returns to the dashboard.
+   */
+
+  type DashboardTheme =
+    | "light"
+    | "blue"
+    | "dark";
+
+  const [dashboardTheme, setDashboardTheme] =
+    useState<DashboardTheme>(() => {
+      if (
+        typeof window ===
+        "undefined"
+      ) {
+        return "light";
+      }
+
+      const saved =
+        window.localStorage.getItem(
+          "iyanjupay-dashboard-theme"
+        );
+
+      return saved === "dark" ||
+        saved === "blue" ||
+        saved === "light"
+        ? saved
+        : "light";
+    });
+
+  const [appearanceOpen, setAppearanceOpen] =
+    useState(false);
+
+  useEffect(() => {
+    window.localStorage.setItem(
+      "iyanjupay-dashboard-theme",
+      dashboardTheme
+    );
+
+    document.documentElement.dataset.iyanjupayTheme =
+      dashboardTheme;
+
+    return () => {
+      delete document.documentElement
+        .dataset.iyanjupayTheme;
+    };
+  }, [dashboardTheme]);
+
+  const appearanceConfig = {
+    light: {
+      label: "Light",
+      icon: Sun,
+      header:
+        "from-[#5b21b6] via-[#6d28d9] to-[#2563eb]",
+      wallet:
+        "from-[#4c1d95] via-[#6d28d9] to-[#2563eb]",
+    },
+    blue: {
+      label: "Blue",
+      icon: Palette,
+      header:
+        "from-[#082A63] via-[#1554B8] to-[#2563EB]",
+      wallet:
+        "from-[#082A63] via-[#1554B8] to-[#2563EB]",
+    },
+    dark: {
+      label: "Dark",
+      icon: Moon,
+      header:
+        "from-[#111827] via-[#1E1B4B] to-[#172554]",
+      wallet:
+        "from-[#111827] via-[#312E81] to-[#1E40AF]",
+    },
+  } as const;
+
+  const ActiveAppearanceIcon =
+    appearanceConfig[
+      dashboardTheme
+    ].icon;
+
+  /*
+   * ============================================================
+   * STATS
+   * ============================================================
+   */
+
+  const [stats, setStats] =
+    useState<TransactionStats>({
+      monthlySpent: 0,
+      monthlyTransactions: 0,
+      successRate: 100,
+    });
+
+  const [statsLoading, setStatsLoading] =
+    useState(true);
+
+  /*
+   * ============================================================
+   * AUTH REDIRECT
+   * ============================================================
+   */
+
+  useEffect(() => {
+    if (authLoading) {
+      return;
+    }
+
+    if (!user) {
+      window.location.replace("/");
+    }
+  }, [
+    authLoading,
+    user,
+  ]);
+
+  /*
+   * ============================================================
+   * EDGE FUNCTION ERROR
+   * ============================================================
+   */
+
+  const extractFunctionError =
+    async (
+      error: any,
+      fallback =
+        "Unable to process your request."
+    ): Promise<string> => {
+      console.error(
+        "Supabase function error:",
+        error
+      );
+
+      try {
+        if (
+          error?.context &&
+          typeof error.context.json ===
+            "function"
+        ) {
+          const response =
+            error.context;
+
+          let payload: any = null;
+
+          try {
+            payload =
+              await response.json();
+          } catch {
+            payload = null;
+          }
+
+          console.error(
+            "Edge Function response:",
+            payload
+          );
+
+          if (payload?.error) {
+            return String(
+              payload.error
+            );
+          }
+
+          if (payload?.message) {
+            return String(
+              payload.message
+            );
+          }
+
+          if (
+            payload?.provider_message
+          ) {
+            return String(
+              payload.provider_message
+            );
+          }
+
+          if (
+            payload?.provider_response
+              ?.message
+          ) {
+            return String(
+              payload.provider_response
+                .message
+            );
+          }
+
+          if (
+            payload?.provider_response
+              ?.data?.message
+          ) {
+            return String(
+              payload.provider_response
+                .data.message
+            );
+          }
+        }
+      } catch (parseError) {
+        console.error(
+          "Could not parse Edge Function error:",
+          parseError
+        );
+      }
+
+      if (
+        error?.message &&
+        error.message !==
+          "Edge Function returned a non-2xx status code"
+      ) {
+        return String(
+          error.message
+        );
+      }
+
+      return fallback;
+    };
+
+  /*
+   * ============================================================
+   * DASHBOARD STATISTICS
+   * ============================================================
    */
 
   const loadDashboardStats =
@@ -555,71 +617,42 @@ const Dashboard = () => {
       try {
         setStatsLoading(true);
 
-        /*
-         * Get all transactions belonging to
-         * the currently authenticated user.
-         *
-         * RLS should restrict this to the user's
-         * own records.
-         */
-
         const {
           data,
           error,
-        } = await supabase
-          .from("transactions")
-          .select(
-            `
-              id,
-              amount,
-              transaction_type,
-              status,
-              category,
-              description,
-              metadata,
-              created_at
-            `
-          )
-          .eq(
-            "user_id",
-            user.id
-          )
-          .order(
-            "created_at",
-            {
-              ascending: false,
-            }
-          );
+        } =
+          await supabase
+            .from("transactions")
+            .select(
+              `
+                id,
+                amount,
+                transaction_type,
+                status,
+                category,
+                description,
+                metadata,
+                created_at
+              `
+            )
+            .eq(
+              "user_id",
+              user.id
+            )
+            .order(
+              "created_at",
+              {
+                ascending: false,
+              }
+            );
 
         if (error) {
-          console.error(
-            "Failed to load dashboard statistics:",
-            error
-          );
-
-          /*
-           * Do not show fake success data when
-           * the database request fails.
-           */
-
-          setStats({
-            monthlySpent: 0,
-            monthlyTransactions: 0,
-            successRate: 0,
-          });
-
-          return;
+          throw error;
         }
 
         const transactions =
           (data ??
             []) as DashboardTransaction[];
-
-        /*
-         * ======================================================
-         * THIS MONTH
-         * ======================================================
-         */
 
         const now = new Date();
 
@@ -647,7 +680,7 @@ const Dashboard = () => {
 
         const monthlyTransactions =
           transactions.filter(
-            transaction => {
+            (transaction) => {
               const createdAt =
                 new Date(
                   transaction.created_at
@@ -656,24 +689,15 @@ const Dashboard = () => {
               return (
                 createdAt >=
                   monthStart &&
-                createdAt <
-                  monthEnd
+                createdAt < monthEnd
               );
             }
           );
 
-        /*
-         * ======================================================
-         * MONTHLY TOTAL SPENT
-         *
-         * Only successful money-out transactions count.
-         * ======================================================
-         */
-
         const monthlySpent =
           monthlyTransactions
             .filter(
-              transaction =>
+              (transaction) =>
                 isSuccessfulTransaction(
                   transaction
                 ) &&
@@ -706,55 +730,23 @@ const Dashboard = () => {
               0
             );
 
-        /*
-         * ======================================================
-         * MONTHLY TRANSACTION COUNT
-         *
-         * Count every transaction created
-         * during this month.
-         * ======================================================
-         */
-
-        const monthlyTransactionCount =
-          monthlyTransactions.length;
-
-        /*
-         * ======================================================
-         * ALL-TIME SUCCESS RATE
-         *
-         * Pending transactions are excluded.
-         *
-         * Example:
-         *
-         * 90 successful
-         * 10 failed
-         *
-         * = 90 / 100 = 90%
-         * ======================================================
-         */
-
         const successfulCount =
           transactions.filter(
-            transaction =>
-              isSuccessfulTransaction(
-                transaction
-              )
+            isSuccessfulTransaction
           ).length;
 
         const failedCount =
           transactions.filter(
-            transaction =>
-              isFailedTransaction(
-                transaction
-              )
+            isFailedTransaction
           ).length;
 
         const terminalTransactions =
           successfulCount +
           failedCount;
 
-        const calculatedSuccessRate =
-          terminalTransactions === 0
+        const successRate =
+          terminalTransactions ===
+          0
             ? 100
             : Math.round(
                 (successfulCount /
@@ -762,18 +754,11 @@ const Dashboard = () => {
                   100
               );
 
-        /*
-         * ======================================================
-         * UPDATE STATE
-         * ======================================================
-         */
-
         setStats({
           monthlySpent,
           monthlyTransactions:
-            monthlyTransactionCount,
-          successRate:
-            calculatedSuccessRate,
+            monthlyTransactions.length,
+          successRate,
         });
       } catch (error) {
         console.error(
@@ -791,25 +776,25 @@ const Dashboard = () => {
       }
     }, [user?.id]);
 
-  /*
-   * ==========================================================
-   * LOAD STATS WHEN USER CHANGES
-   * ==========================================================
-   */
-
   useEffect(() => {
-    loadDashboardStats();
+    if (
+      authLoading ||
+      !user
+    ) {
+      return;
+    }
+
+    void loadDashboardStats();
   }, [
+    authLoading,
+    user,
     loadDashboardStats,
   ]);
 
   /*
-   * ==========================================================
-   * REALTIME TRANSACTION REFRESH
-   *
-   * Whenever a transaction is inserted/updated for this
-   * user, refresh the dashboard statistics.
-   * ==========================================================
+   * ============================================================
+   * REALTIME TRANSACTIONS
+   * ============================================================
    */
 
   useEffect(() => {
@@ -831,13 +816,13 @@ const Dashboard = () => {
             filter: `user_id=eq.${user.id}`,
           },
           () => {
-            loadDashboardStats();
+            void loadDashboardStats();
           }
         )
         .subscribe();
 
     return () => {
-      supabase.removeChannel(
+      void supabase.removeChannel(
         channel
       );
     };
@@ -847,13 +832,15 @@ const Dashboard = () => {
   ]);
 
   /*
-   * ==========================================================
+   * ============================================================
    * WALLET BOOTSTRAP
-   * ==========================================================
+   * ============================================================
    */
 
   useEffect(() => {
-    if (!user) return;
+    if (!user?.id) {
+      return;
+    }
 
     let cancelled = false;
 
@@ -891,11 +878,6 @@ const Dashboard = () => {
 
           await refreshWallet();
 
-          /*
-           * Refresh dashboard statistics
-           * after wallet bootstrap.
-           */
-
           await loadDashboardStats();
         } catch (error) {
           if (cancelled) {
@@ -909,203 +891,150 @@ const Dashboard = () => {
         }
       };
 
-    bootstrapWallet();
+    void bootstrapWallet();
 
     return () => {
       cancelled = true;
     };
   }, [
-    user,
+    user?.id,
     refreshWallet,
     loadDashboardStats,
   ]);
 
   /*
-   * ==========================================================
-   * OPTIONAL MANUAL DEPOSIT SYNC
-   * ==========================================================
-   */
-
-  const syncDeposits = async () => {
-    if (!user) return;
-
-    try {
-      console.log(
-        "Starting Flutterwave deposit sync..."
-      );
-
-      const {
-        data,
-        error,
-      } =
-        await supabase.functions.invoke(
-          "flutterwave-sync-deposits",
-          {
-            body: {},
-          }
-        );
-
-      console.log(
-        "SYNC DATA:",
-        data
-      );
-
-      console.log(
-        "SYNC ERROR:",
-        error
-      );
-
-      if (error) {
-        console.error(
-          "Deposit sync failed:",
-          error
-        );
-
-        return;
-      }
-
-      await refreshWallet();
-
-      await loadDashboardStats();
-    } catch (error) {
-      console.error(
-        "Deposit sync error:",
-        error
-      );
-    }
-  };
-
-  /*
-   * ==========================================================
+   * ============================================================
    * SERVICES
-   * ==========================================================
+   * ============================================================
    */
 
   const services = [
     {
       title: "Buy Airtime",
       description:
-        "Recharge your phone",
+        "Recharge your phone instantly",
       icon: Smartphone,
       color: "bg-blue-500",
-      type: "airtime",
+      type: "airtime" as BillService,
+      available: true,
     },
     {
       title: "Buy Data",
       description:
-        "Internet data bundles",
+        "Fast data bundles",
       icon: Wifi,
       color: "bg-purple-500",
-      type: "data",
+      type: "data" as BillService,
+      available: true,
     },
     {
       title: "Electricity",
       description:
-        "Pay electricity bills",
+        "Pay your power bill",
       icon: Zap,
       color: "bg-yellow-500",
-      type: "electricity",
+      type: "electricity" as BillService,
+      available: true,
     },
     {
       title: "Cable TV",
       description:
-        "DSTV, GOTV, Startimes",
+        "DSTV, GOTV & Startimes",
       icon: CreditCard,
       color: "bg-red-500",
-      type: "cable",
+      type: "cable" as BillService,
+      available: true,
     },
     {
-      title: "Transfer Money",
+      title: "Airtime E-Pin",
       description:
-        "Send money to others",
-      icon: Send,
+        "Buy recharge PINs",
+      icon: Receipt,
       color: "bg-green-500",
-      type: "transfer",
+      type: "airtime-card" as BillService,
+      available: true,
+    },
+    {
+      title: "Data E-Pin",
+      description:
+        "Buy data PINs",
+      icon: Radio,
+      color: "bg-indigo-500",
+      type: "data-card" as BillService,
+      available: true,
+    },
+    {
+      title: "Smile",
+      description:
+        "Smile data bundles",
+      icon: Wifi,
+      color: "bg-cyan-500",
+      type: "smile" as BillService,
+      available: true,
+    },
+    {
+      title: "WAEC",
+      description:
+        "WAEC services",
+      icon: GraduationCap,
+      color: "bg-orange-500",
+      type: "waec" as BillService,
+      available: true,
+    },
+    {
+      title: "JAMB",
+      description:
+        "JAMB services",
+      icon: GraduationCap,
+      color: "bg-emerald-500",
+      type: "jamb" as BillService,
+      available: true,
     },
     {
       title: "Internet Bills",
       description:
-        "Pay internet bills",
+        "Coming soon",
       icon: Wifi,
-      color: "bg-indigo-500",
-      type: "internet",
+      color: "bg-slate-500",
+      type: "internet" as BillService,
+      available: false,
     },
     {
       title: "Insurance",
       description:
-        "Pay insurance premiums",
+        "Coming soon",
       icon: Shield,
       color: "bg-teal-500",
-      type: "insurance",
+      type: "insurance" as BillService,
+      available: false,
     },
     {
-      title: "Gift Cards",
+      title: "Savings",
       description:
-        "Buy digital gift cards",
-      icon: Gift,
+        "Coming soon",
+      icon: PiggyBank,
       color: "bg-pink-500",
-      type: "giftcards",
-    },
-    {
-      title: "Betting",
-      description:
-        "Fund betting accounts",
-      icon: Gamepad2,
-      color: "bg-orange-500",
-      type: "betting",
-    },
-    {
-      title: "Flight Booking",
-      description:
-        "Book domestic flights",
-      icon: Plane,
-      color: "bg-sky-500",
-      type: "flight",
-    },
-    {
-      title: "Hotel Booking",
-      description:
-        "Book hotel rooms",
-      icon: Home,
-      color: "bg-emerald-500",
-      type: "hotel",
-    },
-    {
-      title: "Transport",
-      description:
-        "Book bus tickets",
-      icon: Car,
-      color: "bg-gray-500",
-      type: "transport",
+      type: "savings" as BillService,
+      available: false,
     },
   ];
 
   /*
-   * ==========================================================
+   * ============================================================
    * SERVICE CLICK
-   * ==========================================================
+   * ============================================================
    */
 
   const handleServiceClick = (
-    service: typeof services[number]
+    service: (typeof services)[number]
   ) => {
     if (
-      service.type ===
-      "transfer"
-    ) {
-      setTransferModalOpen(true);
-
-      return;
-    }
-
-    if (
-      !SUPPORTED_BILL_SERVICES.includes(
-        service.type as BillService
+      COMING_SOON_SERVICES.includes(
+        service.type
       )
     ) {
       toast({
-        title:
-          "Service coming soon",
+        title: "Coming soon",
         description:
           `${service.title} is not yet available.`,
       });
@@ -1113,19 +1042,38 @@ const Dashboard = () => {
       return;
     }
 
+    if (
+      !service.available ||
+      !SUPPORTED_BILL_SERVICES.includes(
+        service.type
+      )
+    ) {
+      toast({
+        title:
+          "Service unavailable",
+        description:
+          `${service.title} is not currently available.`,
+        variant:
+          "destructive",
+      });
+
+      return;
+    }
+
     setSelectedService({
       title: service.title,
-      type:
-        service.type as BillService,
+      type: service.type,
     });
 
-    setCurrentPage("service-payment");
+    setCurrentPage(
+      "service-payment"
+    );
   };
 
   /*
-   * ==========================================================
-   * BILL PAYMENT
-   * ==========================================================
+   * ============================================================
+   * SERVICE PURCHASE
+   * ============================================================
    */
 
   const handlePurchase = async (
@@ -1153,7 +1101,7 @@ const Dashboard = () => {
       )
     ) {
       throw new Error(
-        `${selectedService.title} is not currently supported.`
+        `${selectedService.title} is not currently available.`
       );
     }
 
@@ -1172,182 +1120,24 @@ const Dashboard = () => {
       );
 
     if (
-      amount >
-      currentBalance
+      amount > currentBalance
     ) {
       throw new Error(
         "Insufficient wallet balance. Please fund your wallet."
       );
     }
 
-    const billerCode =
-      String(
-        details?.biller_code ??
-          details?.billerCode ??
-          ""
-      ).trim();
-
-    if (!billerCode) {
-      throw new Error(
-        "Please select a valid bill provider."
-      );
-    }
-
-    const itemCode =
-      String(
-        details?.item_code ??
-          details?.itemCode ??
-          ""
-      ).trim();
-
-    if (!itemCode) {
-      throw new Error(
-        "Please select a valid bill package."
-      );
-    }
-
-    const country =
-      String(
-        details?.country ?? "NG"
-      )
-        .trim()
-        .toUpperCase();
-
-    if (country !== "NG") {
-      throw new Error(
-        "Flutterwave bill payments currently support Nigeria only."
-      );
-    }
-
-    let customer =
-      String(
-        details?.customer ??
-          details?.customer_id ??
-          details?.customerId ??
-          details?.phoneNumber ??
-          details?.phone ??
-          details?.meterNumber ??
-          details?.meter_number ??
-          details?.smartCardNumber ??
-          details?.smartcardNumber ??
-          details?.smartcard_number ??
-          details?.accountNumber ??
-          details?.account_number ??
-          ""
-      ).trim();
-
-    if (
-      service === "airtime" ||
-      service === "data"
-    ) {
-      customer =
-        customer.replace(
-          /\s+/g,
-          ""
-        );
-    }
-
-    if (!customer) {
-      throw new Error(
-        "Customer information is required."
-      );
-    }
-
-    if (
-      service === "airtime" ||
-      service === "data"
-    ) {
-      if (!details?.provider) {
-        throw new Error(
-          "Please select a network provider."
-        );
-      }
-
-      if (
-        !/^(?:\+?234|0)[0-9]{10}$/.test(
-          customer
-        )
-      ) {
-        throw new Error(
-          "Please provide a valid Nigerian phone number."
-        );
-      }
-    }
-
-    if (
-      service ===
-      "electricity"
-    ) {
-      if (!details?.provider) {
-        throw new Error(
-          "Please select an electricity provider."
-        );
-      }
-
-      if (customer.length < 5) {
-        throw new Error(
-          "Please provide a valid meter number."
-        );
-      }
-    }
-
-    if (service === "cable") {
-      if (!details?.provider) {
-        throw new Error(
-          "Please select a cable provider."
-        );
-      }
-
-      if (customer.length < 5) {
-        throw new Error(
-          "Please provide a valid smartcard or decoder number."
-        );
-      }
-    }
-
-    if (
-      service ===
-      "internet"
-    ) {
-      if (!details?.provider) {
-        throw new Error(
-          "Please select an internet provider."
-        );
-      }
-
-      if (customer.length < 3) {
-        throw new Error(
-          "Please provide a valid internet account number."
-        );
-      }
-    }
-
     const paymentDetails = {
       ...details,
       service,
       amount,
-      country,
-      customer,
-      biller_code:
-        billerCode,
-      item_code:
-        itemCode,
+      country:
+        String(
+          details?.country ?? "NG"
+        )
+          .trim()
+          .toUpperCase() || "NG",
     };
-
-    console.log(
-      "Sending bill payment request:",
-      {
-        action: "pay",
-        service,
-        amount,
-        country,
-        biller_code:
-          billerCode,
-        item_code:
-          itemCode,
-        customer,
-      }
-    );
 
     toast({
       title:
@@ -1362,18 +1152,93 @@ const Dashboard = () => {
         error,
       } =
         await supabase.functions.invoke(
-          "flutterwave-bills",
+          "clubkonnect-services",
           {
             body: {
-              action: "pay",
+              action: "purchase",
+
               service,
+
               amount,
+
+              country:
+                paymentDetails.country,
+
+              customer:
+                paymentDetails.customer,
+
               biller_code:
-                billerCode,
+                paymentDetails.biller_code,
+
+              network_code:
+                paymentDetails.network_code,
+
               item_code:
-                itemCode,
-              customer,
-              country,
+                paymentDetails.item_code,
+
+              product_code:
+                paymentDetails.product_code,
+
+              variation_code:
+                paymentDetails.variation_code,
+
+              meter_type:
+                paymentDetails.meter_type,
+
+              meter_number:
+                paymentDetails.meter_number,
+
+              meter_no:
+                paymentDetails.meter_no,
+
+              smartcard_no:
+                paymentDetails.smartcard_no,
+
+              smartcard_number:
+                paymentDetails.smartcard_number,
+
+              phone_no:
+                paymentDetails.phone_no,
+
+              phone:
+                paymentDetails.phone,
+
+              phoneNumber:
+                paymentDetails.phoneNumber,
+
+              mobile_number:
+                paymentDetails.mobile_number,
+
+              account_id:
+                paymentDetails.account_id,
+
+              data_plan:
+                paymentDetails.data_plan,
+
+              package:
+                paymentDetails.package,
+
+              package_code:
+                paymentDetails.package_code,
+
+              electric_company:
+                paymentDetails.electric_company,
+
+              cable_tv:
+                paymentDetails.cable_tv,
+
+              exam_type:
+                paymentDetails.exam_type,
+
+              value:
+                paymentDetails.value,
+
+              quantity:
+                Number(
+                  paymentDetails.quantity ??
+                    1
+                ),
+
               details:
                 paymentDetails,
             },
@@ -1384,27 +1249,13 @@ const Dashboard = () => {
         const message =
           await extractFunctionError(
             error,
-            "Unable to process bill payment."
+            "Unable to process this service payment."
           );
-
-        console.error(
-          "flutterwave-bills invocation error:",
-          {
-            error,
-            extractedMessage:
-              message,
-          }
-        );
 
         throw new Error(
           message
         );
       }
-
-      console.log(
-        "flutterwave-bills response:",
-        data
-      );
 
       if (
         !data ||
@@ -1414,82 +1265,66 @@ const Dashboard = () => {
           data?.error ||
             data?.message ||
             data?.provider_message ||
-            "Bill payment failed."
+            "Service payment failed."
         );
       }
 
       await refreshWallet();
 
-      /*
-       * Refresh dashboard statistics
-       * immediately after payment.
-       */
-
       await loadDashboardStats();
 
-      const reference =
-        data?.reference ??
-        data?.transaction_reference ??
-        data?.transaction_id ??
-        null;
+      const normalizedStatus =
+        String(
+          data?.status ?? ""
+        )
+          .trim()
+          .toLowerCase();
 
       const isPending =
-        data?.status ===
-        "pending";
+        normalizedStatus ===
+          "pending" ||
+        normalizedStatus ===
+          "processing" ||
+        normalizedStatus ===
+          "order_received" ||
+        normalizedStatus ===
+          "order_processed" ||
+        normalizedStatus ===
+          "on_hold" ||
+        normalizedStatus ===
+          "300" ||
+        normalizedStatus ===
+          "399" ||
+        normalizedStatus ===
+          "201";
 
       toast({
         title: isPending
           ? "Payment Processing"
           : "Payment Successful",
-
         description:
           data?.message ||
           (isPending
-            ? `${selectedService.title} payment is being verified.`
+            ? `${selectedService.title} payment is being processed.`
             : `${selectedService.title} payment was completed successfully.`),
       });
-
-      setSelectedService(null);
-      setCurrentPage("home");
-
-      console.log(
-        "Bill payment processed:",
-        {
-          service,
-          amount,
-          reference,
-          transaction_id:
-            data?.transaction_id,
-          provider_reference:
-            data?.provider_reference,
-          biller_code:
-            billerCode,
-          item_code:
-            itemCode,
-          customer,
-          status:
-            data?.status,
-          provider_data:
-            data?.data,
-        }
-      );
     } catch (error: any) {
       console.error(
-        "Bill payment failed:",
+        "Service payment failed:",
         error
       );
 
       throw new Error(
         error?.message ||
-          "Unable to complete bill payment."
+          "Unable to complete this service payment."
       );
     }
   };
 
   /*
-   * ==========================================================
-   * TRANSFER HANDLER
-   * ==========================================================
+   * ============================================================
+   * BANK TRANSFER
+   * ============================================================
    */
 
   const handleTransfer = async (
@@ -1533,10 +1368,6 @@ const Dashboard = () => {
       details?.recipientType ===
         "iyanjupay"
     ) {
-      console.warn(
-        "IyanjuPay transfer reached Dashboard bank handler unexpectedly."
-      );
-
       toast({
         title:
           "Transfer routing error",
@@ -1552,9 +1383,7 @@ const Dashboard = () => {
     if (
       wallet &&
       amount >
-        Number(
-          wallet.balance
-        )
+        Number(wallet.balance)
     ) {
       toast({
         title:
@@ -1650,11 +1479,6 @@ const Dashboard = () => {
         );
 
       if (error) {
-        console.error(
-          "Flutterwave transfer function error:",
-          error
-        );
-
         const message =
           await extractFunctionError(
             error,
@@ -1665,11 +1489,6 @@ const Dashboard = () => {
           message
         );
       }
-
-      console.log(
-        "Flutterwave transfer response:",
-        data
-      );
 
       if (
         !data ||
@@ -1684,15 +1503,7 @@ const Dashboard = () => {
 
       await refreshWallet();
 
-      /*
-       * Refresh statistics after transfer.
-       */
-
       await loadDashboardStats();
-
-      setTransferModalOpen(
-        false
-      );
 
       toast({
         title:
@@ -1701,32 +1512,6 @@ const Dashboard = () => {
           data?.message ||
           `₦${amount.toLocaleString()} sent to ${details.recipient}.`,
       });
-
-      console.log(
-        "Bank transfer successfully initiated:",
-        {
-          transaction_id:
-            data?.transaction_id,
-
-          flutterwave_transfer_id:
-            data?.flutterwave_transfer_id,
-
-          reference:
-            data?.reference,
-
-          amount,
-
-          beneficiary:
-            details.recipient,
-
-          fee:
-            details?.fee ?? 10,
-
-          total_charged:
-            details?.totalCharged ??
-            amount + 10,
-        }
-      );
     } catch (error: any) {
       console.error(
         "Bank transfer failed:",
@@ -1746,116 +1531,147 @@ const Dashboard = () => {
   };
 
   /*
-   * ==========================================================
+   * ============================================================
+   * AUTH LOADING
+   * ============================================================
+   */
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+        <div className="text-center">
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-white shadow-lg">
+            <Loader2 className="h-8 w-8 animate-spin text-purple-600" />
+          </div>
+
+          <p className="mt-5 text-sm font-medium text-slate-600">
+            Preparing your IyanjuPay account...
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  /*
+   * ============================================================
+   * NO USER
+   * ============================================================
+   */
+
+  if (!user) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+        <Loader2 className="h-8 w-8 animate-spin text-purple-600" />
+      </div>
+    );
+  }
+
+  /*
+   * ============================================================
    * BOTTOM NAVIGATION
    *
-   * This must be declared BEFORE the page-specific early
-   * returns so Rewards, Cards and Me can use it.
-   * ==========================================================
+   * IMPORTANT:
+   * This is declared BEFORE the early page returns so it can
+   * also be rendered on Rewards, Cards and Me.
+   * ============================================================
    */
 
   const renderBottomNav = (
     page: CurrentPage
   ) => (
-    <div className="fixed bottom-0 left-0 right-0 z-40 bg-white border-t border-gray-200 px-4 py-2">
-
-      <div className="max-w-7xl mx-auto">
-
-        <div className="flex justify-around">
+    <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-slate-200/80 bg-white/95 px-3 py-2 shadow-[0_-8px_30px_rgba(15,23,42,0.06)] backdrop-blur-xl">
+      <div className="mx-auto max-w-3xl">
+        <div className="grid grid-cols-4 gap-1">
 
           <Button
-            variant={
-              page === "home"
-                ? "default"
-                : "ghost"
-            }
+            variant="ghost"
             size="sm"
             onClick={() =>
-              setCurrentPage("home")
+              setCurrentPage(
+                "home"
+              )
             }
-            className={`flex flex-col items-center gap-1 px-6 py-3 ${
+            className={`h-14 rounded-2xl ${
               page === "home"
-                ? "bg-purple-600 text-white"
-                : "text-gray-600"
+                ? "bg-purple-50 text-purple-700"
+                : "text-slate-500 hover:bg-slate-50"
             }`}
           >
-            <Home className="h-4 w-4" />
+            <span className="flex flex-col items-center gap-1">
+              <Home className="h-5 w-5" />
 
-            <span className="text-xs">
-              Home
+              <span className="text-[11px] font-semibold">
+                Home
+              </span>
             </span>
           </Button>
 
           <Button
-            variant={
-              page === "rewards"
-                ? "default"
-                : "ghost"
-            }
+            variant="ghost"
             size="sm"
             onClick={() =>
               setCurrentPage(
                 "rewards"
               )
             }
-            className={`flex flex-col items-center gap-1 px-6 py-3 ${
+            className={`h-14 rounded-2xl ${
               page === "rewards"
-                ? "bg-purple-600 text-white"
-                : "text-gray-600"
+                ? "bg-purple-50 text-purple-700"
+                : "text-slate-500 hover:bg-slate-50"
             }`}
           >
-            <Gift className="h-4 w-4" />
+            <span className="flex flex-col items-center gap-1">
+              <Gift className="h-5 w-5" />
 
-            <span className="text-xs">
-              Rewards
+              <span className="text-[11px] font-semibold">
+                Rewards
+              </span>
             </span>
           </Button>
 
           <Button
-            variant={
-              page === "cards"
-                ? "default"
-                : "ghost"
-            }
+            variant="ghost"
             size="sm"
             onClick={() =>
               setCurrentPage(
                 "cards"
               )
             }
-            className={`flex flex-col items-center gap-1 px-6 py-3 ${
+            className={`h-14 rounded-2xl ${
               page === "cards"
-                ? "bg-purple-600 text-white"
-                : "text-gray-600"
+                ? "bg-purple-50 text-purple-700"
+                : "text-slate-500 hover:bg-slate-50"
             }`}
           >
-            <CreditCard className="h-4 w-4" />
+            <span className="flex flex-col items-center gap-1">
+              <CreditCard className="h-5 w-5" />
 
-            <span className="text-xs">
-              Cards
+              <span className="text-[11px] font-semibold">
+                Cards
+              </span>
             </span>
           </Button>
 
           <Button
-            variant={
-              page === "me"
-                ? "default"
-                : "ghost"
-            }
+            variant="ghost"
             size="sm"
             onClick={() =>
-              setCurrentPage("me")
+              setCurrentPage(
+                "me"
+              )
             }
-            className={`flex flex-col items-center gap-1 px-6 py-3 ${
+            className={`h-14 rounded-2xl ${
               page === "me"
-                ? "bg-purple-600 text-white"
-                : "text-gray-600"
+                ? "bg-purple-50 text-purple-700"
+                : "text-slate-500 hover:bg-slate-50"
             }`}
           >
-            <User className="h-4 w-4" />
+            <span className="flex flex-col items-center gap-1">
+              <User className="h-5 w-5" />
 
-            <span className="text-xs">
-              Me
+              <span className="text-[11px] font-semibold">
+                Me
+              </span>
             </span>
           </Button>
 
@@ -1865,32 +1681,80 @@ const Dashboard = () => {
   );
 
   /*
-   * ==========================================================
-   * PAGE ROUTING
-   * ==========================================================
+   * ============================================================
+   * SERVICE PAYMENT
+   * ============================================================
    */
 
-  /*
-   * SERVICE PAYMENT PAGE
-   *
-   * Full bill-payment flow.
-   */
-
-  if (currentPage === "service-payment") {
+  if (
+    currentPage ===
+    "service-payment"
+  ) {
     return (
       <ServicePayment
-        service={selectedService}
+        service={
+          selectedService
+        }
         walletBalance={Number(
           wallet?.balance ?? 0
         )}
         onBack={() => {
-          setSelectedService(null);
-          setCurrentPage("home");
+          setSelectedService(
+            null
+          );
+
+          setCurrentPage(
+            "home"
+          );
         }}
-        onPurchase={handlePurchase}
+        onPurchase={
+          handlePurchase
+        }
+        onHistory={() => {
+          setSelectedService(
+            null
+          );
+
+          setCurrentPage(
+            "history"
+          );
+        }}
       />
     );
   }
+
+  /*
+   * ============================================================
+   * SEND MONEY
+   * ============================================================
+   */
+
+  if (
+    currentPage ===
+    "send-money"
+  ) {
+    return (
+      <SendMoneyPage
+        onBack={() =>
+          setCurrentPage(
+            "home"
+          )
+        }
+        walletBalance={Number(
+          wallet?.balance ?? 0
+        )}
+        onTransfer={
+          handleTransfer
+        }
+      />
+    );
+  }
+
+  /*
+   * ============================================================
+   * PROFILE
+   * ============================================================
+   */
 
   if (
     currentPage ===
@@ -1899,11 +1763,19 @@ const Dashboard = () => {
     return (
       <ProfilePage
         onBack={() =>
-          setCurrentPage("me")
+          setCurrentPage(
+            "me"
+          )
         }
       />
     );
   }
+
+  /*
+   * ============================================================
+   * HISTORY
+   * ============================================================
+   */
 
   if (
     currentPage ===
@@ -1912,18 +1784,21 @@ const Dashboard = () => {
     return (
       <TransactionHistory
         onBack={() =>
-          setCurrentPage("me")
+          setCurrentPage(
+            "me"
+          )
         }
       />
     );
   }
 
   /*
-   * ==========================================================
+   * ============================================================
    * REWARDS
+   * ============================================================
    *
-   * Bottom navigation stays visible while this page is open.
-   * ==========================================================
+   * Footer is intentionally rendered here so it remains visible
+   * while RewardsPage is open.
    */
 
   if (
@@ -1932,27 +1807,28 @@ const Dashboard = () => {
   ) {
     return (
       <div className="min-h-screen pb-20">
-
         <RewardsPage
           onBack={() =>
-            setCurrentPage("home")
+            setCurrentPage(
+              "home"
+            )
           }
         />
 
         {renderBottomNav(
           "rewards"
         )}
-
       </div>
     );
   }
 
   /*
-   * ==========================================================
+   * ============================================================
    * CARDS
+   * ============================================================
    *
-   * Bottom navigation stays visible while this page is open.
-   * ==========================================================
+   * Footer is intentionally rendered here so it remains visible
+   * while CardsPage is open.
    */
 
   if (
@@ -1961,25 +1837,25 @@ const Dashboard = () => {
   ) {
     return (
       <div className="min-h-screen pb-20">
-
         <CardsPage
           onBack={() =>
-            setCurrentPage("home")
+            setCurrentPage(
+              "home"
+            )
           }
         />
 
         {renderBottomNav(
           "cards"
         )}
-
       </div>
     );
   }
 
   /*
-   * ==========================================================
+   * ============================================================
    * CUSTOMER SERVICE
-   * ==========================================================
+   * ============================================================
    */
 
   if (
@@ -1989,16 +1865,18 @@ const Dashboard = () => {
     return (
       <CustomerServicePage
         onBack={() =>
-          setCurrentPage("me")
+          setCurrentPage(
+            "me"
+          )
         }
       />
     );
   }
 
   /*
-   * ==========================================================
+   * ============================================================
    * SUPPORT
-   * ==========================================================
+   * ============================================================
    */
 
   if (
@@ -2008,16 +1886,18 @@ const Dashboard = () => {
     return (
       <SupportPage
         onBack={() =>
-          setCurrentPage("me")
+          setCurrentPage(
+            "me"
+          )
         }
       />
     );
   }
 
   /*
-   * ==========================================================
+   * ============================================================
    * TRANSACTION LIMIT
-   * ==========================================================
+   * ============================================================
    */
 
   if (
@@ -2027,18 +1907,63 @@ const Dashboard = () => {
     return (
       <TransactionLimitPage
         onBack={() =>
-          setCurrentPage("me")
+          setCurrentPage(
+            "me"
+          )
         }
       />
     );
   }
 
   /*
-   * ==========================================================
+   * ============================================================
+   * PAYMENT PIN
+   * ============================================================
+   */
+
+  if (
+    currentPage ===
+    "payment-pin"
+  ) {
+    return (
+      <PaymentPinPage
+        onBack={() =>
+          setCurrentPage(
+            "me"
+          )
+        }
+      />
+    );
+  }
+
+  /*
+   * ============================================================
+   * DISPUTES
+   * ============================================================
+   */
+
+  if (
+    currentPage ===
+    "disputes"
+  ) {
+    return (
+      <DisputesPage
+        onBack={() =>
+          setCurrentPage(
+            "me"
+          )
+        }
+      />
+    );
+  }
+
+  /*
+   * ============================================================
    * ME
+   * ============================================================
    *
-   * Bottom navigation stays visible while this page is open.
-   * ==========================================================
+   * Footer is intentionally rendered here so it remains visible
+   * while MePage is open.
    */
 
   if (
@@ -2047,10 +1972,11 @@ const Dashboard = () => {
   ) {
     return (
       <div className="min-h-screen pb-20">
-
         <MePage
           onBack={() =>
-            setCurrentPage("home")
+            setCurrentPage(
+              "home"
+            )
           }
           onProfileClick={() =>
             setCurrentPage(
@@ -2077,505 +2003,1020 @@ const Dashboard = () => {
               "transaction-limit"
             )
           }
+          onPaymentPinClick={() =>
+            setCurrentPage(
+              "payment-pin"
+            )
+          }
+          onDisputesClick={() =>
+            setCurrentPage(
+              "disputes"
+            )
+          }
         />
 
         {renderBottomNav(
           "me"
         )}
-
       </div>
     );
   }
 
   /*
-   * ==========================================================
+   * ============================================================
    * WALLET LOADING
-   * ==========================================================
+   * ============================================================
    */
 
-  if (loading) {
+  if (walletLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-purple-50 to-blue-50">
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
         <div className="text-center">
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-white shadow-lg">
+            <Loader2 className="h-8 w-8 animate-spin text-purple-600" />
+          </div>
 
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto" />
-
-          <p className="mt-4 text-gray-600">
+          <p className="mt-5 text-sm font-medium text-slate-600">
             Loading your wallet...
           </p>
-
         </div>
       </div>
     );
   }
 
   /*
-   * ==========================================================
-   * DASHBOARD
-   * ==========================================================
+   * ============================================================
+   * BALANCE
+   * ============================================================
+   */
+
+  const balance =
+    Number(
+      wallet?.balance ?? 0
+    );
+
+  const formattedBalance =
+    balance.toLocaleString(
+      "en-NG",
+      {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 2,
+      }
+    );
+
+  /*
+   * ============================================================
+   * USER DISPLAY NAME
+   * ============================================================
+   */
+
+  const displayName =
+    user?.user_metadata
+      ?.full_name ||
+    user?.user_metadata
+      ?.name ||
+    user?.email?.split("@")[0] ||
+    "there";
+
+  const firstName =
+    String(displayName)
+      .trim()
+      .split(/\s+/)[0] ||
+    "there";
+
+  /*
+   * ============================================================
+   * MAIN DASHBOARD
+   * ============================================================
    */
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-50 pb-20">
+    <>
+      <style>{`
+        .iyanjupay-dashboard {
+          background: #f7f8fc;
+          color: #0f172a;
+          transition:
+            background-color 180ms ease,
+            color 180ms ease;
+        }
 
-      {/* ======================================================
-          HEADER
-      ====================================================== */}
+        .iyanjupay-theme-blue {
+          background: #f4f8ff;
+        }
 
-      <header className="bg-gradient-to-r from-purple-600 to-blue-600 text-white">
+        .iyanjupay-theme-dark {
+          background: #090d18;
+          color: #f8fafc;
+        }
 
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        .iyanjupay-theme-dark .bg-white {
+          background-color: #111827 !important;
+        }
 
-          <div className="flex justify-between items-center h-16">
+        .iyanjupay-theme-dark .bg-slate-50 {
+          background-color: #090d18 !important;
+        }
 
-            <div className="flex items-center">
+        .iyanjupay-theme-dark .bg-slate-100 {
+          background-color: #1e293b !important;
+        }
 
-              <div className="w-8 h-8 bg-white rounded-full flex items-center justify-center mr-3">
+        .iyanjupay-theme-dark [class*="border-slate-200"] {
+          border-color: #334155 !important;
+        }
 
-                <span className="text-purple-600 font-bold text-sm">
-                  IP
-                </span>
+        .iyanjupay-theme-dark .text-slate-950,
+        .iyanjupay-theme-dark .text-slate-900 {
+          color: #f8fafc !important;
+        }
+
+        .iyanjupay-theme-dark .text-slate-700 {
+          color: #e2e8f0 !important;
+        }
+
+        .iyanjupay-theme-dark .text-slate-600 {
+          color: #cbd5e1 !important;
+        }
+
+        .iyanjupay-theme-dark .text-slate-500 {
+          color: #94a3b8 !important;
+        }
+
+        .iyanjupay-theme-dark .text-slate-400 {
+          color: #64748b !important;
+        }
+
+        .iyanjupay-theme-dark [class*="hover:bg-slate-50"]:hover {
+          background-color: #1e293b !important;
+        }
+
+        .iyanjupay-theme-dark .bg-purple-50 {
+          background-color: #312e81 !important;
+        }
+
+        .iyanjupay-theme-dark .text-purple-700,
+        .iyanjupay-theme-dark .text-purple-600 {
+          color: #c4b5fd !important;
+        }
+
+        .iyanjupay-theme-dark .bg-blue-50 {
+          background-color: #172554 !important;
+        }
+
+        .iyanjupay-theme-dark .bg-emerald-50 {
+          background-color: #052e2b !important;
+        }
+
+        .iyanjupay-theme-dark .bg-orange-50 {
+          background-color: #431407 !important;
+        }
+
+        .iyanjupay-theme-blue .bg-purple-50 {
+          background-color: #dbeafe !important;
+        }
+
+        .iyanjupay-theme-blue .text-purple-700,
+        .iyanjupay-theme-blue .text-purple-600 {
+          color: #1d4ed8 !important;
+        }
+
+        .iyanjupay-theme-blue .bg-purple-600 {
+          background-color: #2563eb !important;
+        }
+
+        .iyanjupay-theme-blue [class*="hover:bg-purple-700"]:hover {
+          background-color: #1d4ed8 !important;
+        }
+      `}</style>
+
+      <div
+        className={`min-h-screen pb-24 iyanjupay-dashboard iyanjupay-theme-${dashboardTheme}`}
+        data-theme={
+          dashboardTheme
+        }
+      >
+
+        {/* ====================================================== */}
+        {/* TOP HEADER                                             */}
+        {/* ====================================================== */}
+
+        <header
+          className={`sticky top-0 z-30 border-b border-white/10 bg-gradient-to-r ${appearanceConfig[dashboardTheme].header} text-white shadow-lg`}
+        >
+          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+            <div className="flex h-[72px] items-center justify-between">
+
+              <button
+                type="button"
+                onClick={() =>
+                  setCurrentPage(
+                    "home"
+                  )
+                }
+                className="flex items-center gap-3"
+                aria-label="Go to IyanjuPay home"
+              >
+                <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-white shadow-md">
+                  <span className="text-sm font-black text-purple-700">
+                    IP
+                  </span>
+                </div>
+
+                <div className="hidden sm:block">
+                  <p className="text-lg font-black tracking-tight">
+                    IyanjuPay
+                  </p>
+
+                  <p className="text-[10px] font-medium text-purple-100">
+                    Your money. Your control.
+                  </p>
+                </div>
+              </button>
+
+              <div className="flex items-center gap-1 sm:gap-2">
+
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() =>
+                    setQrModalOpen(
+                      true
+                    )
+                  }
+                  className="h-10 w-10 rounded-full p-0 text-white hover:bg-white/15"
+                  aria-label="Show QR code"
+                >
+                  <QrCode className="h-5 w-5" />
+                </Button>
+
+                {/* APPEARANCE */}
+
+                <div className="relative">
+
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() =>
+                      setAppearanceOpen(
+                        (open) =>
+                          !open
+                      )
+                    }
+                    className="h-10 w-10 rounded-full p-0 text-white hover:bg-white/15"
+                    aria-label="Change dashboard appearance"
+                    aria-expanded={
+                      appearanceOpen
+                    }
+                    aria-haspopup="menu"
+                  >
+                    <ActiveAppearanceIcon className="h-5 w-5" />
+                  </Button>
+
+                  {appearanceOpen && (
+                    <div
+                      role="menu"
+                      aria-label="Dashboard appearance"
+                      className="absolute right-0 top-12 z-[60] w-40 overflow-hidden rounded-2xl border border-slate-200 bg-white p-1.5 text-slate-900 shadow-2xl"
+                    >
+
+                      <div className="px-2.5 pb-1.5 pt-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                        Appearance
+                      </div>
+
+                      {(
+                        Object.keys(
+                          appearanceConfig
+                        ) as DashboardTheme[]
+                      ).map(
+                        (
+                          theme
+                        ) => {
+                          const ThemeIcon =
+                            appearanceConfig[
+                              theme
+                            ].icon;
+
+                          return (
+                            <button
+                              key={
+                                theme
+                              }
+                              type="button"
+                              role="menuitem"
+                              onClick={() => {
+                                setDashboardTheme(
+                                  theme
+                                );
+
+                                setAppearanceOpen(
+                                  false
+                                );
+                              }}
+                              className={`flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left text-xs font-semibold transition ${
+                                dashboardTheme ===
+                                theme
+                                  ? "bg-slate-100 text-slate-900"
+                                  : "text-slate-600 hover:bg-slate-50"
+                              }`}
+                            >
+
+                              <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-slate-100">
+                                <ThemeIcon className="h-3.5 w-3.5" />
+                              </span>
+
+                              <span className="flex-1">
+                                {
+                                  appearanceConfig[
+                                    theme
+                                  ].label
+                                }
+                              </span>
+
+                              {dashboardTheme ===
+                                theme && (
+                                <Check className="h-3.5 w-3.5 text-emerald-600" />
+                              )}
+
+                            </button>
+                          );
+                        }
+                      )}
+
+                    </div>
+                  )}
+
+                </div>
+
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() =>
+                    setCurrentPage(
+                      "history"
+                    )
+                  }
+                  className="hidden h-10 w-10 rounded-full p-0 text-white hover:bg-white/15 sm:flex"
+                  aria-label="Transaction history"
+                >
+                  <History className="h-5 w-5" />
+                </Button>
+
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() =>
+                    setCurrentPage(
+                      "me"
+                    )
+                  }
+                  className="h-10 w-10 rounded-full p-0 text-white hover:bg-white/15"
+                  aria-label="Open profile"
+                >
+                  <User className="h-5 w-5" />
+                </Button>
+
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={
+                    signOut
+                  }
+                  className="hidden h-10 w-10 rounded-full p-0 text-white hover:bg-white/15 sm:flex"
+                  aria-label="Sign out"
+                >
+                  <LogOut className="h-5 w-5" />
+                </Button>
+
+              </div>
+            </div>
+          </div>
+        </header>
+
+        {/* ====================================================== */}
+        {/* MAIN CONTENT                                           */}
+        {/* ====================================================== */}
+
+        <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+
+          {/* GREETING */}
+
+          <section className="mb-6">
+
+            <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
+
+              <div>
+
+                <p className="mb-1 text-sm font-medium text-purple-600">
+                  Welcome back
+                </p>
+
+                <h1 className="text-2xl font-black tracking-tight text-slate-950 sm:text-3xl">
+                  Hello, {firstName} 👋
+                </h1>
+
+                <p className="mt-1 text-sm text-slate-500 sm:text-base">
+                  What would you like to do today?
+                </p>
 
               </div>
 
-              <h1 className="text-xl font-bold">
-                IyanjuPay
-              </h1>
+              <div className="hidden rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-500 shadow-sm sm:flex sm:items-center sm:gap-2">
+
+                <span className="h-2 w-2 rounded-full bg-emerald-500" />
+
+                Account active
+
+              </div>
 
             </div>
 
-            <div className="flex items-center gap-2">
+          </section>
 
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() =>
-                  setQrModalOpen(true)
-                }
-                className="text-white hover:bg-white/20"
-              >
-                <QrCode className="h-4 w-4" />
-              </Button>
+          {/* WALLET HERO */}
 
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() =>
-                  setCurrentPage("me")
-                }
-                className="text-white hover:bg-white/20"
-              >
-                <User className="h-4 w-4" />
-              </Button>
+          <section className="mb-7">
 
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() =>
-                  setCurrentPage(
-                    "history"
-                  )
-                }
-                className="text-white hover:bg-white/20"
-              >
-                <History className="h-4 w-4" />
-              </Button>
+            <Card
+              className={`relative overflow-hidden rounded-[28px] border-0 bg-gradient-to-br ${appearanceConfig[dashboardTheme].wallet} text-white shadow-[0_20px_60px_rgba(79,70,229,0.22)]`}
+            >
 
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={signOut}
-                className="text-white hover:bg-white/20"
-              >
-                <LogOut className="h-4 w-4" />
-              </Button>
+              <div className="pointer-events-none absolute -right-20 -top-20 h-56 w-56 rounded-full bg-white/10" />
 
-            </div>
+              <div className="pointer-events-none absolute -bottom-24 right-24 h-48 w-48 rounded-full bg-white/5" />
 
-          </div>
+              <CardContent className="relative p-5 sm:p-7">
 
-        </div>
+                <div className="flex flex-col gap-7">
 
-      </header>
+                  <div className="flex items-start justify-between gap-4">
 
-      {/* ======================================================
-          MAIN
-      ====================================================== */}
+                    <div>
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+                      <div className="flex items-center gap-2">
 
-        <div className="mb-6">
+                        <p className="text-sm font-medium text-purple-100">
+                          Available Balance
+                        </p>
 
-          <h2 className="text-2xl font-bold text-gray-900 mb-1">
-            Hello! 👋
-          </h2>
+                        <span className="rounded-full bg-white/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-purple-100">
+                          NGN
+                        </span>
 
-          <p className="text-gray-600">
-            What would you like to do today?
-          </p>
+                      </div>
 
-        </div>
+                      <div className="mt-2 flex items-center gap-3">
 
-        {/* ====================================================
-            WALLET
-        ==================================================== */}
+                        <span className="text-3xl font-black tracking-tight sm:text-4xl">
 
-        <div className="mb-6">
+                          ₦
+                          {showBalance
+                            ? formattedBalance
+                            : "••••••"}
 
-          <Card className="bg-gradient-to-r from-purple-600 to-blue-600 text-white border-0 shadow-lg">
+                        </span>
 
-            <CardContent className="p-6">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() =>
+                            setShowBalance(
+                              (
+                                previous
+                              ) =>
+                                !previous
+                            )
+                          }
+                          className="h-9 w-9 rounded-full bg-white/10 p-0 text-white hover:bg-white/20"
+                          aria-label={
+                            showBalance
+                              ? "Hide balance"
+                              : "Show balance"
+                          }
+                        >
+                          {showBalance ? (
+                            <EyeOff className="h-4 w-4" />
+                          ) : (
+                            <Eye className="h-4 w-4" />
+                          )}
+                        </Button>
 
-              <div className="flex justify-between items-start mb-4">
+                      </div>
 
-                <div>
+                      <p className="mt-2 text-xs text-purple-100">
+                        Ready to spend securely
+                      </p>
 
-                  <p className="text-purple-100 text-sm mb-1">
-                    Total Balance
-                  </p>
+                    </div>
 
-                  <div className="flex items-center gap-2">
+                    <div className="hidden text-right sm:block">
 
-                    <span className="text-3xl font-bold">
+                      <p className="text-xs font-medium text-purple-100">
+                        Wallet ID
+                      </p>
 
-                      ₦
+                      <p className="mt-1 max-w-[180px] truncate font-mono text-sm font-bold tracking-wider">
+                        {wallet?.wallet_id ||
+                          "—"}
+                      </p>
 
-                      {showBalance
-                        ? Number(
-                            wallet?.balance ??
-                              0
-                          ).toLocaleString()
-                        : "****"}
+                    </div>
 
-                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
 
                     <Button
-                      variant="ghost"
-                      size="sm"
                       onClick={() =>
-                        setShowBalance(
-                          previous =>
-                            !previous
+                        setFundModalOpen(
+                          true
                         )
                       }
-                      className="text-white hover:bg-white/20 p-1"
+                      className="h-12 rounded-2xl bg-white text-purple-700 shadow-lg hover:bg-purple-50"
                     >
+                      <Plus className="mr-2 h-5 w-5" />
 
-                      {showBalance ? (
-                        <EyeOff className="h-4 w-4" />
-                      ) : (
-                        <Eye className="h-4 w-4" />
-                      )}
-
+                      <span className="font-bold">
+                        Add Money
+                      </span>
                     </Button>
+
+                    <Button
+                      onClick={() =>
+                        setCurrentPage(
+                          "send-money"
+                        )
+                      }
+                      className="h-12 rounded-2xl border border-white/30 bg-white/10 text-white backdrop-blur-sm hover:bg-white/20"
+                    >
+                      <Send className="mr-2 h-5 w-5" />
+
+                      <span className="font-bold">
+                        Send Money
+                      </span>
+                    </Button>
+
+                  </div>
+
+                  <div className="flex items-center justify-between border-t border-white/10 pt-4 sm:hidden">
+
+                    <span className="text-xs text-purple-100">
+                      Wallet ID
+                    </span>
+
+                    <span className="font-mono text-xs font-bold tracking-wider text-white">
+                      {wallet?.wallet_id ||
+                        "—"}
+                    </span>
 
                   </div>
 
                 </div>
 
-                <div className="text-right">
+              </CardContent>
 
-                  <p className="text-purple-100 text-sm">
-                    Wallet ID
-                  </p>
+            </Card>
 
-                  <p className="font-mono text-sm font-semibold tracking-wider">
-                    {wallet?.wallet_id ||
-                      "—"}
-                  </p>
+          </section>
 
-                </div>
+          {/* QUICK ACTIONS */}
 
-              </div>
+          <section className="mb-8">
 
-              <div className="flex gap-3">
+            <div className="mb-3 flex items-center justify-between">
 
-                <Button
-                  onClick={() =>
-                    setFundModalOpen(
-                      true
-                    )
-                  }
-                  className="flex-1 bg-white text-purple-600 hover:bg-gray-100 font-semibold"
-                >
-                  <Plus className="h-4 w-4 mr-2" />
-                  Add Money
-                </Button>
+              <div>
 
-                <Button
-                  onClick={() =>
-                    setTransferModalOpen(
-                      true
-                    )
-                  }
-                  variant="outline"
-                  className="flex-1 bg-white text-purple-600 hover:bg-gray-100 font-semibold"
-                >
-                  <Send className="h-4 w-4 mr-2" />
-                  Send Money
-                </Button>
+                <h2 className="text-lg font-black text-slate-950">
+                  Quick Actions
+                </h2>
+
+                <p className="text-xs text-slate-500">
+                  Get things done faster
+                </p>
 
               </div>
 
-            </CardContent>
+            </div>
 
-          </Card>
+            <div className="grid grid-cols-4 gap-2 sm:gap-3">
 
-        </div>
-
-        {/* ====================================================
-            SERVICES
-        ==================================================== */}
-
-        <div className="mb-6">
-
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">
-            Services
-          </h3>
-
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-
-            {services.map(
-              (
-                service,
-                index
-              ) => (
-
-                <ServiceCard
-                  key={`${service.type}-${index}`}
-                  title={
-                    service.title
-                  }
-                  description={
-                    service.description
-                  }
-                  icon={
-                    service.icon
-                  }
-                  color={
-                    service.color
-                  }
-                  onClick={() =>
-                    handleServiceClick(
-                      service
-                    )
-                  }
-                />
-
-              )
-            )}
-
-          </div>
-
-        </div>
-
-        {/* ====================================================
-            LIVE STATS
-        ==================================================== */}
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-
-          {/* ==================================================
-              TOTAL SPENT
-          ================================================== */}
-
-          <Card className="bg-white shadow-sm">
-
-            <CardContent className="p-4">
-
-              <div className="flex items-center justify-between">
-
-                <div>
-
-                  <p className="text-sm text-gray-600">
-                    This Month
-                  </p>
-
-                  <p className="text-2xl font-bold text-gray-900">
-
-                    {statsLoading
-                      ? "..."
-                      : `₦${stats.monthlySpent.toLocaleString(
-                          "en-NG",
-                          {
-                            minimumFractionDigits: 0,
-                            maximumFractionDigits: 2,
-                          }
-                        )}`}
-
-                  </p>
-
-                  <p className="text-xs text-gray-500">
-                    Total Spent
-                  </p>
-
+              <button
+                type="button"
+                onClick={() =>
+                  handleServiceClick(
+                    services[0]
+                  )
+                }
+                className="group rounded-2xl border border-slate-200 bg-white p-3 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-md sm:p-4"
+              >
+                <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-2xl bg-blue-50 text-blue-600 transition group-hover:scale-105">
+                  <Smartphone className="h-5 w-5" />
                 </div>
 
-                <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center">
+                <p className="mt-2 text-[11px] font-bold text-slate-700 sm:text-xs">
+                  Airtime
+                </p>
+              </button>
 
-                  <Banknote className="h-6 w-6 text-red-600" />
-
+              <button
+                type="button"
+                onClick={() =>
+                  handleServiceClick(
+                    services[1]
+                  )
+                }
+                className="group rounded-2xl border border-slate-200 bg-white p-3 shadow-sm transition hover:-translate-y-0.5 hover:border-purple-200 hover:shadow-md sm:p-4"
+              >
+                <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-2xl bg-purple-50 text-purple-600 transition group-hover:scale-105">
+                  <Wifi className="h-5 w-5" />
                 </div>
+
+                <p className="mt-2 text-[11px] font-bold text-slate-700 sm:text-xs">
+                  Data
+                </p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() =>
+                  setCurrentPage(
+                    "send-money"
+                  )
+                }
+                className="group rounded-2xl border border-slate-200 bg-white p-3 shadow-sm transition hover:-translate-y-0.5 hover:border-emerald-200 hover:shadow-md sm:p-4"
+              >
+                <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600 transition group-hover:scale-105">
+                  <Send className="h-5 w-5" />
+                </div>
+
+                <p className="mt-2 text-[11px] font-bold text-slate-700 sm:text-xs">
+                  Transfer
+                </p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() =>
+                  setCurrentPage(
+                    "history"
+                  )
+                }
+                className="group rounded-2xl border border-slate-200 bg-white p-3 shadow-sm transition hover:-translate-y-0.5 hover:border-orange-200 hover:shadow-md sm:p-4"
+              >
+                <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-2xl bg-orange-50 text-orange-600 transition group-hover:scale-105">
+                  <History className="h-5 w-5" />
+                </div>
+
+                <p className="mt-2 text-[11px] font-bold text-slate-700 sm:text-xs">
+                  History
+                </p>
+              </button>
+
+            </div>
+          </section>
+
+          {/* SERVICES */}
+
+          <section className="mb-8">
+
+            <div className="mb-4 flex items-end justify-between">
+
+              <div>
+
+                <h2 className="text-xl font-black tracking-tight text-slate-950">
+                  Services
+                </h2>
+
+                <p className="mt-1 text-sm text-slate-500">
+                  Everything you need, in one place
+                </p>
 
               </div>
 
-            </CardContent>
+              <span className="hidden rounded-full bg-purple-50 px-3 py-1 text-xs font-bold text-purple-700 sm:block">
+                9 available
+              </span>
 
-          </Card>
+            </div>
 
-          {/* ==================================================
-              MONTHLY TRANSACTIONS
-          ================================================== */}
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
 
-          <Card className="bg-white shadow-sm">
+              {services.map(
+                (
+                  service,
+                  index
+                ) => (
+                  <div
+                    key={`${service.type}-${index}`}
+                    className={
+                      service.available
+                        ? "transition hover:-translate-y-0.5"
+                        : "opacity-80"
+                    }
+                  >
+                    <ServiceCard
+                      title={
+                        service.title
+                      }
+                      description={
+                        service.description
+                      }
+                      icon={
+                        service.icon
+                      }
+                      color={
+                        service.color
+                      }
+                      onClick={() =>
+                        handleServiceClick(
+                          service
+                        )
+                      }
+                    />
+                  </div>
+                )
+              )}
 
-            <CardContent className="p-4">
+            </div>
 
-              <div className="flex items-center justify-between">
+          </section>
 
-                <div>
+          {/* ACCOUNT OVERVIEW */}
 
-                  <p className="text-sm text-gray-600">
-                    Transactions
-                  </p>
+          <section className="mb-8">
 
-                  <p className="text-2xl font-bold text-gray-900">
+            <div className="mb-4">
 
-                    {statsLoading
-                      ? "..."
-                      : stats.monthlyTransactions.toLocaleString()}
+              <h2 className="text-xl font-black tracking-tight text-slate-950">
+                Account Overview
+              </h2>
 
-                  </p>
+              <p className="mt-1 text-sm text-slate-500">
+                A quick view of your activity
+              </p>
 
-                  <p className="text-xs text-gray-500">
-                    This Month
-                  </p>
+            </div>
+
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+
+              <Card className="rounded-3xl border-slate-200/80 bg-white shadow-sm transition hover:shadow-md">
+
+                <CardContent className="p-5">
+
+                  <div className="flex items-start justify-between">
+
+                    <div>
+
+                      <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                        This Month
+                      </p>
+
+                      <p className="mt-2 text-2xl font-black tracking-tight text-slate-950">
+
+                        {statsLoading
+                          ? "..."
+                          : `₦${stats.monthlySpent.toLocaleString(
+                              "en-NG",
+                              {
+                                minimumFractionDigits: 0,
+                                maximumFractionDigits: 2,
+                              }
+                            )}`}
+
+                      </p>
+
+                      <p className="mt-1 text-xs text-slate-500">
+                        Total spent
+                      </p>
+
+                    </div>
+
+                    <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-red-50 text-red-600">
+                      <Banknote className="h-5 w-5" />
+                    </div>
+
+                  </div>
+
+                </CardContent>
+
+              </Card>
+
+              <Card className="rounded-3xl border-slate-200/80 bg-white shadow-sm transition hover:shadow-md">
+
+                <CardContent className="p-5">
+
+                  <div className="flex items-start justify-between">
+
+                    <div>
+
+                      <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                        Activity
+                      </p>
+
+                      <p className="mt-2 text-2xl font-black tracking-tight text-slate-950">
+
+                        {statsLoading
+                          ? "..."
+                          : stats.monthlyTransactions.toLocaleString()}
+
+                      </p>
+
+                      <p className="mt-1 text-xs text-slate-500">
+                        Transactions this month
+                      </p>
+
+                    </div>
+
+                    <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">
+                      <History className="h-5 w-5" />
+                    </div>
+
+                  </div>
+
+                </CardContent>
+
+              </Card>
+
+              <Card className="rounded-3xl border-slate-200/80 bg-white shadow-sm transition hover:shadow-md">
+
+                <CardContent className="p-5">
+
+                  <div className="flex items-start justify-between">
+
+                    <div>
+
+                      <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                        Reliability
+                      </p>
+
+                      <p className="mt-2 text-2xl font-black tracking-tight text-slate-950">
+
+                        {statsLoading
+                          ? "..."
+                          : `${stats.successRate}%`}
+
+                      </p>
+
+                      <p className="mt-1 text-xs text-slate-500">
+                        Successful transactions
+                      </p>
+
+                    </div>
+
+                    <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600">
+                      <Shield className="h-5 w-5" />
+                    </div>
+
+                  </div>
+
+                </CardContent>
+
+              </Card>
+
+            </div>
+
+          </section>
+
+          {/* SECURITY / TRUST */}
+
+          <section className="mb-4">
+
+            <Card className="overflow-hidden rounded-3xl border-slate-200/80 bg-white shadow-sm">
+
+              <CardContent className="p-5 sm:p-6">
+
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+
+                  <div className="flex items-start gap-3">
+
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-purple-50 text-purple-600">
+                      <Shield className="h-5 w-5" />
+                    </div>
+
+                    <div>
+
+                      <p className="text-sm font-bold text-slate-900">
+                        Your account is protected
+                      </p>
+
+                      <p className="mt-1 max-w-xl text-xs leading-5 text-slate-500">
+                        IyanjuPay uses secure authentication and payment authorization to protect your money and transactions.
+                      </p>
+
+                    </div>
+
+                  </div>
+
+                  <Button
+                    variant="outline"
+                    onClick={() =>
+                      setCurrentPage(
+                        "payment-pin"
+                      )
+                    }
+                    className="rounded-xl border-slate-200 font-semibold"
+                  >
+                    Security Settings
+                  </Button>
 
                 </div>
 
-                <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
+              </CardContent>
 
-                  <History className="h-6 w-6 text-blue-600" />
+            </Card>
 
-                </div>
+          </section>
 
-              </div>
+        </main>
 
-            </CardContent>
+        {/* ====================================================== */}
+        {/* BOTTOM NAVIGATION                                     */}
+        {/* ====================================================== */}
 
-          </Card>
-
-          {/* ==================================================
-              SUCCESS RATE
-          ================================================== */}
-
-          <Card className="bg-white shadow-sm">
-
-            <CardContent className="p-4">
-
-              <div className="flex items-center justify-between">
-
-                <div>
-
-                  <p className="text-sm text-gray-600">
-                    Success Rate
-                  </p>
-
-                  <p className="text-2xl font-bold text-gray-900">
-
-                    {statsLoading
-                      ? "..."
-                      : `${stats.successRate}%`}
-
-                  </p>
-
-                  <p className="text-xs text-gray-500">
-                    All Time
-                  </p>
-
-                </div>
-
-                <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center">
-
-                  <Shield className="h-6 w-6 text-green-600" />
-
-                </div>
-
-              </div>
-
-            </CardContent>
-
-          </Card>
-
-        </div>
-
-      </main>
-
-      {/* ======================================================
-          BOTTOM NAVIGATION
-      ====================================================== */}
-
-      {renderBottomNav(
-        currentPage
-      )}
-
-      {/* ======================================================
-          MODALS
-      ====================================================== */}
-
-      <FundWalletModal
-        isOpen={
-          fundModalOpen
-        }
-        onClose={() =>
-          setFundModalOpen(
-            false
-          )
-        }
-        onFunded={async () => {
-          await refreshWallet();
-          await loadDashboardStats();
-        }}
-      />
-
-      <TransferModal
-        isOpen={
-          transferModalOpen
-        }
-        onClose={() =>
-          setTransferModalOpen(
-            false
-          )
-        }
-        walletBalance={Number(
-          wallet?.balance ?? 0
+        {renderBottomNav(
+          currentPage
         )}
-        onTransfer={
-          handleTransfer
-        }
-      />
 
-      <QRCodeModal
-        isOpen={
-          qrModalOpen
-        }
-        onClose={() =>
-          setQrModalOpen(
-            false
-          )
-        }
-        virtualAccountNumber=""
-        userName={
-          user?.email ||
-          "User"
-        }
-      />
+        {/* ====================================================== */}
+        {/* FUND WALLET                                           */}
+        {/* ====================================================== */}
 
-      <WhatsAppFloat />
+        <FundWalletModal
+          isOpen={
+            fundModalOpen
+          }
+          onClose={() =>
+            setFundModalOpen(
+              false
+            )
+          }
+          onFunded={async () => {
+            await refreshWallet();
+            await loadDashboardStats();
+          }}
+        />
 
-    </div>
+        {/* ====================================================== */}
+        {/* QR CODE                                                */}
+        {/* ====================================================== */}
+
+        <QRCodeModal
+          isOpen={
+            qrModalOpen
+          }
+          onClose={() =>
+            setQrModalOpen(
+              false
+            )
+          }
+          virtualAccountNumber={
+            wallet?.virtual_account_number ||
+            ""
+          }
+          userName={
+            user?.email ||
+            "User"
+          }
+        />
+
+        {/* ====================================================== */}
+        {/* SUPPORT CHAT                                          */}
+        {/* ====================================================== */}
+
+        <Button
+          type="button"
+          onClick={() =>
+            setSupportChatOpen(
+              true
+            )
+          }
+          className="fixed bottom-24 right-4 z-50 h-14 w-14 rounded-full bg-purple-600 p-0 shadow-[0_12px_30px_rgba(124,58,237,0.35)] hover:bg-purple-700 sm:bottom-24 sm:right-6"
+          aria-label="Open live support chat"
+        >
+          <Headphones className="h-6 w-6" />
+        </Button>
+
+        <SupportChat
+          open={
+            supportChatOpen
+          }
+          onClose={() =>
+            setSupportChatOpen(
+              false
+            )
+          }
+        />
+
+        {/* ====================================================== */}
+        {/* WHATSAPP                                              */}
+        {/* ====================================================== */}
+
+        <WhatsAppFloat />
+
+      </div>
+    </>
   );
 };
-
 
 export default Dashboard;

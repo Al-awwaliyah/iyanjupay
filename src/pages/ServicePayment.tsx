@@ -1332,12 +1332,7 @@ function ServiceTransactionProcessing({
           border-color: #334155 !important;
         }
 
-        /*
-         * IMPORTANT:
-         * Explicitly replace the light gradient. This prevents
-         * Tailwind's `to-white` class from leaving a white area
-         * in dark mode.
-         */
+        
 
         html[data-iyanjupay-theme="dark"]
           .iyanjupay-processing-hero {

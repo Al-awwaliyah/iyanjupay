@@ -18,6 +18,7 @@ import {
   ShieldAlert,
   X,
   XCircle,
+  RotateCcw,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -40,88 +41,65 @@ import AdminLayout from "./AdminLayout";
 
 interface ReconciliationRow {
   id: string;
-
   transaction_id: string;
-
   provider_record_id: string | null;
-
   internal_reference: string | null;
-
   provider_reference: string | null;
-
   amount: number | string;
-
   provider_amount: number | string | null;
-
   amount_difference: number | string;
-
   currency: string;
-
   internal_status: string | null;
-
   provider_status: string | null;
-
   transaction_type: string | null;
-
   category: string | null;
-
   provider: string | null;
-
   user_id: string;
-
   state: string;
-
   issue_type: string | null;
-
   provider_reference_match: boolean;
-
   internal_reference_match: boolean;
-
   amount_match: boolean;
-
   status_match: boolean;
-
   refund_status: string | null;
-
   reconciliation_required: boolean;
-
   created_at: string;
-
   updated_at: string;
-
   total_count: number;
 }
 
-
 interface ReconciliationSummary {
   total_records: number;
-
   matched_count: number;
-
   unmatched_count: number;
-
   discrepancy_count: number;
-
   investigating_count: number;
-
   resolved_count: number;
-
   pending_transfer_count: number;
-
   refund_pending_count: number;
-
   discrepancy_amount: number;
 }
 
-
 interface ReconciliationDetail {
   transaction: Record<string, any> | null;
-
   provider: Record<string, any> | null;
-
   case: Record<string, any> | null;
-
   events: Array<Record<string, any>>;
+}
+
+interface ReconcileResult {
+  success: boolean;
+  state?: "successful" | "failed" | "pending";
+  reference?: string;
+  order_id?: string | null;
+  request_id?: string | null;
+  statuscode?: number | null;
+  orderstatus?: string | null;
+  orderremark?: string | null;
+  refunded?: boolean;
+  already_successful?: boolean;
+  message?: string;
+  error?: string;
 }
 
 
@@ -287,7 +265,7 @@ const stateIcon = (
 
 
 /* ================================================================
-   BOOLEAN MATCH BADGE
+   MATCH BADGE
    ================================================================ */
 
 const MatchBadge = ({
@@ -320,18 +298,11 @@ const MatchBadge = ({
 const ReconciliationPage = () => {
   const { toast } = useToast();
 
-
-  /* ================================================================
-     STATE
-     ================================================================ */
-
   const [rows, setRows] =
     useState<ReconciliationRow[]>([]);
 
   const [summary, setSummary] =
-    useState<ReconciliationSummary | null>(
-      null,
-    );
+    useState<ReconciliationSummary | null>(null);
 
   const [loading, setLoading] =
     useState(true);
@@ -358,14 +329,10 @@ const ReconciliationPage = () => {
     useState(1);
 
   const [selected, setSelected] =
-    useState<ReconciliationDetail | null>(
-      null,
-    );
+    useState<ReconciliationDetail | null>(null);
 
   const [selectedRow, setSelectedRow] =
-    useState<ReconciliationRow | null>(
-      null,
-    );
+    useState<ReconciliationRow | null>(null);
 
   const [detailLoading, setDetailLoading] =
     useState(false);
@@ -375,6 +342,15 @@ const ReconciliationPage = () => {
 
   const [investigationNotes, setInvestigationNotes] =
     useState("");
+
+  const [reconcileLoading, setReconcileLoading] =
+    useState(false);
+
+  const [reconcileResult, setReconcileResult] =
+    useState<ReconcileResult | null>(null);
+
+  const [reconcileConfirm, setReconcileConfirm] =
+    useState(false);
 
 
   /* ================================================================
@@ -475,7 +451,7 @@ const ReconciliationPage = () => {
 
 
   /* ================================================================
-     FETCH RECONCILIATION
+     FETCH ROWS
      ================================================================ */
 
   const fetchRows =
@@ -490,22 +466,6 @@ const ReconciliationPage = () => {
         }
 
         try {
-          /*
-           * IMPORTANT:
-           * The deployed database function uses:
-           *
-           * public.admin_reconciliation_list(
-           *   _status text,
-           *   _provider text,
-           *   _search text,
-           *   _limit integer,
-           *   _offset integer
-           * )
-           *
-           * Therefore the frontend must use these exact
-           * parameter names.
-           */
-
           const {
             data,
             error,
@@ -532,6 +492,13 @@ const ReconciliationPage = () => {
               _offset:
                 (page - 1) *
                 PAGE_SIZE,
+
+              /*
+               * Some deployments do not yet expose
+               * a state argument. Keep this value out
+               * of the RPC contract and filter state
+               * client-side below.
+               */
             },
           );
 
@@ -539,9 +506,20 @@ const ReconciliationPage = () => {
             throw error;
           }
 
-          setRows(
-            (data || []) as ReconciliationRow[],
-          );
+          let nextRows =
+            (data || []) as ReconciliationRow[];
+
+          if (stateFilter !== "all") {
+            nextRows =
+              nextRows.filter(
+                (row) =>
+                  String(row.state || "")
+                    .toLowerCase() ===
+                  stateFilter.toLowerCase(),
+              );
+          }
+
+          setRows(nextRows);
 
         } catch (error: any) {
           console.error(
@@ -603,7 +581,6 @@ const ReconciliationPage = () => {
 
   const handleSearch = () => {
     setPage(1);
-
     setSearch(
       searchInput.trim(),
     );
@@ -654,6 +631,7 @@ const ReconciliationPage = () => {
     setSelected(null);
     setDetailLoading(true);
     setInvestigationNotes("");
+    setReconcileResult(null);
 
     try {
       const {
@@ -712,9 +690,15 @@ const ReconciliationPage = () => {
      ================================================================ */
 
   const closeInvestigation = () => {
+    if (reconcileLoading) {
+      return;
+    }
+
     setSelected(null);
     setSelectedRow(null);
     setInvestigationNotes("");
+    setReconcileResult(null);
+    setReconcileConfirm(false);
   };
 
 
@@ -822,6 +806,202 @@ const ReconciliationPage = () => {
 
 
   /* ================================================================
+     CLUBKONNECT RECONCILIATION
+     ================================================================ */
+
+  const reconcileClubKonnect = async () => {
+    if (!selectedRow) {
+      return;
+    }
+
+    const reference =
+      String(
+        selectedRow.internal_reference ||
+        "",
+      ).trim();
+
+    if (!reference) {
+      toast({
+        title:
+          "Transaction reference unavailable",
+        description:
+          "This record does not contain an internal transaction reference.",
+        variant:
+          "destructive",
+      });
+
+      return;
+    }
+
+    setReconcileLoading(true);
+    setReconcileResult(null);
+
+    try {
+      const {
+        data: sessionData,
+      } = await supabase.auth.getSession();
+
+      const accessToken =
+        sessionData.session?.access_token;
+
+      if (!accessToken) {
+        throw new Error(
+          "Your administrator session has expired. Please sign in again.",
+        );
+      }
+
+      const {
+        data,
+        error,
+      } = await supabase.functions.invoke(
+        "clubkonnect-reconcile",
+        {
+          body: {
+            reference,
+          },
+          headers: {
+            Authorization:
+              `Bearer ${accessToken}`,
+          },
+        },
+      );
+
+      if (error) {
+        let message =
+          error.message ||
+          "ClubKonnect reconciliation failed.";
+
+        try {
+          const context =
+            (error as any)?.context;
+
+          if (context) {
+            const response =
+              context instanceof Response
+                ? context
+                : null;
+
+            if (response) {
+              const body =
+                await response.json()
+                  .catch(() => null);
+
+              if (body?.error) {
+                message =
+                  body.error;
+              }
+            }
+          }
+        } catch {
+          // Keep original error.
+        }
+
+        throw new Error(message);
+      }
+
+      const result =
+        (data || {}) as ReconcileResult;
+
+      setReconcileResult(
+        result,
+      );
+
+      if (!result.success) {
+        throw new Error(
+          result.error ||
+          result.message ||
+          "ClubKonnect reconciliation failed.",
+        );
+      }
+
+      if (
+        result.state ===
+        "successful"
+      ) {
+        toast({
+          title:
+            result.already_successful
+              ? "Already successful"
+              : "Transaction confirmed",
+          description:
+            result.already_successful
+              ? "This transaction was already marked successful."
+              : "ClubKonnect confirmed the transaction as completed.",
+        });
+      } else if (
+        result.state ===
+        "failed"
+      ) {
+        toast({
+          title:
+            result.refunded
+              ? "Transaction failed and refunded"
+              : "Transaction failed",
+          description:
+            result.refunded
+              ? "The transaction was confirmed failed and the customer's wallet was refunded."
+              : result.message ||
+                "ClubKonnect reported a failed transaction.",
+          variant:
+            result.refunded
+              ? "default"
+              : "destructive",
+        });
+      } else {
+        toast({
+          title:
+            "Transaction still pending",
+          description:
+            result.message ||
+            "ClubKonnect has not returned a final success or failure status.",
+        });
+      }
+
+      await Promise.all([
+        fetchRows(true),
+        fetchSummary(),
+      ]);
+
+      /*
+       * Reload investigation details so the metadata,
+       * provider status and transaction status displayed
+       * in the modal are immediately updated.
+       */
+      await openInvestigation(
+        selectedRow,
+      );
+
+    } catch (error: any) {
+      console.error(
+        "ClubKonnect reconciliation failed:",
+        error,
+      );
+
+      setReconcileResult({
+        success: false,
+        error:
+          error?.message ||
+          "ClubKonnect reconciliation failed.",
+      });
+
+      toast({
+        title:
+          "Reconciliation failed",
+        description:
+          error?.message ||
+          "Unable to reconcile this ClubKonnect transaction.",
+        variant:
+          "destructive",
+      });
+
+    } finally {
+      setReconcileLoading(false);
+      setReconcileConfirm(false);
+    }
+  };
+
+
+  /* ================================================================
      RENDER
      ================================================================ */
 
@@ -829,16 +1009,9 @@ const ReconciliationPage = () => {
     <AdminLayout>
       <div className="min-h-screen bg-gray-50 p-4 sm:p-6 lg:p-8 space-y-6">
 
-        {/* ==========================================================
-            HEADER
-            ========================================================== */}
-
         <section>
-
           <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-
             <div>
-
               <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">
                 Reconciliation
               </h1>
@@ -846,7 +1019,6 @@ const ReconciliationPage = () => {
               <p className="text-sm text-gray-500 mt-1">
                 Compare provider transactions with IyanjuPay records and investigate discrepancies.
               </p>
-
             </div>
 
             <Button
@@ -866,21 +1038,16 @@ const ReconciliationPage = () => {
 
               Refresh
             </Button>
-
           </div>
-
         </section>
 
 
-        {/* ==========================================================
-            SUMMARY
-            ========================================================== */}
+        {/* SUMMARY */}
 
         <section className="grid grid-cols-2 lg:grid-cols-4 gap-3">
 
           <Card>
             <CardContent className="p-4">
-
               <p className="text-xs text-gray-500">
                 Total records
               </p>
@@ -888,14 +1055,11 @@ const ReconciliationPage = () => {
               <p className="text-2xl font-bold text-gray-900 mt-1">
                 {summary?.total_records ?? "—"}
               </p>
-
             </CardContent>
           </Card>
 
-
           <Card>
             <CardContent className="p-4">
-
               <p className="text-xs text-gray-500">
                 Matched
               </p>
@@ -903,14 +1067,11 @@ const ReconciliationPage = () => {
               <p className="text-2xl font-bold text-green-600 mt-1">
                 {summary?.matched_count ?? "—"}
               </p>
-
             </CardContent>
           </Card>
 
-
           <Card>
             <CardContent className="p-4">
-
               <p className="text-xs text-gray-500">
                 Discrepancies
               </p>
@@ -918,14 +1079,11 @@ const ReconciliationPage = () => {
               <p className="text-2xl font-bold text-red-600 mt-1">
                 {summary?.discrepancy_count ?? "—"}
               </p>
-
             </CardContent>
           </Card>
 
-
           <Card>
             <CardContent className="p-4">
-
               <p className="text-xs text-gray-500">
                 Pending transfers
               </p>
@@ -933,16 +1091,13 @@ const ReconciliationPage = () => {
               <p className="text-2xl font-bold text-orange-600 mt-1">
                 {summary?.pending_transfer_count ?? "—"}
               </p>
-
             </CardContent>
           </Card>
 
         </section>
 
 
-        {/* ==========================================================
-            ALERT
-            ========================================================== */}
+        {/* ALERT */}
 
         {(
           Number(
@@ -952,15 +1107,11 @@ const ReconciliationPage = () => {
             summary?.pending_transfer_count || 0,
           ) > 0
         ) && (
-
           <section className="rounded-2xl border border-orange-200 bg-orange-50 p-4">
-
             <div className="flex gap-3">
-
               <ShieldAlert className="h-5 w-5 text-orange-600 shrink-0 mt-0.5" />
 
               <div>
-
                 <p className="font-semibold text-orange-900">
                   Reconciliation attention required
                 </p>
@@ -968,36 +1119,25 @@ const ReconciliationPage = () => {
                 <p className="text-sm text-orange-700 mt-1">
                   There are pending or unmatched provider transactions that may require investigation.
                 </p>
-
               </div>
-
             </div>
-
           </section>
-
         )}
 
 
-        {/* ==========================================================
-            FILTERS
-            ========================================================== */}
+        {/* FILTERS */}
 
         <section className="bg-white border rounded-2xl p-4">
 
           <div className="flex items-center gap-2 mb-4">
-
             <Filter className="h-4 w-4 text-gray-500" />
 
             <h2 className="font-semibold text-gray-900">
               Filters
             </h2>
-
           </div>
 
-
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
-
-            {/* SEARCH */}
 
             <div className="relative xl:col-span-2">
 
@@ -1023,9 +1163,6 @@ const ReconciliationPage = () => {
 
             </div>
 
-
-            {/* STATE */}
-
             <select
               value={stateFilter}
               onChange={(event) => {
@@ -1037,7 +1174,6 @@ const ReconciliationPage = () => {
               }}
               className="h-10 rounded-md border border-input bg-background px-3 text-sm"
             >
-
               <option value="all">
                 All reconciliation states
               </option>
@@ -1061,11 +1197,7 @@ const ReconciliationPage = () => {
               <option value="resolved">
                 Resolved
               </option>
-
             </select>
-
-
-            {/* STATUS */}
 
             <select
               value={statusFilter}
@@ -1078,7 +1210,6 @@ const ReconciliationPage = () => {
               }}
               className="h-10 rounded-md border border-input bg-background px-3 text-sm"
             >
-
               <option value="all">
                 All transaction statuses
               </option>
@@ -1094,11 +1225,9 @@ const ReconciliationPage = () => {
               <option value="failed">
                 Failed
               </option>
-
             </select>
 
           </div>
-
 
           <div className="flex flex-wrap gap-2 mt-3">
 
@@ -1111,14 +1240,12 @@ const ReconciliationPage = () => {
               Search
             </Button>
 
-
             {(
               search ||
               stateFilter !== "all" ||
               statusFilter !== "all" ||
               providerFilter !== "all"
             ) && (
-
               <Button
                 type="button"
                 size="sm"
@@ -1129,7 +1256,6 @@ const ReconciliationPage = () => {
               >
                 Clear filters
               </Button>
-
             )}
 
           </div>
@@ -1137,14 +1263,11 @@ const ReconciliationPage = () => {
         </section>
 
 
-        {/* ==========================================================
-            TABLE
-            ========================================================== */}
+        {/* TABLE */}
 
         <section className="bg-white border rounded-2xl overflow-hidden">
 
           <div className="px-5 py-4 border-b">
-
             <h2 className="font-bold text-gray-900">
               Reconciliation Records
             </h2>
@@ -1152,32 +1275,20 @@ const ReconciliationPage = () => {
             <p className="text-xs text-gray-500 mt-1">
               Provider transactions compared against internal IyanjuPay records.
             </p>
-
           </div>
 
-
           {loading ? (
-
             <div className="py-20 flex justify-center">
-
               <div className="flex items-center gap-2 text-sm text-gray-500">
-
                 <Loader2 className="h-5 w-5 animate-spin text-purple-600" />
-
                 Loading reconciliation...
-
               </div>
-
             </div>
-
           ) : rows.length === 0 ? (
-
             <div className="py-20 text-center">
 
               <div className="w-12 h-12 rounded-xl bg-green-50 flex items-center justify-center mx-auto">
-
                 <CheckCircle2 className="h-6 w-6 text-green-500" />
-
               </div>
 
               <p className="font-semibold text-gray-900 mt-4">
@@ -1189,15 +1300,12 @@ const ReconciliationPage = () => {
               </p>
 
             </div>
-
           ) : (
-
             <div className="overflow-x-auto">
 
               <table className="w-full text-sm">
 
                 <thead className="bg-gray-50 border-b">
-
                   <tr>
 
                     <th className="text-left px-5 py-3 font-semibold text-gray-500">
@@ -1229,24 +1337,20 @@ const ReconciliationPage = () => {
                     </th>
 
                   </tr>
-
                 </thead>
-
 
                 <tbody className="divide-y">
 
                   {rows.map(
                     (row) => (
-
                       <tr
-                        key={row.transaction_id}
+                        key={
+                          row.transaction_id
+                        }
                         className="hover:bg-gray-50"
                       >
 
-                        {/* INTERNAL */}
-
                         <td className="px-5 py-4">
-
                           <p className="font-mono text-xs font-semibold text-gray-900 break-all">
                             {
                               row.internal_reference ||
@@ -1259,14 +1363,9 @@ const ReconciliationPage = () => {
                               row.transaction_type,
                             )}
                           </p>
-
                         </td>
 
-
-                        {/* PROVIDER */}
-
                         <td className="px-5 py-4">
-
                           <p className="font-mono text-xs font-semibold text-gray-900 break-all">
                             {
                               row.provider_reference ||
@@ -1280,14 +1379,9 @@ const ReconciliationPage = () => {
                               "—"
                             }
                           </p>
-
                         </td>
 
-
-                        {/* INTERNAL AMOUNT */}
-
                         <td className="px-5 py-4 text-right">
-
                           <p className="font-bold text-gray-900">
                             {
                               formatMoney(
@@ -1296,16 +1390,11 @@ const ReconciliationPage = () => {
                               )
                             }
                           </p>
-
                         </td>
-
-
-                        {/* PROVIDER AMOUNT */}
 
                         <td className="px-5 py-4 text-right">
 
                           {row.provider_amount !== null ? (
-
                             <>
                               <p className="font-bold text-gray-900">
                                 {
@@ -1319,7 +1408,6 @@ const ReconciliationPage = () => {
                               {Number(
                                 row.amount_difference,
                               ) !== 0 && (
-
                                 <p className="text-[11px] text-red-600 mt-1">
                                   Difference{" "}
                                   {formatMoney(
@@ -1327,25 +1415,17 @@ const ReconciliationPage = () => {
                                     row.currency,
                                   )}
                                 </p>
-
                               )}
                             </>
-
                           ) : (
-
                             <span className="text-xs text-gray-400">
                               Not available
                             </span>
-
                           )}
 
                         </td>
 
-
-                        {/* STATUS */}
-
                         <td className="px-5 py-4">
-
                           <div className="space-y-1">
 
                             <span className="text-xs font-semibold text-gray-700">
@@ -1363,11 +1443,7 @@ const ReconciliationPage = () => {
                             </span>
 
                           </div>
-
                         </td>
-
-
-                        {/* STATE */}
 
                         <td className="px-5 py-4">
 
@@ -1376,7 +1452,6 @@ const ReconciliationPage = () => {
                               row.state,
                             )}`}
                           >
-
                             {stateIcon(
                               row.state,
                             )}
@@ -1384,23 +1459,17 @@ const ReconciliationPage = () => {
                             {labelize(
                               row.state,
                             )}
-
                           </span>
 
                           {row.issue_type && (
-
                             <p className="text-[11px] text-red-500 mt-1">
                               {
                                 row.issue_type
                               }
                             </p>
-
                           )}
 
                         </td>
-
-
-                        {/* ACTION */}
 
                         <td className="px-5 py-4 text-right">
 
@@ -1421,7 +1490,6 @@ const ReconciliationPage = () => {
                         </td>
 
                       </tr>
-
                     ),
                   )}
 
@@ -1430,21 +1498,13 @@ const ReconciliationPage = () => {
               </table>
 
             </div>
-
           )}
-
-
-          {/* ========================================================
-              PAGINATION
-              ======================================================== */}
 
           {!loading &&
             rows.length > 0 && (
-
               <div className="border-t px-5 py-4 flex items-center justify-between">
 
                 <p className="text-xs text-gray-500">
-
                   Page{" "}
                   <span className="font-semibold">
                     {page}
@@ -1453,9 +1513,7 @@ const ReconciliationPage = () => {
                   <span className="font-semibold">
                     {totalPages}
                   </span>
-
                 </p>
-
 
                 <div className="flex gap-2">
 
@@ -1479,7 +1537,6 @@ const ReconciliationPage = () => {
                     Previous
                   </Button>
 
-
                   <Button
                     type="button"
                     variant="outline"
@@ -1502,17 +1559,13 @@ const ReconciliationPage = () => {
                   </Button>
 
                 </div>
-
               </div>
-
             )}
 
         </section>
 
 
-        {/* ==========================================================
-            INVESTIGATION MODAL
-            ========================================================== */}
+        {/* INVESTIGATION MODAL */}
 
         {(selectedRow || detailLoading) && (
 
@@ -1527,15 +1580,11 @@ const ReconciliationPage = () => {
               className="absolute inset-0 bg-black/50"
             />
 
-
             <div className="relative w-full max-w-4xl max-h-[92vh] overflow-y-auto bg-white rounded-2xl shadow-2xl">
-
-              {/* HEADER */}
 
               <div className="sticky top-0 z-10 bg-white border-b px-5 py-4 flex items-center justify-between">
 
                 <div>
-
                   <h3 className="font-bold text-gray-900">
                     Reconciliation Investigation
                   </h3>
@@ -1547,9 +1596,7 @@ const ReconciliationPage = () => {
                       "Loading..."
                     }
                   </p>
-
                 </div>
-
 
                 <Button
                   type="button"
@@ -1557,6 +1604,9 @@ const ReconciliationPage = () => {
                   size="icon"
                   onClick={
                     closeInvestigation
+                  }
+                  disabled={
+                    reconcileLoading
                   }
                 >
                   <X className="h-5 w-5" />
@@ -1568,24 +1618,17 @@ const ReconciliationPage = () => {
               {detailLoading ? (
 
                 <div className="py-24 flex justify-center">
-
                   <div className="flex items-center gap-2 text-sm text-gray-500">
-
                     <Loader2 className="h-5 w-5 animate-spin text-purple-600" />
-
                     Loading investigation...
-
                   </div>
-
                 </div>
 
               ) : selected ? (
 
                 <div className="p-5 space-y-5">
 
-                  {/* ==================================================
-                      STATE
-                      ================================================== */}
+                  {/* STATE */}
 
                   <div className="rounded-2xl bg-gray-50 border p-5">
 
@@ -1602,29 +1645,26 @@ const ReconciliationPage = () => {
                           <span
                             className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold ${stateClasses(
                               selectedRow?.state ||
-                                selected.case?.state ||
-                                "unmatched",
+                              selected.case?.state ||
+                              "unmatched",
                             )}`}
                           >
-
                             {stateIcon(
                               selectedRow?.state ||
-                                selected.case?.state ||
-                                "unmatched",
+                              selected.case?.state ||
+                              "unmatched",
                             )}
 
                             {labelize(
                               selectedRow?.state ||
-                                selected.case?.state ||
-                                "unmatched",
+                              selected.case?.state ||
+                              "unmatched",
                             )}
-
                           </span>
 
                         </div>
 
                       </div>
-
 
                       <div className="text-left sm:text-right">
 
@@ -1633,14 +1673,12 @@ const ReconciliationPage = () => {
                         </p>
 
                         <p className="text-2xl font-bold text-gray-900 mt-1">
-
                           {
                             formatMoney(
                               selectedRow?.amount,
                               selectedRow?.currency,
                             )
                           }
-
                         </p>
 
                       </div>
@@ -1650,24 +1688,172 @@ const ReconciliationPage = () => {
                   </div>
 
 
-                  {/* ==================================================
-                      COMPARISON
-                      ================================================== */}
+                  {/* CLUBKONNECT RECONCILIATION */}
 
-                  <div className="rounded-2xl border overflow-hidden">
+                  <div className="rounded-2xl border border-purple-200 bg-purple-50 p-5">
 
-                    <div className="px-5 py-4 border-b">
+                    <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
 
-                      <h4 className="font-bold text-gray-900">
-                        Provider vs IyanjuPay
-                      </h4>
+                      <div>
+
+                        <div className="flex items-center gap-2">
+
+                          <RotateCcw className="h-5 w-5 text-purple-600" />
+
+                          <h4 className="font-bold text-purple-950">
+                            Provider reconciliation
+                          </h4>
+
+                        </div>
+
+                        <p className="text-sm text-purple-800 mt-1">
+                          Check the provider for the latest status of this service transaction.
+                        </p>
+
+                        <p className="text-[11px] text-purple-700 mt-2 font-mono break-all">
+                          Reference:{" "}
+                          {
+                            selectedRow?.internal_reference ||
+                            selected.transaction?.reference_number ||
+                            "—"
+                          }
+                        </p>
+
+                      </div>
+
+                      <Button
+                        type="button"
+                        onClick={() =>
+                          setReconcileConfirm(
+                            true,
+                          )
+                        }
+                        disabled={
+                          reconcileLoading ||
+                          !selectedRow?.internal_reference
+                        }
+                      >
+
+                        {reconcileLoading ? (
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        ) : (
+                          <RefreshCw className="h-4 w-4 mr-2" />
+                        )}
+
+                        {reconcileLoading
+                          ? "Checking provider..."
+                          : "Reconcile transaction"}
+
+                      </Button>
 
                     </div>
 
 
-                    <div className="grid grid-cols-1 md:grid-cols-2">
+                    {reconcileResult && (
 
-                      {/* INTERNAL */}
+                      <div
+                        className={`mt-4 rounded-xl border p-4 ${
+                          reconcileResult.success &&
+                          reconcileResult.state === "successful"
+                            ? "bg-green-50 border-green-200"
+                            : reconcileResult.success &&
+                              reconcileResult.state === "pending"
+                              ? "bg-yellow-50 border-yellow-200"
+                              : "bg-red-50 border-red-200"
+                        }`}
+                      >
+
+                        <div className="flex gap-3">
+
+                          {reconcileResult.success &&
+                          reconcileResult.state === "successful" ? (
+                            <CheckCircle2 className="h-5 w-5 text-green-600 shrink-0" />
+                          ) : reconcileResult.success &&
+                            reconcileResult.state === "pending" ? (
+                            <Clock3 className="h-5 w-5 text-yellow-600 shrink-0" />
+                          ) : (
+                            <XCircle className="h-5 w-5 text-red-600 shrink-0" />
+                          )}
+
+                          <div className="min-w-0">
+
+                            <p className="font-semibold text-gray-900">
+                              {reconcileResult.state === "successful"
+                                ? "Provider confirmed success"
+                                : reconcileResult.state === "failed"
+                                  ? "Provider confirmed failure"
+                                  : reconcileResult.state === "pending"
+                                    ? "Provider transaction is still pending"
+                                    : "Provider reconciliation error"}
+                            </p>
+
+                            {reconcileResult.message && (
+                              <p className="text-sm text-gray-600 mt-1">
+                                {
+                                  reconcileResult.message
+                                }
+                              </p>
+                            )}
+
+                            {reconcileResult.order_id && (
+                              <p className="text-xs font-mono text-gray-500 mt-2 break-all">
+                                Order ID:{" "}
+                                {
+                                  reconcileResult.order_id
+                                }
+                              </p>
+                            )}
+
+                            {reconcileResult.statuscode !== null &&
+                              reconcileResult.statuscode !== undefined && (
+                                <p className="text-xs text-gray-500 mt-1">
+                                  Status code:{" "}
+                                  <span className="font-semibold">
+                                    {
+                                      reconcileResult.statuscode
+                                    }
+                                  </span>
+                                </p>
+                              )}
+
+                            {reconcileResult.orderstatus && (
+                              <p className="text-xs text-gray-500 mt-1">
+                                Provider status:{" "}
+                                <span className="font-semibold">
+                                  {
+                                    reconcileResult.orderstatus
+                                  }
+                                </span>
+                              </p>
+                            )}
+
+                            {reconcileResult.refunded && (
+                              <p className="text-xs font-semibold text-green-700 mt-2">
+                                Customer wallet refund completed.
+                              </p>
+                            )}
+
+                          </div>
+
+                        </div>
+
+                      </div>
+                    )}
+
+                  </div>
+
+
+                  {/* COMPARISON */}
+
+                  <div className="rounded-2xl border overflow-hidden">
+
+                    <div className="px-5 py-4 border-b">
+                      <h4 className="font-bold text-gray-900">
+                        Provider vs IyanjuPay
+                      </h4>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2">
 
                       <div className="p-5 border-b md:border-b-0 md:border-r">
 
@@ -1675,11 +1861,9 @@ const ReconciliationPage = () => {
                           IyanjuPay
                         </p>
 
-
                         <div className="space-y-4 mt-4">
 
                           <div>
-
                             <p className="text-xs text-gray-400">
                               Internal reference
                             </p>
@@ -1691,12 +1875,9 @@ const ReconciliationPage = () => {
                                 "—"
                               }
                             </p>
-
                           </div>
 
-
                           <div>
-
                             <p className="text-xs text-gray-400">
                               Amount
                             </p>
@@ -1709,12 +1890,9 @@ const ReconciliationPage = () => {
                                 )
                               }
                             </p>
-
                           </div>
 
-
                           <div>
-
                             <p className="text-xs text-gray-400">
                               Status
                             </p>
@@ -1727,12 +1905,9 @@ const ReconciliationPage = () => {
                                 )
                               }
                             </p>
-
                           </div>
 
-
                           <div>
-
                             <p className="text-xs text-gray-400">
                               Provider
                             </p>
@@ -1744,12 +1919,9 @@ const ReconciliationPage = () => {
                                 "—"
                               }
                             </p>
-
                           </div>
 
-
                           <div>
-
                             <p className="text-xs text-gray-400">
                               Provider reference stored internally
                             </p>
@@ -1761,7 +1933,6 @@ const ReconciliationPage = () => {
                                 "—"
                               }
                             </p>
-
                           </div>
 
                         </div>
@@ -1769,21 +1940,17 @@ const ReconciliationPage = () => {
                       </div>
 
 
-                      {/* PROVIDER */}
-
                       <div className="p-5">
 
                         <p className="text-xs font-semibold text-blue-600 uppercase tracking-wide">
                           Provider
                         </p>
 
-
                         {selected.provider ? (
 
                           <div className="space-y-4 mt-4">
 
                             <div>
-
                               <p className="text-xs text-gray-400">
                                 Provider reference
                               </p>
@@ -1797,12 +1964,9 @@ const ReconciliationPage = () => {
                                   "—"
                                 }
                               </p>
-
                             </div>
 
-
                             <div>
-
                               <p className="text-xs text-gray-400">
                                 Amount
                               </p>
@@ -1818,12 +1982,9 @@ const ReconciliationPage = () => {
                                   )
                                 }
                               </p>
-
                             </div>
 
-
                             <div>
-
                               <p className="text-xs text-gray-400">
                                 Status
                               </p>
@@ -1836,12 +1997,9 @@ const ReconciliationPage = () => {
                                   )
                                 }
                               </p>
-
                             </div>
 
-
                             <div>
-
                               <p className="text-xs text-gray-400">
                                 Internal reference supplied by provider
                               </p>
@@ -1853,12 +2011,9 @@ const ReconciliationPage = () => {
                                   "—"
                                 }
                               </p>
-
                             </div>
 
-
                             <div>
-
                               <p className="text-xs text-gray-400">
                                 Provider transaction ID
                               </p>
@@ -1870,7 +2025,6 @@ const ReconciliationPage = () => {
                                   "—"
                                 }
                               </p>
-
                             </div>
 
                           </div>
@@ -1908,9 +2062,7 @@ const ReconciliationPage = () => {
                   </div>
 
 
-                  {/* ==================================================
-                      MATCH CHECKS
-                      ================================================== */}
+                  {/* MATCH CHECKS */}
 
                   <div className="rounded-2xl border p-5">
 
@@ -1918,17 +2070,14 @@ const ReconciliationPage = () => {
                       Reconciliation checks
                     </h4>
 
-
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
 
                       <div className="rounded-xl bg-gray-50 p-4">
-
                         <p className="text-xs text-gray-500">
                           Provider reference
                         </p>
 
                         <div className="mt-2">
-
                           <MatchBadge
                             matched={
                               Boolean(
@@ -1937,20 +2086,15 @@ const ReconciliationPage = () => {
                               )
                             }
                           />
-
                         </div>
-
                       </div>
 
-
                       <div className="rounded-xl bg-gray-50 p-4">
-
                         <p className="text-xs text-gray-500">
                           Internal reference
                         </p>
 
                         <div className="mt-2">
-
                           <MatchBadge
                             matched={
                               Boolean(
@@ -1959,20 +2103,15 @@ const ReconciliationPage = () => {
                               )
                             }
                           />
-
                         </div>
-
                       </div>
 
-
                       <div className="rounded-xl bg-gray-50 p-4">
-
                         <p className="text-xs text-gray-500">
                           Amount
                         </p>
 
                         <div className="mt-2">
-
                           <MatchBadge
                             matched={
                               Boolean(
@@ -1981,20 +2120,15 @@ const ReconciliationPage = () => {
                               )
                             }
                           />
-
                         </div>
-
                       </div>
 
-
                       <div className="rounded-xl bg-gray-50 p-4">
-
                         <p className="text-xs text-gray-500">
                           Status
                         </p>
 
                         <div className="mt-2">
-
                           <MatchBadge
                             matched={
                               Boolean(
@@ -2003,9 +2137,7 @@ const ReconciliationPage = () => {
                               )
                             }
                           />
-
                         </div>
-
                       </div>
 
                     </div>
@@ -2013,9 +2145,7 @@ const ReconciliationPage = () => {
                   </div>
 
 
-                  {/* ==================================================
-                      TRANSACTION METADATA
-                      ================================================== */}
+                  {/* TRANSACTION INFORMATION */}
 
                   <div className="rounded-2xl border p-5">
 
@@ -2023,11 +2153,9 @@ const ReconciliationPage = () => {
                       Transaction information
                     </h4>
 
-
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
 
                       <div>
-
                         <p className="text-xs text-gray-400">
                           Transaction ID
                         </p>
@@ -2041,12 +2169,9 @@ const ReconciliationPage = () => {
                             "—"
                           }
                         </p>
-
                       </div>
 
-
                       <div>
-
                         <p className="text-xs text-gray-400">
                           User ID
                         </p>
@@ -2059,12 +2184,9 @@ const ReconciliationPage = () => {
                             "—"
                           }
                         </p>
-
                       </div>
 
-
                       <div>
-
                         <p className="text-xs text-gray-400">
                           Transaction type
                         </p>
@@ -2077,12 +2199,9 @@ const ReconciliationPage = () => {
                             )
                           }
                         </p>
-
                       </div>
 
-
                       <div>
-
                         <p className="text-xs text-gray-400">
                           Category
                         </p>
@@ -2095,12 +2214,9 @@ const ReconciliationPage = () => {
                             )
                           }
                         </p>
-
                       </div>
 
-
                       <div>
-
                         <p className="text-xs text-gray-400">
                           Created
                         </p>
@@ -2113,12 +2229,9 @@ const ReconciliationPage = () => {
                             )
                           }
                         </p>
-
                       </div>
 
-
                       <div>
-
                         <p className="text-xs text-gray-400">
                           Updated
                         </p>
@@ -2131,7 +2244,6 @@ const ReconciliationPage = () => {
                             )
                           }
                         </p>
-
                       </div>
 
                     </div>
@@ -2139,9 +2251,7 @@ const ReconciliationPage = () => {
                   </div>
 
 
-                  {/* ==================================================
-                      METADATA
-                      ================================================== */}
+                  {/* METADATA */}
 
                   {selected.transaction
                     ?.metadata && (
@@ -2166,9 +2276,7 @@ const ReconciliationPage = () => {
                   )}
 
 
-                  {/* ==================================================
-                      INVESTIGATION NOTES
-                      ================================================== */}
+                  {/* INVESTIGATION */}
 
                   <div className="rounded-2xl border p-5">
 
@@ -2179,7 +2287,6 @@ const ReconciliationPage = () => {
                     <p className="text-xs text-gray-500 mt-1">
                       Record what was checked and why the case was resolved.
                     </p>
-
 
                     <textarea
                       value={
@@ -2195,14 +2302,14 @@ const ReconciliationPage = () => {
                       className="mt-4 w-full rounded-xl border border-input bg-background px-3 py-2 text-sm resize-none"
                     />
 
-
                     <div className="flex flex-wrap gap-2 mt-4">
 
                       <Button
                         type="button"
                         variant="outline"
                         disabled={
-                          actionLoading
+                          actionLoading ||
+                          reconcileLoading
                         }
                         onClick={() =>
                           updateCase(
@@ -2210,7 +2317,6 @@ const ReconciliationPage = () => {
                           )
                         }
                       >
-
                         {actionLoading ? (
                           <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                         ) : (
@@ -2218,15 +2324,14 @@ const ReconciliationPage = () => {
                         )}
 
                         Start investigation
-
                       </Button>
-
 
                       <Button
                         type="button"
                         variant="outline"
                         disabled={
-                          actionLoading
+                          actionLoading ||
+                          reconcileLoading
                         }
                         onClick={() =>
                           updateCase(
@@ -2234,18 +2339,15 @@ const ReconciliationPage = () => {
                           )
                         }
                       >
-
                         <CheckCircle2 className="h-4 w-4 mr-2" />
-
                         Mark matched
-
                       </Button>
-
 
                       <Button
                         type="button"
                         disabled={
-                          actionLoading
+                          actionLoading ||
+                          reconcileLoading
                         }
                         onClick={() =>
                           updateCase(
@@ -2253,11 +2355,8 @@ const ReconciliationPage = () => {
                           )
                         }
                       >
-
                         <CheckCircle2 className="h-4 w-4 mr-2" />
-
                         Resolve case
-
                       </Button>
 
                     </div>
@@ -2265,16 +2364,13 @@ const ReconciliationPage = () => {
                   </div>
 
 
-                  {/* ==================================================
-                      CASE EVENTS
-                      ================================================== */}
+                  {/* EVENTS */}
 
                   <div className="rounded-2xl border p-5">
 
                     <h4 className="font-bold text-gray-900 mb-4">
                       Investigation history
                     </h4>
-
 
                     {(
                       selected.events ||
@@ -2325,45 +2421,36 @@ const ReconciliationPage = () => {
 
                               </div>
 
-
                               {(
                                 event.old_state ||
                                 event.new_state
                               ) && (
 
                                 <p className="text-xs text-gray-500 mt-2">
-
                                   {
                                     labelize(
                                       event.old_state,
                                     )
                                   }
-
                                   {" → "}
-
                                   {
                                     labelize(
                                       event.new_state,
                                     )
                                   }
-
                                 </p>
 
                               )}
 
-
                               {event.notes && (
-
                                 <p className="text-sm text-gray-600 mt-2 whitespace-pre-wrap">
                                   {
                                     event.notes
                                   }
                                 </p>
-
                               )}
 
                             </div>
-
                           ),
                         )}
 
@@ -2380,7 +2467,119 @@ const ReconciliationPage = () => {
             </div>
 
           </div>
+        )}
 
+
+        {/* RECONCILIATION CONFIRMATION */}
+
+        {reconcileConfirm &&
+          selectedRow && (
+
+          <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+
+            <button
+              type="button"
+              aria-label="Close reconciliation confirmation"
+              onClick={() =>
+                setReconcileConfirm(false)
+              }
+              className="absolute inset-0 bg-black/60"
+            />
+
+            <div className="relative w-full max-w-md rounded-2xl bg-white shadow-2xl p-6">
+
+              <div className="flex items-start gap-3">
+
+                <div className="h-10 w-10 rounded-full bg-purple-100 flex items-center justify-center shrink-0">
+                  <RefreshCw className="h-5 w-5 text-purple-600" />
+                </div>
+
+                <div>
+
+                  <h3 className="font-bold text-gray-900">
+                    Reconcile transaction?
+                  </h3>
+
+                  <p className="text-sm text-gray-600 mt-1">
+                    IyanjuPay will query ClubKonnect for the latest status of this transaction.
+                  </p>
+
+                </div>
+
+              </div>
+
+              <div className="mt-4 rounded-xl bg-gray-50 border p-4">
+
+                <p className="text-xs text-gray-500">
+                  Internal reference
+                </p>
+
+                <p className="font-mono text-xs font-semibold text-gray-900 mt-1 break-all">
+                  {
+                    selectedRow.internal_reference
+                  }
+                </p>
+
+                <p className="text-xs text-gray-500 mt-3">
+                  Amount
+                </p>
+
+                <p className="font-bold text-gray-900 mt-1">
+                  {
+                    formatMoney(
+                      selectedRow.amount,
+                      selectedRow.currency,
+                    )
+                  }
+                </p>
+
+              </div>
+
+              <div className="mt-4 rounded-xl bg-yellow-50 border border-yellow-200 p-3">
+
+                <p className="text-xs text-yellow-800">
+                  Only a confirmed provider failure can trigger an automatic wallet refund. Pending provider states will remain pending.
+                </p>
+
+              </div>
+
+              <div className="flex justify-end gap-2 mt-5">
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() =>
+                    setReconcileConfirm(
+                      false,
+                    )
+                  }
+                >
+                  Cancel
+                </Button>
+
+                <Button
+                  type="button"
+                  onClick={
+                    reconcileClubKonnect
+                  }
+                  disabled={
+                    reconcileLoading
+                  }
+                >
+                  {reconcileLoading ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <RefreshCw className="h-4 w-4 mr-2" />
+                  )}
+
+                  Confirm reconciliation
+                </Button>
+
+              </div>
+
+            </div>
+
+          </div>
         )}
 
       </div>

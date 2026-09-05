@@ -1,4 +1,9 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import {
   ArrowLeft,
   ArrowUpRight,
@@ -28,7 +33,10 @@ interface ServicePaymentProps {
   walletBalance: number;
   onBack: () => void;
   onHistory?: () => void;
-  onPurchase: (amount: number, details: Record<string, any>) => Promise<any>;
+  onPurchase: (
+    amount: number,
+    details: Record<string, any>
+  ) => Promise<any>;
 }
 
 type Biller = Record<string, any>;
@@ -74,7 +82,15 @@ const CLUBKONNECT_SERVICES = new Set([
   "jamb",
 ]);
 
-const AIRTIME_AMOUNTS = [50, 100, 200, 500, 1000, 2000, 5000];
+const AIRTIME_AMOUNTS = [
+  50,
+  100,
+  200,
+  500,
+  1000,
+  2000,
+  5000,
+];
 
 const BILL_AMOUNTS = [
   100,
@@ -98,9 +114,8 @@ const DATA_TABS: DataTab[] = [
  * ============================================================
  * ELECTRICITY DISCO CONFIGURATION
  * ============================================================
- *
- * Customer-facing Electricity must show ONLY these 11 DISCOs.
  */
+
 const ELECTRICITY_DISCO_NAMES = [
   "AEDC Abuja Disco",
   "BEDC Benin Disco",
@@ -226,7 +241,9 @@ function displayServiceTitle(
   );
 }
 
-function getCode(value: Biller | Item | null | undefined): string {
+function getCode(
+  value: Biller | Item | null | undefined
+): string {
   return clean(
     value?.biller_code ??
       value?.billerCode ??
@@ -240,7 +257,9 @@ function getCode(value: Biller | Item | null | undefined): string {
   );
 }
 
-function getName(value: Biller | Item | null | undefined): string {
+function getName(
+  value: Biller | Item | null | undefined
+): string {
   return clean(
     value?.name ??
       value?.label ??
@@ -284,7 +303,9 @@ function getItemPrice(item: Item | null | undefined): number {
   );
 }
 
-function getProviderPrice(item: Item | null | undefined): number {
+function getProviderPrice(
+  item: Item | null | undefined
+): number {
   return num(
     item?.providerPrice ??
       item?.provider_price ??
@@ -422,8 +443,7 @@ function getDataPlanDuration(item: Item): string {
   }
 
   const validityDays = num(
-    item.validity_days ??
-      item.validityDays
+    item.validity_days ?? item.validityDays
   );
 
   if (validityDays > 0) {
@@ -433,7 +453,9 @@ function getDataPlanDuration(item: Item): string {
   return "Data plan";
 }
 
-function planGroup(item: Item): Exclude<DataTab, "HOT DEALS"> {
+function planGroup(
+  item: Item
+): Exclude<DataTab, "HOT DEALS"> {
   const text = [
     item.period,
     item.plan_period,
@@ -494,9 +516,13 @@ function isHot(item: Item): boolean {
 
       const normalized = clean(value).toLowerCase();
 
-      return ["true", "1", "yes", "y", "hot"].includes(
-        normalized
-      );
+      return [
+        "true",
+        "1",
+        "yes",
+        "y",
+        "hot",
+      ].includes(normalized);
     })
   ) {
     return true;
@@ -586,11 +612,17 @@ function providerLogo(
     return "https://www.google.com/s2/favicons?domain=showmax.com&sz=128";
   }
 
-  if (value.includes("mtn") || /\b01\b/.test(value)) {
+  if (
+    value.includes("mtn") ||
+    /\b01\b/.test(value)
+  ) {
     return "https://www.google.com/s2/favicons?domain=mtn.ng&sz=128";
   }
 
-  if (value.includes("glo") || /\b02\b/.test(value)) {
+  if (
+    value.includes("glo") ||
+    /\b02\b/.test(value)
+  ) {
     return "https://www.google.com/s2/favicons?domain=gloworld.com&sz=128";
   }
 
@@ -602,7 +634,10 @@ function providerLogo(
     return "https://www.google.com/s2/favicons?domain=9mobile.com.ng&sz=128";
   }
 
-  if (value.includes("airtel") || /\b04\b/.test(value)) {
+  if (
+    value.includes("airtel") ||
+    /\b04\b/.test(value)
+  ) {
     return "https://www.google.com/s2/favicons?domain=airtel.com.ng&sz=128";
   }
 
@@ -681,7 +716,10 @@ function canonicalElectricityDisco(
 
   const combined = `${name} ${code}`;
 
-  for (const [alias, canonical] of Object.entries(
+  for (const [
+    alias,
+    canonical,
+  ] of Object.entries(
     ELECTRICITY_DISCO_ALIASES
   )) {
     const normalizedAlias =
@@ -777,7 +815,9 @@ function filterElectricityDiscos(
     .filter(Boolean) as Biller[];
 }
 
-function isPlaceholderBiller(value: Biller): boolean {
+function isPlaceholderBiller(
+  value: Biller
+): boolean {
   const name = getName(value)
     .toLowerCase()
     .replace(/\s+/g, "");
@@ -787,7 +827,9 @@ function isPlaceholderBiller(value: Biller): boolean {
     .replace(/\s+/g, "");
 
   return [name, code].some((v) =>
-    /^(\[?\[?\{?tv\}?\]?\]?|\[objectobject\])$/.test(v)
+    /^(\[?\[?\{?tv\}?\]?\]?|\[objectobject\])$/.test(
+      v
+    )
   );
 }
 
@@ -806,15 +848,25 @@ function mergeBillers(
   const result: Biller[] = [];
   const seen = new Set<string>();
 
-  const canonicalName = (biller: Biller): string => {
+  const canonicalName = (
+    biller: Biller
+  ): string => {
     const raw =
-      `${getName(biller)} ${getCode(biller)}`.toLowerCase();
+      `${getName(biller)} ${getCode(
+        biller
+      )}`.toLowerCase();
 
-    if (raw.includes("mtn") || /\b01\b/.test(raw)) {
+    if (
+      raw.includes("mtn") ||
+      /\b01\b/.test(raw)
+    ) {
       return "mtn";
     }
 
-    if (raw.includes("glo") || /\b02\b/.test(raw)) {
+    if (
+      raw.includes("glo") ||
+      /\b02\b/.test(raw)
+    ) {
       return "glo";
     }
 
@@ -826,7 +878,10 @@ function mergeBillers(
       return "9mobile";
     }
 
-    if (raw.includes("airtel") || /\b04\b/.test(raw)) {
+    if (
+      raw.includes("airtel") ||
+      /\b04\b/.test(raw)
+    ) {
       return "airtel";
     }
 
@@ -850,7 +905,8 @@ function mergeBillers(
     const name = getName(biller).toLowerCase();
     const canonical = canonicalName(biller);
 
-    const key = canonical || code || name;
+    const key =
+      canonical || code || name;
 
     if (!key || seen.has(key)) return;
 
@@ -986,6 +1042,12 @@ function transactionReferenceFromResult(
   );
 }
 
+/*
+ * ============================================================
+ * TRANSACTION PROCESSING SCREEN
+ * ============================================================
+ */
+
 function ServiceTransactionProcessing({
   amount,
   details,
@@ -1002,14 +1064,19 @@ function ServiceTransactionProcessing({
   const [status, setStatus] =
     useState<TransactionStatus>("processing");
 
-  const [reference, setReference] = useState("");
-  const [message, setMessage] = useState(
-    "Your payment is being processed securely."
-  );
+  const [reference, setReference] =
+    useState("");
 
-  const [copied, setCopied] = useState(false);
+  const [message, setMessage] =
+    useState(
+      "Your payment is being processed securely."
+    );
 
-  const startedRef = React.useRef(false);
+  const [copied, setCopied] =
+    useState(false);
+
+  const startedRef =
+    React.useRef(false);
 
   const serviceName =
     clean(
@@ -1056,7 +1123,9 @@ function ServiceTransactionProcessing({
       setMessage(
         nextStatus === "pending"
           ? "Your payment has been received and is still being processed."
-          : "Your service purchase was completed successfully."
+          : nextStatus === "failed"
+            ? "We could not complete this transaction."
+            : "Your service purchase was completed successfully."
       );
 
       setStatus(nextStatus);
@@ -1081,7 +1150,9 @@ function ServiceTransactionProcessing({
     if (!reference) return;
 
     try {
-      await navigator.clipboard.writeText(reference);
+      await navigator.clipboard.writeText(
+        reference
+      );
 
       setCopied(true);
 
@@ -1092,28 +1163,32 @@ function ServiceTransactionProcessing({
     } catch {}
   };
 
-  const isProcessing = status === "processing";
-  const isSuccess = status === "success";
-  const isPending = status === "pending";
-  const isFailed = status === "failed";
+  const isProcessing =
+    status === "processing";
+  const isSuccess =
+    status === "success";
+  const isPending =
+    status === "pending";
+  const isFailed =
+    status === "failed";
 
   return (
     <>
       <style>{`
         /*
          * =====================================================
-         * IYANJUPAY SERVICE THEME
+         * SERVICE TRANSACTION PROCESSING THEME
          * =====================================================
          *
-         * IMPORTANT:
-         * All theme rules are scoped to
-         * .iyanjupay-service-page.
+         * These selectors are intentionally dedicated to the
+         * transaction-processing screen.
          *
-         * This prevents ServicePayment from changing unrelated
-         * application pages/components.
+         * They do NOT depend on generic .bg-white or .text-*
+         * selectors alone.
          */
 
-        .iyanjupay-service-page {
+        .iyanjupay-service-processing-page {
+          min-height: 100vh;
           background-color: #f9fafb;
           color: #111827;
           transition:
@@ -1121,337 +1196,292 @@ function ServiceTransactionProcessing({
             color 180ms ease;
         }
 
-        /*
-         * =====================================================
-         * LIGHT / NORMAL THEME
-         * =====================================================
-         */
+        .iyanjupay-processing-card {
+          background-color: #ffffff;
+          color: #111827;
+          border-color: #e5e7eb;
+        }
 
-        html[data-iyanjupay-theme="light"]
-          .iyanjupay-service-page,
-        html[data-iyanjupay-theme="normal"]
-          .iyanjupay-service-page {
+        .iyanjupay-processing-hero {
+          background-image: linear-gradient(
+            to bottom,
+            #f9fafb,
+            #ffffff
+          );
+          border-color: #e5e7eb;
+        }
+
+        .iyanjupay-processing-summary {
+          background-color: #f9fafb;
+          border-color: #e5e7eb;
+        }
+
+        .iyanjupay-processing-reference {
+          background-color: #ffffff;
+          border-color: #e5e7eb;
+        }
+
+        .iyanjupay-processing-reference-value {
           background-color: #f9fafb;
           color: #111827;
+        }
+
+        .iyanjupay-processing-status {
+          border-color: #d1fae5;
+          background-color: #ecfdf5;
+          color: #166534;
+        }
+
+        .iyanjupay-processing-pending {
+          border-color: #fde68a;
+          background-color: #fffbeb;
+          color: #92400e;
+        }
+
+        .iyanjupay-processing-failed {
+          border-color: #fecaca;
+          background-color: #fef2f2;
+          color: #991b1b;
+        }
+
+        .iyanjupay-processing-secondary {
+          background-color: #ffffff;
+          border-color: #d1d5db;
+          color: #111827;
+        }
+
+        .iyanjupay-processing-secondary:hover {
+          background-color: #f3f4f6;
         }
 
         /*
          * =====================================================
          * BLUE THEME
          * =====================================================
-         *
-         * Surfaces remain white/light.
-         * Text remains dark.
          */
 
         html[data-iyanjupay-theme="blue"]
-          .iyanjupay-service-page {
+          .iyanjupay-service-processing-page {
           background-color: #f4f8ff;
           color: #111827;
         }
 
         html[data-iyanjupay-theme="blue"]
-          .iyanjupay-service-page
-          .iyanjupay-service-header {
+          .iyanjupay-processing-card {
+          background-color: #ffffff;
+          color: #111827;
+          border-color: #dbe5f5;
+        }
+
+        html[data-iyanjupay-theme="blue"]
+          .iyanjupay-processing-hero {
           background-image: linear-gradient(
-            to right,
-            #082a63,
-            #1554b8,
-            #2563eb
-          ) !important;
+            to bottom,
+            #f4f8ff,
+            #ffffff
+          );
+          border-color: #dbe5f5;
         }
 
         html[data-iyanjupay-theme="blue"]
-          .iyanjupay-service-page
-          .iyanjupay-service-primary {
-          background-image: linear-gradient(
-            to right,
-            #082a63,
-            #1554b8,
-            #2563eb
-          ) !important;
+          .iyanjupay-processing-summary {
+          background-color: #f4f8ff;
+          border-color: #dbe5f5;
         }
 
         html[data-iyanjupay-theme="blue"]
-          .iyanjupay-service-page
-          .bg-violet-50 {
-          background-color: #dbeafe !important;
+          .iyanjupay-processing-reference {
+          background-color: #ffffff;
+          border-color: #dbe5f5;
         }
 
         html[data-iyanjupay-theme="blue"]
-          .iyanjupay-service-page
-          .text-purple-600,
-        html[data-iyanjupay-theme="blue"]
-          .iyanjupay-service-page
-          .text-purple-700 {
-          color: #1d4ed8 !important;
+          .iyanjupay-processing-reference-value {
+          background-color: #f4f8ff;
+          color: #111827;
         }
 
         html[data-iyanjupay-theme="blue"]
-          .iyanjupay-service-page
-          .iyanjupay-service-selected {
-          border-color: #2563eb !important;
-          color: #1d4ed8 !important;
-          background-color: #dbeafe !important;
+          .iyanjupay-processing-secondary {
+          background-color: #ffffff;
+          border-color: #cbd5e1;
+          color: #111827;
+        }
+
+        html[data-iyanjupay-theme="blue"]
+          .iyanjupay-processing-secondary:hover {
+          background-color: #eff6ff;
         }
 
         /*
          * =====================================================
          * DARK THEME
          * =====================================================
-         *
-         * ONLY ServicePayment receives these dark overrides.
-         * Text becomes light and surfaces become dark.
          */
 
         html[data-iyanjupay-theme="dark"]
-          .iyanjupay-service-page {
+          .iyanjupay-service-processing-page {
           background-color: #090d18;
           color: #f8fafc;
         }
 
         html[data-iyanjupay-theme="dark"]
-          .iyanjupay-service-page
-          .bg-white {
+          .iyanjupay-processing-card {
           background-color: #111827 !important;
+          color: #f8fafc !important;
+          border-color: #334155 !important;
+        }
+
+        /*
+         * IMPORTANT:
+         * Explicitly replace the light gradient. This prevents
+         * Tailwind's `to-white` class from leaving a white area
+         * in dark mode.
+         */
+
+        html[data-iyanjupay-theme="dark"]
+          .iyanjupay-processing-hero {
+          background-image: linear-gradient(
+            to bottom,
+            #0f172a,
+            #111827
+          ) !important;
+          border-color: #334155 !important;
         }
 
         html[data-iyanjupay-theme="dark"]
-          .iyanjupay-service-page
-          .bg-gray-50 {
-          background-color: #090d18 !important;
+          .iyanjupay-processing-summary {
+          background-color: #0f172a !important;
+          border-color: #334155 !important;
+          color: #f8fafc !important;
         }
 
         html[data-iyanjupay-theme="dark"]
-          .iyanjupay-service-page
-          .bg-gray-100 {
+          .iyanjupay-processing-reference {
+          background-color: #111827 !important;
+          border-color: #334155 !important;
+          color: #f8fafc !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+          .iyanjupay-processing-reference-value {
+          background-color: #0f172a !important;
+          color: #f8fafc !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+          .iyanjupay-processing-status {
+          border-color: #14532d !important;
+          background-color: #052e2b !important;
+          color: #bbf7d0 !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+          .iyanjupay-processing-pending {
+          border-color: #92400e !important;
+          background-color: #451a03 !important;
+          color: #fde68a !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+          .iyanjupay-processing-failed {
+          border-color: #7f1d1d !important;
+          background-color: #450a0a !important;
+          color: #fecaca !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+          .iyanjupay-processing-secondary {
+          background-color: #111827 !important;
+          border-color: #475569 !important;
+          color: #f8fafc !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+          .iyanjupay-processing-secondary:hover {
           background-color: #1e293b !important;
         }
 
         html[data-iyanjupay-theme="dark"]
-          .iyanjupay-service-page
-          [class*="border-gray-200"] {
-          border-color: #334155 !important;
-        }
-
-        html[data-iyanjupay-theme="dark"]
-          .iyanjupay-service-page
-          [class*="border-gray-100"] {
-          border-color: #334155 !important;
-        }
-
-        html[data-iyanjupay-theme="dark"]
-          .iyanjupay-service-page
+          .iyanjupay-service-processing-page
           .text-gray-900 {
           color: #f8fafc !important;
         }
 
         html[data-iyanjupay-theme="dark"]
-          .iyanjupay-service-page
+          .iyanjupay-service-processing-page
           .text-gray-800 {
           color: #f1f5f9 !important;
         }
 
         html[data-iyanjupay-theme="dark"]
-          .iyanjupay-service-page
+          .iyanjupay-service-processing-page
           .text-gray-700 {
           color: #e2e8f0 !important;
         }
 
         html[data-iyanjupay-theme="dark"]
-          .iyanjupay-service-page
+          .iyanjupay-service-processing-page
           .text-gray-600 {
           color: #cbd5e1 !important;
         }
 
         html[data-iyanjupay-theme="dark"]
-          .iyanjupay-service-page
+          .iyanjupay-service-processing-page
           .text-gray-500 {
           color: #94a3b8 !important;
         }
 
         html[data-iyanjupay-theme="dark"]
-          .iyanjupay-service-page
+          .iyanjupay-service-processing-page
           .text-gray-400 {
           color: #64748b !important;
         }
 
         html[data-iyanjupay-theme="dark"]
-          .iyanjupay-service-page
-          .bg-violet-50 {
-          background-color: #312e81 !important;
+          .iyanjupay-service-processing-page
+          .border-t {
+          border-color: #334155 !important;
         }
 
         html[data-iyanjupay-theme="dark"]
-          .iyanjupay-service-page
+          .iyanjupay-service-processing-page
           .bg-green-50 {
           background-color: #052e2b !important;
         }
 
         html[data-iyanjupay-theme="dark"]
-          .iyanjupay-service-page
-          .text-green-700 {
+          .iyanjupay-service-processing-page
+          .text-green-600 {
           color: #86efac !important;
         }
 
         html[data-iyanjupay-theme="dark"]
-          .iyanjupay-service-page
-          .text-green-800 {
-          color: #bbf7d0 !important;
-        }
-
-        html[data-iyanjupay-theme="dark"]
-          .iyanjupay-service-page
+          .iyanjupay-service-processing-page
           .bg-amber-50 {
           background-color: #451a03 !important;
         }
 
         html[data-iyanjupay-theme="dark"]
-          .iyanjupay-service-page
+          .iyanjupay-service-processing-page
           .text-amber-600 {
           color: #fbbf24 !important;
         }
 
         html[data-iyanjupay-theme="dark"]
-          .iyanjupay-service-page
-          .text-amber-800 {
-          color: #fde68a !important;
-        }
-
-        html[data-iyanjupay-theme="dark"]
-          .iyanjupay-service-page
+          .iyanjupay-service-processing-page
           .bg-red-50 {
           background-color: #450a0a !important;
         }
 
         html[data-iyanjupay-theme="dark"]
-          .iyanjupay-service-page
+          .iyanjupay-service-processing-page
           .text-red-600 {
           color: #fca5a5 !important;
         }
-
-        html[data-iyanjupay-theme="dark"]
-          .iyanjupay-service-page
-          .text-red-700,
-        html[data-iyanjupay-theme="dark"]
-          .iyanjupay-service-page
-          .text-red-800 {
-          color: #fecaca !important;
-        }
-
-        html[data-iyanjupay-theme="dark"]
-          .iyanjupay-service-page
-          .border-red-200 {
-          border-color: #7f1d1d !important;
-        }
-
-        html[data-iyanjupay-theme="dark"]
-          .iyanjupay-service-page
-          .border-amber-200 {
-          border-color: #92400e !important;
-        }
-
-        html[data-iyanjupay-theme="dark"]
-          .iyanjupay-service-page
-          .border-green-100 {
-          border-color: #14532d !important;
-        }
-
-        /*
-         * Inputs/selects in dark mode.
-         */
-
-        html[data-iyanjupay-theme="dark"]
-          .iyanjupay-service-page
-          input,
-        html[data-iyanjupay-theme="dark"]
-          .iyanjupay-service-page
-          select {
-          background-color: #111827 !important;
-          color: #f8fafc !important;
-          border-color: #334155 !important;
-        }
-
-        html[data-iyanjupay-theme="dark"]
-          .iyanjupay-service-page
-          input::placeholder {
-          color: #64748b !important;
-          opacity: 1 !important;
-        }
-
-        /*
-         * Selected service / plan cards.
-         */
-
-        html[data-iyanjupay-theme="dark"]
-          .iyanjupay-service-page
-          .iyanjupay-service-selected {
-          border-color: #6366f1 !important;
-          color: #c4b5fd !important;
-          background-color: #312e81 !important;
-        }
-
-        /*
-         * Header and primary buttons in dark mode.
-         */
-
-        html[data-iyanjupay-theme="dark"]
-          .iyanjupay-service-page
-          .iyanjupay-service-header {
-          background-image: linear-gradient(
-            to right,
-            #111827,
-            #312e81,
-            #1e40af
-          ) !important;
-        }
-
-        html[data-iyanjupay-theme="dark"]
-          .iyanjupay-service-page
-          .iyanjupay-service-primary {
-          background-image: linear-gradient(
-            to right,
-            #111827,
-            #312e81,
-            #1e40af
-          ) !important;
-        }
-
-        /*
-         * Keep the service provider circles white enough for
-         * provider logos to remain visible in dark mode.
-         */
-
-        html[data-iyanjupay-theme="dark"]
-          .iyanjupay-service-page
-          .iyanjupay-service-biller-logo {
-          background-color: #ffffff !important;
-          color: #111827 !important;
-          border-color: #475569 !important;
-        }
-
-        /*
-         * =====================================================
-         * TRANSACTION PROCESSING THEME
-         * =====================================================
-         */
-
-        html[data-iyanjupay-theme="dark"]
-          .iyanjupay-service-page
-          .iyanjupay-processing-card {
-          background-color: #111827 !important;
-          border-color: #334155 !important;
-        }
-
-        html[data-iyanjupay-theme="dark"]
-          .iyanjupay-service-page
-          .iyanjupay-processing-summary {
-          background-color: #0f172a !important;
-          border-color: #334155 !important;
-        }
       `}</style>
 
-      <div className="iyanjupay-service-page min-h-screen bg-gray-50 text-gray-900">
+      <div className="iyanjupay-service-processing-page">
         <header className="iyanjupay-service-header sticky top-0 z-20 border-b border-violet-900/20 bg-gradient-to-r from-[#4C1D95] via-[#6D28D9] to-[#2563EB] text-white shadow-md">
           <div className="mx-auto flex max-w-3xl items-center justify-between px-4 py-3.5">
             <Button
@@ -1474,8 +1504,8 @@ function ServiceTransactionProcessing({
         </header>
 
         <main className="mx-auto max-w-3xl px-4 py-6 pb-10">
-          <section className="iyanjupay-processing-card overflow-hidden rounded-[2rem] border bg-white shadow-sm">
-            <div className="border-b bg-gradient-to-b from-gray-50 to-white px-5 py-8 text-center sm:px-8">
+          <section className="iyanjupay-processing-card overflow-hidden rounded-[2rem] border shadow-sm">
+            <div className="iyanjupay-processing-hero border-b px-5 py-8 text-center sm:px-8">
               <div
                 className={`mx-auto flex h-20 w-20 items-center justify-center rounded-full ${
                   isFailed
@@ -1521,7 +1551,7 @@ function ServiceTransactionProcessing({
               </p>
 
               {isProcessing && (
-                <div className="mx-auto mt-6 flex max-w-sm items-center justify-center gap-2 rounded-2xl border border-green-100 bg-green-50 px-4 py-3 text-sm font-medium text-green-800">
+                <div className="iyanjupay-processing-status mx-auto mt-6 flex max-w-sm items-center justify-center gap-2 rounded-2xl border px-4 py-3 text-sm font-medium">
                   <LockKeyhole className="h-4 w-4" />
                   Securing your transaction...
                 </div>
@@ -1529,7 +1559,7 @@ function ServiceTransactionProcessing({
             </div>
 
             <div className="space-y-4 p-5 sm:p-7">
-              <div className="iyanjupay-processing-summary rounded-2xl border bg-gray-50 p-4">
+              <div className="iyanjupay-processing-summary rounded-2xl border p-4">
                 <div className="mb-3 flex items-center gap-2 text-sm font-bold">
                   <Receipt className="h-4 w-4" />
                   Transaction summary
@@ -1583,13 +1613,13 @@ function ServiceTransactionProcessing({
               </div>
 
               {reference && (
-                <div className="rounded-2xl border p-4">
+                <div className="iyanjupay-processing-reference rounded-2xl border p-4">
                   <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
                     <Sparkles className="h-3.5 w-3.5" />
                     Transaction reference
                   </div>
 
-                  <div className="flex items-center gap-2 rounded-xl bg-gray-50 px-3 py-3">
+                  <div className="iyanjupay-processing-reference-value flex items-center gap-2 rounded-xl px-3 py-3">
                     <span className="min-w-0 flex-1 break-all text-sm font-semibold">
                       {reference}
                     </span>
@@ -1613,7 +1643,7 @@ function ServiceTransactionProcessing({
               )}
 
               {isPending && (
-                <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+                <div className="iyanjupay-processing-pending rounded-2xl border p-4 text-sm">
                   <div className="flex items-start gap-3">
                     <Clock3 className="mt-0.5 h-5 w-5 shrink-0" />
 
@@ -1633,7 +1663,7 @@ function ServiceTransactionProcessing({
               )}
 
               {isFailed && (
-                <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+                <div className="iyanjupay-processing-failed rounded-2xl border p-4 text-sm">
                   <div className="flex items-start gap-3">
                     <XCircle className="mt-0.5 h-5 w-5 shrink-0" />
 
@@ -1666,12 +1696,14 @@ function ServiceTransactionProcessing({
                 {!isProcessing && (
                   <Button
                     variant={
-                      isFailed ? "outline" : "default"
+                      isFailed
+                        ? "outline"
+                        : "default"
                     }
                     className={`${
                       !isFailed
                         ? "iyanjupay-service-primary bg-gradient-to-r from-[#4C1D95] via-[#6D28D9] to-[#2563EB] text-white shadow-sm hover:brightness-105"
-                        : ""
+                        : "iyanjupay-processing-secondary"
                     } h-12 w-full font-bold`}
                     onClick={onDone}
                   >
@@ -1719,12 +1751,20 @@ export default function ServicePayment({
       ? "clubkonnect-services"
       : "flutterwave-bills";
 
-  const isAirtime = serviceType === "airtime";
-  const isData = serviceType === "data";
-  const isCable = serviceType === "cable";
+  const isAirtime =
+    serviceType === "airtime";
+
+  const isData =
+    serviceType === "data";
+
+  const isCable =
+    serviceType === "cable";
+
   const isElectricity =
     serviceType === "electricity";
-  const isJamb = serviceType === "jamb";
+
+  const isJamb =
+    serviceType === "jamb";
 
   const isEpin =
     serviceType === "airtime-card" ||
@@ -1734,7 +1774,9 @@ export default function ServicePayment({
     isAirtime || isElectricity;
 
   const requiresIdentifierVerification =
-    isCable || isElectricity || isJamb;
+    isCable ||
+    isElectricity ||
+    isJamb;
 
   const [billers, setBillers] =
     useState<Biller[]>([]);
@@ -1800,7 +1842,9 @@ export default function ServicePayment({
     processingSession,
     setProcessingSession,
   ] =
-    useState<ProcessingSession | null>(null);
+    useState<ProcessingSession | null>(
+      null
+    );
 
   const [error, setError] =
     useState("");
@@ -1809,7 +1853,8 @@ export default function ServicePayment({
     () =>
       billers.find(
         (b) =>
-          getCode(b) === selectedBillerCode
+          getCode(b) ===
+          selectedBillerCode
       ) ?? null,
     [billers, selectedBillerCode]
   );
@@ -1954,7 +1999,8 @@ export default function ServicePayment({
         setError(message);
 
         toast({
-          title: "Unable to load services",
+          title:
+            "Unable to load services",
           description: message,
           variant: "destructive",
         });
@@ -1996,7 +2042,8 @@ export default function ServicePayment({
             ...(isElectricity
               ? {
                   meter_type:
-                    meterType || undefined,
+                    meterType ||
+                    undefined,
                 }
               : {}),
 
@@ -2035,7 +2082,8 @@ export default function ServicePayment({
           setError(message);
 
           toast({
-            title: "Unable to load packages",
+            title:
+              "Unable to load packages",
             description: message,
             variant: "destructive",
           });
@@ -2107,7 +2155,8 @@ export default function ServicePayment({
       if (isJamb) {
         if (!profileCode.trim()) {
           toast({
-            title: "Profile Code required",
+            title:
+              "Profile Code required",
             description:
               "Enter your JAMB Profile Code.",
             variant: "destructive",
@@ -2132,7 +2181,8 @@ export default function ServicePayment({
         const data = await invoke(
           isCable
             ? {
-                action: "verify_smartcard",
+                action:
+                  "verify_smartcard",
                 service: "cable",
                 biller_code:
                   selectedBillerCode,
@@ -2143,8 +2193,10 @@ export default function ServicePayment({
               }
             : isElectricity
               ? {
-                  action: "verify_meter",
-                  service: "electricity",
+                  action:
+                    "verify_meter",
+                  service:
+                    "electricity",
                   biller_code:
                     selectedBillerCode,
                   electric_company:
@@ -2153,10 +2205,12 @@ export default function ServicePayment({
                     customer.trim(),
                   meterNumber:
                     customer.trim(),
-                  meter_type: meterType,
+                  meter_type:
+                    meterType,
                 }
               : {
-                  action: "verify_profile",
+                  action:
+                    "verify_profile",
                   service: "jamb",
                   exam_type:
                     selectedBillerCode,
@@ -2203,7 +2257,8 @@ export default function ServicePayment({
         setError(message);
 
         toast({
-          title: "Verification failed",
+          title:
+            "Verification failed",
           description: message,
           variant: "destructive",
         });
@@ -2228,8 +2283,10 @@ export default function ServicePayment({
       isJamb ? 6 : 8;
 
     if (
-      value.length < minimumLength ||
-      (isElectricity && !meterType)
+      value.length <
+        minimumLength ||
+      (isElectricity &&
+        !meterType)
     ) {
       return;
     }
@@ -2277,14 +2334,18 @@ export default function ServicePayment({
   const handleItemSelect = (
     item: Item
   ) => {
-    const code = getItemCode(item);
-    const price = getItemPrice(item);
+    const code =
+      getItemCode(item);
+
+    const price =
+      getItemPrice(item);
 
     if (!code) return;
 
     if (price <= 0) {
       toast({
-        title: "Unavailable price",
+        title:
+          "Unavailable price",
         description:
           "This package does not have a valid selling price.",
         variant: "destructive",
@@ -2315,9 +2376,10 @@ export default function ServicePayment({
     useMemo(() => {
       if (!isData) return [];
 
-      const available = items.filter(
-        (i) => !isVariable(i)
-      );
+      const available =
+        items.filter(
+          (i) => !isVariable(i)
+        );
 
       const hot =
         available.filter((i) =>
@@ -2369,7 +2431,8 @@ export default function ServicePayment({
   ]);
 
   const canEnterAmount =
-    isAirtime || isElectricity;
+    isAirtime ||
+    isElectricity;
 
   const needsItem =
     !canEnterAmount;
@@ -2378,7 +2441,8 @@ export default function ServicePayment({
     isCable || isElectricity
       ? verified
       : isJamb
-        ? verified && !!customer.trim()
+        ? verified &&
+          !!customer.trim()
         : !!customer.trim();
 
   const hasAmount =
@@ -2431,7 +2495,9 @@ export default function ServicePayment({
       selectedItem &&
       Math.abs(
         num(amount) -
-          getItemPrice(selectedItem)
+          getItemPrice(
+            selectedItem
+          )
       ) > 0.01
     ) {
       return "The selected data plan price is no longer valid.";
@@ -2439,7 +2505,8 @@ export default function ServicePayment({
 
     if (
       amountMinimum > 0 &&
-      num(amount) < amountMinimum
+      num(amount) <
+        amountMinimum
     ) {
       return `Minimum amount is ${naira(
         amountMinimum
@@ -2448,7 +2515,8 @@ export default function ServicePayment({
 
     if (
       amountMaximum > 0 &&
-      num(amount) > amountMaximum
+      num(amount) >
+        amountMaximum
     ) {
       return `Maximum amount is ${naira(
         amountMaximum
@@ -2485,7 +2553,9 @@ export default function ServicePayment({
       isData ||
       isJamb ||
       isEpin
-        ? normalisePhone(customer)
+        ? normalisePhone(
+            customer
+          )
         : "";
 
     return {
@@ -2589,7 +2659,9 @@ export default function ServicePayment({
         : "",
 
       is_hot_deal: isData
-        ? isHot(selectedItem ?? {})
+        ? isHot(
+            selectedItem ?? {}
+          )
         : false,
     };
   };
@@ -2600,7 +2672,8 @@ export default function ServicePayment({
 
     if (validationError) {
       toast({
-        title: "Check your details",
+        title:
+          "Check your details",
         description:
           validationError,
         variant: "destructive",
@@ -2683,7 +2756,8 @@ export default function ServicePayment({
         setError(message);
 
         toast({
-          title: "Payment failed",
+          title:
+            "Payment failed",
           description: message,
           variant: "destructive",
         });
@@ -2695,7 +2769,8 @@ export default function ServicePayment({
   const renderBillerCard = (
     biller: Biller
   ) => {
-    const code = getCode(biller);
+    const code =
+      getCode(biller);
 
     const name =
       serviceType === "electricity"
@@ -2704,10 +2779,12 @@ export default function ServicePayment({
           ) ||
           getName(biller) ||
           code
-        : getName(biller) || code;
+        : getName(biller) ||
+          code;
 
     const selected =
-      code === selectedBillerCode;
+      code ===
+      selectedBillerCode;
 
     const logo =
       clean(
@@ -2725,7 +2802,9 @@ export default function ServicePayment({
         key={`${code}-${name}`}
         type="button"
         onClick={() =>
-          void handleBillerSelect(code)
+          void handleBillerSelect(
+            code
+          )
         }
         disabled={
           loadingBillers ||
@@ -2781,7 +2860,8 @@ export default function ServicePayment({
       getItemPrice(item);
 
     const selected =
-      code === selectedItemCode;
+      code ===
+      selectedItemCode;
 
     const actualHotPlan =
       isHot(item);
@@ -2864,7 +2944,8 @@ export default function ServicePayment({
       getItemPrice(item);
 
     const selected =
-      code === selectedItemCode;
+      code ===
+      selectedItemCode;
 
     return (
       <button
@@ -2906,6 +2987,12 @@ export default function ServicePayment({
     return null;
   }
 
+  /*
+   * ============================================================
+   * PROCESSING STATE
+   * ============================================================
+   */
+
   if (processingSession) {
     return (
       <ServiceTransactionProcessing
@@ -2939,12 +3026,6 @@ export default function ServicePayment({
          * =====================================================
          * IYANJUPAY SERVICE PAYMENT THEME
          * =====================================================
-         *
-         * Base = LIGHT / NORMAL
-         * Blue = LIGHT SURFACES + DARK TEXT
-         * Dark = DARK SURFACES + LIGHT TEXT
-         *
-         * Everything is scoped to the ServicePayment root.
          */
 
         .iyanjupay-service-page {
@@ -3295,6 +3376,175 @@ export default function ServicePayment({
           color: #111827 !important;
           border-color: #475569 !important;
         }
+
+        /*
+         * =====================================================
+         * PAYMENT PIN SCREEN
+         * =====================================================
+         *
+         * Dedicated selectors make the PIN screen reliable
+         * under all three Dashboard themes.
+         */
+
+        .iyanjupay-payment-pin-card {
+          background-color: #ffffff;
+          color: #111827;
+          border-color: #e5e7eb;
+        }
+
+        .iyanjupay-payment-pin-icon {
+          background-color: #ecfdf5;
+          color: #15803d;
+        }
+
+        .iyanjupay-payment-pin-description {
+          color: #6b7280;
+        }
+
+        .iyanjupay-payment-pin-input {
+          background-color: #ffffff;
+          color: #111827;
+          border-color: #d1d5db;
+        }
+
+        .iyanjupay-payment-pin-input::placeholder {
+          color: #9ca3af;
+          opacity: 1;
+        }
+
+        .iyanjupay-payment-pin-error {
+          border-color: #fecaca;
+          background-color: #fef2f2;
+          color: #b91c1c;
+        }
+
+        .iyanjupay-payment-pin-back {
+          background-color: #ffffff;
+          color: #111827;
+          border-color: #d1d5db;
+        }
+
+        .iyanjupay-payment-pin-back:hover {
+          background-color: #f3f4f6;
+        }
+
+        /*
+         * BLUE PIN THEME
+         */
+
+        html[data-iyanjupay-theme="blue"]
+          .iyanjupay-payment-pin-card {
+          background-color: #ffffff;
+          color: #111827;
+          border-color: #dbe5f5;
+        }
+
+        html[data-iyanjupay-theme="blue"]
+          .iyanjupay-payment-pin-icon {
+          background-color: #dbeafe;
+          color: #1d4ed8;
+        }
+
+        html[data-iyanjupay-theme="blue"]
+          .iyanjupay-payment-pin-description {
+          color: #4b5563;
+        }
+
+        html[data-iyanjupay-theme="blue"]
+          .iyanjupay-payment-pin-input {
+          background-color: #ffffff;
+          color: #111827;
+          border-color: #bfdbfe;
+        }
+
+        html[data-iyanjupay-theme="blue"]
+          .iyanjupay-payment-pin-back {
+          background-color: #ffffff;
+          color: #111827;
+          border-color: #cbd5e1;
+        }
+
+        html[data-iyanjupay-theme="blue"]
+          .iyanjupay-payment-pin-back:hover {
+          background-color: #eff6ff;
+        }
+
+        /*
+         * DARK PIN THEME
+         */
+
+        html[data-iyanjupay-theme="dark"]
+          .iyanjupay-payment-pin-card {
+          background-color: #111827 !important;
+          color: #f8fafc !important;
+          border-color: #334155 !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+          .iyanjupay-payment-pin-icon {
+          background-color: #052e2b !important;
+          color: #86efac !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+          .iyanjupay-payment-pin-description {
+          color: #94a3b8 !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+          .iyanjupay-payment-pin-input {
+          background-color: #0f172a !important;
+          color: #f8fafc !important;
+          border-color: #334155 !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+          .iyanjupay-payment-pin-input::placeholder {
+          color: #64748b !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+          .iyanjupay-payment-pin-error {
+          border-color: #7f1d1d !important;
+          background-color: #450a0a !important;
+          color: #fecaca !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+          .iyanjupay-payment-pin-back {
+          background-color: #111827 !important;
+          color: #f8fafc !important;
+          border-color: #475569 !important;
+        }
+
+        html[data-iyanjupay-theme="dark"]
+          .iyanjupay-payment-pin-back:hover {
+          background-color: #1e293b !important;
+        }
+
+        /*
+         * Prevent the generic outline/input styling from
+         * reintroducing a light PIN background.
+         */
+
+        html[data-iyanjupay-theme="dark"]
+          .iyanjupay-payment-pin-card
+          input {
+          background-color: #0f172a !important;
+          color: #f8fafc !important;
+          border-color: #334155 !important;
+        }
+
+        /*
+         * =====================================================
+         * SERVICE PAGE PROCESSING ROOT
+         * =====================================================
+         */
+
+        html[data-iyanjupay-theme="dark"]
+          .iyanjupay-service-page {
+          background-color: #090d18;
+        }
       `}</style>
 
       <div className="iyanjupay-service-page min-h-screen bg-gray-50 text-gray-900">
@@ -3338,9 +3588,14 @@ export default function ServicePayment({
 
         <main className="mx-auto max-w-3xl space-y-4 px-4 py-5 pb-10">
           {showPin ? (
-            <section className="rounded-3xl border bg-white p-6 shadow-sm">
+            /*
+             * ==================================================
+             * PAYMENT PIN SCREEN
+             * ==================================================
+             */
+            <section className="iyanjupay-payment-pin-card rounded-3xl border p-6 shadow-sm">
               <div className="mx-auto max-w-sm text-center">
-                <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-green-50 text-green-700">
+                <div className="iyanjupay-payment-pin-icon mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full">
                   <ShieldCheck className="h-7 w-7" />
                 </div>
 
@@ -3348,7 +3603,7 @@ export default function ServicePayment({
                   Confirm payment
                 </h2>
 
-                <p className="mt-1 text-sm text-gray-500">
+                <p className="iyanjupay-payment-pin-description mt-1 text-sm">
                   Enter your 4-digit payment PIN to
                   continue.
                 </p>
@@ -3363,23 +3618,35 @@ export default function ServicePayment({
                     onChange={(e) =>
                       setPaymentPin(
                         e.target.value
-                          .replace(/\D/g, "")
-                          .slice(0, 4)
+                          .replace(
+                            /\D/g,
+                            ""
+                          )
+                          .slice(
+                            0,
+                            4
+                          )
                       )
                     }
                     onKeyDown={(e) => {
-                      if (e.key === "Enter") {
+                      if (
+                        e.key ===
+                        "Enter"
+                      ) {
                         void confirmPurchase();
                       }
                     }}
                     placeholder="••••"
-                    className="h-14 text-center text-2xl tracking-[0.5em]"
-                    disabled={verifyingPin}
+                    className="iyanjupay-payment-pin-input h-14 text-center text-2xl tracking-[0.5em]"
+                    disabled={
+                      verifyingPin
+                    }
+                    aria-label="Payment PIN"
                   />
                 </div>
 
                 {error && (
-                  <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                  <div className="iyanjupay-payment-pin-error mt-4 rounded-xl border p-3 text-sm">
                     {error}
                   </div>
                 )}
@@ -3392,7 +3659,8 @@ export default function ServicePayment({
                     }
                     disabled={
                       verifyingPin ||
-                      paymentPin.length !== 4
+                      paymentPin.length !==
+                        4
                     }
                   >
                     {verifyingPin ? (
@@ -3407,11 +3675,13 @@ export default function ServicePayment({
 
                   <Button
                     variant="outline"
-                    className="h-12 w-full"
+                    className="iyanjupay-payment-pin-back h-12 w-full"
                     onClick={() =>
                       setShowPin(false)
                     }
-                    disabled={verifyingPin}
+                    disabled={
+                      verifyingPin
+                    }
                   >
                     Back
                   </Button>
@@ -3439,7 +3709,9 @@ export default function ServicePayment({
                     onClick={() =>
                       void loadBillers()
                     }
-                    disabled={loadingBillers}
+                    disabled={
+                      loadingBillers
+                    }
                   >
                     <RefreshCw
                       className={`mr-1.5 h-4 w-4 ${
@@ -3518,7 +3790,9 @@ export default function ServicePayment({
                       </div>
                     ) : (
                       <select
-                        value={meterType}
+                        value={
+                          meterType
+                        }
                         onChange={(e) =>
                           handleMeterType(
                             e.target.value
@@ -3555,10 +3829,13 @@ export default function ServicePayment({
 
                     {isJamb ? (
                       <Input
-                        value={profileCode}
+                        value={
+                          profileCode
+                        }
                         onChange={(e) => {
                           setProfileCode(
-                            e.target.value
+                            e.target
+                              .value
                           );
 
                           resetVerification();
@@ -3610,7 +3887,8 @@ export default function ServicePayment({
               {(isAirtime ||
                 isData ||
                 isEpin ||
-                (isJamb && verified)) && (
+                (isJamb &&
+                  verified)) && (
                 <section className="rounded-3xl border bg-white p-5 shadow-sm">
                   <Label className="text-sm font-bold">
                     {customerLabel}
@@ -3645,10 +3923,13 @@ export default function ServicePayment({
                             key={tab}
                             type="button"
                             onClick={() =>
-                              setDataTab(tab)
+                              setDataTab(
+                                tab
+                              )
                             }
                             className={`whitespace-nowrap rounded-full px-4 py-2 text-xs font-bold ${
-                              dataTab === tab
+                              dataTab ===
+                              tab
                                 ? "iyanjupay-service-primary bg-gradient-to-r from-[#4C1D95] via-[#6D28D9] to-[#2563EB] text-white"
                                 : "bg-gray-100 text-gray-600"
                             }`}
@@ -3696,9 +3977,11 @@ export default function ServicePayment({
                   selectedBillerCode) ||
                 (isEpin &&
                   selectedBillerCode) ||
-                (serviceType === "smile" &&
+                (serviceType ===
+                  "smile" &&
                   selectedBillerCode) ||
-                (serviceType === "waec" &&
+                (serviceType ===
+                  "waec" &&
                   selectedBillerCode)
               ) && (
                 <section className="rounded-3xl border bg-white p-5 shadow-sm">
@@ -3723,7 +4006,9 @@ export default function ServicePayment({
                       {items
                         .filter(
                           (i) =>
-                            !isVariable(i)
+                            !isVariable(
+                              i
+                            )
                         )
                         .map(renderPlan)}
                     </div>
@@ -3758,32 +4043,38 @@ export default function ServicePayment({
                         isAirtime
                           ? AIRTIME_AMOUNTS
                           : BILL_AMOUNTS
-                      ).map((value) => (
-                        <button
-                          key={value}
-                          type="button"
-                          onClick={() => {
-                            setAmount(
-                              String(value)
-                            );
+                      ).map(
+                        (value) => (
+                          <button
+                            key={value}
+                            type="button"
+                            onClick={() => {
+                              setAmount(
+                                String(
+                                  value
+                                )
+                              );
 
-                            setCustomAmount(
-                              false
-                            );
-                          }}
-                          className={`${
-                            amount ===
-                              String(
-                                value
-                              ) &&
-                            !customAmount
-                              ? "iyanjupay-service-selected border-[#6D28D9] bg-violet-50 text-[#4C1D95] ring-1 ring-[#6D28D9]/20"
-                              : "border-gray-200"
-                          } rounded-xl border p-3 text-sm font-bold`}
-                        >
-                          {naira(value)}
-                        </button>
-                      ))}
+                              setCustomAmount(
+                                false
+                              );
+                            }}
+                            className={`${
+                              amount ===
+                                String(
+                                  value
+                                ) &&
+                              !customAmount
+                                ? "iyanjupay-service-selected border-[#6D28D9] bg-violet-50 text-[#4C1D95] ring-1 ring-[#6D28D9]/20"
+                                : "border-gray-200"
+                            } rounded-xl border p-3 text-sm font-bold`}
+                          >
+                            {naira(
+                              value
+                            )}
+                          </button>
+                        )
+                      )}
 
                       <button
                         type="button"
@@ -3831,11 +4122,15 @@ export default function ServicePayment({
                 <Button
                   className="iyanjupay-service-primary h-12 w-full bg-gradient-to-r from-[#4C1D95] via-[#6D28D9] to-[#2563EB] text-base font-bold text-white shadow-sm hover:brightness-105"
                   onClick={startPurchase}
-                  disabled={!canPurchase}
+                  disabled={
+                    !canPurchase
+                  }
                 >
                   {`Continue to Pay ${
                     hasAmount
-                      ? naira(amount)
+                      ? naira(
+                          amount
+                        )
                       : ""
                   }`}
                 </Button>

@@ -4,10 +4,7 @@ import React, {
   useState,
 } from "react";
 
-import {
-  Banknote,
-  CreditCard,
-  Eye,
+import { Banknote, CreditCard, Eye,
   EyeOff,
   Gift,
   GraduationCap,

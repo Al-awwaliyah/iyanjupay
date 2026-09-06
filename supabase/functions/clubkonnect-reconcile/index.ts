@@ -511,6 +511,7 @@ Deno.serve(async (req) => {
     metadata.provider_callback_response ??
     metadata.clubkonnect_webhook_response ??
     metadata.provider_callback ??
+    metadata.clubkonnect_callback ??
     metadata.callback ??
     null;
 

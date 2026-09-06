@@ -1,0 +1,8 @@
+[{
+      "relation": ["delegate_permission/common.handle_all_urls"],
+      "target": {
+        "namespace": "android_app",
+        "package_name": "app.vercel.iyanjupay.twa",
+        "sha256_cert_fingerprints": ["9A:7A:80:B5:71:63:57:5B:20:36:83:DC:90:98:CB:00:E3:AE:75:A4:78:20:7E:EA:98:7A:C2:F5:22:93:50:57"]
+      }
+    }]

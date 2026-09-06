@@ -64,6 +64,35 @@ function statusText(body: JsonObject): string {
   ).toUpperCase();
 }
 
+function hasFulfillment(body: JsonObject): boolean {
+  const candidates = [body, body?.data];
+  const keys = new Set([
+    "TXN_EPIN_DATABUNDLE",
+    "TXN_EPIN",
+    "carddetails",
+    "cardDetails",
+    "pin",
+    "PIN",
+    "serial",
+    "sno",
+  ]);
+
+  for (const candidate of candidates) {
+    if (!candidate || typeof candidate !== "object") continue;
+    for (const key of Object.keys(candidate)) {
+      if (keys.has(key)) {
+        const value = candidate[key];
+        if (value !== null && value !== undefined && value !== "" &&
+            (!Array.isArray(value) || value.length > 0)) {
+          return true;
+        }
+      }
+    }
+  }
+
+  return false;
+}
+
 function classify(body: JsonObject, httpOk: boolean): {
   state: State;
   code: number | null;
@@ -71,31 +100,27 @@ function classify(body: JsonObject, httpOk: boolean): {
 } {
   const code = statusCode(body);
   const text = statusText(body);
+  const normalized = normalize(text);
 
-  if (httpOk && code === 200) {
-    return { state: "successful", code, text };
-  }
+  // ClubKonnect's documented completed query example uses statuscode 205
+  // with status ORDER_COMPLETED. Do not treat 205 as pending.
+  const successfulText = new Set([
+    "ORDER_COMPLETED",
+    "ORDER_COMPLETE",
+    "COMPLETED",
+    "COMPLETE",
+    "SUCCESS",
+    "SUCCESSFUL",
+    "SUCCEEDED",
+    "TRANSACTION_SUCCESSFUL",
+    "TRANSACTION_COMPLETED",
+  ]);
 
-  if (code === 201 || code === 299) {
-    return { state: "pending", code, text };
-  }
-
-  if (code === 100 || code === 199 || code === 300 || code === 399) {
-    return { state: "pending", code, text };
-  }
-
-  if (code !== null && code >= 600 && code <= 699) {
-    return { state: "pending", code, text };
-  }
-
-  if (code !== null && code >= 400 && code <= 599) {
-    return { state: "failed", code, text };
-  }
-
-  const failed = new Set([
+  const failedText = new Set([
     "FAILED",
     "FAILURE",
     "ORDER_ERROR",
+    "ORDER_FAILED",
     "ORDER_CANCELLED",
     "CANCELLED",
     "CANCELED",
@@ -105,8 +130,45 @@ function classify(body: JsonObject, httpOk: boolean): {
     "INVALID_TRANSACTION",
   ]);
 
-  if (failed.has(text)) {
+  const pendingText = new Set([
+    "ORDER_RECEIVED",
+    "ORDER_ONHOLD",
+    "ONHOLD",
+    "PENDING",
+    "PROCESSING",
+    "IN_PROGRESS",
+    "TRANSACTION_PENDING",
+  ]);
+
+  if (failedText.has(text) || (code !== null && code >= 400 && code <= 599)) {
     return { state: "failed", code, text };
+  }
+
+  if (
+    successfulText.has(text) ||
+    hasFulfillment(body) ||
+    (httpOk && code !== null && code >= 200 && code < 300 && code !== 201 && code !== 299)
+  ) {
+    return { state: "successful", code, text };
+  }
+
+  if (
+    pendingText.has(text) ||
+    code === 100 ||
+    code === 199 ||
+    code === 201 ||
+    code === 299 ||
+    code === 300 ||
+    code === 399 ||
+    (code !== null && code >= 600 && code <= 699)
+  ) {
+    return { state: "pending", code, text };
+  }
+
+  // If ClubKonnect gives an HTTP-OK response with a nonempty status text
+  // that is not explicitly terminal, keep it pending rather than guessing.
+  if (httpOk && normalized) {
+    return { state: "pending", code, text };
   }
 
   return { state: "pending", code, text };
@@ -300,6 +362,7 @@ async function upsertReconciliation(
   providerOrder: string | null,
   providerRequest: string,
   state: State,
+  internalStatusOverride?: string,
 ) {
   const providerReference = providerOrder ?? providerRequest ?? transaction.reference_number;
   const metadata =
@@ -327,7 +390,7 @@ async function upsertReconciliation(
         amount: n(transaction.amount),
         currency: transaction.currency ?? "NGN",
         provider_status: classified.text || String(classified.code ?? "UNKNOWN"),
-        internal_status: transaction.status,
+        internal_status: internalStatusOverride ?? transaction.status,
         reconciliation_status: reconciliationStatus,
         amount_difference: 0,
         provider_created_at: null,
@@ -348,6 +411,7 @@ async function upsertReconciliation(
           clubkonnect_status: classified.text,
           clubkonnect_response: safeResponse(providerBody),
           reconciled_at: new Date().toISOString(),
+          reconciliation_attempts: attempts,
         },
         updated_at: new Date().toISOString(),
       },
@@ -423,33 +487,131 @@ Deno.serve(async (req) => {
       ? transaction.metadata
       : {};
 
-  const providerOrder = s(
-    metadata.clubkonnect_order_id ?? transaction.provider_reference,
-  ) || null;
-
+  /*
+   * THREE-LAYER ADMIN RECONCILIATION
+   *
+   * 1. Explicit OrderID saved by the original provider response.
+   * 2. Original RequestID (the transaction reference used at purchase time).
+   * 3. Callback evidence already stored in transaction metadata.
+   *
+   * Never treat transaction.provider_reference as an OrderID unless it is
+   * explicitly stored as clubkonnect_order_id. Older rows may contain the
+   * RequestID in provider_reference, and querying that as OrderID is wrong.
+   */
+  const providerOrder = s(metadata.clubkonnect_order_id) || null;
   const providerRequest = s(
-    metadata.clubkonnect_request_id ?? metadata.request_id ?? transaction.reference_number,
+    metadata.clubkonnect_request_id ??
+      metadata.request_id ??
+      transaction.reference_number,
   );
 
-  let providerResponse: { ok: boolean; status: number; body: JsonObject };
-  try {
-    providerResponse = await providerQuery(
-      userId,
-      apiKey,
-      providerOrder ? { OrderID: providerOrder } : { RequestID: providerRequest },
+  const callbackEvidence =
+    metadata.clubkonnect_callback_response ??
+    metadata.callback_response ??
+    metadata.provider_callback_response ??
+    metadata.clubkonnect_webhook_response ??
+    metadata.provider_callback ??
+    metadata.callback ??
+    null;
+
+  const callbackBody =
+    callbackEvidence && typeof callbackEvidence === "object" && !Array.isArray(callbackEvidence)
+      ? callbackEvidence as JsonObject
+      : {};
+
+  const attempts: string[] = [];
+  let providerResponse: { ok: boolean; status: number; body: JsonObject } | null = null;
+  let classified: ReturnType<typeof classify> = {
+    state: "pending",
+    code: null,
+    text: "",
+  };
+
+  const tryQuery = async (params: Record<string, string>, label: string) => {
+    try {
+      const response = await providerQuery(userId, apiKey, params);
+      attempts.push(label);
+      return response;
+    } catch (error) {
+      attempts.push(`${label}:error`);
+      console.warn(`ClubKonnect reconciliation ${label} failed:`, error);
+      return null;
+    }
+  };
+
+  // Layer 1 — only a genuine stored OrderID.
+  if (providerOrder) {
+    const orderLookup = await tryQuery(
+      { OrderID: providerOrder },
+      "order_id",
     );
-  } catch (error) {
-    console.error("ClubKonnect reconciliation network error:", error);
-    return json({
-      success: true,
-      state: "pending",
-      reference: transaction.reference_number,
-      transaction_id: transaction.id,
-      message: "ClubKonnect could not be reached. The transaction remains pending.",
-    }, 200);
+
+    if (orderLookup) {
+      providerResponse = orderLookup;
+      classified = classify(orderLookup.body, orderLookup.ok);
+    }
   }
 
-  const classified = classify(providerResponse.body, providerResponse.ok);
+  // Layer 2 — always fall back to RequestID when OrderID is missing or
+  // inconclusive. RequestID is read-only and cannot create another purchase.
+  if (classified.state === "pending" && providerRequest) {
+    const requestLookup = await tryQuery(
+      { RequestID: providerRequest },
+      "request_id",
+    );
+
+    if (requestLookup) {
+      const requestClassified = classify(
+        requestLookup.body,
+        requestLookup.ok,
+      );
+
+      // Replace the OrderID response if RequestID produced a definitive
+      // result or useful provider evidence.
+      if (
+        requestClassified.state !== "pending" ||
+        orderId(requestLookup.body) ||
+        requestId(requestLookup.body) ||
+        hasFulfillment(requestLookup.body) ||
+        Object.keys(requestLookup.body ?? {}).length > 0
+      ) {
+        providerResponse = requestLookup;
+        classified = requestClassified;
+      }
+    }
+  }
+
+  // Layer 3 — use callback/webhook evidence already persisted by the
+  // callback handler. This does not invent a provider result.
+  if (
+    classified.state === "pending" &&
+    Object.keys(callbackBody).length > 0
+  ) {
+    const callbackClassified = classify(callbackBody, true);
+    attempts.push("callback");
+    if (
+      callbackClassified.state !== "pending" ||
+      hasFulfillment(callbackBody)
+    ) {
+      providerResponse = {
+        ok: true,
+        status: 200,
+        body: callbackBody,
+      };
+      classified = callbackClassified;
+    }
+  }
+
+  // If no provider query succeeded, preserve an empty response rather than
+  // crashing the reconciliation flow.
+  if (!providerResponse) {
+    providerResponse = {
+      ok: false,
+      status: 0,
+      body: {},
+    };
+  }
+
   const actualOrder = orderId(providerResponse.body) ?? providerOrder;
   const actualRequest = requestId(providerResponse.body) ?? providerRequest;
   const safe = safeResponse(providerResponse.body);
@@ -474,6 +636,7 @@ Deno.serve(async (req) => {
           clubkonnect_response: safe,
           reconciliation_required: false,
           reconciled_at: new Date().toISOString(),
+          reconciliation_attempts: attempts,
         };
 
         const { error: updateError } = await admin
@@ -497,6 +660,7 @@ Deno.serve(async (req) => {
         classified,
         actualOrder,
         actualRequest,
+        "successful",
         "successful",
       );
 
@@ -559,6 +723,7 @@ Deno.serve(async (req) => {
         refund_pending: !refund.success && !refund.alreadyRefunded,
         reconciliation_required: !refund.success,
         reconciled_at: new Date().toISOString(),
+        reconciliation_attempts: attempts,
       };
 
       const { error: updateError } = await admin
@@ -580,6 +745,7 @@ Deno.serve(async (req) => {
         classified,
         actualOrder,
         actualRequest,
+        "failed",
         "failed",
       );
 
@@ -608,6 +774,7 @@ Deno.serve(async (req) => {
       clubkonnect_response: safe,
       reconciliation_required: true,
       last_reconciled_at: new Date().toISOString(),
+      reconciliation_attempts: attempts,
     };
 
     const { error: pendingError } = await admin
@@ -629,6 +796,7 @@ Deno.serve(async (req) => {
       classified,
       actualOrder,
       actualRequest,
+      "pending",
       "pending",
     );
 

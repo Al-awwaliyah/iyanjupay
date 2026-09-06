@@ -54,7 +54,8 @@ import {
  *   ../_shared/clubkonnect.ts
  *
  * Pricing:
- *   all services = 10% markup
+ *   airtime = 0% markup
+ *   all other services = 10% markup
  *   selling price is rounded UP to the nearest ₦5
  *
  * SECURITY:
@@ -356,9 +357,12 @@ function roundMoney(
 }
 
 function markupRate(
-  _service: ServiceType
+  service: ServiceType
 ): number {
-  // Every supported ClubKonnect service uses the same 10% markup.
+  if (service === "airtime") {
+    return 0;
+  }
+
   return STANDARD_MARKUP;
 }
 
@@ -494,6 +498,51 @@ function requestId(
     : s(value);
 }
 
+function hasFulfillment(
+  body: any
+): boolean {
+  const sources = [
+    body,
+    body?.data,
+  ];
+
+  for (
+    const source of sources
+  ) {
+    if (!source) {
+      continue;
+    }
+
+    for (
+      const key of [
+        "TXN_EPIN_DATABUNDLE",
+        "TXN_EPIN",
+        "carddetails",
+        "cardDetails",
+        "pin",
+        "PIN",
+        "serial",
+        "sno",
+      ]
+    ) {
+      const value =
+        source?.[key];
+
+      if (
+        Array.isArray(value)
+          ? value.length > 0
+          : value !== undefined &&
+            value !== null &&
+            s(value) !== ""
+      ) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
 function classify(
   body: any,
   httpOk: boolean
@@ -503,6 +552,37 @@ function classify(
 
   const text =
     statusText(body);
+
+  /*
+   * ClubKonnect can return HTTP 200 with no status/statuscode
+   * for E-PIN fulfilment. In that response the actual proof of
+   * success is the returned E-PIN/card payload.
+   */
+  const fulfilled =
+    hasFulfillment(body);
+
+  if (
+    FAILURE_STATUSES.has(text)
+  ) {
+    return {
+      state:
+        "failed" as const,
+      code,
+      text,
+    };
+  }
+
+  if (
+    httpOk &&
+    fulfilled
+  ) {
+    return {
+      state:
+        "successful" as const,
+      code,
+      text,
+    };
+  }
 
   if (
     httpOk &&
@@ -517,17 +597,6 @@ function classify(
     return {
       state:
         "successful" as const,
-      code,
-      text,
-    };
-  }
-
-  if (
-    FAILURE_STATUSES.has(text)
-  ) {
-    return {
-      state:
-        "failed" as const,
       code,
       text,
     };
@@ -2044,272 +2113,52 @@ async function airtimePinCatalog(
 async function dataPinCatalog(
   network?: string
 ): Promise<CatalogItem[]> {
-  const response =
-    await clubKonnectRequest(
-      "APIDatabundleEPINV1.asp"
-    );
-
   /*
-   * Some ClubKonnect accounts return the data
-   * E-PIN catalogue through the same endpoint
-   * used by the purchase API. If the response is
-   * not catalogue-shaped, fall back to the data
-   * bundle catalogue.
+   * ClubKonnect exposes the available Data E-PIN
+   * product IDs through APIDatabundlePlansV2.asp.
+   *
+   * APIDatabundleEPINV1.asp is the PURCHASE endpoint
+   * and requires MobileNetwork, DataPlan, Quantity,
+   * RequestID and CallBackURL. It must never be called
+   * without those purchase parameters just to load a
+   * catalogue.
+   *
+   * The normal data catalogue therefore supplies the
+   * available plans. The purchase section below still
+   * uses APIDatabundleEPINV1.asp with the required
+   * parameters.
    */
-  if (!response.ok) {
-    const data =
-      await dataPlans();
+  const data =
+    await dataPlans();
 
-    const wanted =
-      network
-        ? networkCode(network)
-        : "";
-
-    return data
-      .filter(
-        (item) =>
-          !wanted ||
-          item.networkCode ===
-            wanted
-      )
-      .map(
-        (item) => ({
-          ...item,
-          service:
-            "data-card" as const,
-          price:
-            sellingPrice(
-              "data-card",
-              item.providerPrice
-            ),
-        })
-      );
-  }
-
-  const result:
-    CatalogItem[] = [];
-
-  walkObjects(
-    response.body,
-    (item) => {
-      const currentNetwork =
-        networkCode(
-          first(
-            pick(
-              item,
-              "MOBILENETWORK",
-              "MobileNetwork",
-              "network_code",
-              "networkCode"
-            ),
-            pick(
-              item,
-              "Network",
-              "network",
-              "NetworkName"
-            )
-          )
-        );
-
-      const code =
-        safeDisplayName(
-          first(
-            pick(
-              item,
-              "DataPlan",
-              "dataPlan",
-              "DATA_PLAN"
-            ),
-            pick(
-              item,
-              "PRODUCT_CODE",
-              "product_code",
-              "productCode"
-            ),
-            pick(
-              item,
-              "PackageCode",
-              "packageCode",
-              "package_code"
-            ),
-            pick(
-              item,
-              "code",
-              "Code",
-              "id",
-              "ID"
-            )
-          )
-        );
-
-      const name =
-        safeDisplayName(
-          first(
-            pick(
-              item,
-              "PRODUCT_NAME",
-              "product_name",
-              "productName"
-            ),
-            pick(
-              item,
-              "PackageName",
-              "packageName",
-              "package_name"
-            ),
-            pick(
-              item,
-              "name",
-              "Name",
-              "description",
-              "Description"
-            ),
-            code
-          )
-        );
-
-      const providerPrice =
-        n(
-          first(
-            pick(
-              item,
-              "PRODUCT_AMOUNT",
-              "product_amount",
-              "productAmount"
-            ),
-            pick(
-              item,
-              "PackageAmount",
-              "packageAmount",
-              "package_amount"
-            ),
-            pick(
-              item,
-              "provider_amount",
-              "providerAmount"
-            ),
-            pick(
-              item,
-              "price",
-              "Price",
-              "amount",
-              "Amount",
-              "cost",
-              "Cost"
-            )
-          )
-        );
-
-      if (
-        NETWORKS[
-          currentNetwork
-        ] &&
-        code &&
-        providerPrice > 0
-      ) {
-        result.push({
-          id:
-            code,
-          code,
-          packageCode:
-            code,
-          packageName:
-            name,
-          name,
-          price:
-            sellingPrice(
-              "data-card",
-              providerPrice
-            ),
-          providerPrice,
-          networkCode:
-            currentNetwork,
-          service:
-            "data-card",
-          raw:
-            item,
-        });
-      }
-    }
-  );
-
-  /*
-   * If the endpoint returned no usable
-   * catalogue records, use the normal data
-   * catalogue as a compatibility fallback.
-   */
-  if (
-    result.length === 0
-  ) {
-    const data =
-      await dataPlans();
-
-    const wanted =
-      network
-        ? networkCode(network)
-        : "";
-
-    return data
-      .filter(
-        (item) =>
-          !wanted ||
-          item.networkCode ===
-            wanted
-      )
-      .map(
-        (item) => ({
-          ...item,
-          packageCode:
-            item.code,
-          packageName:
-            item.name,
-          service:
-            "data-card" as const,
-          price:
-            sellingPrice(
-              "data-card",
-              item.providerPrice
-            ),
-        })
-      );
-  }
-
-  const unique =
-    new Map<
-      string,
-      CatalogItem
-    >();
-
-  for (
-    const item of result
-  ) {
-    unique.set(
-      `${item.networkCode}:${item.code}`,
-      item
-    );
-  }
-
-  const output =
-    [
-      ...unique.values(),
-    ];
-
-  if (
+  const wanted =
     network
-  ) {
-    const wanted =
-      networkCode(
-        network
-      );
+      ? networkCode(network)
+      : "";
 
-    return output.filter(
+  return data
+    .filter(
       (item) =>
+        !wanted ||
         item.networkCode ===
-        wanted
+          wanted
+    )
+    .map(
+      (item) => ({
+        ...item,
+        packageCode:
+          item.code,
+        packageName:
+          item.name,
+        service:
+          "data-card" as const,
+        price:
+          sellingPrice(
+            "data-card",
+            item.providerPrice
+          ),
+      })
     );
-  }
-
-  return output;
 }
 
 /* ============================================================
@@ -3562,32 +3411,45 @@ function fulfillment(
   const result:
     JsonObject = {};
 
+  const sources = [
+    body,
+    body?.data,
+  ];
+
   for (
-    const key of [
-      "carddetails",
-      "cardDetails",
-      "TXN_EPIN",
-      "TXN_EPIN_DATABUNDLE",
-      "pin",
-      "PIN",
-      "serial",
-      "sno",
-      "batchno",
-      "transactionid",
-      "transactiondate",
-      "productname",
-      "mobilenetwork",
-      "amount",
-      "metertoken",
-      "meterno",
-    ]
+    const source of sources
   ) {
-    if (
-      body?.[key] !==
-      undefined
+    if (!source) {
+      continue;
+    }
+
+    for (
+      const key of [
+        "carddetails",
+        "cardDetails",
+        "TXN_EPIN",
+        "TXN_EPIN_DATABUNDLE",
+        "pin",
+        "PIN",
+        "serial",
+        "sno",
+        "batchno",
+        "transactionid",
+        "transactiondate",
+        "productname",
+        "mobilenetwork",
+        "amount",
+        "metertoken",
+        "meterno",
+      ]
     ) {
-      result[key] =
-        body[key];
+      if (
+        source?.[key] !==
+        undefined
+      ) {
+        result[key] =
+          source[key];
+      }
     }
   }
 
@@ -6148,6 +6010,14 @@ const handler = async (
       JsonObject = {
         service,
 
+        // Persist our RequestID before the provider call. ClubKonnect may
+        // return HTTP 200 with null requestid/orderid on the initial response.
+        clubkonnect_request_id:
+          reference,
+
+        clubkonnect_request_id_source:
+          "iyanjupay_reference",
+
         category:
           "bill_payment",
 
@@ -6719,6 +6589,40 @@ const handler = async (
         providerResponse.body
       );
 
+    console.log(
+      "ClubKonnect purchase raw response summary",
+      {
+        service,
+        reference,
+        http_status:
+          providerResponse.status ??
+          null,
+        response_keys:
+          providerResponse.body &&
+          typeof providerResponse.body === "object" &&
+          !Array.isArray(providerResponse.body)
+            ? Object.keys(
+                providerResponse.body
+              )
+            : [],
+        data_keys:
+          providerResponse.body?.data &&
+          typeof providerResponse.body.data === "object" &&
+          !Array.isArray(
+            providerResponse.body.data
+          )
+            ? Object.keys(
+                providerResponse.body.data
+              )
+            : [],
+        raw_length:
+          typeof providerResponse.raw ===
+          "string"
+            ? providerResponse.raw.length
+            : 0,
+      }
+    );
+
     /* ========================================================
      * SUCCESS
      * ====================================================== */
@@ -6757,7 +6661,8 @@ const handler = async (
               providerOrderId,
 
             clubkonnect_request_id:
-              providerRequestId,
+              providerRequestId ||
+              reference,
 
             clubkonnect_statuscode:
               classified.code,
@@ -6839,7 +6744,8 @@ const handler = async (
               providerOrderId,
 
             clubkonnect_request_id:
-              providerRequestId,
+              providerRequestId ||
+              reference,
 
             clubkonnect_statuscode:
               classified.code,
@@ -6874,7 +6780,8 @@ const handler = async (
               providerOrderId,
 
             clubkonnect_request_id:
-              providerRequestId,
+              providerRequestId ||
+              reference,
 
             clubkonnect_statuscode:
               classified.code,
@@ -7108,11 +7015,23 @@ const handler = async (
         transaction.metadata
       );
 
+    /*
+     * THREE-LAYER RECONCILIATION
+     *
+     * Layer 1: explicit ClubKonnect OrderID.
+     * Layer 2: original RequestID (or our transaction reference).
+     * Layer 3: callback evidence already persisted by the callback/webhook
+     * handler, if ClubKonnect completed the order asynchronously.
+     *
+     * We deliberately do NOT invent an OrderID, infer success from HTTP 200,
+     * or match a transaction using amount/phone alone. ClubKonnect's official
+     * API documents APIQueryV1.asp by both OrderID and RequestID, while its
+     * CallBackURL is the asynchronous completion mechanism.
+     */
     const providerOrder =
       s(
         first(
-          metadata.clubkonnect_order_id,
-          transaction.provider_reference
+          metadata.clubkonnect_order_id
         )
       );
 
@@ -7125,53 +7044,191 @@ const handler = async (
         )
       );
 
-    let providerResponse:
-      any;
-
-    try {
-      providerResponse =
-        await clubKonnectRequest(
-          "APIQueryV1.asp",
-          providerOrder
-            ? {
-                OrderID:
-                  providerOrder,
-              }
-            : {
-                RequestID:
-                  providerRequest,
-              }
-        );
-    } catch (
-      error
-    ) {
-      console.error(
-        "ClubKonnect reconciliation request failed:",
-        error
+    const callbackEvidence =
+      first(
+        metadata.clubkonnect_callback_response,
+        metadata.callback_response,
+        metadata.provider_callback_response,
+        metadata.clubkonnect_webhook_response,
+        metadata.provider_callback,
+        metadata.clubkonnect_callback,
+        metadata.callback
       );
 
-      return json({
-        success:
-          true,
+    const callbackBody =
+      obj(callbackEvidence);
 
-        status:
-          "pending",
+    const callbackHasEvidence =
+      Object.keys(callbackBody).length > 0;
 
-        reference,
+    let providerResponse:
+      any = null;
 
-        transaction_id:
-          transaction.id,
+    let classified = {
+      state:
+        "pending" as const,
+      code:
+        null as number | null,
+      text:
+        null as string | null,
+    };
 
-        message:
-          "Your purchase is still being verified.",
-      });
+    const reconciliationAttempts:
+      string[] = [];
+
+    const queryProvider =
+      async (
+        params: JsonObject,
+        label: string
+      ) => {
+        try {
+          const response =
+            await clubKonnectRequest(
+              "APIQueryV1.asp",
+              params
+            );
+
+          reconciliationAttempts.push(
+            label
+          );
+
+          return response;
+        } catch (
+          error
+        ) {
+          console.warn(
+            `ClubKonnect reconciliation ${label} failed:`,
+            error
+          );
+
+          return null;
+        }
+      };
+
+    /* ========================================================
+     * LAYER 1 — ORDER ID
+     * ====================================================== */
+    if (providerOrder) {
+      providerResponse =
+        await queryProvider(
+          {
+            OrderID:
+              providerOrder,
+          },
+          "order_id"
+        );
+
+      if (providerResponse) {
+        classified =
+          classify(
+            providerResponse.body,
+            providerResponse.ok
+          );
+      }
     }
 
-    const classified =
-      classify(
-        providerResponse.body,
-        providerResponse.ok
-      );
+    /* ========================================================
+     * LAYER 2 — REQUEST ID
+     *
+     * Always try RequestID when Layer 1 is unavailable or
+     * inconclusive. This is safe because APIQueryV1.asp is a
+     * read-only status query and does not create another purchase.
+     * ====================================================== */
+    if (
+      classified.state ===
+        "pending" &&
+      providerRequest
+    ) {
+      const requestLookup =
+        await queryProvider(
+          {
+            RequestID:
+              providerRequest,
+          },
+          "request_id"
+        );
+
+      if (requestLookup) {
+        const requestClassified =
+          classify(
+            requestLookup.body,
+            requestLookup.ok
+          );
+
+        if (
+          requestClassified.state !==
+            "pending" ||
+          hasFulfillment(
+            requestLookup.body
+          )
+        ) {
+          providerResponse =
+            requestLookup;
+          classified =
+            requestClassified;
+        } else if (!providerResponse) {
+          providerResponse =
+            requestLookup;
+        }
+      }
+    }
+
+    /* ========================================================
+     * LAYER 3 — CALLBACK / ASYNC EVIDENCE
+     *
+     * ClubKonnect documents CallBackURL as the asynchronous
+     * completion channel. If a separate callback/webhook handler
+     * has already persisted that payload in transaction metadata,
+     * use it as authoritative evidence before leaving the order
+     * pending. We never fabricate callback data here.
+     * ====================================================== */
+    if (
+      classified.state ===
+        "pending" &&
+      callbackHasEvidence
+    ) {
+      const callbackClassified =
+        classify(
+          callbackBody,
+          true
+        );
+
+      if (
+        callbackClassified.state !==
+          "pending" ||
+        hasFulfillment(
+          callbackBody
+        )
+      ) {
+        providerResponse =
+          {
+            ok:
+              true,
+            body:
+              callbackBody,
+          };
+        classified =
+          callbackClassified;
+        reconciliationAttempts.push(
+          "callback"
+        );
+      }
+    }
+
+    /*
+     * If no provider query produced a response at all, keep the last
+     * known provider response (if any) instead of dereferencing null.
+     * An entirely empty result is treated as pending, never failed.
+     */
+    if (!providerResponse) {
+      providerResponse =
+        {
+          ok:
+            false,
+          body:
+            {},
+        };
+    }
 
     const actualOrder =
       orderId(
@@ -7242,6 +7299,9 @@ const handler = async (
 
             reconciliation_required:
               false,
+
+            reconciliation_attempts:
+              reconciliationAttempts,
 
             reconciled_at:
               new Date().toISOString(),
@@ -7343,6 +7403,9 @@ const handler = async (
 
             refund_pending:
               !refundResult.success,
+
+            reconciliation_attempts:
+              reconciliationAttempts,
           },
         }
       );
@@ -7416,6 +7479,9 @@ const handler = async (
 
           reconciliation_required:
             true,
+
+          reconciliation_attempts:
+            reconciliationAttempts,
         },
       }
     );

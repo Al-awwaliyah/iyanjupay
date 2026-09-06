@@ -2,11 +2,7 @@
   "cleanUrls": true,
   "rewrites": [
     {
-      "source": "/.well-known/assetlinks.json",
-      "destination": "/.well-known/assetlinks.json"
-    },
-    {
-      "source": "/((?!\\.well-known/).*)",
+      "source": "/((?!\\.well-known|static|assets).*)" ,
       "destination": "/index.html"
     }
   ],
@@ -19,8 +15,12 @@
           "value": "application/json"
         },
         {
+          "key": "Access-Control-Allow-Origin",
+          "value": "*"
+        },
+        {
           "key": "Cache-Control",
-          "value": "public, max-age=86400"
+          "value": "no-store, no-cache, must-revalidate, proxy-revalidate"
         }
       ]
     }

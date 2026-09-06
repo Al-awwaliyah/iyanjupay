@@ -18,11 +18,13 @@ export default defineConfig(() => ({
 
       injectRegister: "auto",
 
+      // Combined standard assets along with your Android App Links configuration
       includeAssets: [
         "favicon.ico",
         "icon-180.png",
         "icon-192.png",
         "icon-512.png",
+        ".well-known/assetlinks.json"
       ],
 
       manifest: {
@@ -76,7 +78,9 @@ export default defineConfig(() => ({
       workbox: {
         cleanupOutdatedCaches: true,
 
+        // Modified fallback rule to prevent matching on your static asset link files
         navigateFallback: "/index.html",
+        navigateFallbackDenylist: [/^\/\.well-known/],
 
         runtimeCaching: [
           {

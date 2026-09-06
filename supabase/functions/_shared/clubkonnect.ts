@@ -69,18 +69,83 @@ function credentials() {
 
 export function clubKonnectCallbackUrl(): string | undefined {
   const configured = s(Deno.env.get("CLUBKONNECT_CALLBACK_URL"));
-  if (configured) return configured;
-
   const supabaseUrl = s(Deno.env.get("SUPABASE_URL"));
-  if (!supabaseUrl) return undefined;
+  const callbackSecret = s(
+    Deno.env.get("CLUBKONNECT_CALLBACK_SECRET"),
+  );
 
-  return `${supabaseUrl.replace(/\/$/, "")}/functions/v1/clubkonnect-webhook`;
+  let callbackUrl = configured;
+
+  if (!callbackUrl && supabaseUrl) {
+    callbackUrl = `${supabaseUrl.replace(/\/$/, "")}/functions/v1/clubkonnect-webhook`;
+  }
+
+  if (!callbackUrl) return undefined;
+  if (!callbackSecret) return callbackUrl;
+
+  try {
+    const url = new URL(callbackUrl);
+
+    // The webhook authenticates callbacks with this shared secret.
+    // Preserve an explicitly configured secret if the URL already has one.
+    if (!url.searchParams.get("secret")) {
+      url.searchParams.set("secret", callbackSecret);
+    }
+
+    return url.toString();
+  } catch {
+    return callbackUrl;
+  }
+}
+
+function sanitizeForLog(value: unknown, depth = 0): unknown {
+  if (depth > 5) return "[TRUNCATED]";
+
+  if (value === null || value === undefined) return value;
+
+  if (typeof value !== "object") {
+    const text = s(value);
+    return text.length > 500
+      ? `${text.slice(0, 500)}…`
+      : value;
+  }
+
+  if (Array.isArray(value)) {
+    return value
+      .slice(0, 20)
+      .map((item) => sanitizeForLog(item, depth + 1));
+  }
+
+  const source = value as Record<string, unknown>;
+  const result: Record<string, unknown> = {};
+
+  for (const [key, item] of Object.entries(source)) {
+    const normalized = normalizeKey(key);
+
+    if (
+      normalized.includes("apikey") ||
+      normalized.includes("secret") ||
+      normalized.includes("password") ||
+      normalized.includes("token") ||
+      normalized === "pin" ||
+      normalized.includes("serial") ||
+      normalized.includes("carddetails")
+    ) {
+      result[key] = "[REDACTED]";
+      continue;
+    }
+
+    result[key] = sanitizeForLog(item, depth + 1);
+  }
+
+  return result;
 }
 
 export type ClubKonnectResponse<T = any> = {
   ok: boolean;
   status: number;
   body: T;
+  raw: string;
 };
 
 /**
@@ -130,10 +195,23 @@ export async function clubKonnectRequest<T = any>(
     };
   }
 
+  const sanitizedBody = sanitizeForLog(body);
+
   console.log("ClubKonnect response", {
     endpoint,
     http_status: response.status,
     ok: response.ok,
+    body_length: text.length,
+    body_keys:
+      body && typeof body === "object" && !Array.isArray(body)
+        ? Object.keys(body)
+        : [],
+    data_keys:
+      body?.data &&
+      typeof body.data === "object" &&
+      !Array.isArray(body.data)
+        ? Object.keys(body.data)
+        : [],
     status: first(
       pick(body, "status", "Status", "orderstatus", "OrderStatus"),
       pick(body?.data, "status", "Status", "orderstatus", "OrderStatus"),
@@ -150,12 +228,14 @@ export async function clubKonnectRequest<T = any>(
       pick(body, "requestid", "requestId", "RequestID"),
       pick(body?.data, "requestid", "requestId", "RequestID"),
     ) ?? null,
+    response_body: sanitizedBody,
   });
 
   return {
     ok: response.ok,
     status: response.status,
     body,
+    raw: text,
   };
 }
 

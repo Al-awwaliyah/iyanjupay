@@ -363,6 +363,7 @@ async function upsertReconciliation(
   providerRequest: string,
   state: State,
   internalStatusOverride?: string,
+  reconciliationAttempts: string[] = [],
 ) {
   const providerReference = providerOrder ?? providerRequest ?? transaction.reference_number;
   const metadata =
@@ -411,7 +412,7 @@ async function upsertReconciliation(
           clubkonnect_status: classified.text,
           clubkonnect_response: safeResponse(providerBody),
           reconciled_at: new Date().toISOString(),
-          reconciliation_attempts: attempts,
+          reconciliation_attempts: reconciliationAttempts,
         },
         updated_at: new Date().toISOString(),
       },
@@ -637,7 +638,7 @@ Deno.serve(async (req) => {
           clubkonnect_response: safe,
           reconciliation_required: false,
           reconciled_at: new Date().toISOString(),
-          reconciliation_attempts: attempts,
+          reconciliation_attempts: reconciliationAttempts,
         };
 
         const { error: updateError } = await admin
@@ -663,6 +664,7 @@ Deno.serve(async (req) => {
         actualRequest,
         "successful",
         "successful",
+        attempts,
       );
 
       return json({
@@ -692,6 +694,8 @@ Deno.serve(async (req) => {
           actualOrder,
           actualRequest,
           "successful",
+          undefined,
+          attempts,
         );
 
         return json({
@@ -724,7 +728,7 @@ Deno.serve(async (req) => {
         refund_pending: !refund.success && !refund.alreadyRefunded,
         reconciliation_required: !refund.success,
         reconciled_at: new Date().toISOString(),
-        reconciliation_attempts: attempts,
+        reconciliation_attempts: reconciliationAttempts,
       };
 
       const { error: updateError } = await admin
@@ -748,6 +752,7 @@ Deno.serve(async (req) => {
         actualRequest,
         "failed",
         "failed",
+        attempts,
       );
 
       return json({
@@ -775,7 +780,7 @@ Deno.serve(async (req) => {
       clubkonnect_response: safe,
       reconciliation_required: true,
       last_reconciled_at: new Date().toISOString(),
-      reconciliation_attempts: attempts,
+      reconciliation_attempts: reconciliationAttempts,
     };
 
     const { error: pendingError } = await admin
@@ -799,6 +804,7 @@ Deno.serve(async (req) => {
       actualRequest,
       "pending",
       "pending",
+      attempts,
     );
 
     return json({

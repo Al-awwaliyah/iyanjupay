@@ -76,13 +76,9 @@ type BillService =
   | "data"
   | "electricity"
   | "cable"
-  | "airtime-card"
-  | "data-card"
-  | "smile"
-  | "waec"
-  | "jamb"
+  | "education"
+  | "recharge-card"
   | "internet"
-  | "insurance"
   | "savings";
 
 type CurrentPage =
@@ -131,18 +127,15 @@ type DashboardTransaction = {
 const SUPPORTED_BILL_SERVICES: BillService[] = [
   "airtime",
   "data",
-  "electricity",
   "cable",
-  "airtime-card",
-  "data-card",
-  "waec",
-  "jamb",
+  "electricity",
+  "education",
+  "recharge-card",
 ];
 
 const COMING_SOON_SERVICES: BillService[] = [
-  "internet",
-  "insurance",
   "savings",
+  "internet",
 ];
 
 /*
@@ -191,9 +184,6 @@ const MONEY_OUT_TYPES = new Set([
   "airtime-card",
   "data_card",
   "data-card",
-  "smile",
-  "waec",
-  "jamb",
 ]);
 
 const normalizeText = (
@@ -300,9 +290,6 @@ const isMoneyOutTransaction = (
     "payout",
     "debit",
     "service",
-    "smile",
-    "waec",
-    "jamb",
   ];
 
   return moneyOutWords.some(
@@ -1385,15 +1372,6 @@ const Dashboard = () => {
       available: true,
     },
     {
-      title: "Electricity",
-      description:
-        "Pay your power bill",
-      icon: Zap,
-      color: "bg-yellow-500",
-      type: "electricity" as BillService,
-      available: true,
-    },
-    {
       title: "Cable TV",
       description:
         "DSTV, GOTV & Startimes",
@@ -1403,67 +1381,31 @@ const Dashboard = () => {
       available: true,
     },
     {
-      title: "Airtime E-Pin",
+      title: "Electricity",
       description:
-        "Buy recharge PINs",
-      icon: Receipt,
-      color: "bg-green-500",
-      type: "airtime-card" as BillService,
+        "Pay your power bill",
+      icon: Zap,
+      color: "bg-yellow-500",
+      type: "electricity" as BillService,
       available: true,
     },
     {
-      title: "Data E-Pin",
+      title: "Education",
       description:
-        "Buy data PINs",
-      icon: Radio,
-      color: "bg-indigo-500",
-      type: "data-card" as BillService,
-      available: true,
-    },
-    {
-      title: "Smile",
-      description:
-        "Currently unavailable",
-      icon: Wifi,
-      color: "bg-slate-500",
-      type: "smile" as BillService,
-      available: false,
-    },
-    {
-      title: "WAEC",
-      description:
-        "WAEC services",
+        "Education services",
       icon: GraduationCap,
       color: "bg-orange-500",
-      type: "waec" as BillService,
+      type: "education" as BillService,
       available: true,
     },
     {
-      title: "JAMB",
+      title: "Recharge Card",
       description:
-        "JAMB services",
-      icon: GraduationCap,
-      color: "bg-emerald-500",
-      type: "jamb" as BillService,
+        "Buy recharge cards",
+      icon: Receipt,
+      color: "bg-green-500",
+      type: "recharge-card" as BillService,
       available: true,
-    },
-    {
-      title: "Internet Bills",
-      description:
-        "Coming soon",
-      icon: Wifi,
-      color: "bg-slate-500",
-      type: "internet" as BillService,
-      available: false,
-    },
-    {
-      title: "Insurance",
-      description:
-        "Coming soon",
-      icon: Shield,
-      color: "bg-teal-500",
-      type: "insurance" as BillService,
-      available: false,
     },
     {
       title: "Savings",
@@ -1472,6 +1414,15 @@ const Dashboard = () => {
       icon: PiggyBank,
       color: "bg-pink-500",
       type: "savings" as BillService,
+      available: false,
+    },
+    {
+      title: "Internet Service",
+      description:
+        "Coming soon",
+      icon: Wifi,
+      color: "bg-slate-500",
+      type: "internet" as BillService,
       available: false,
     },
   ];

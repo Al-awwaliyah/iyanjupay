@@ -63,12 +63,12 @@ const SERVICE_TITLES: Record<string, string> = {
   data: "Mobile Data",
   cable: "Cable TV",
   electricity: "Electricity",
+  education: "Education",
   "airtime-card": "Airtime E-pin",
   "data-card": "Data E-pin",
   airtime_epin: "Airtime E-pin",
   data_epin: "Data E-pin",
   "recharge-card": "Recharge Card",
-  waec: "WAEC",
 };
 
 
@@ -1723,11 +1723,8 @@ export default function ServicePayment({
 
   const serviceFunction = "peyflex-services";
 
-  // Peyflex exposes WAEC through its education service. Keep the
-  // customer-facing service type as WAEC while sending "education"
-  // to the server-side integration.
   const serviceRequestType =
-    serviceType === "waec"
+    serviceType === "education"
       ? "education"
       : serviceType;
 
@@ -1755,7 +1752,7 @@ export default function ServicePayment({
     isData ||
     isEpin ||
     isRechargeCard ||
-    serviceType === "waec";
+    serviceType === "education";
 
   const isAmountOnly =
     isAirtime || isElectricity;
@@ -1955,14 +1952,6 @@ export default function ServicePayment({
           serviceType,
           loaded
         );
-
-        // Peyflex exposes education products together. This screen is WAEC-only;
-                if (serviceType === "waec") {
-          merged = merged.filter((b) => {
-            const value = `${getName(b)} ${getCode(b)}`.toLowerCase();
-            return value.includes("waec");
-          });
-        }
 
         setBillers(merged);
 
@@ -3854,7 +3843,7 @@ export default function ServicePayment({
                 (isRechargeCard &&
                   selectedBillerCode) ||
                 (serviceType ===
-                  "waec" &&
+                  "education" &&
                   selectedBillerCode)
               ) && (
                 <section className="rounded-3xl border bg-white p-5 shadow-sm">

@@ -1751,7 +1751,6 @@ export default function ServicePayment({
     isAirtime ||
     isData ||
     isEpin ||
-    isRechargeCard ||
     serviceType === "education";
 
   const isAmountOnly =
@@ -2362,7 +2361,9 @@ export default function ServicePayment({
   const hasRequiredIdentifier =
     isCable || isElectricity
       ? verified
-      : !!customer.trim();
+      : isRechargeCard
+        ? true
+        : !!customer.trim();
 
   const hasAmount =
     num(amount) > 0;
@@ -2526,6 +2527,32 @@ export default function ServicePayment({
       type: serviceType,
       service: serviceRequestType,
       country: "NG",
+
+      // Peyflex-specific request fields.
+      network:
+        isAirtime || isData || isRechargeCard
+          ? selectedBillerCode
+          : "",
+      mobile_number:
+        isAirtime || isData
+          ? phone
+          : "",
+      plan_code:
+        isData
+          ? selectedItemCode
+          : "",
+      identifier:
+        serviceType === "education"
+          ? "education"
+          : isCable
+            ? selectedBillerCode
+            : "",
+      plan_id:
+        serviceType === "education"
+          ? selectedItemCode
+          : "",
+      quantity:
+        isRechargeCard ? 1 : undefined,
 
       selling_amount:
         num(amount),

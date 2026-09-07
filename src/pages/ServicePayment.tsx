@@ -440,8 +440,13 @@ const ServicePayment = ({
       case "cable":
         return "Smart Card / Decoder Number";
 
-      case "internet":
-        return "Account Number";
+      case "waec":
+      case "jamb":
+      case "education":
+      case "airtime-card":
+      case "data-card":
+      case "recharge-card":
+        return "Phone Number";
 
       default:
         return "Customer ID";
@@ -467,8 +472,13 @@ const ServicePayment = ({
       case "cable":
         return "Enter smart card number";
 
-      case "internet":
-        return "Enter account number";
+      case "waec":
+      case "jamb":
+      case "education":
+      case "airtime-card":
+      case "data-card":
+      case "recharge-card":
+        return "e.g. 08012345678";
 
       default:
         return "Enter customer identifier";
@@ -515,7 +525,7 @@ const ServicePayment = ({
   // ==========================================================
 
   const loadBillers = async () => {
-    if (!category) {
+    if (!serviceType) {
       setBillers([]);
       return;
     }
@@ -688,7 +698,7 @@ const ServicePayment = ({
         normalizedItems.length === 0
       ) {
         setError(
-          "No packages are currently available for this service."
+          "No packages are currently available for this provider."
         );
       }
     } catch (err: any) {
@@ -990,7 +1000,8 @@ const ServicePayment = ({
       }
 
       if (
-        serviceType === "airtime" ||
+        serviceType ===
+          "airtime" ||
         serviceType === "data" ||
         isEducation ||
         isRechargeCard
@@ -1031,7 +1042,7 @@ const ServicePayment = ({
         return false;
       }
 
-      if (isData) {
+      if (!isAmountBased) {
         if (
           selectedItemPrice <=
           0
@@ -1040,7 +1051,7 @@ const ServicePayment = ({
             title:
               "Invalid data plan",
             description:
-              "The selected data plan does not have a valid price.",
+              "The selected package does not have a valid price.",
             variant:
               "destructive",
           });
@@ -1122,7 +1133,7 @@ const ServicePayment = ({
     return {
       customer: finalCustomer,
       biller_code: selectedBillerCode,
-      item_code: selectedItemCode,
+      item_code: selectedItemCode || serviceType,
       phoneNumber:
         serviceType === "airtime" || serviceType === "data"
           ? finalCustomer
@@ -1144,10 +1155,8 @@ const ServicePayment = ({
       item: selectedItem,
       biller: selectedBiller,
       selling_amount: amountNumber,
-      network_code: selectedBillerCode,
       plan_type: isData ? getPlanType(selectedItem ?? {}) : "",
       is_hot_deal: isData ? isHotDeal(selectedItem ?? {}) : false,
-      quantity: 1,
     };
   };
 
@@ -1376,7 +1385,126 @@ const ServicePayment = ({
   // ==========================================================
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-50 pb-8">
+    <>
+      <style>{`
+        /* ServicePayment theme-safe styles.
+           The PIN and processing states are scoped to this page only. */
+        .iyanjupay-service-payment {
+          color: #111827;
+        }
+
+        .iyanjupay-pin-card {
+          background-color: #ffffff !important;
+          border-color: #e5e7eb !important;
+          color: #111827 !important;
+        }
+
+        .iyanjupay-pin-card .iyanjupay-pin-title,
+        .iyanjupay-pin-card .iyanjupay-pin-value {
+          color: #111827 !important;
+        }
+
+        .iyanjupay-pin-card .iyanjupay-pin-description,
+        .iyanjupay-pin-card .iyanjupay-pin-label,
+        .iyanjupay-pin-card .iyanjupay-pin-help {
+          color: #4b5563 !important;
+        }
+
+        .iyanjupay-pin-card .iyanjupay-pin-summary {
+          background-color: #f0fdf4 !important;
+          border-color: #dcfce7 !important;
+        }
+
+        .iyanjupay-pin-card .iyanjupay-pin-input {
+          background-color: #ffffff !important;
+          border-color: #d1d5db !important;
+          color: #111827 !important;
+          caret-color: #111827 !important;
+        }
+
+        .iyanjupay-pin-card .iyanjupay-pin-input::placeholder {
+          color: #9ca3af !important;
+          opacity: 1 !important;
+        }
+
+        .iyanjupay-pin-card .iyanjupay-pin-error {
+          background-color: #fef2f2 !important;
+          border-color: #fecaca !important;
+          color: #b91c1c !important;
+        }
+
+        .iyanjupay-processing-message {
+          color: #6b7280 !important;
+        }
+
+        html[data-iyanjupay-theme="blue"] .iyanjupay-service-payment {
+          color: #111827;
+        }
+
+        html[data-iyanjupay-theme="blue"] .iyanjupay-pin-card {
+          background-color: #ffffff !important;
+          border-color: #dbeafe !important;
+          color: #111827 !important;
+        }
+
+        html[data-iyanjupay-theme="blue"] .iyanjupay-pin-card .iyanjupay-pin-summary {
+          background-color: #eff6ff !important;
+          border-color: #dbeafe !important;
+        }
+
+        html[data-iyanjupay-theme="blue"] .iyanjupay-pin-card .iyanjupay-pin-input {
+          background-color: #ffffff !important;
+          border-color: #bfdbfe !important;
+          color: #111827 !important;
+          caret-color: #111827 !important;
+        }
+
+        html[data-iyanjupay-theme="dark"] .iyanjupay-service-payment {
+          color: #f8fafc;
+        }
+
+        html[data-iyanjupay-theme="dark"] .iyanjupay-pin-card {
+          background-color: #111827 !important;
+          border-color: #334155 !important;
+          color: #f8fafc !important;
+        }
+
+        html[data-iyanjupay-theme="dark"] .iyanjupay-pin-card .iyanjupay-pin-title,
+        html[data-iyanjupay-theme="dark"] .iyanjupay-pin-card .iyanjupay-pin-value {
+          color: #f8fafc !important;
+        }
+
+        html[data-iyanjupay-theme="dark"] .iyanjupay-pin-card .iyanjupay-pin-description,
+        html[data-iyanjupay-theme="dark"] .iyanjupay-pin-card .iyanjupay-pin-label,
+        html[data-iyanjupay-theme="dark"] .iyanjupay-pin-card .iyanjupay-pin-help,
+        html[data-iyanjupay-theme="dark"] .iyanjupay-processing-message {
+          color: #cbd5e1 !important;
+        }
+
+        html[data-iyanjupay-theme="dark"] .iyanjupay-pin-card .iyanjupay-pin-summary {
+          background-color: #052e2b !important;
+          border-color: #14532d !important;
+        }
+
+        html[data-iyanjupay-theme="dark"] .iyanjupay-pin-card .iyanjupay-pin-input {
+          background-color: #0f172a !important;
+          border-color: #334155 !important;
+          color: #f8fafc !important;
+          caret-color: #f8fafc !important;
+        }
+
+        html[data-iyanjupay-theme="dark"] .iyanjupay-pin-card .iyanjupay-pin-input::placeholder {
+          color: #64748b !important;
+        }
+
+        html[data-iyanjupay-theme="dark"] .iyanjupay-pin-card .iyanjupay-pin-error {
+          background-color: rgba(127, 29, 29, 0.28) !important;
+          border-color: rgba(248, 113, 113, 0.35) !important;
+          color: #fca5a5 !important;
+        }
+      `}</style>
+
+      <div className="iyanjupay-service-payment min-h-screen bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-50 pb-8">
 
       {/* HEADER */}
 
@@ -1413,7 +1541,7 @@ const ServicePayment = ({
               disabled={processingPayment || verifyingPin}
               className="text-white hover:bg-white/20"
             >
-              <History className="h-4 w-4 mr-1.5" />
+              <History className="h-4 w-4 mr-1" />
               History
             </Button>
 
@@ -1429,7 +1557,7 @@ const ServicePayment = ({
         {/* PIN SCREEN */}
 
         {showPinPrompt ? (
-          <div className="bg-white rounded-2xl shadow-sm border p-5 sm:p-6">
+          <div className="iyanjupay-pin-card bg-white rounded-2xl shadow-sm border p-5 sm:p-6">
 
             <div className="text-center mb-6">
 
@@ -1439,16 +1567,16 @@ const ServicePayment = ({
                 </span>
               </div>
 
-              <h2 className="text-xl font-bold text-gray-900">
+              <h2 className="iyanjupay-pin-title text-xl font-bold text-gray-900">
                 Confirm Payment
               </h2>
 
-              <p className="text-sm text-gray-500 mt-1">
+              <p className="iyanjupay-pin-description text-sm text-gray-500 mt-1">
                 Enter your 4-digit Payment PIN
                 to confirm this payment.
               </p>
 
-              <p className="text-lg font-semibold text-green-700 mt-2">
+              <p className="iyanjupay-pin-value text-lg font-semibold text-green-700 mt-2">
                 {service.title}
               </p>
 
@@ -1456,10 +1584,10 @@ const ServicePayment = ({
 
             {/* SUMMARY */}
 
-            <div className="rounded-xl bg-green-50 border border-green-100 p-4 space-y-3 mb-6">
+            <div className="iyanjupay-pin-summary rounded-xl bg-green-50 border border-green-100 p-4 space-y-3 mb-6">
 
               <div className="flex items-center justify-between gap-4">
-                <span className="text-sm text-gray-600">
+                <span className="iyanjupay-pin-label text-sm text-gray-600">
                   Amount
                 </span>
 
@@ -1471,22 +1599,22 @@ const ServicePayment = ({
               </div>
 
               <div className="flex items-center justify-between gap-4">
-                <span className="text-sm text-gray-600">
+                <span className="iyanjupay-pin-label text-sm text-gray-600">
                   {customerLabel}
                 </span>
 
-                <span className="text-sm font-medium text-gray-900 text-right break-all">
+                <span className="iyanjupay-pin-value text-sm font-medium text-gray-900 text-right break-all">
                   {normaliseCustomer()}
                 </span>
               </div>
 
               {selectedItem && (
                 <div className="flex items-center justify-between gap-4">
-                  <span className="text-sm text-gray-600">
+                  <span className="iyanjupay-pin-label text-sm text-gray-600">
                     Package
                   </span>
 
-                  <span className="text-sm font-medium text-gray-900 text-right">
+                  <span className="iyanjupay-pin-value text-sm font-medium text-gray-900 text-right">
                     {selectedItem.name ??
                       selectedItem.short_name ??
                       "-"}
@@ -1549,7 +1677,7 @@ const ServicePayment = ({
                   verifyingPin
                 }
                 autoFocus
-                className="text-center text-2xl tracking-[0.5em]"
+                className="iyanjupay-pin-input text-center text-2xl tracking-[0.5em]"
               />
 
               <p className="text-xs text-gray-500 text-center">
@@ -1561,8 +1689,8 @@ const ServicePayment = ({
             </div>
 
             {error && (
-              <div className="rounded-lg bg-red-50 border border-red-200 p-3 mb-5">
-                <p className="text-sm text-red-700">
+              <div className="iyanjupay-pin-error rounded-lg bg-red-50 border border-red-200 p-3 mb-5">
+                <p className="text-sm">
                   {error}
                 </p>
               </div>
@@ -1634,13 +1762,13 @@ const ServicePayment = ({
 
           <div className="bg-white rounded-2xl shadow-sm border p-5 sm:p-6">
 
-            {/* NETWORK / BILLER */}
+            {/* PROVIDER */}
             {/* LOADING BILLERS */}
 
             {loadingBillers && (
               <div className="flex items-center justify-center gap-2 py-4 text-sm text-gray-500">
                 <Loader2 className="h-4 w-4 animate-spin" />
-                Loading networks and billers...
+                Loading available options...
               </div>
             )}
 
@@ -1651,7 +1779,19 @@ const ServicePayment = ({
               <div className="flex items-center justify-between">
 
                 <Label>
-                  {isAirtime || isData ? "Network" : "Service"}
+                  {isAirtime || isData || isRechargeCard
+                    ? "Network"
+                    : serviceType === "electricity"
+                      ? "Electricity Company"
+                      : serviceType === "cable"
+                        ? "TV Service"
+                        : isEducation
+                          ? serviceType === "waec"
+                            ? "WAEC Service"
+                            : serviceType === "jamb"
+                              ? "JAMB Service"
+                              : "Education Service"
+                          : "Service"}
                 </Label>
 
                 {!loadingBillers &&
@@ -1697,7 +1837,13 @@ const ServicePayment = ({
                 <option value="">
                   {loadingBillers
                     ? "Loading..."
-                    : "Select network or biller"}
+                    : isRechargeCard || isAirtime || isData
+                      ? "Select network"
+                      : serviceType === "electricity"
+                        ? "Select electricity company"
+                        : serviceType === "cable"
+                          ? "Select TV service"
+                          : "Select service"}
                 </option>
 
                 {billers.map(
@@ -1807,8 +1953,7 @@ const ServicePayment = ({
                               item,
                               index
                             ) => {
-                              const code =
-                                itemCodeOf(item);
+                              const code = itemCodeOf(item);
 
                               if (
                                 !code
@@ -1902,9 +2047,15 @@ const ServicePayment = ({
               <div className="space-y-2 mb-5">
 
                 <Label>
-                  {isAirtime
-                    ? "Airtime Type"
-                    : "Bill Package"}
+                  {isEducation
+                    ? serviceType === "waec"
+                      ? "WAEC Package"
+                      : serviceType === "jamb"
+                        ? "JAMB Package"
+                        : "Education Package"
+                    : isRechargeCard
+                      ? "Recharge Card"
+                      : "TV Package"}
                 </Label>
 
                 <select
@@ -1933,7 +2084,7 @@ const ServicePayment = ({
                     {loadingItems
                       ? "Loading packages..."
                       : !selectedBillerCode
-                        ? "Select network/service first"
+                        ? "Select service first"
                         : "Select package"}
                   </option>
 
@@ -1942,11 +2093,7 @@ const ServicePayment = ({
                       item,
                       index
                     ) => {
-                      const code =
-                        String(
-                          item.item_code ??
-                            ""
-                        );
+                      const code = itemCodeOf(item);
 
                       if (!code) {
                         return null;
@@ -1998,14 +2145,12 @@ const ServicePayment = ({
                   verifyingPin
                 }
                 inputMode={
-                  serviceType ===
-                      "airtime" ||
-                  serviceType ===
-                      "data" ||
-                  serviceType ===
-                      "electricity" ||
-                  serviceType ===
-                      "cable"
+                  serviceType === "airtime" ||
+                  serviceType === "data" ||
+                  serviceType === "electricity" ||
+                  serviceType === "cable" ||
+                  isEducation ||
+                  isRechargeCard
                     ? "numeric"
                     : "text"
                 }
@@ -2051,7 +2196,7 @@ const ServicePayment = ({
 
             {/* AMOUNT */}
 
-            {!isData && (
+            {!isData && isAmountBased && (
               <div className="space-y-2 mb-5">
 
                 <Label>
@@ -2225,7 +2370,7 @@ const ServicePayment = ({
             </Button>
 
             {processingPayment && (
-              <p className="text-xs text-center text-gray-500 mt-3">
+              <p className="iyanjupay-processing-message text-xs text-center text-gray-500 mt-3">
                 Please do not leave this page
                 while your payment is being
                 processed.
@@ -2236,7 +2381,8 @@ const ServicePayment = ({
         )}
 
       </main>
-    </div>
+      </div>
+    </>
   );
 };
 

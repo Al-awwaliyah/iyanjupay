@@ -135,7 +135,6 @@ const SUPPORTED_BILL_SERVICES: BillService[] = [
   "cable",
   "airtime-card",
   "data-card",
-  "smile",
   "waec",
   "jamb",
 ];
@@ -1424,11 +1423,11 @@ const Dashboard = () => {
     {
       title: "Smile",
       description:
-        "Smile data bundles",
+        "Currently unavailable",
       icon: Wifi,
-      color: "bg-cyan-500",
+      color: "bg-slate-500",
       type: "smile" as BillService,
-      available: true,
+      available: false,
     },
     {
       title: "WAEC",
@@ -1532,6 +1531,14 @@ const Dashboard = () => {
    * ============================================================
    * SERVICE PURCHASE
    * ============================================================
+   *
+   * All VTU/service purchases are routed through the secure
+   * Peyflex Edge Function. The provider remains server-side.
+   *
+   * The frontend does NOT debit the wallet and does NOT decide
+   * whether a transaction is successful. The Edge Function owns
+   * wallet debit, provider processing, transaction recording and
+   * refund/pending handling.
    */
 
   const handlePurchase = async (
@@ -1572,19 +1579,6 @@ const Dashboard = () => {
       );
     }
 
-    const currentBalance =
-      Number(
-        wallet?.balance ?? 0
-      );
-
-    if (
-      amount > currentBalance
-    ) {
-      throw new Error(
-        "Insufficient wallet balance. Please fund your wallet."
-      );
-    }
-
     const paymentDetails = {
       ...details,
       service,
@@ -1610,84 +1604,70 @@ const Dashboard = () => {
         error,
       } =
         await supabase.functions.invoke(
-          "clubkonnect-services",
+          "peyflex-services",
           {
             body: {
               action: "purchase",
-
               service,
-
               amount,
-
               country:
                 paymentDetails.country,
 
+              // Generic/customer details
               customer:
                 paymentDetails.customer,
 
+              // Catalogue selections
               biller_code:
                 paymentDetails.biller_code,
-
               network_code:
                 paymentDetails.network_code,
-
               item_code:
                 paymentDetails.item_code,
-
               product_code:
                 paymentDetails.product_code,
-
               variation_code:
                 paymentDetails.variation_code,
 
+              // Electricity
               meter_type:
                 paymentDetails.meter_type,
-
               meter_number:
                 paymentDetails.meter_number,
-
               meter_no:
                 paymentDetails.meter_no,
 
+              // Cable
               smartcard_no:
                 paymentDetails.smartcard_no,
-
               smartcard_number:
                 paymentDetails.smartcard_number,
 
+              // Phone/customer identifiers
               phone_no:
                 paymentDetails.phone_no,
-
               phone:
                 paymentDetails.phone,
-
               phoneNumber:
                 paymentDetails.phoneNumber,
-
               mobile_number:
                 paymentDetails.mobile_number,
-
               account_id:
                 paymentDetails.account_id,
 
+              // Package/service aliases
               data_plan:
                 paymentDetails.data_plan,
-
               package:
                 paymentDetails.package,
-
               package_code:
                 paymentDetails.package_code,
-
               electric_company:
                 paymentDetails.electric_company,
-
               cable_tv:
                 paymentDetails.cable_tv,
-
               exam_type:
                 paymentDetails.exam_type,
-
               value:
                 paymentDetails.value,
 
@@ -1697,6 +1677,8 @@ const Dashboard = () => {
                     1
                 ),
 
+              // Preserve the complete normalized payload
+              // for server-side validation/processing.
               details:
                 paymentDetails,
             },
@@ -1728,7 +1710,6 @@ const Dashboard = () => {
       }
 
       await refreshWallet();
-
       await loadDashboardStats();
 
       const normalizedStatus =
@@ -2164,9 +2145,6 @@ const Dashboard = () => {
           service={
             selectedService
           }
-          walletBalance={Number(
-            wallet?.balance ?? 0
-          )}
           onBack={() => {
             setSelectedService(
               null
@@ -3108,7 +3086,7 @@ const Dashboard = () => {
               </div>
 
               <span className="hidden rounded-full bg-purple-50 px-3 py-1 text-xs font-bold text-purple-700 sm:block">
-                9 available
+                8 available
               </span>
 
             </div>

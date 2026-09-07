@@ -223,7 +223,7 @@ export function normalizeStatus(body: any): string {
   const obj = asObject(body);
   const data = asObject(obj.data);
   const result = asObject(obj.result);
-  const nestedResult = asObject(data.result);
+  const dataResult = asObject(data.result);
 
   return text(
     firstValue(
@@ -232,17 +232,17 @@ export function normalizeStatus(body: any): string {
       obj.state,
       obj.State,
       obj.order_status,
-      obj.orderStatus,
       data.status,
       data.Status,
       data.state,
       data.State,
       data.order_status,
-      data.orderStatus,
       result.status,
-      result.State,
-      nestedResult.status,
-      nestedResult.State,
+      result.state,
+      result.order_status,
+      dataResult.status,
+      dataResult.state,
+      dataResult.order_status,
     ),
   )
     .toUpperCase()
@@ -253,7 +253,7 @@ export function providerMessage(body: any): string {
   const obj = asObject(body);
   const data = asObject(obj.data);
   const result = asObject(obj.result);
-  const nestedResult = asObject(data.result);
+  const dataResult = asObject(data.result);
 
   return text(
     firstValue(
@@ -268,8 +268,12 @@ export function providerMessage(body: any): string {
       data.error,
       result.message,
       result.Message,
-      nestedResult.message,
-      nestedResult.Message,
+      result.detail,
+      result.error,
+      dataResult.message,
+      dataResult.Message,
+      dataResult.detail,
+      dataResult.error,
     ),
   );
 }
@@ -278,7 +282,7 @@ export function providerReference(body: any): string | null {
   const obj = asObject(body);
   const data = asObject(obj.data);
   const result = asObject(obj.result);
-  const nestedResult = asObject(data.result);
+  const dataResult = asObject(data.result);
 
   const value = firstValue(
     obj.reference,
@@ -305,18 +309,18 @@ export function providerReference(body: any): string | null {
     result.order_id,
     result.orderId,
     result.id,
-    nestedResult.reference,
-    nestedResult.reference_id,
-    nestedResult.referenceId,
-    nestedResult.transaction_reference,
-    nestedResult.transaction_id,
-    nestedResult.order_id,
-    nestedResult.orderId,
-    nestedResult.id,
+    dataResult.reference,
+    dataResult.reference_id,
+    dataResult.referenceId,
+    dataResult.transaction_reference,
+    dataResult.transaction_id,
+    dataResult.order_id,
+    dataResult.orderId,
+    dataResult.id,
   );
 
-  const referenceText = text(value);
-  return referenceText || null;
+  const result = text(value);
+  return result || null;
 }
 
 export function providerLooksSuccessful(body: any, httpOk: boolean): boolean {

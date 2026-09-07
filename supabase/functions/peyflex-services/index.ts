@@ -729,7 +729,8 @@ async function authoritativePrice(
     throw new Error("Unable to determine the package price from the catalogue.");
   }
 
-  const sellingAmount = roundSellingPrice(providerPrice, service === "airtime" ? 0 : STANDARD_MARKUP);
+  const markup = service === "airtime" ? 0 : STANDARD_MARKUP;
+  const sellingAmount = roundSellingPrice(providerPrice, markup);
 
   return {
     providerPrice,
@@ -932,7 +933,7 @@ async function purchase(
       result = await peyflexPost("/api/education/purchase/", {
         identifier: "education",
         plan_id: clean(
-          pickBody(body, "item_code", "itemCode", "plan_code", "planCode"),
+          pickBody(body, "item_code", "itemCode", "plan_code", "planCode", "plan_id"),
         ),
         quantity: String(quantity),
         phone: customer,
@@ -950,8 +951,6 @@ async function purchase(
         brand_name: clean(
           pickBody(body, "brand_name", "brandName"),
         ) || "IyanjuPay",
-        identifier: "recharge-card",
-        phone: customer || undefined,
       });
     }
   } catch (error) {

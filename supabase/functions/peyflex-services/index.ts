@@ -82,7 +82,6 @@ function serviceOf(value: unknown): Service | null {
     electricity: "electricity",
     education: "education",
     waec: "education",
-    jamb: "education",
     "airtime-card": "airtime-card",
     "airtime_epin": "airtime-card",
     "airtime-epin": "airtime-card",
@@ -730,8 +729,7 @@ async function authoritativePrice(
     throw new Error("Unable to determine the package price from the catalogue.");
   }
 
-  const markup = service === "airtime" ? 0 : STANDARD_MARKUP;
-  const sellingAmount = roundSellingPrice(providerPrice, markup);
+  const sellingAmount = roundSellingPrice(providerPrice, service === "airtime" ? 0 : STANDARD_MARKUP);
 
   return {
     providerPrice,
@@ -818,7 +816,7 @@ async function purchase(
   );
 
   if (
-    ["airtime", "data", "education", "airtime-card", "data-card", "recharge-card"].includes(service) &&
+    ["airtime", "data", "education", "airtime-card", "data-card"].includes(service) &&
     !validPhone(customer)
   ) {
     throw new Error("Please provide a valid Nigerian phone number.");
@@ -932,9 +930,7 @@ async function purchase(
       });
     } else if (service === "education") {
       result = await peyflexPost("/api/education/purchase/", {
-        identifier: clean(
-          pickBody(body, "biller_code", "billerCode", "provider", "identifier"),
-        ),
+        identifier: "education",
         plan_id: clean(
           pickBody(body, "item_code", "itemCode", "plan_code", "planCode"),
         ),
@@ -954,10 +950,7 @@ async function purchase(
         brand_name: clean(
           pickBody(body, "brand_name", "brandName"),
         ) || "IyanjuPay",
-        identifier: service === "recharge-card" ? "recharge-card" : undefined,
-        plan_id: service === "education"
-          ? clean(pickBody(body, "item_code", "itemCode", "plan_code", "planCode"))
-          : undefined,
+        identifier: "recharge-card",
         phone: customer || undefined,
       });
     }

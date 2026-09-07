@@ -222,8 +222,6 @@ export function numberValue(value: unknown): number {
 export function normalizeStatus(body: any): string {
   const obj = asObject(body);
   const data = asObject(obj.data);
-  const result = asObject(obj.result);
-  const dataResult = asObject(data.result);
 
   return text(
     firstValue(
@@ -231,18 +229,10 @@ export function normalizeStatus(body: any): string {
       obj.Status,
       obj.state,
       obj.State,
-      obj.order_status,
       data.status,
       data.Status,
       data.state,
       data.State,
-      data.order_status,
-      result.status,
-      result.state,
-      result.order_status,
-      dataResult.status,
-      dataResult.state,
-      dataResult.order_status,
     ),
   )
     .toUpperCase()
@@ -252,8 +242,6 @@ export function normalizeStatus(body: any): string {
 export function providerMessage(body: any): string {
   const obj = asObject(body);
   const data = asObject(obj.data);
-  const result = asObject(obj.result);
-  const dataResult = asObject(data.result);
 
   return text(
     firstValue(
@@ -266,14 +254,6 @@ export function providerMessage(body: any): string {
       data.Message,
       data.detail,
       data.error,
-      result.message,
-      result.Message,
-      result.detail,
-      result.error,
-      dataResult.message,
-      dataResult.Message,
-      dataResult.detail,
-      dataResult.error,
     ),
   );
 }
@@ -281,8 +261,6 @@ export function providerMessage(body: any): string {
 export function providerReference(body: any): string | null {
   const obj = asObject(body);
   const data = asObject(obj.data);
-  const result = asObject(obj.result);
-  const dataResult = asObject(data.result);
 
   const value = firstValue(
     obj.reference,
@@ -301,22 +279,6 @@ export function providerReference(body: any): string | null {
     data.order_id,
     data.orderId,
     data.id,
-    result.reference,
-    result.reference_id,
-    result.referenceId,
-    result.transaction_reference,
-    result.transaction_id,
-    result.order_id,
-    result.orderId,
-    result.id,
-    dataResult.reference,
-    dataResult.reference_id,
-    dataResult.referenceId,
-    dataResult.transaction_reference,
-    dataResult.transaction_id,
-    dataResult.order_id,
-    dataResult.orderId,
-    dataResult.id,
   );
 
   const result = text(value);
@@ -348,10 +310,6 @@ export function providerLooksFailed(body: any, httpOk: boolean): boolean {
   if (!httpOk) return true;
 
   const status = normalizeStatus(body);
-  const obj = asObject(body);
-  const data = asObject(obj.data);
-
-  if (obj.success === false || data.success === false) return true;
 
   return new Set([
     "FAILED",

@@ -83,15 +83,12 @@ function serviceOf(value: unknown): Service | null {
     education: "education",
     waec: "education",
     "airtime-card": "airtime-card",
-    "airtime_card": "airtime-card",
     "airtime_epin": "airtime-card",
     "airtime-epin": "airtime-card",
     "data-card": "data-card",
-    "data_card": "data-card",
     "data_epin": "data-card",
     "data-epin": "data-card",
     "recharge-card": "recharge-card",
-    "recharge_card": "recharge-card",
     recharge: "recharge-card",
     epin: "recharge-card",
   };
@@ -490,27 +487,6 @@ async function catalog(service: Service, code?: string) {
       }))
     );
 
-    const selectedProvider = clean(code);
-    const selectedProviderNormalized = selectedProvider.toLowerCase();
-    const selectedProviderObject = selectedProvider
-      ? providers.find((provider: any) => {
-          const providerCode = clean(provider.code).toLowerCase();
-          const providerName = clean(provider.name).toLowerCase();
-          return (
-            providerCode === selectedProviderNormalized ||
-            providerName === selectedProviderNormalized
-          );
-        })
-      : null;
-
-    const filteredPlans = selectedProviderObject
-      ? (selectedProviderObject.plans ?? []).map((plan: any) => ({
-          ...plan,
-          providerCode: selectedProviderObject.code,
-          providerName: selectedProviderObject.name,
-        }))
-      : allPlans;
-
     return {
       success: result.ok,
       service,
@@ -518,10 +494,9 @@ async function catalog(service: Service, code?: string) {
       providers,
       networks: providers,
       educationProviders: providers,
-      selected_provider: selectedProvider || null,
-      items: filteredPlans,
-      plans: filteredPlans,
-      packages: filteredPlans,
+      items: allPlans,
+      plans: allPlans,
+      packages: allPlans,
       amount_based: false,
       requires_verification: false,
       provider_http_status: result.httpStatus,
@@ -530,32 +505,11 @@ async function catalog(service: Service, code?: string) {
 
   if (service === "airtime-card" || service === "data-card" || service === "recharge-card") {
     const result = await peyflexPublicGet("/api/rc/options/");
-    const rawOptions = asArray(result.body);
-    const selectedNetwork = clean(code).toLowerCase();
-    const filteredOptions = selectedNetwork
-      ? rawOptions.filter((item: any) => {
-          const raw = bodyObject(item);
-          const network = clean(
-            firstValue(
-              raw.network,
-              raw.network_name,
-              raw.networkName,
-              raw.provider,
-              raw.provider_name,
-              raw.providerName,
-            ),
-          ).toLowerCase();
-          return network === selectedNetwork ||
-            network.includes(selectedNetwork) ||
-            selectedNetwork.includes(network);
-        })
-      : rawOptions;
-
-    const items = filteredOptions.map((item) =>
-      publicItem(item, service, selectedNetwork)
+    const items = asArray(result.body).map((item) =>
+      publicItem(item, service)
     );
 
-    const networks = rawOptions
+    const networks = asArray(result.body)
       .map((item: any) => {
         const raw = bodyObject(item);
         return firstValue(
@@ -748,26 +702,8 @@ async function authoritativePrice(
   } else if (service === "education") {
     const result = await peyflexPublicGet("/api/education/providers/");
     const providers = asArray(result.body);
-    const providerCode = clean(
-      pickBody(body, "biller_code", "billerCode", "provider", "identifier"),
-    ).toLowerCase();
 
-    const selectedProvider = providerCode
-      ? providers.find((provider: any) => {
-          const raw = bodyObject(provider);
-          const code = clean(
-            firstValue(raw.identifier, raw.code, raw.id, raw.ID, raw.provider_code, raw.providerCode),
-          ).toLowerCase();
-          const name = clean(
-            firstValue(raw.name, raw.Name, raw.title, raw.Title, raw.provider_name, raw.providerName),
-          ).toLowerCase();
-          return code === providerCode || name === providerCode;
-        })
-      : null;
-
-    const sourceProviders = selectedProvider ? [selectedProvider] : providers;
-
-    rawItems = sourceProviders.flatMap((provider: any) =>
+    rawItems = providers.flatMap((provider: any) =>
       asArray(
         firstValue(
           provider.plans,
@@ -876,30 +812,47 @@ async function purchase(
   service: Service,
   body: any,
 ) {
-  const rawCustomer = clean(
-    pickBody(body, "customer", "mobile_number", "mobileNumber", "phone"),
+  const explicitPhone = pickBody(
+    body,
+    "customer_phone",
+    "customerPhone",
+    "mobile_number",
+    "mobileNumber",
+    "phone",
+    "phoneNumber",
+    "phone_no",
   );
-  const customer = [
-    "airtime",
-    "data",
-    "education",
-    "airtime-card",
-    "data-card",
-  ].includes(service)
-    ? normalizePhone(rawCustomer)
-    : rawCustomer;
 
-  const providerPhone = normalizePhone(
-    clean(
-      pickBody(body, "phone", "phoneNumber", "mobile_number", "mobileNumber") ||
-        user?.phone ||
-        "",
+  const suppliedPhone = normalizePhone(explicitPhone);
+  const customerPhone = normalizePhone(
+    explicitPhone ??
+      (["airtime", "data", "education", "airtime-card", "data-card"].includes(service)
+        ? pickBody(body, "customer")
+        : undefined),
+  );
+
+  const customerIdentifier = clean(
+    pickBody(
+      body,
+      "customer",
+      "identifier",
+      "meter",
+      "meter_number",
+      "meterNumber",
+      "iuc",
+      "smartcard",
+      "smartcard_number",
+      "smartcardNumber",
     ),
   );
 
+  const providerPhone = validPhone(suppliedPhone)
+    ? suppliedPhone
+    : normalizePhone(user?.phone);
+
   if (
     ["airtime", "data", "education", "airtime-card", "data-card"].includes(service) &&
-    !validPhone(customer)
+    !validPhone(customerPhone)
   ) {
     throw new Error("Please provide a valid Nigerian phone number.");
   }
@@ -920,7 +873,8 @@ async function purchase(
     service,
     provider: "peyflex",
     provider_id: "peyflex",
-    customer: customer || null,
+    customer: customerIdentifier || customerPhone || null,
+    phone: providerPhone || null,
     biller_code: clean(
       pickBody(body, "biller_code", "billerCode", "provider", "identifier"),
     ) || null,
@@ -970,12 +924,12 @@ async function purchase(
           pickBody(body, "biller_code", "billerCode", "network", "network_code"),
         ),
         amount: providerPrice,
-        mobile_number: customer,
+        mobile_number: customerPhone,
       });
     } else if (service === "data") {
       result = await peyflexPost("/api/data/purchase/", {
         network: networkCode(providerNetwork),
-        mobile_number: customer,
+        mobile_number: customerPhone,
         plan_code: clean(
           pickBody(body, "item_code", "itemCode", "plan_code", "planCode"),
         ),
@@ -993,7 +947,7 @@ async function purchase(
         iuc: clean(
           pickBody(body, "customer", "iuc", "smartcard", "smartcard_number"),
         ),
-        phone: customer,
+        phone: providerPhone || undefined,
       });
     } else if (service === "electricity") {
       result = await peyflexPost("/api/electricity/subscribe/", {
@@ -1014,12 +968,12 @@ async function purchase(
       result = await peyflexPost("/api/education/purchase/", {
         identifier: "education",
         plan_id: clean(
-          pickBody(body, "item_code", "itemCode", "plan_code", "planCode", "plan_id"),
+          pickBody(body, "item_code", "itemCode", "plan_code", "planCode"),
         ),
         quantity: String(quantity),
-        phone: customer,
+        phone: customerPhone,
       });
-    } else if (service === "recharge-card" || service === "airtime-card" || service === "data-card") {
+    } else {
       const network = clean(
         pickBody(body, "biller_code", "billerCode", "network", "network_code"),
       );
@@ -1033,8 +987,6 @@ async function purchase(
           pickBody(body, "brand_name", "brandName"),
         ) || "IyanjuPay",
       });
-    } else {
-      throw new Error("Unsupported Peyflex purchase service.");
     }
   } catch (error) {
     console.error("Peyflex provider request exception:", error);

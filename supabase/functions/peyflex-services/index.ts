@@ -19,7 +19,6 @@ import {
 import {
   adminClient,
   getUser,
-  json,
 } from "../_shared/auth.ts";
 
 type Service =
@@ -77,6 +76,12 @@ const CORS_HEADERS = {
     "application/json",
 };
 
+/*
+ * ---------------------------------------------------------
+ * BASIC HELPERS
+ * ---------------------------------------------------------
+ */
+
 function clean(
   value: unknown,
 ): string {
@@ -91,7 +96,7 @@ function bodyObject(
 
 function pickBody(
   body: Record<string, unknown>,
-  ...keys: string[]
+  ...keys: string[],
 ): unknown {
   const obj =
     bodyObject(body);
@@ -149,58 +154,79 @@ function serviceOf(
 
       data:
         "data",
+
       mobile_data:
         "data",
+
       "mobile-data":
         "data",
+
       mobiledata:
         "data",
 
       cable:
         "cable",
+
       cabletv:
         "cable",
+
       "cable-tv":
         "cable",
 
       electricity:
         "electricity",
+
       electric:
         "electricity",
 
       education:
         "education",
+
       waec:
+        "education",
+
+      jamb:
         "education",
 
       "airtime-card":
         "airtime-card",
+
       airtime_card:
         "airtime-card",
+
       airtime_epin:
         "airtime-card",
+
       "airtime-epin":
         "airtime-card",
+
       airtimepin:
         "airtime-card",
 
       "data-card":
         "data-card",
+
       data_card:
         "data-card",
+
       data_epin:
         "data-card",
+
       "data-epin":
         "data-card",
+
       datapin:
         "data-card",
 
       "recharge-card":
         "recharge-card",
+
       recharge_card:
         "recharge-card",
+
       recharge:
         "recharge-card",
+
       epin:
         "recharge-card",
     };
@@ -355,6 +381,8 @@ function itemId(
       obj.planId,
       obj.identifier,
       obj.value,
+      obj.product_code,
+      obj.productCode,
     ),
   );
 }
@@ -381,6 +409,8 @@ function rawItemName(
       obj.Label,
       obj.product_name,
       obj.productName,
+      obj.denomination_name,
+      obj.denominationName,
       itemId(item),
     ),
   );
@@ -497,6 +527,8 @@ function itemPrice(
     raw.option,
     raw.details,
     raw.package,
+    raw.product_details,
+    raw.plan_details,
   ];
 
   let nested:
@@ -518,44 +550,79 @@ function itemPrice(
     }
   }
 
+  const direct =
+    numberValue(
+      firstValue(
+        raw.price,
+        raw.Price,
+
+        raw.amount,
+        raw.Amount,
+
+        raw.cost,
+        raw.Cost,
+
+        raw.selling_price,
+        raw.sellingPrice,
+
+        raw.provider_price,
+        raw.providerPrice,
+
+        raw.provider_amount,
+        raw.providerAmount,
+
+        raw.plan_amount,
+        raw.planAmount,
+
+        raw.plan_price,
+        raw.planPrice,
+
+        raw.denomination,
+
+        raw.face_value,
+        raw.faceValue,
+
+        raw.value,
+      ),
+    );
+
+  if (
+    direct > 0
+  ) {
+    return direct;
+  }
+
   return numberValue(
     firstValue(
-      raw.price,
-      raw.Price,
-
-      raw.amount,
-      raw.Amount,
-
-      raw.cost,
-      raw.Cost,
-
-      raw.selling_price,
-      raw.sellingPrice,
-
-      raw.provider_price,
-      raw.providerPrice,
-
-      raw.provider_amount,
-      raw.providerAmount,
-
-      raw.plan_amount,
-      raw.planAmount,
-
-      raw.denomination,
-
-      raw.face_value,
-      raw.faceValue,
-
-      raw.value,
-
       nested.price,
+      nested.Price,
+
       nested.amount,
+      nested.Amount,
+
       nested.cost,
+      nested.Cost,
+
+      nested.selling_price,
+      nested.sellingPrice,
+
       nested.provider_price,
+      nested.providerPrice,
+
       nested.provider_amount,
+      nested.providerAmount,
+
+      nested.plan_amount,
+      nested.planAmount,
+
+      nested.plan_price,
+      nested.planPrice,
+
       nested.denomination,
+
       nested.face_value,
       nested.faceValue,
+
       nested.value,
     ),
   );
@@ -632,7 +699,6 @@ function itemNetwork(
       obj.networkCode,
       obj.network_id,
       obj.networkId,
-      obj.provider,
       obj.provider_code,
       obj.providerCode,
       obj.identifier,
@@ -643,17 +709,46 @@ function itemNetwork(
 
 /*
  * ---------------------------------------------------------
- * EDUCATION FILTER
+ * NECO FILTER
  * ---------------------------------------------------------
- *
- * NECO must not be exposed or purchasable through
- * the IyanjuPay customer catalogue.
  */
 function isNeco(
   item: unknown,
 ): boolean {
   const obj =
     asObject(item);
+
+  const nestedObjects = [
+    obj.provider,
+    obj.data,
+    obj.plan,
+    obj.product,
+    obj.option,
+    obj.details,
+  ];
+
+  const nestedText =
+    nestedObjects
+      .map((value) => {
+        const nested =
+          asObject(value);
+
+        return [
+          nested.name,
+          nested.Name,
+          nested.title,
+          nested.Title,
+          nested.description,
+          nested.Description,
+          nested.code,
+          nested.Code,
+          nested.id,
+          nested.ID,
+        ]
+          .map(clean)
+          .join(" ");
+      })
+      .join(" ");
 
   const haystack = [
     obj.name,
@@ -673,6 +768,7 @@ function isNeco(
     obj.planId,
     obj.plan_code,
     obj.planCode,
+    nestedText,
   ]
     .map(clean)
     .join(" ")
@@ -749,19 +845,7 @@ function publicProvider(
  * PUBLIC ITEM
  * ---------------------------------------------------------
  *
- * IMPORTANT:
- *
- * We intentionally expose only:
- *
- * id
- * code
- * name
- * price
- * provider_price
- * validity
- * network
- *
- * No provider classification fields are returned.
+ * Only safe customer-facing catalogue fields are exposed.
  */
 function publicItem(
   item: unknown,
@@ -798,7 +882,9 @@ function publicItem(
 
   return {
     id,
-    code: id,
+
+    code:
+      id,
 
     name:
       cleanCustomerPlanName(
@@ -847,6 +933,7 @@ function extractList(
     obj.options,
     obj.products,
     obj.available_plans,
+    obj.data,
   ];
 
   for (
@@ -860,12 +947,9 @@ function extractList(
     }
   }
 
-  if (
-    Array.isArray(obj.data)
-  ) {
-    return obj.data;
-  }
-
+  /*
+   * Nested response.
+   */
   if (
     obj.data &&
     typeof obj.data ===
@@ -889,6 +973,11 @@ function extractList(
 function responseList(
   value: unknown,
 ): unknown[] {
+  /*
+   * peyflexPublicGet() returns an HTTP
+   * result wrapper. asObject()/asArray()
+   * from _shared/peyflex.ts unwrap that wrapper.
+   */
   const direct =
     extractList(value);
 
@@ -903,11 +992,274 @@ function responseList(
 
 /*
  * ---------------------------------------------------------
- * EDUCATION FLATTENER
+ * RECURSIVE CATALOGUE OBJECT EXTRACTION
  * ---------------------------------------------------------
  *
- * Peyflex education catalogue may return providers
- * containing nested plans.
+ * Peyflex catalogue endpoints can return arrays,
+ * nested data objects, keyed maps or option objects.
+ */
+function catalogueObjects(
+  value: unknown,
+  depth = 0,
+): unknown[] {
+  if (
+    depth > 6 ||
+    value === null ||
+    value === undefined
+  ) {
+    return [];
+  }
+
+  if (
+    Array.isArray(value)
+  ) {
+    const result:
+      unknown[] = [];
+
+    for (
+      const entry of
+        value
+    ) {
+      if (
+        entry &&
+        typeof entry ===
+          "object"
+      ) {
+        result.push(
+          entry,
+        );
+      } else if (
+        typeof entry ===
+          "string" ||
+        typeof entry ===
+          "number"
+      ) {
+        result.push({
+          value:
+            entry,
+          name:
+            String(entry),
+        });
+      }
+    }
+
+    return result;
+  }
+
+  if (
+    typeof value !==
+      "object"
+  ) {
+    if (
+      typeof value ===
+        "string" ||
+      typeof value ===
+        "number"
+    ) {
+      return [
+        {
+          value:
+            value,
+          name:
+            String(value),
+        },
+      ];
+    }
+
+    return [];
+  }
+
+  const obj =
+    asObject(value);
+
+  /*
+   * Prefer known catalogue containers.
+   */
+  const containers = [
+    obj.results,
+    obj.items,
+    obj.plans,
+    obj.products,
+    obj.options,
+    obj.available_plans,
+    obj.networks,
+    obj.providers,
+    obj.billers,
+  ];
+
+  for (
+    const container of
+      containers
+  ) {
+    if (
+      container !== undefined &&
+      container !== null
+    ) {
+      const nested =
+        catalogueObjects(
+          container,
+          depth + 1,
+        );
+
+      if (
+        nested.length > 0
+      ) {
+        return nested;
+      }
+    }
+  }
+
+  /*
+   * data can itself be a list or nested object.
+   */
+  if (
+    obj.data !== undefined &&
+    obj.data !== null
+  ) {
+    const nested =
+      catalogueObjects(
+        obj.data,
+        depth + 1,
+      );
+
+    if (
+      nested.length > 0
+    ) {
+      return nested;
+    }
+  }
+
+  /*
+   * If this object itself has catalogue-like
+   * product fields, keep it.
+   */
+  const hasProductIdentity =
+    Boolean(
+      clean(
+        firstValue(
+          obj.id,
+          obj.ID,
+          obj.code,
+          obj.Code,
+          obj.plan_code,
+          obj.planCode,
+          obj.plan_id,
+          obj.planId,
+          obj.identifier,
+          obj.product_code,
+          obj.productCode,
+          obj.name,
+          obj.Name,
+          obj.title,
+          obj.Title,
+          obj.denomination,
+          obj.amount,
+          obj.price,
+          obj.value,
+        ),
+      ),
+    );
+
+  if (
+    hasProductIdentity
+  ) {
+    return [
+      obj,
+    ];
+  }
+
+  /*
+   * Keyed map:
+   *
+   * {
+   *   "mtn": {...},
+   *   "airtel": {...}
+   * }
+   *
+   * or:
+   *
+   * {
+   *   "100": {...},
+   *   "200": {...}
+   * }
+   */
+  const entries =
+    Object.entries(
+      obj,
+    );
+
+  const mapped:
+    unknown[] = [];
+
+  for (
+    const [
+      key,
+      entry,
+    ] of entries
+  ) {
+    if (
+      entry &&
+      typeof entry ===
+        "object" &&
+      !Array.isArray(entry)
+    ) {
+      const entryObj =
+        asObject(entry);
+
+      mapped.push({
+        ...entryObj,
+
+        code:
+          firstValue(
+            entryObj.code,
+            entryObj.Code,
+            entryObj.id,
+            entryObj.ID,
+            key,
+          ),
+
+        name:
+          firstValue(
+            entryObj.name,
+            entryObj.Name,
+            entryObj.title,
+            entryObj.Title,
+            key,
+          ),
+      });
+
+      continue;
+    }
+
+    if (
+      typeof entry ===
+        "string" ||
+      typeof entry ===
+        "number"
+    ) {
+      mapped.push({
+        code:
+          key,
+
+        name:
+          key,
+
+        value:
+          entry,
+
+        amount:
+          entry,
+      });
+    }
+  }
+
+  return mapped;
+}
+
+/*
+ * ---------------------------------------------------------
+ * EDUCATION FLATTENER
+ * ---------------------------------------------------------
  */
 function flattenEducationPlans(
   value: unknown,
@@ -939,6 +1291,7 @@ function flattenEducationPlans(
           providerObj.id,
           providerObj.provider_code,
           providerObj.providerCode,
+          "education",
         ),
       );
 
@@ -948,6 +1301,7 @@ function flattenEducationPlans(
       providerObj.products,
       providerObj.available_plans,
       providerObj.options,
+      providerObj.data,
     ];
 
     let plans:
@@ -957,8 +1311,17 @@ function flattenEducationPlans(
       const candidate of
         nestedCandidates
     ) {
+      if (
+        candidate ===
+          undefined ||
+        candidate ===
+          null
+      ) {
+        continue;
+      }
+
       const extracted =
-        extractList(
+        catalogueObjects(
           candidate,
         );
 
@@ -983,9 +1346,17 @@ function flattenEducationPlans(
           provider,
         )
       ) {
-        result.push(
-          provider,
-        );
+        result.push({
+          ...(
+            providerObj
+          ),
+
+          provider:
+            providerCode,
+
+          provider_code:
+            providerCode,
+        });
       }
 
       continue;
@@ -1006,13 +1377,11 @@ function flattenEducationPlans(
         typeof plan ===
           "object"
       ) {
+        const planObj =
+          asObject(plan);
+
         result.push({
-          ...(
-            plan as Record<
-              string,
-              unknown
-            >
-          ),
+          ...planObj,
 
           provider:
             providerCode,
@@ -1022,9 +1391,15 @@ function flattenEducationPlans(
         });
       } else {
         result.push({
-          value: plan,
+          value:
+            plan,
+
+          name:
+            String(plan),
+
           provider:
             providerCode,
+
           provider_code:
             providerCode,
         });
@@ -1033,8 +1408,7 @@ function flattenEducationPlans(
   }
 
   /*
-   * Some Peyflex responses may return the actual
-   * plans directly rather than nesting them.
+   * Direct-plan response fallback.
    */
   if (
     result.length === 0 &&
@@ -1061,17 +1435,6 @@ function flattenEducationPlans(
  * ---------------------------------------------------------
  * RECHARGE CARD FLATTENER
  * ---------------------------------------------------------
- *
- * /api/rc/options/ may return:
- *
- * - an array
- * - data array
- * - an object containing options
- * - an object containing denominations
- * - provider/network keyed objects
- *
- * This normalizes those structures without exposing
- * the raw provider response.
  */
 function flattenRechargeOptions(
   value: unknown,
@@ -1079,21 +1442,25 @@ function flattenRechargeOptions(
   const result:
     unknown[] = [];
 
-  const payload =
-    asObject(value);
-
+  /*
+   * First try standard catalogue arrays.
+   */
   const direct =
-    responseList(value);
+    extractList(value);
 
   if (
     direct.length > 0
   ) {
-    return direct;
+    return catalogueObjects(
+      direct,
+    );
   }
 
+  const payload =
+    asObject(value);
+
   /*
-   * If options is an object instead of an array,
-   * convert each keyed value into an item.
+   * options may itself be a map.
    */
   const options =
     payload.options;
@@ -1120,33 +1487,57 @@ function flattenRechargeOptions(
         typeof option ===
           "object"
       ) {
+        const optionObj =
+          asObject(
+            option,
+          );
+
         result.push({
-          ...(
-            option as Record<
-              string,
-              unknown
-            >
-          ),
+          ...optionObj,
+
           code:
             firstValue(
-              asObject(
-                option,
-              ).code,
+              optionObj.code,
+              optionObj.Code,
+              optionObj.id,
+              optionObj.ID,
+              key,
+            ),
+
+          name:
+            firstValue(
+              optionObj.name,
+              optionObj.Name,
+              optionObj.title,
+              optionObj.Title,
               key,
             ),
         });
-      } else {
+      } else if (
+        typeof option ===
+          "string" ||
+        typeof option ===
+          "number"
+      ) {
         result.push({
-          code: key,
-          value: option,
-          name: key,
+          code:
+            key,
+
+          value:
+            option,
+
+          amount:
+            option,
+
+          name:
+            key,
         });
       }
     }
   }
 
   /*
-   * Check data object.
+   * data may also be a keyed map.
    */
   const data =
     payload.data;
@@ -1166,29 +1557,72 @@ function flattenRechargeOptions(
           string,
           unknown
         >,
-      ) {
+      )
+    ) {
       if (
         option &&
         typeof option ===
           "object"
       ) {
+        const optionObj =
+          asObject(
+            option,
+          );
+
         result.push({
-          ...(
-            option as Record<
-              string,
-              unknown
-            >
-          ),
+          ...optionObj,
+
           code:
             firstValue(
-              asObject(
-                option,
-              ).code,
+              optionObj.code,
+              optionObj.Code,
+              optionObj.id,
+              optionObj.ID,
+              key,
+            ),
+
+          name:
+            firstValue(
+              optionObj.name,
+              optionObj.Name,
+              optionObj.title,
+              optionObj.Title,
               key,
             ),
         });
+      } else if (
+        typeof option ===
+          "string" ||
+        typeof option ===
+          "number"
+      ) {
+        result.push({
+          code:
+            key,
+
+          value:
+            option,
+
+          amount:
+            option,
+
+          name:
+            key,
+        });
       }
     }
+  }
+
+  /*
+   * Generic fallback for any remaining keyed
+   * object returned by Peyflex.
+   */
+  if (
+    result.length === 0
+  ) {
+    return catalogueObjects(
+      value,
+    );
   }
 
   return result;
@@ -1219,13 +1653,19 @@ async function catalog(
     const networks =
       responseList(
         response,
-      ).map(
-        publicProvider,
-      );
+      )
+        .filter(
+          (item) =>
+            !isNeco(item),
+        )
+        .map(
+          publicProvider,
+        );
 
     return {
       success:
         response.ok,
+
       service,
 
       amount_based:
@@ -1240,6 +1680,7 @@ async function catalog(
         networks,
 
       items: [],
+
       plans: [],
     };
   }
@@ -1260,9 +1701,14 @@ async function catalog(
     const networks =
       responseList(
         networksResponse,
-      ).map(
-        publicProvider,
-      );
+      )
+        .filter(
+          (item) =>
+            !isNeco(item),
+        )
+        .map(
+          publicProvider,
+        );
 
     if (!code) {
       return {
@@ -1283,6 +1729,7 @@ async function catalog(
           networks,
 
         items: [],
+
         plans: [],
       };
     }
@@ -1364,9 +1811,14 @@ async function catalog(
     const providers =
       responseList(
         providersResponse,
-      ).map(
-        publicProvider,
-      );
+      )
+        .filter(
+          (item) =>
+            !isNeco(item),
+        )
+        .map(
+          publicProvider,
+        );
 
     if (!code) {
       return {
@@ -1384,6 +1836,7 @@ async function catalog(
         providers,
 
         items: [],
+
         plans: [],
       };
     }
@@ -1402,6 +1855,10 @@ async function catalog(
 
     const items =
       rawPlans
+        .filter(
+          (item) =>
+            !isNeco(item),
+        )
         .map(
           (item) =>
             publicItem(
@@ -1446,7 +1903,8 @@ async function catalog(
    * -------------------------------------------------------
    */
   if (
-    service === "electricity"
+    service ===
+      "electricity"
   ) {
     const response =
       await peyflexPublicGet(
@@ -1460,9 +1918,14 @@ async function catalog(
     const companies =
       responseList(
         response,
-      ).map(
-        publicProvider,
-      );
+      )
+        .filter(
+          (item) =>
+            !isNeco(item),
+        )
+        .map(
+          publicProvider,
+        );
 
     return {
       success:
@@ -1480,6 +1943,7 @@ async function catalog(
         companies,
 
       items: [],
+
       plans: [],
     };
   }
@@ -1498,7 +1962,7 @@ async function catalog(
       );
 
     /*
-     * Never expose NECO as a provider.
+     * Remove NECO providers.
      */
     const providerRaw =
       responseList(
@@ -1513,14 +1977,16 @@ async function catalog(
         publicProvider,
       );
 
+    /*
+     * Flatten nested education plans.
+     */
     let rawItems =
       flattenEducationPlans(
         response,
       );
 
     /*
-     * Remove NECO again after flattening because
-     * NECO may appear as a nested plan.
+     * Remove NECO plans as well.
      */
     rawItems =
       rawItems.filter(
@@ -1549,8 +2015,8 @@ async function catalog(
         );
 
     /*
-     * If a provider was selected, filter by its
-     * provider/network identifier.
+     * If a provider was selected, filter
+     * by its internal network/provider identifier.
      */
     if (code) {
       const selected =
@@ -1618,11 +2084,6 @@ async function catalog(
         response,
       );
 
-    /*
-     * For recharge-card services, the endpoint may expose
-     * multiple product types. We retain only records that
-     * have a usable product identity and price.
-     */
     const items =
       options
         .filter(
@@ -1655,6 +2116,7 @@ async function catalog(
         false,
 
       billers: [],
+
       providers: [],
 
       items,
@@ -1715,6 +2177,7 @@ async function verifyCustomer(
     if (!iuc) {
       return {
         success: false,
+
         error:
           "IUC/Smartcard number is required.",
       };
@@ -1723,12 +2186,13 @@ async function verifyCustomer(
     if (!identifier) {
       return {
         success: false,
+
         error:
           "Cable provider is required.",
       };
     }
 
-    const response =
+    const providerResponse =
       await peyflexPost(
         "/api/cable/verify/",
         {
@@ -1740,25 +2204,25 @@ async function verifyCustomer(
     return {
       success:
         !providerLooksFailed(
-          response,
+          providerResponse,
         ),
 
       verified:
         providerLooksSuccessful(
-          response,
+          providerResponse,
         ),
 
       customer:
         extractObjectData(
-          response,
+          providerResponse,
         ),
 
       data:
-        response,
+        providerResponse,
 
       message:
         providerMessage(
-          response,
+          providerResponse,
         ),
     };
   }
@@ -1817,6 +2281,7 @@ async function verifyCustomer(
     if (!meter) {
       return {
         success: false,
+
         error:
           "Meter number is required.",
       };
@@ -1825,12 +2290,13 @@ async function verifyCustomer(
     if (!identifier) {
       return {
         success: false,
+
         error:
           "Electricity provider is required.",
       };
     }
 
-    const response =
+    const providerResponse =
       await peyflexGet(
         "/api/electricity/verify/",
         {
@@ -1844,32 +2310,34 @@ async function verifyCustomer(
     return {
       success:
         !providerLooksFailed(
-          response,
+          providerResponse,
         ),
 
       verified:
         providerLooksSuccessful(
-          response,
+          providerResponse,
         ),
 
       customer:
         extractObjectData(
-          response,
+          providerResponse,
         ),
 
       data:
-        response,
+        providerResponse,
 
       message:
         providerMessage(
-          response,
+          providerResponse,
         ),
     };
   }
 
   return {
     success: true,
+
     verified: true,
+
     message:
       "Verification is not required for this service.",
   };
@@ -2067,8 +2535,8 @@ async function authoritativePrice(
   }
 
   /*
-   * All other services must match an actual Peyflex
-   * catalogue item.
+   * All other services must match
+   * an actual Peyflex catalogue item.
    */
   const item =
     await findCatalogItem(
@@ -2140,7 +2608,9 @@ async function callProviderPurchase(
     );
 
   /*
+   * -------------------------------------------------------
    * AIRTIME
+   * -------------------------------------------------------
    */
   if (
     service === "airtime"
@@ -2176,8 +2646,10 @@ async function callProviderPurchase(
       "/api/airtime/topup/",
       {
         network,
+
         amount:
           providerPrice,
+
         mobile_number:
           phone,
       },
@@ -2185,7 +2657,9 @@ async function callProviderPurchase(
   }
 
   /*
+   * -------------------------------------------------------
    * DATA
+   * -------------------------------------------------------
    */
   if (
     service === "data"
@@ -2238,8 +2712,10 @@ async function callProviderPurchase(
       "/api/data/purchase/",
       {
         network,
+
         mobile_number:
           phone,
+
         plan_code:
           planCode,
       },
@@ -2247,7 +2723,9 @@ async function callProviderPurchase(
   }
 
   /*
+   * -------------------------------------------------------
    * CABLE
+   * -------------------------------------------------------
    */
   if (
     service === "cable"
@@ -2312,15 +2790,20 @@ async function callProviderPurchase(
       "/api/cable/subscribe/",
       {
         identifier,
+
         plan,
+
         iuc,
+
         phone,
       },
     );
   }
 
   /*
+   * -------------------------------------------------------
    * ELECTRICITY
+   * -------------------------------------------------------
    */
   if (
     service ===
@@ -2385,18 +2868,27 @@ async function callProviderPurchase(
       "/api/electricity/subscribe/",
       {
         identifier,
+
         meter,
+
         plan,
+
         amount:
-          String(providerPrice),
+          String(
+            providerPrice,
+          ),
+
         type,
+
         phone,
       },
     );
   }
 
   /*
+   * -------------------------------------------------------
    * EDUCATION
+   * -------------------------------------------------------
    */
   if (
     service === "education"
@@ -2419,8 +2911,7 @@ async function callProviderPurchase(
     }
 
     /*
-     * Explicitly reject NECO even if someone manually
-     * submits a hidden provider code.
+     * NECO is permanently disabled.
      */
     if (
       /\bneco\b/i.test(
@@ -2437,17 +2928,22 @@ async function callProviderPurchase(
       {
         identifier:
           "education",
+
         plan_id:
           planId,
+
         quantity:
           String(quantity),
+
         phone,
       },
     );
   }
 
   /*
+   * -------------------------------------------------------
    * RECHARGE / CARD
+   * -------------------------------------------------------
    */
   if (
     service ===
@@ -2486,10 +2982,14 @@ async function callProviderPurchase(
       "/api/rc/purchase/",
       {
         network,
+
         amount:
           providerPrice,
+
         quantity,
+
         pin,
+
         brand_name:
           "IyanjuPay",
       },
@@ -2531,6 +3031,15 @@ function safeSelectedItem(
     price:
       numberValue(
         obj.price,
+      ),
+
+    provider_price:
+      numberValue(
+        firstValue(
+          obj.provider_price,
+          obj.providerPrice,
+          obj.price,
+        ),
       ),
 
     validity:
@@ -2983,7 +3492,7 @@ async function purchase(
         );
 
       /*
-       * Refund failure must remain flagged.
+       * Refund failure remains flagged.
        */
       if (
         refundError
@@ -3294,6 +3803,7 @@ function response(
     JSON.stringify(body),
     {
       status,
+
       headers:
         CORS_HEADERS,
     },
@@ -3327,7 +3837,7 @@ Deno.serve(
     }
 
     /*
-     * POST only.
+     * POST ONLY.
      */
     if (
       req.method !==

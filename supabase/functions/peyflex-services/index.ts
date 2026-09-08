@@ -382,41 +382,80 @@ function electricityProvider(item: any): Record<string, unknown> {
 }
 
 function itemValidity(item: any): number | null {
+  const raw = bodyObject(item);
   const candidates = [
-    item.validity_days,
-    item.validityDays,
-    item.duration_days,
-    item.durationDays,
-    item.duration,
-    item.validity,
-    item.validity_period,
-    item.validityPeriod,
-    item.period,
-    item.plan_period,
-    item.planPeriod,
-    item.plan_type,
-    item.planType,
-    itemName(item),
-    itemId(item),
+    raw.validity_days,
+    raw.validityDays,
+    raw.duration_days,
+    raw.durationDays,
+    raw.duration,
+    raw.validity,
+    raw.validity_period,
+    raw.validityPeriod,
+    raw.period,
+    raw.plan_period,
+    raw.planPeriod,
+    raw.plan_type,
+    raw.planType,
+    raw.type,
+    raw.category,
+    raw.name,
+    raw.plan_name,
+    raw.planName,
+    raw.description,
+    itemId(raw),
   ];
 
   for (const candidate of candidates) {
-    const numeric = Number(candidate);
-    if (Number.isFinite(numeric) && numeric > 0) return numeric;
+    const textValue = clean(candidate);
+    const numeric = Number(textValue);
+    if (Number.isFinite(numeric) && numeric > 0 && numeric <= 1000) {
+      return numeric;
+    }
 
-    const match = clean(candidate).match(
-      /(?:^|\s)(\d+(?:\.\d+)?)\s*(day|days|week|weeks|month|months)(?:\s|$)/i,
+    const match = textValue.match(
+      /(\d+(?:\.\d+)?)\s*(day|days|week|weeks|month|months|hour|hours)/i,
     );
     if (!match) continue;
 
     const count = Number(match[1]);
     const unit = match[2].toLowerCase();
-    if (unit.startsWith("week")) return count * 7;
     if (unit.startsWith("month")) return count * 30;
+    if (unit.startsWith("week")) return count * 7;
+    if (unit.startsWith("hour")) return Math.max(1, Math.ceil(count / 24));
     return count;
   }
 
   return null;
+}
+
+function dataPlanGroup(item: any): "DAILY" | "WEEKLY" | "MONTHLY" | "OTHER" {
+  const raw = bodyObject(item);
+  const days = itemValidity(raw) ?? 0;
+  if (days >= 28) return "MONTHLY";
+  if (days >= 7) return "WEEKLY";
+  if (days > 0) return "DAILY";
+
+  const textValue = [
+    raw.period,
+    raw.plan_period,
+    raw.planPeriod,
+    raw.plan_type,
+    raw.planType,
+    raw.category,
+    raw.type,
+    raw.validity,
+    raw.duration,
+    raw.name,
+    raw.plan_name,
+    raw.planName,
+    raw.description,
+  ].map(clean).join(" ").toLowerCase();
+
+  if (/monthly|30\s*days?|31\s*days?|1\s*month|2\s*months?|3\s*months?/.test(textValue)) return "MONTHLY";
+  if (/weekly|7\s*days?|14\s*days?|1\s*week|2\s*weeks?/.test(textValue)) return "WEEKLY";
+  if (/daily|1\s*day|2\s*days?|3\s*days?|24\s*hours?/.test(textValue)) return "DAILY";
+  return "OTHER";
 }
 
 function publicItem(
@@ -481,8 +520,17 @@ function publicItem(
       firstValue(
         raw.period,
         raw.validity_period,
+        raw.plan_period,
+        raw.planPeriod,
       ),
     ) || null,
+    category: clean(firstValue(
+      raw.category,
+      raw.plan_category,
+      raw.planCategory,
+      raw.type,
+    )) || null,
+    dataCategory: service === "data" ? dataPlanGroup(raw) : null,
     raw,
   };
 }

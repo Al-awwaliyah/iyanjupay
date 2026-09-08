@@ -736,71 +736,42 @@ function canonicalElectricityDisco(
   return "";
 }
 
-function filterElectricityDiscos(
-  live: Biller[]
-): Biller[] {
-  const allowed: Biller[] = [];
+function filterElectricityDiscos(live: Biller[]): Biller[] {
+  const result: Biller[] = [];
   const seen = new Set<string>();
 
   for (const biller of live) {
-    const canonical =
-      canonicalElectricityDisco(biller);
+    if (isPlaceholderBiller(biller)) continue;
 
-    if (!canonical || seen.has(canonical)) {
-      continue;
-    }
+    const code = getCode(biller);
+    const name = getName(biller);
+    const canonical = canonicalElectricityDisco(biller);
+    const displayName = canonical || clean(biller.display_name) || name || code;
+    const key = code.toLowerCase() || normaliseDiscoText(displayName);
 
-    seen.add(canonical);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
 
-    allowed.push({
+    result.push({
       ...biller,
-      display_name: canonical,
+      display_name: displayName,
     });
   }
 
-  for (
-    const offlineBiller of
-    OFFLINE_BILLERS.electricity ?? []
-  ) {
-    const canonical =
-      canonicalElectricityDisco(
-        offlineBiller
-      );
-
-    if (!canonical || seen.has(canonical)) {
-      continue;
+  // Only use the old list when the provider returned no usable electricity billers.
+  if (!result.length) {
+    for (const biller of OFFLINE_BILLERS.electricity ?? []) {
+      const code = getCode(biller);
+      const name = getName(biller);
+      const key = code.toLowerCase() || normaliseDiscoText(name);
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      result.push({ ...biller, display_name: name });
     }
-
-    seen.add(canonical);
-
-    allowed.push({
-      ...offlineBiller,
-      display_name: canonical,
-    });
   }
 
-  const byCanonical = new Map(
-    allowed.map((biller) => [
-      canonicalElectricityDisco(biller) ||
-        clean(biller.display_name),
-      biller,
-    ])
-  );
-
-  return ELECTRICITY_DISCO_NAMES
-    .map((name) => {
-      const found = byCanonical.get(name);
-
-      if (!found) return null;
-
-      return {
-        ...found,
-        display_name: name,
-      };
-    })
-    .filter(Boolean) as Biller[];
+  return result;
 }
-
 function isPlaceholderBiller(
   value: Biller
 ): boolean {
@@ -2567,19 +2538,6 @@ export default function ServicePayment({
         verifiedName,
 
       verified,
-
-      plan_type: isData
-        ? clean(
-            selectedItem?.plan_type ??
-              selectedItem?.planType
-          )
-        : "",
-
-      is_hot_deal: isData
-        ? isHot(
-            selectedItem ?? {}
-          )
-        : false,
     };
   };
 
@@ -3843,7 +3801,7 @@ export default function ServicePayment({
                         Loading data plans...
                       </div>
                     ) : visibleDataPlans.length ? (
-                      <div className="grid grid-cols-4 gap-2 sm:gap-2.5">
+                      <div className="grid grid-cols-5 gap-1.5 sm:gap-2">
                         {visibleDataPlans.map(
                           (item) =>
                             renderDataPlan(

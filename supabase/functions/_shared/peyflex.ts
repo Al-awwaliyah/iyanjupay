@@ -1,5 +1,7 @@
 function getBaseUrl(): string {
-  const baseUrl = Deno.env.get("PEYFLEX_BASE_URL")?.trim();
+  const baseUrl = Deno.env
+    .get("PEYFLEX_BASE_URL")
+    ?.trim();
 
   if (!baseUrl) {
     throw new Error(
@@ -11,8 +13,9 @@ function getBaseUrl(): string {
 }
 
 function getToken(): string {
-  const token =
-    Deno.env.get("PEYFLEX_API_TOKEN")?.trim();
+  const token = Deno.env
+    .get("PEYFLEX_API_TOKEN")
+    ?.trim();
 
   if (!token) {
     throw new Error(
@@ -35,7 +38,8 @@ function buildUrl(
   params?: Record<string, unknown>,
 ): string {
   const url = new URL(
-    path.startsWith("http")
+    path.startsWith("http://") ||
+      path.startsWith("https://")
       ? path
       : `${getBaseUrl()}${
           path.startsWith("/")
@@ -67,16 +71,18 @@ function buildUrl(
 async function parseResponse(
   response: Response,
 ): Promise<PeyflexHttpResult> {
-  const rawText = await response.text();
+  const rawText =
+    await response.text();
 
   let body: any = null;
 
-  try {
-    body = rawText
-      ? JSON.parse(rawText)
-      : null;
-  } catch {
-    body = rawText;
+  if (rawText.trim()) {
+    try {
+      body =
+        JSON.parse(rawText);
+    } catch {
+      body = rawText;
+    }
   }
 
   return {
@@ -88,77 +94,120 @@ async function parseResponse(
 }
 
 /**
- * Catalogue GET.
+ * Public GET.
  *
- * Returns the complete HTTP wrapper so the caller can
- * inspect both HTTP status and Peyflex body.
+ * Used for Peyflex catalogue endpoints that do not
+ * require the API token.
  */
 export async function peyflexPublicGet(
   path: string,
   params?: Record<string, unknown>,
 ): Promise<PeyflexHttpResult> {
-  const response = await fetch(
-    buildUrl(path, params),
-    {
-      method: "GET",
-      headers: {
-        Accept: "application/json",
+  const response =
+    await fetch(
+      buildUrl(path, params),
+      {
+        method: "GET",
+        headers: {
+          Accept:
+            "application/json",
+        },
       },
-    },
-  );
+    );
 
-  return parseResponse(response);
+  return parseResponse(
+    response,
+  );
 }
 
 /**
- * Authenticated Peyflex GET.
+ * Authenticated GET.
  */
 export async function peyflexGet(
   path: string,
   params?: Record<string, unknown>,
 ): Promise<PeyflexHttpResult> {
-  const response = await fetch(
-    buildUrl(path, params),
-    {
-      method: "GET",
-      headers: {
-        Accept: "application/json",
-        Authorization: `Token ${getToken()}`,
+  const response =
+    await fetch(
+      buildUrl(path, params),
+      {
+        method: "GET",
+        headers: {
+          Accept:
+            "application/json",
+          Authorization:
+            `Token ${getToken()}`,
+        },
       },
-    },
-  );
+    );
 
-  return parseResponse(response);
+  return parseResponse(
+    response,
+  );
 }
 
 /**
- * Authenticated Peyflex POST.
+ * Authenticated POST.
  */
 export async function peyflexPost(
   path: string,
   body: Record<string, unknown>,
 ): Promise<PeyflexHttpResult> {
-  const response = await fetch(
-    buildUrl(path),
-    {
-      method: "POST",
-      headers: {
-        Accept: "application/json",
-        "Content-Type": "application/json",
-        Authorization: `Token ${getToken()}`,
+  const response =
+    await fetch(
+      buildUrl(path),
+      {
+        method: "POST",
+        headers: {
+          Accept:
+            "application/json",
+          "Content-Type":
+            "application/json",
+          Authorization:
+            `Token ${getToken()}`,
+        },
+        body: JSON.stringify(
+          body,
+        ),
       },
-      body: JSON.stringify(body),
-    },
-  );
+    );
 
-  return parseResponse(response);
+  return parseResponse(
+    response,
+  );
 }
 
 /**
- * Unwrap a Peyflex HTTP result.
+ * Detect Peyflex HTTP wrapper.
+ */
+function isHttpResult(
+  value: unknown,
+): value is PeyflexHttpResult {
+  if (
+    !value ||
+    typeof value !== "object" ||
+    Array.isArray(value)
+  ) {
+    return false;
+  }
+
+  const obj =
+    value as Record<
+      string,
+      unknown
+    >;
+
+  return (
+    "body" in obj &&
+    "httpStatus" in obj &&
+    "ok" in obj
+  );
+}
+
+/**
+ * Unwrap Peyflex HTTP wrapper.
  *
- * This is important because peyflexGet/peyflexPost/
- * peyflexPublicGet return:
+ * Supports both:
  *
  * {
  *   ok,
@@ -167,67 +216,52 @@ export async function peyflexPost(
  *   rawText
  * }
  *
- * All response-processing helpers below therefore work
- * with either the wrapper or the raw Peyflex body.
+ * and the raw Peyflex body.
  */
 export function unwrapPeyflex(
   value: unknown,
 ): any {
   if (
-    value &&
-    typeof value === "object" &&
-    !Array.isArray(value)
+    isHttpResult(value)
   ) {
-    const obj =
-      value as Record<string, any>;
-
-    if (
-      "body" in obj &&
-      "httpStatus" in obj &&
-      "ok" in obj
-    ) {
-      return obj.body;
-    }
+    return value.body;
   }
 
   return value;
 }
 
 /**
- * Return whether a value is an HTTP wrapper.
+ * Convert a value into an object.
  */
-function isHttpResult(
-  value: unknown,
-): value is PeyflexHttpResult {
-  return Boolean(
-    value &&
-      typeof value === "object" &&
-      !Array.isArray(value) &&
-      "body" in
-        (value as Record<string, unknown>) &&
-      "httpStatus" in
-        (value as Record<string, unknown>) &&
-      "ok" in
-        (value as Record<string, unknown>),
-  );
-}
-
 export function asObject(
   value: unknown,
 ): Record<string, any> {
-  value = unwrapPeyflex(value);
+  value =
+    unwrapPeyflex(value);
 
-  return value &&
+  if (
+    value &&
     typeof value === "object" &&
     !Array.isArray(value)
-    ? (value as Record<string, any>)
-    : {};
+  ) {
+    return value as Record<
+      string,
+      any
+    >;
+  }
+
+  return {};
 }
 
+/**
+ * Convert common Peyflex response structures
+ * into an array.
+ */
 export function asArray(
   value: unknown,
 ): any[] {
-  value = unwrapPeyflex(value);
+  value =
+    unwrapPeyflex(value);
 
   if (Array.isArray(value)) {
     return value;
@@ -236,9 +270,8 @@ export function asArray(
   const obj =
     asObject(value);
 
-  const candidates = [
+  const directCandidates = [
     obj.results,
-    obj.data,
     obj.items,
     obj.plans,
     obj.providers,
@@ -249,31 +282,55 @@ export function asArray(
     obj.available_plans,
   ];
 
-  for (const candidate of candidates) {
-    if (Array.isArray(candidate)) {
+  for (
+    const candidate of
+      directCandidates
+  ) {
+    if (
+      Array.isArray(candidate)
+    ) {
       return candidate;
     }
+  }
+
+  /*
+   * data is handled separately because
+   * data can itself be an object containing
+   * another array.
+   */
+  if (
+    Array.isArray(obj.data)
+  ) {
+    return obj.data;
+  }
+
+  if (
+    obj.data &&
+    typeof obj.data ===
+      "object"
+  ) {
+    const nested =
+      asArray(obj.data);
 
     if (
-      candidate &&
-      typeof candidate === "object"
+      nested.length > 0
     ) {
-      const nested =
-        asArray(candidate);
-
-      if (nested.length > 0) {
-        return nested;
-      }
+      return nested;
     }
   }
 
   return [];
 }
 
+/**
+ * Return the first non-empty value.
+ */
 export function firstValue(
   ...values: unknown[]
 ): unknown {
-  for (const value of values) {
+  for (
+    const value of values
+  ) {
     if (
       value !== undefined &&
       value !== null &&
@@ -286,10 +343,14 @@ export function firstValue(
   return undefined;
 }
 
+/**
+ * Convert arbitrary values to text.
+ */
 export function text(
   value: unknown,
 ): string {
-  value = unwrapPeyflex(value);
+  value =
+    unwrapPeyflex(value);
 
   if (
     value === undefined ||
@@ -325,19 +386,23 @@ export function text(
     );
 
   if (
-    nested !== undefined &&
-    nested !== value
+    nested !== undefined
   ) {
     return text(nested);
   }
 
   try {
-    return JSON.stringify(value);
+    return JSON.stringify(
+      value,
+    );
   } catch {
     return "";
   }
 }
 
+/**
+ * Convert an arbitrary value to number.
+ */
 export function numberValue(
   value: unknown,
 ): number {
@@ -349,41 +414,138 @@ export function numberValue(
       : 0;
   }
 
-  const cleaned =
-    text(value)
-      .replace(/[₦,\s]/g, "")
-      .replace(/NGN/gi, "");
+  if (
+    value === undefined ||
+    value === null
+  ) {
+    return 0;
+  }
 
-  const result =
+  const raw =
+    text(value);
+
+  if (!raw) {
+    return 0;
+  }
+
+  /*
+   * Handle common Nigerian currency
+   * representations.
+   */
+  const cleaned =
+    raw
+      .replace(/₦/g, "")
+      .replace(/NGN/gi, "")
+      .replace(/,/g, "")
+      .trim();
+
+  /*
+   * Some APIs may return values such as:
+   *
+   * "₦2,500"
+   * "2500.00"
+   */
+  const direct =
     Number(cleaned);
 
-  return Number.isFinite(result)
-    ? result
+  if (
+    Number.isFinite(direct)
+  ) {
+    return direct;
+  }
+
+  /*
+   * Fallback for strings containing
+   * a numeric value.
+   */
+  const match =
+    cleaned.match(
+      /-?\d+(?:\.\d+)?/,
+    );
+
+  if (!match) {
+    return 0;
+  }
+
+  const parsed =
+    Number(match[0]);
+
+  return Number.isFinite(parsed)
+    ? parsed
     : 0;
 }
 
+/**
+ * Extract the actual provider payload.
+ *
+ * This is intentionally exported because
+ * peyflex-services needs it for customer
+ * verification responses.
+ */
+export function extractObjectData(
+  value: unknown,
+): Record<string, any> {
+  const payload =
+    unwrapPeyflex(value);
+
+  const obj =
+    asObject(payload);
+
+  /*
+   * If data is an object, that is usually
+   * the actual response payload.
+   */
+  if (
+    obj.data &&
+    typeof obj.data ===
+      "object" &&
+    !Array.isArray(obj.data)
+  ) {
+    return asObject(
+      obj.data,
+    );
+  }
+
+  return obj;
+}
+
+/**
+ * Normalize provider status.
+ */
 export function normalizeStatus(
   body: any,
 ): string {
+  const payload =
+    unwrapPeyflex(body);
+
   const obj =
-    asObject(body);
+    asObject(payload);
 
   const data =
     asObject(obj.data);
 
-  return text(
+  const status =
     firstValue(
       obj.status,
       obj.Status,
       obj.state,
       obj.State,
+      obj.transaction_status,
+      obj.transactionStatus,
+      obj.order_status,
+      obj.orderStatus,
 
       data.status,
       data.Status,
       data.state,
       data.State,
-    ),
-  )
+      data.transaction_status,
+      data.transactionStatus,
+      data.order_status,
+      data.orderStatus,
+    );
+
+  return text(status)
     .toUpperCase()
     .replace(
       /[\s-]+/g,
@@ -391,11 +553,17 @@ export function normalizeStatus(
     );
 }
 
+/**
+ * Extract provider message.
+ */
 export function providerMessage(
   body: any,
 ): string {
+  const payload =
+    unwrapPeyflex(body);
+
   const obj =
-    asObject(body);
+    asObject(payload);
 
   const data =
     asObject(obj.data);
@@ -407,21 +575,31 @@ export function providerMessage(
       obj.detail,
       obj.error,
       obj.error_message,
+      obj.errorMessage,
+      obj.description,
 
       data.message,
       data.Message,
       data.detail,
       data.error,
       data.error_message,
+      data.errorMessage,
+      data.description,
     ),
   );
 }
 
+/**
+ * Extract provider transaction reference.
+ */
 export function providerReference(
   body: any,
 ): string | null {
+  const payload =
+    unwrapPeyflex(body);
+
   const obj =
-    asObject(body);
+    asObject(payload);
 
   const data =
     asObject(obj.data);
@@ -432,18 +610,26 @@ export function providerReference(
       obj.reference_id,
       obj.referenceId,
       obj.transaction_reference,
+      obj.transactionReference,
       obj.transaction_id,
+      obj.transactionId,
       obj.order_id,
       obj.orderId,
+      obj.request_id,
+      obj.requestId,
       obj.id,
 
       data.reference,
       data.reference_id,
       data.referenceId,
       data.transaction_reference,
+      data.transactionReference,
       data.transaction_id,
+      data.transactionId,
       data.order_id,
       data.orderId,
+      data.request_id,
+      data.requestId,
       data.id,
     );
 
@@ -454,21 +640,18 @@ export function providerReference(
 }
 
 /**
- * Successful response detection.
+ * Provider success detection.
  *
- * The second parameter is optional so the existing
- * peyflex-services function can safely call:
+ * HTTP success alone is NOT enough.
  *
- * providerLooksSuccessful(response)
- *
- * If the response is an HTTP wrapper, its `ok` value
- * is automatically used.
+ * We first inspect an explicit provider
+ * success/status field.
  */
 export function providerLooksSuccessful(
   body: any,
   httpOk?: boolean,
 ): boolean {
-  const ok =
+  const actualHttpOk =
     httpOk ??
     (
       isHttpResult(body)
@@ -476,15 +659,14 @@ export function providerLooksSuccessful(
         : true
     );
 
-  if (!ok) {
+  if (
+    !actualHttpOk
+  ) {
     return false;
   }
 
   const payload =
     unwrapPeyflex(body);
-
-  const status =
-    normalizeStatus(payload);
 
   const obj =
     asObject(payload);
@@ -492,11 +674,21 @@ export function providerLooksSuccessful(
   const data =
     asObject(obj.data);
 
+  const status =
+    normalizeStatus(
+      payload,
+    );
+
   if (
-    status === "SUCCESS" ||
-    status === "SUCCESSFUL" ||
-    status === "COMPLETED" ||
-    status === "ORDER_COMPLETED"
+    [
+      "SUCCESS",
+      "SUCCESSFUL",
+      "COMPLETED",
+      "COMPLETE",
+      "ORDER_COMPLETED",
+      "TRANSACTION_COMPLETED",
+      "SUCCESSFULL",
+    ].includes(status)
   ) {
     return true;
   }
@@ -508,14 +700,28 @@ export function providerLooksSuccessful(
     return true;
   }
 
+  /*
+   * Some provider responses use
+   * boolean status fields.
+   */
+  if (
+    obj.status === true ||
+    data.status === true
+  ) {
+    return true;
+  }
+
   return false;
 }
 
+/**
+ * Provider definitive failure detection.
+ */
 export function providerLooksFailed(
   body: any,
   httpOk?: boolean,
 ): boolean {
-  const ok =
+  const actualHttpOk =
     httpOk ??
     (
       isHttpResult(body)
@@ -523,7 +729,13 @@ export function providerLooksFailed(
         : true
     );
 
-  if (!ok) {
+  /*
+   * HTTP failure is a definitive provider
+   * rejection/error for our purposes.
+   */
+  if (
+    !actualHttpOk
+  ) {
     return true;
   }
 
@@ -531,45 +743,68 @@ export function providerLooksFailed(
     unwrapPeyflex(body);
 
   const status =
-    normalizeStatus(payload);
+    normalizeStatus(
+      payload,
+    );
 
   return new Set([
     "FAILED",
     "FAILURE",
     "TRANSACTION_FAILED",
+    "TRANSACTION_FAILURE",
     "ORDER_FAILED",
+    "ORDER_FAILURE",
     "DECLINED",
     "REJECTED",
     "CANCELLED",
+    "CANCELED",
     "INVALID",
+    "ERROR",
+    "ERR",
   ]).has(status);
 }
 
 /**
- * Calculate selling price.
+ * Calculate IyanjuPay selling price.
  *
  * Airtime:
  *   0% markup
  *
  * Other services:
- *   markup supplied by caller.
+ *   caller supplies markup.
+ *
+ * Final amount:
+ *   rounded UP to nearest ₦5.
  */
 export function roundSellingPrice(
   providerCost: number,
   markupRate = 0,
 ): number {
   if (
-    !Number.isFinite(providerCost) ||
+    !Number.isFinite(
+      providerCost,
+    ) ||
     providerCost <= 0
   ) {
     return 0;
   }
 
+  const safeMarkup =
+    Number.isFinite(
+      markupRate,
+    ) &&
+    markupRate >= 0
+      ? markupRate
+      : 0;
+
   const marked =
     providerCost *
-    (1 + markupRate);
+    (1 + safeMarkup);
 
   return Math.ceil(
-    (marked - Number.EPSILON) / 5,
+    (
+      marked -
+      Number.EPSILON
+    ) / 5,
   ) * 5;
 }

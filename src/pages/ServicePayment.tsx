@@ -42,10 +42,11 @@ type Biller = Record<string, any>;
 type Item = Record<string, any>;
 
 type DataTab =
+  | "HOT"
+  | "EXTRA_NIGHT"
   | "DAILY"
   | "WEEKLY"
-  | "MONTHLY"
-  | "OTHER";
+  | "MONTHLY";
 
 const SERVICE_ALIASES: Record<string, string> = {
   airtime_epin: "airtime-card",
@@ -91,10 +92,11 @@ const BILL_AMOUNTS = [
 ];
 
 const DATA_TABS: DataTab[] = [
+  "HOT",
+  "EXTRA_NIGHT",
   "DAILY",
   "WEEKLY",
   "MONTHLY",
-  "OTHER",
 ];
 
 /*
@@ -457,16 +459,19 @@ function getDataPlanDuration(item: Item): string {
 }
 
 function planGroup(item: Item): DataTab {
-  const backendGroup = clean(item.dataCategory).toUpperCase();
-  if (backendGroup === "DAILY" || backendGroup === "WEEKLY" || backendGroup === "MONTHLY" || backendGroup === "OTHER") {
-    return backendGroup as DataTab;
+  const backendGroup = clean(item.dataCategory).toUpperCase().replace(/[\s-]+/g, "_");
+
+  if (backendGroup === "HOT" || backendGroup === "HOT_DEAL" || backendGroup === "PROMO") {
+    return "HOT";
   }
 
-  const days = durationDays(item);
+  if (backendGroup === "EXTRA_NIGHT" || backendGroup === "NIGHT" || backendGroup === "NIGHT_PLAN") {
+    return "EXTRA_NIGHT";
+  }
 
-  if (days >= 28) return "MONTHLY";
-  if (days >= 7) return "WEEKLY";
-  if (days > 0) return "DAILY";
+  if (backendGroup === "DAILY" || backendGroup === "WEEKLY" || backendGroup === "MONTHLY") {
+    return backendGroup as DataTab;
+  }
 
   const raw = item.raw && typeof item.raw === "object" ? item.raw : {};
   const text = [
@@ -509,6 +514,19 @@ function planGroup(item: Item): DataTab {
     .join(" ")
     .toLowerCase();
 
+  if (/extra\s*night|night\s*(data|plan|bundle)|midnight|11\s*pm|12\s*am|1\s*am|2\s*am|3\s*am|4\s*am|5\s*am/.test(text)) {
+    return "EXTRA_NIGHT";
+  }
+
+  if (/hot\s*deal|promo|promotion|bonus|special|popular|best\s*seller/.test(text)) {
+    return "HOT";
+  }
+
+  const days = durationDays(item);
+  if (days >= 28) return "MONTHLY";
+  if (days >= 7) return "WEEKLY";
+  if (days > 0) return "DAILY";
+
   if (/monthly|30\s*days?|31\s*days?|1\s*month|2\s*months?|3\s*months?/.test(text)) {
     return "MONTHLY";
   }
@@ -519,7 +537,9 @@ function planGroup(item: Item): DataTab {
     return "DAILY";
   }
 
-  return "OTHER";
+  // Never hide an otherwise valid catalogue item behind an "Other" tab.
+  // Unclassified plans are surfaced under HOT so every returned plan remains reachable.
+  return "HOT";
 }
 
 function isVariable(item: Item): boolean {
@@ -2650,12 +2670,16 @@ export default function ServicePayment({
           !!processingSession ||
           verifyingPin
         }
-        className="flex min-w-0 flex-col items-center gap-0.5 rounded-full bg-transparent p-0.5 transition"
+        className={`iyanjupay-service-biller-card flex min-w-0 flex-col items-center justify-center gap-1 rounded-2xl border bg-white px-1.5 py-2 transition active:scale-[0.98] ${
+          selected
+            ? "border-[#6D28D9] bg-violet-50 ring-1 ring-[#6D28D9]/20"
+            : "border-gray-200 hover:border-violet-300 hover:bg-violet-50/30"
+        }`}
       >
         <span
-          className={`iyanjupay-service-biller-logo flex h-10 w-10 items-center justify-center overflow-hidden rounded-full border-2 bg-white text-sm font-bold text-gray-600 shadow-sm ${
+          className={`iyanjupay-service-biller-logo flex h-9 w-9 items-center justify-center overflow-hidden rounded-xl border bg-white text-xs font-bold text-gray-600 shadow-sm ${
             selected
-              ? "iyanjupay-service-selected border-[#6D28D9] ring-4 ring-violet-100"
+              ? "border-[#6D28D9]"
               : "border-gray-200"
           }`}
         >
@@ -2675,7 +2699,7 @@ export default function ServicePayment({
         </span>
 
         <span
-          className={`max-w-[72px] truncate text-[9px] font-semibold ${
+          className={`max-w-[86px] truncate text-[10px] font-semibold leading-tight ${
             selected
               ? "text-[#4C1D95]"
               : "text-gray-800"
@@ -2782,24 +2806,24 @@ export default function ServicePayment({
         onClick={() =>
           handleItemSelect(item)
         }
-        className={`relative rounded-2xl border bg-white p-4 text-left transition ${
+        className={`relative min-w-0 rounded-xl border bg-white p-3 text-left transition active:scale-[0.99] ${
           selected
             ? "iyanjupay-service-selected border-[#6D28D9] ring-2 ring-violet-100"
             : "border-gray-200 hover:border-violet-300"
         }`}
       >
-        <div className="text-sm font-bold text-gray-900">
+        <div className="truncate text-xs font-bold text-gray-900 sm:text-sm">
           {getPlanName(item)}
         </div>
 
-        <div className="mt-2 text-lg font-extrabold text-[#4C1D95]">
+        <div className="mt-1.5 text-sm font-extrabold text-[#4C1D95] sm:text-base">
           {naira(price)}
         </div>
 
         {item.validity_days ||
         item.validity ||
         item.duration ? (
-          <div className="mt-1 text-xs text-gray-500">
+          <div className="mt-1 truncate text-[10px] text-gray-500 sm:text-xs">
             {clean(
               item.validity ??
                 item.duration ??
@@ -3414,7 +3438,7 @@ export default function ServicePayment({
           </div>
         </header>
 
-        <main className="mx-auto max-w-3xl space-y-4 px-4 py-5 pb-10">
+        <main className="mx-auto max-w-5xl space-y-3 px-3 py-4 pb-8 sm:px-4">
           {showPin ? (
             /*
              * ==================================================
@@ -3518,390 +3542,251 @@ export default function ServicePayment({
             </section>
           ) : (
             <>
-              <section className="rounded-xl border bg-white p-2 shadow-sm">
-                <div className="mb-1.5 flex items-center justify-between">
-                  <div>
-                    <h2 className="text-sm font-bold">
-                      Choose service option
+              {/* Compact service selector — intentionally kept separate from the purchase logic. */}
+              <section className="rounded-2xl border bg-white p-3 shadow-sm sm:p-4">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <h2 className="text-sm font-bold text-gray-900">
+                      {isAirtime ? "Select network" : isData ? "Select network" : isCable ? "Select service" : isElectricity ? "Select Disco" : serviceType === "education" ? "Select examination" : "Select option"}
                     </h2>
-
-                    <p className="text-xs text-gray-500">
-                      Select the network, company or TV
-                      service you want.
+                    <p className="mt-0.5 text-[11px] text-gray-500">
+                      Choose an option to continue.
                     </p>
                   </div>
 
                   <Button
                     variant="ghost"
-                    size="sm"
-                    onClick={() =>
-                      void loadBillers()
-                    }
-                    disabled={
-                      loadingBillers
-                    }
+                    size="icon"
+                    onClick={() => void loadBillers()}
+                    disabled={loadingBillers}
+                    className="h-8 w-8 shrink-0 rounded-full"
+                    aria-label="Refresh service options"
                   >
-                    <RefreshCw
-                      className={`mr-1.5 h-4 w-4 ${
-                        loadingBillers
-                          ? "animate-spin"
-                          : ""
-                      }`}
-                    />
-                    Refresh
+                    <RefreshCw className={`h-4 w-4 ${loadingBillers ? "animate-spin" : ""}`} />
                   </Button>
                 </div>
 
                 {loadingBillers ? (
-                  <div className="flex items-center justify-center py-8 text-sm text-gray-500">
+                  <div className="flex items-center justify-center py-7 text-xs text-gray-500">
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Loading service options...
+                    Loading options...
                   </div>
                 ) : billers.length ? (
-                  <div className="grid w-full grid-cols-4 gap-1">
-                    {billers.map(
-                      renderBillerCard
-                    )}
+                  <div className="grid w-full grid-cols-4 gap-2 sm:grid-cols-5 md:grid-cols-6">
+                    {billers.map(renderBillerCard)}
                   </div>
                 ) : (
-                  <div className="rounded-2xl bg-gray-50 p-5 text-center text-sm text-gray-500">
-                    No service options available
-                    right now.
+                  <div className="rounded-xl bg-gray-50 p-4 text-center text-xs text-gray-500">
+                    No service options available right now.
                   </div>
                 )}
               </section>
 
-              {isElectricity &&
-                selectedBiller && (
-                  <section className="rounded-3xl border bg-white p-5 shadow-sm">
-                    <Label className="text-sm font-bold">
-                      Meter Type
-                    </Label>
-
-                    {meterTypes.length ? (
-                      <div className="mt-2 grid grid-cols-2 gap-2">
-                        {meterTypes.map(
-                          (
-                            meter: Biller
-                          ) => {
-                            const code =
-                              getCode(
-                                meter
-                              );
-
-                            const name =
-                              getName(
-                                meter
-                              );
-
-                            return (
-                              <button
-                                key={code}
-                                type="button"
-                                onClick={() =>
-                                  handleMeterType(
-                                    code
-                                  )
-                                }
-                                className={`rounded-xl border p-3 text-sm font-semibold ${
-                                  meterType ===
-                                  code
-                                    ? "iyanjupay-service-primary border-[#6D28D9] bg-gradient-to-r from-[#4C1D95] via-[#6D28D9] to-[#2563EB] text-white"
-                                    : "border-gray-200"
-                                }`}
-                              >
-                                {name}
-                              </button>
-                            );
-                          }
-                        )}
-                      </div>
-                    ) : (
-                      <select
-                        value={
-                          meterType
-                        }
-                        onChange={(e) =>
-                          handleMeterType(
-                            e.target.value
-                          )
-                        }
-                        className="mt-2 h-11 w-full rounded-xl border bg-white px-3 text-sm"
-                      >
-                        <option value="">
-                          Select meter type
-                        </option>
-
-                        <option value="PREPAID">
-                          Prepaid
-                        </option>
-
-                        <option value="POSTPAID">
-                          Postpaid
-                        </option>
-                      </select>
-                    )}
-                  </section>
-                )}
-
-              {(isCable ||
-                isElectricity) &&
-                selectedBillerCode && (
-                  <section className="rounded-3xl border bg-white p-5 shadow-sm">
-                    <Label className="text-sm font-bold">
-                      {customerLabel}
-                    </Label>
-
-                    <Input
-                        value={customer}
-                        onChange={(e) => {
-                          setCustomer(
-                            e.target.value.replace(
-                              /\s+/g,
-                              ""
-                            )
-                          );
-
-                          resetVerification();
-                        }}
-                        placeholder={
-                          customerPlaceholder
-                        }
-                        inputMode="numeric"
-                        className="mt-2 h-12"
-                      />
-
-                    {verifyingIdentifier && (
-                      <div className="mt-2 flex items-center gap-2 text-xs font-medium text-[#6D28D9]">
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        Verifying details...
-                      </div>
-                    )}
-
-                    {verified && (
-                      <div className="mt-2 flex items-center gap-2 rounded-xl border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800">
-                        <CheckCircle2 className="h-4 w-4 shrink-0" />
-
-                        <span className="font-semibold">
-                          {verifiedName ||
-                            "Account verified"}
-                        </span>
-                      </div>
-                    )}
-                  </section>
-                )}
+              {isElectricity && selectedBiller && (
+                <section className="rounded-2xl border bg-white p-3 shadow-sm sm:p-4">
+                  <div className="mb-2 text-xs font-bold text-gray-900">Meter type</div>
+                  {meterTypes.length ? (
+                    <div className="grid grid-cols-2 gap-2">
+                      {meterTypes.map((meter: Biller) => {
+                        const code = getCode(meter);
+                        const name = getName(meter);
+                        return (
+                          <button
+                            key={code}
+                            type="button"
+                            onClick={() => handleMeterType(code)}
+                            className={`rounded-xl border px-3 py-2.5 text-xs font-bold transition ${
+                              meterType === code
+                                ? "border-[#6D28D9] bg-violet-50 text-[#4C1D95] ring-1 ring-[#6D28D9]/20"
+                                : "border-gray-200 bg-white text-gray-700 hover:border-violet-300"
+                            }`}
+                          >
+                            {name}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <select
+                      value={meterType}
+                      onChange={(e) => handleMeterType(e.target.value)}
+                      className="h-10 w-full rounded-xl border bg-white px-3 text-xs"
+                    >
+                      <option value="">Select meter type</option>
+                      <option value="PREPAID">Prepaid</option>
+                      <option value="POSTPAID">Postpaid</option>
+                    </select>
+                  )}
+                </section>
+              )}
 
               {isPhoneService && (
-                <section className="rounded-3xl border bg-white p-5 shadow-sm">
-                  <Label className="text-sm font-bold">
-                    {customerLabel}
-                  </Label>
-
+                <section className="rounded-2xl border bg-white p-3 shadow-sm sm:p-4">
+                  <Label className="text-xs font-bold text-gray-900">{customerLabel}</Label>
                   <Input
                     value={customer}
-                    onChange={(e) =>
-                      setCustomer(
-                        e.target.value
-                      )
-                    }
-                    placeholder={
-                      customerPlaceholder
-                    }
+                    onChange={(e) => {
+                      setCustomer(isPhoneService ? e.target.value : e.target.value.replace(/\s+/g, ""));
+                      if (isCable || isElectricity) resetVerification();
+                    }}
+                    placeholder={customerPlaceholder}
                     inputMode="tel"
-                    className="mt-2 h-12"
-                    disabled={
-                      !!processingSession
-                    }
+                    className="mt-2 h-10 rounded-xl text-sm"
+                    disabled={!!processingSession}
                   />
                 </section>
               )}
 
-              {isData &&
-                selectedBillerCode && (
-                  <section className="rounded-3xl border bg-white p-3 shadow-sm sm:p-4">
-                    <div className="mb-3 flex gap-2 overflow-x-auto pb-1">
-                      {DATA_TABS.map(
-                        (tab) => (
-                          <button
-                            key={tab}
-                            type="button"
-                            onClick={() =>
-                              setDataTab(
-                                tab
-                              )
-                            }
-                            className={`whitespace-nowrap rounded-full px-4 py-2 text-xs font-bold ${
-                              dataTab ===
-                              tab
-                                ? "iyanjupay-service-primary bg-gradient-to-r from-[#4C1D95] via-[#6D28D9] to-[#2563EB] text-white"
-                                : "bg-gray-100 text-gray-600"
-                            }`}
-                          >
-                            {tab}
-                          </button>
-                        )
-                      )}
-                    </div>
-
-                    {loadingItems ? (
-                      <div className="flex items-center justify-center py-8 text-sm text-gray-500">
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Loading data plans...
-                      </div>
-                    ) : visibleDataPlans.length ? (
-                      <div className="grid grid-cols-5 gap-1.5 sm:gap-2">
-                        {visibleDataPlans.map(
-                          (item) =>
-                            renderDataPlan(item)
-                        )}
-                      </div>
-                    ) : (
-                      <div className="rounded-2xl bg-gray-50 p-5 text-center text-sm text-gray-500">
-                        No plans in this
-                        category.
-                      </div>
-                    )}
-                  </section>
-                )}
-
-              {(
-                (isCable &&
-                  selectedBillerCode) ||
-                (isEpin &&
-                  selectedBillerCode) ||
-                (isRechargeCard &&
-                  selectedBillerCode) ||
-                (serviceType ===
-                  "education" &&
-                  selectedBillerCode)
-              ) && (
-                <section className="rounded-3xl border bg-white p-5 shadow-sm">
-                  <div className="mb-3">
-                    <h2 className="text-sm font-bold">
-                      Choose package
-                    </h2>
-
-                    <p className="text-xs text-gray-500">
-                      Select the package you want to
-                      purchase.
-                    </p>
+              {(isCable || isElectricity) && selectedBillerCode && (
+                <section className="rounded-2xl border bg-white p-3 shadow-sm sm:p-4">
+                  <div className="mb-2 flex items-center justify-between">
+                    <Label className="text-xs font-bold text-gray-900">{customerLabel}</Label>
+                    {verified && <CheckCircle2 className="h-4 w-4 text-green-600" />}
                   </div>
-
-                  {loadingItems ? (
-                    <div className="flex items-center justify-center py-8 text-sm text-gray-500">
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Loading packages...
+                  <Input
+                    value={customer}
+                    onChange={(e) => {
+                      setCustomer(e.target.value.replace(/\s+/g, ""));
+                      resetVerification();
+                    }}
+                    placeholder={customerPlaceholder}
+                    inputMode="numeric"
+                    className="h-10 rounded-xl text-sm"
+                  />
+                  {verifyingIdentifier && (
+                    <div className="mt-2 flex items-center gap-2 text-[11px] font-medium text-[#6D28D9]">
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      Verifying details...
                     </div>
-                  ) : items.length ? (
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                      {items
-                        .filter(
-                          (i) =>
-                            !isVariable(
-                              i
-                            )
-                        )
-                        .map(renderPlan)}
-                    </div>
-                  ) : (
-                    <div className="rounded-2xl bg-gray-50 p-5 text-center text-sm text-gray-500">
-                      No packages available.
+                  )}
+                  {verified && (
+                    <div className="mt-2 flex items-center gap-2 rounded-xl border border-green-200 bg-green-50 px-3 py-2 text-xs text-green-800">
+                      <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+                      <span className="truncate font-semibold">{verifiedName || "Account verified"}</span>
                     </div>
                   )}
                 </section>
               )}
 
-              {canEnterAmount &&
-                ((isElectricity &&
-                  verified) ||
-                  isAirtime) && (
-                  <section className="rounded-3xl border bg-white p-5 shadow-sm">
-                    <div className="mb-3 flex items-center justify-between">
-                      <div>
-                        <h2 className="text-sm font-bold">
-                          Enter amount
-                        </h2>
-
-                        <p className="text-xs text-gray-500">
-                          Choose an amount or enter a
-                          custom amount.
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
-                      {(
-                        isAirtime
-                          ? AIRTIME_AMOUNTS
-                          : BILL_AMOUNTS
-                      ).map(
-                        (value) => (
-                          <button
-                            key={value}
-                            type="button"
-                            onClick={() => {
-                              setAmount(
-                                String(
-                                  value
-                                )
-                              );
-
-                              setCustomAmount(
-                                false
-                              );
-                            }}
-                            className={`${
-                              amount ===
-                                String(
-                                  value
-                                ) &&
-                              !customAmount
-                                ? "iyanjupay-service-selected border-[#6D28D9] bg-violet-50 text-[#4C1D95] ring-1 ring-[#6D28D9]/20"
-                                : "border-gray-200"
-                            } rounded-xl border p-3 text-sm font-bold`}
-                          >
-                            {naira(
-                              value
-                            )}
-                          </button>
-                        )
-                      )}
-
+              {isData && selectedBillerCode && (
+                <section className="rounded-2xl border bg-white p-3 shadow-sm sm:p-4">
+                  <div className="mb-3 flex gap-1.5 overflow-x-auto pb-0.5">
+                    {DATA_TABS.map((tab) => (
                       <button
+                        key={tab}
+                        type="button"
+                        onClick={() => setDataTab(tab)}
+                        className={`whitespace-nowrap rounded-lg px-3 py-2 text-[11px] font-bold transition ${
+                          dataTab === tab
+                            ? "bg-[#082A63] text-white shadow-sm"
+                            : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                        }`}
+                      >
+                        {tab === "EXTRA_NIGHT" ? "Extra Night" : tab.charAt(0) + tab.slice(1).toLowerCase()}
+                      </button>
+                    ))}
+                  </div>
+
+                  {loadingItems ? (
+                    <div className="flex items-center justify-center py-7 text-xs text-gray-500">
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Loading data plans...
+                    </div>
+                  ) : visibleDataPlans.length ? (
+                    <div className="grid grid-cols-5 gap-1.5 sm:gap-2">
+                      {visibleDataPlans.map(renderDataPlan)}
+                    </div>
+                  ) : (
+                    <div className="rounded-xl bg-gray-50 p-4 text-center text-xs text-gray-500">
+                      No plans in this category.
+                    </div>
+                  )}
+                </section>
+              )}
+
+              {((isCable && selectedBillerCode) || (isEpin && selectedBillerCode) || (isRechargeCard && selectedBillerCode) || (serviceType === "education" && selectedBillerCode)) && (
+                <section className="rounded-2xl border bg-white p-3 shadow-sm sm:p-4">
+                  <div className="mb-3 flex items-center justify-between">
+                    <div>
+                      <h2 className="text-xs font-bold text-gray-900">{serviceType === "education" ? "Select product" : "Select package"}</h2>
+                      <p className="mt-0.5 text-[11px] text-gray-500">Choose the option you want.</p>
+                    </div>
+                  </div>
+
+                  {loadingItems ? (
+                    <div className="flex items-center justify-center py-7 text-xs text-gray-500">
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Loading options...
+                    </div>
+                  ) : items.length ? (
+                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4">
+                      {items.filter((i) => !isVariable(i)).map(renderPlan)}
+                    </div>
+                  ) : (
+                    <div className="rounded-xl bg-gray-50 p-4 text-center text-xs text-gray-500">
+                      No options available.
+                    </div>
+                  )}
+                </section>
+              )}
+
+              {canEnterAmount && ((isElectricity && verified) || isAirtime) && (
+                <section className="rounded-2xl border bg-white p-3 shadow-sm sm:p-4">
+                  <div className="mb-3 flex items-center justify-between">
+                    <div>
+                      <h2 className="text-xs font-bold text-gray-900">Select amount</h2>
+                      <p className="mt-0.5 text-[11px] text-gray-500">Choose an amount or enter your own.</p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-4 gap-2 sm:grid-cols-5 md:grid-cols-8">
+                    {(isAirtime ? AIRTIME_AMOUNTS : BILL_AMOUNTS).map((value) => (
+                      <button
+                        key={value}
                         type="button"
                         onClick={() => {
-                          setCustomAmount(
-                            true
-                          );
-                          setAmount("");
+                          setAmount(String(value));
+                          setCustomAmount(false);
                         }}
-                        className={`${
-                          customAmount
-                            ? "iyanjupay-service-selected border-[#6D28D9] bg-violet-50 text-[#4C1D95] ring-1 ring-[#6D28D9]/20"
-                            : "border-gray-200"
-                        } rounded-xl border p-3 text-sm font-bold`}
+                        className={`rounded-xl border px-2 py-2.5 text-xs font-bold transition ${
+                          amount === String(value) && !customAmount
+                            ? "border-[#6D28D9] bg-violet-50 text-[#4C1D95] ring-1 ring-[#6D28D9]/20"
+                            : "border-gray-200 bg-white text-gray-700 hover:border-violet-300"
+                        }`}
                       >
-                        Custom
+                        {naira(value)}
                       </button>
-                    </div>
+                    ))}
 
-                    {customAmount && (
-                      <Input
-                        type="number"
-                        min="1"
-                        step="1"
-                        value={amount}
-                        onChange={(e) =>
-                          setAmount(
-                            e.target.value
-                          )
-                        }
-                        placeholder="Enter amount"
-                        className="mt-3 h-12"
-                      />
-                    )}
-                  </section>
-                )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCustomAmount(true);
+                        setAmount("");
+                      }}
+                      className={`rounded-xl border px-2 py-2.5 text-xs font-bold transition ${
+                        customAmount
+                          ? "border-[#6D28D9] bg-violet-50 text-[#4C1D95] ring-1 ring-[#6D28D9]/20"
+                          : "border-gray-200 bg-white text-gray-700 hover:border-violet-300"
+                      }`}
+                    >
+                      Custom
+                    </button>
+                  </div>
+
+                  {customAmount && (
+                    <Input
+                      type="number"
+                      min="1"
+                      step="1"
+                      value={amount}
+                      onChange={(e) => setAmount(e.target.value)}
+                      placeholder="Enter amount"
+                      className="mt-3 h-10 rounded-xl text-sm"
+                    />
+                  )}
+                </section>
+              )}
 
               {error && (
                 <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
@@ -3909,26 +3794,22 @@ export default function ServicePayment({
                 </div>
               )}
 
-              <section className="rounded-3xl border bg-white p-5 shadow-sm">
+              <section className="rounded-2xl border bg-white p-3 shadow-sm sm:p-4">
+                {hasAmount && (
+                  <div className="mb-3 flex items-center justify-between rounded-xl bg-gray-50 px-3 py-2.5">
+                    <span className="text-xs text-gray-500">Amount</span>
+                    <span className="text-sm font-extrabold text-[#082A63]">{naira(amount)}</span>
+                  </div>
+                )}
                 <Button
-                  className="iyanjupay-service-primary h-12 w-full bg-gradient-to-r from-[#4C1D95] via-[#6D28D9] to-[#2563EB] text-base font-bold text-white shadow-sm hover:brightness-105"
+                  className="iyanjupay-service-primary h-11 w-full rounded-xl bg-gradient-to-r from-[#082A63] via-[#1554B8] to-[#2563EB] text-sm font-bold text-white shadow-sm hover:brightness-105"
                   onClick={startPurchase}
-                  disabled={
-                    !canPurchase
-                  }
+                  disabled={!canPurchase}
                 >
-                  {`Continue to Pay ${
-                    hasAmount
-                      ? naira(
-                          amount
-                        )
-                      : ""
-                  }`}
+                  {isAirtime ? "Buy Airtime" : `Continue${hasAmount ? ` to Pay ${naira(amount)}` : ""}`}
                 </Button>
-
-                <p className="mt-3 text-center text-xs text-gray-500">
-                  Your payment PIN is required before
-                  the purchase is processed.
+                <p className="mt-2 text-center text-[10px] text-gray-500">
+                  Your payment PIN is required to complete this purchase.
                 </p>
               </section>
             </>

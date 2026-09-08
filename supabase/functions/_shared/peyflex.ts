@@ -10,7 +10,11 @@
  * - Provider credentials are never returned to the client.
  */
 
-export const PEYFLEX_BASE_URL = "https://client.peyflex.com.ng";
+function getBaseUrl(): string {
+  const baseUrl = Deno.env.get("PEYFLEX_BASE_URL")?.trim();
+  if (!baseUrl) throw new Error("PEYFLEX_BASE_URL is not configured.");
+  return baseUrl.replace(/\/+$/, "");
+}
 
 export type PeyflexHttpResult = {
   ok: boolean;
@@ -31,7 +35,7 @@ function buildUrl(path: string, params?: Record<string, unknown>): string {
   const url = new URL(
     path.startsWith("http")
       ? path
-      : `${PEYFLEX_BASE_URL}${path.startsWith("/") ? path : `/${path}`}`,
+      : `${getBaseUrl()}${path.startsWith("/") ? path : `/${path}`}`,
   );
 
   if (params) {

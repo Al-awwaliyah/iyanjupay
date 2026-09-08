@@ -164,6 +164,52 @@ function itemId(item: any): string {
   );
 }
 
+function customerNetworkName(value: unknown): string {
+  const raw = clean(value);
+  const key = raw.toLowerCase().replace(/[^a-z0-9]/g, "");
+
+  if (key.includes("mtn")) return "MTN";
+  if (key.includes("glo")) return "GLO";
+  if (key.includes("airtel")) return "AIRTEL";
+  if (key.includes("9mobile") || key.includes("etisalat")) return "9MOBILE";
+
+  return raw
+    .replace(/\s*\([^)]*\)\s*/g, " ")
+    .replace(/\b(sme|awoof|direct|direct\s+data|gifting|gift|corporate|business|promo|promotion|bonus)\b/gi, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
+function cleanDataPlanLabel(value: unknown): string {
+  let label = clean(value)
+    .replace(/\s+/g, " ")
+    .trim();
+
+  // Peyflex plan IDs sometimes arrive as values such as M23mbs or M1GBS.
+  // Those are identifiers, not customer-facing plan names.
+  const compact = label.replace(/\s+/g, "");
+  const codeSize = compact.match(
+    /^m?(\d+(?:\.\d+)?)(kb|kbs|mb|mbs|gb|gbs|tb|tbs)$/i,
+  );
+  if (codeSize) {
+    return `${codeSize[1]} ${codeSize[2].replace(/s$/i, "").toUpperCase()}`;
+  }
+
+  const embeddedSize = label.match(
+    /(\d+(?:\.\d+)?)\s*(KB|KBS|MB|MBS|GB|GBS|TB|TBS)\b/i,
+  );
+  if (embeddedSize) {
+    return `${embeddedSize[1]} ${embeddedSize[2].replace(/s$/i, "").toUpperCase()}`;
+  }
+
+  return label
+    .replace(/\b(sme|awoof|direct|direct\s+data|gifting|gift|corporate|business|promo|promotion|bonus|hot\s*deal|hot)\b/gi, "")
+    .replace(/\s*[-|–—]\s*/g, " ")
+    .replace(/\(\s*\)/g, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
 function itemName(item: any): string {
   return clean(
     firstValue(
@@ -219,12 +265,70 @@ function itemProviderPrice(item: any): number {
 }
 
 function catalogueArray(body: any, ...preferredKeys: string[]): any[] {
-  const obj = bodyObject(body);
+  const root = bodyObject(body);
+
+  const collect = (value: any, depth = 0, seen = new Set<any>()): any[] => {
+    if (depth > 5 || value === null || value === undefined) return [];
+    if (Array.isArray(value)) return value;
+    if (typeof value !== "object") return [];
+    if (seen.has(value)) return [];
+    seen.add(value);
+
+    const obj = bodyObject(value);
+    const directKeys = [
+      "results",
+      "data",
+      "items",
+      "plans",
+      "providers",
+      "networks",
+      "billers",
+      "options",
+      "packages",
+      "products",
+      "available_plans",
+      "daily",
+      "weekly",
+      "monthly",
+      "hot_deals",
+      "hotDeals",
+      "extra_night",
+      "extraNight",
+      "night",
+      "other",
+    ];
+
+    const combined: any[] = [];
+    const add = (values: any[]) => {
+      for (const value of values) {
+        if (!combined.includes(value)) combined.push(value);
+      }
+    };
+
+    for (const key of directKeys) {
+      const candidate = obj[key];
+      if (Array.isArray(candidate)) {
+        add(candidate);
+        continue;
+      }
+      if (candidate && typeof candidate === "object") {
+        add(collect(candidate, depth + 1, seen));
+      }
+    }
+
+    return combined;
+  };
+
   for (const key of preferredKeys) {
-    const candidate = obj[key];
+    const candidate = root[key];
     if (Array.isArray(candidate)) return candidate;
+    if (candidate && typeof candidate === "object") {
+      const nested = collect(candidate);
+      if (nested.length) return nested;
+    }
   }
-  return asArray(body);
+
+  return collect(root);
 }
 
 function electricityProvider(item: any): Record<string, unknown> {
@@ -278,27 +382,41 @@ function electricityProvider(item: any): Record<string, unknown> {
 }
 
 function itemValidity(item: any): number | null {
-  const raw = firstValue(
+  const candidates = [
     item.validity_days,
     item.validityDays,
     item.duration_days,
     item.durationDays,
     item.duration,
     item.validity,
-  );
+    item.validity_period,
+    item.validityPeriod,
+    item.period,
+    item.plan_period,
+    item.planPeriod,
+    item.plan_type,
+    item.planType,
+    itemName(item),
+    itemId(item),
+  ];
 
-  const numeric = Number(raw);
-  if (Number.isFinite(numeric) && numeric > 0) return numeric;
+  for (const candidate of candidates) {
+    const numeric = Number(candidate);
+    if (Number.isFinite(numeric) && numeric > 0) return numeric;
 
-  const match = itemName(item).match(/\b(\d+)\s*(day|days|week|weeks|month|months)\b/i);
-  if (!match) return null;
+    const match = clean(candidate).match(
+      /(?:^|\s)(\d+(?:\.\d+)?)\s*(day|days|week|weeks|month|months)(?:\s|$)/i,
+    );
+    if (!match) continue;
 
-  const count = Number(match[1]);
-  const unit = match[2].toLowerCase();
+    const count = Number(match[1]);
+    const unit = match[2].toLowerCase();
+    if (unit.startsWith("week")) return count * 7;
+    if (unit.startsWith("month")) return count * 30;
+    return count;
+  }
 
-  if (unit.startsWith("week")) return count * 7;
-  if (unit.startsWith("month")) return count * 30;
-  return count;
+  return null;
 }
 
 function publicItem(
@@ -331,6 +449,16 @@ function publicItem(
     id: code,
     code,
     name: itemName(raw),
+    display_name: cleanDataPlanLabel(firstValue(
+      raw.display_name,
+      raw.displayName,
+      raw.plan_name,
+      raw.planName,
+      raw.name,
+      raw.title,
+      raw.description,
+      code,
+    )),
     price,
     providerPrice,
     amount: price,
@@ -338,7 +466,9 @@ function publicItem(
     networkCode: networkCode(network),
     networkName: network || null,
     validityDays: validity,
+    validity_days: validity,
     duration: validity,
+    validity: validity ? `${validity} days` : null,
     plan_type: clean(
       firstValue(
         raw.plan_type,
@@ -357,7 +487,7 @@ function publicItem(
   };
 }
 
-function publicProvider(item: any): Record<string, unknown> {
+function publicProvider(item: any, service?: Service): Record<string, unknown> {
   const raw = bodyObject(item);
   const code = clean(
     firstValue(
@@ -374,17 +504,27 @@ function publicProvider(item: any): Record<string, unknown> {
   return {
     id: code,
     code,
-    name: clean(
-      firstValue(
-        raw.name,
-        raw.Name,
-        raw.title,
-        raw.Title,
-        raw.provider_name,
-        raw.providerName,
-        code,
-      ),
-    ),
+    name: service === "data" || service === "airtime"
+      ? customerNetworkName(firstValue(
+          raw.name,
+          raw.Name,
+          raw.title,
+          raw.Title,
+          raw.provider_name,
+          raw.providerName,
+          code,
+        ))
+      : clean(
+          firstValue(
+            raw.name,
+            raw.Name,
+            raw.title,
+            raw.Title,
+            raw.provider_name,
+            raw.providerName,
+            code,
+          ),
+        ),
     logo: clean(
       firstValue(
         raw.logo,
@@ -401,7 +541,7 @@ function publicProvider(item: any): Record<string, unknown> {
 async function catalog(service: Service, code?: string) {
   if (service === "airtime") {
     const result = await peyflexPublicGet("/api/airtime/networks/");
-    const networks = catalogueArray(result.body, "networks", "providers", "billers").map(publicProvider);
+    const networks = catalogueArray(result.body, "networks", "providers", "billers").map((item) => publicProvider(item, service));
 
     return {
       success: result.ok,
@@ -420,7 +560,7 @@ async function catalog(service: Service, code?: string) {
 
   if (service === "data") {
     const networksResult = await peyflexPublicGet("/api/data/networks/");
-    const networks = catalogueArray(networksResult.body, "networks", "providers", "billers").map(publicProvider);
+    const networks = catalogueArray(networksResult.body, "networks", "providers", "billers").map((item) => publicProvider(item, service));
 
     let items: Record<string, unknown>[] = [];
 
@@ -789,7 +929,7 @@ async function authoritativePrice(
       network,
     });
 
-    rawItems = asArray(result.body);
+    rawItems = catalogueArray(result.body, "plans", "items", "packages", "products", "results", "daily", "weekly", "monthly", "hot_deals");
   } else if (service === "cable") {
     const identifier = clean(
       pickBody(body, "biller_code", "billerCode", "provider", "identifier"),
@@ -801,7 +941,7 @@ async function authoritativePrice(
       `/api/cable/plans/${encodeURIComponent(identifier)}/`,
     );
 
-    rawItems = asArray(result.body);
+    rawItems = catalogueArray(result.body, "plans", "items", "packages", "products", "results", "daily", "weekly", "monthly", "hot_deals");
   } else if (service === "education") {
     const result = await peyflexPublicGet("/api/education/providers/");
     const body = bodyObject(result.body);
@@ -820,7 +960,7 @@ async function authoritativePrice(
     if (!rawItems.length) rawItems = topPlans;
   } else {
     const result = await peyflexGet("/api/rc/options/");
-    rawItems = asArray(result.body);
+    rawItems = catalogueArray(result.body, "plans", "items", "packages", "products", "results", "daily", "weekly", "monthly", "hot_deals");
   }
 
   const selected = findCatalogItem(rawItems, code);

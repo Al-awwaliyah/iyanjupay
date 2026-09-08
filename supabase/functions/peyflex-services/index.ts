@@ -442,24 +442,47 @@ function extractList(value: unknown): unknown[] {
 }
 
 function responseList(value: unknown): unknown[] {
-  const direct = extractList(value);
+ 
+  if (
+    value &&
+    typeof value === "object" &&
+    !Array.isArray(value)
+  ) {
+    const wrapper =
+      value as Record<string, unknown>;
+
+    if (
+      "body" in wrapper &&
+      "httpStatus" in wrapper &&
+      "ok" in wrapper
+    ) {
+      return responseList(
+        wrapper.body,
+      );
+    }
+  }
+
+  const direct =
+    extractList(value);
 
   if (direct.length > 0) {
     return direct;
   }
 
-  const obj = asObject(value);
+  const obj =
+    asObject(value);
 
   if (
     obj.data &&
     typeof obj.data === "object"
   ) {
-    return extractList(obj.data);
+    return extractList(
+      obj.data,
+    );
   }
 
   return [];
 }
-
 function flattenEducationPlans(
   value: unknown,
 ): unknown[] {

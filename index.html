@@ -1,159 +1,68 @@
 <head>
   <meta charset="UTF-8" />
-
-  <meta
-    name="viewport"
-    content="width=device-width, initial-scale=1.0, viewport-fit=cover"
-  />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
 
   <!-- Google Search Console Verification -->
-  <meta
-    name="google-site-verification"
-    content="5CV4Cd697KixhHIYJYZztlKi6TkJpgqqMrWK65qCeMk"
-  />
+  <meta name="google-site-verification" content="5CV4Cd697KixhHIYJYZztlKi6TkJpgqqMrWK65qCeMk" />
 
-  <!-- Primary SEO -->
+  <!-- Primary SEO Metadata -->
   <title>IyanjuPay — Airtime, Data, Bills & Transfers in Nigeria</title>
-
-  <meta
-    name="description"
-    content="IyanjuPay lets you fund your wallet, send money to any Nigerian bank, buy airtime and data, and pay bills in seconds."
-  />
-
+  <meta name="description" content="IyanjuPay lets you fund your wallet, send money to any Nigerian bank, buy airtime and data, and pay bills in seconds." />
   <meta name="author" content="IyanjuPay" />
   <meta name="robots" content="index, follow" />
+  <link rel="canonical" href="https://iyanjupay.vercel.app/" />
 
-  <!-- Canonical URL -->
-  <link
-    rel="canonical"
-    href="https://iyanjupay.vercel.app/"
-  />
-
-  <!-- Google Site Name -->
+  <!-- Integrated Google Structured Schema Data (Site Name & Organization) -->
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
-    "@type": "WebSite",
-    "@id": "https://iyanjupay.vercel.app/#website",
-    "name": "IyanjuPay",
-    "alternateName": "IyanjuPay",
-    "url": "https://iyanjupay.vercel.app/"
+    "@graph": [
+      {
+        "@type": "WebSite",
+        "@id": "https://iyanjupay.vercel.app/#website",
+        "url": "https://iyanjupay.vercel.app/",
+        "name": "IyanjuPay",
+        "alternateName": ["Iyanju Pay", "IyanjuPay Fintech"]
+      },
+      {
+        "@type": "Organization",
+        "@id": "https://vercel.app",
+        "name": "IyanjuPay",
+        "url": "https://iyanjupay.vercel.app/",
+        "logo": "https://iyanjupay.vercel.app/icon-192.png"
+      }
+    ]
   }
   </script>
 
-  <!-- Organization -->
-  <script type="application/ld+json">
-  {
-    "@context": "https://schema.org",
-    "@type": "Organization",
-    "name": "IyanjuPay",
-    "url": "https://iyanjupay.vercel.app/",
-    "logo": "https://iyanjupay.vercel.app/icon-192.png"
-  }
-  </script>
+  <!-- Progressive Web App (PWA) Configuration -->
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <meta name="theme-color" content="#082A63" />
 
-  <!-- PWA -->
-  <link
-    rel="manifest"
-    href="/manifest.webmanifest"
-  />
+  <!-- Global Brand Favicons & Icons -->
+  <link rel="icon" href="/favicon.ico" sizes="any" />
+  <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
+  <link rel="apple-touch-icon" sizes="180x180" href="/icon-180.png" />
 
-  <meta
-    name="theme-color"
-    content="#082A63"
-  />
+  <!-- iOS Specific Mobile App Options -->
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="IyanjuPay" />
 
-  <!-- Favicon -->
-  <link
-    rel="icon"
-    href="/favicon.ico"
-    sizes="any"
-  />
+  <!-- Android Specific Mobile App Options -->
+  <meta name="mobile-web-app-capable" content="yes" />
 
-  <link
-    rel="icon"
-    type="image/png"
-    sizes="192x192"
-    href="/icon-192.png"
-  />
+  <!-- Open Graph Shared Link Optimization (WhatsApp, Telegram, Facebook) -->
+  <meta property="og:site_name" content="IyanjuPay" />
+  <meta property="og:title" content="IyanjuPay — Airtime, Data, Bills & Transfers" />
+  <meta property="og:description" content="Fund your wallet, transfer to any Nigerian bank, buy airtime and data, and pay bills in seconds." />
+  <meta property="og:url" content="https://iyanjupay.vercel.app/" />
+  <meta property="og:type" content="website" />
+  <meta property="og:image" content="https://iyanjupay.vercel.app/icon-192.png" />
 
-  <link
-    rel="apple-touch-icon"
-    sizes="180x180"
-    href="/icon-180.png"
-  />
-
-  <!-- iOS PWA -->
-  <meta
-    name="apple-mobile-web-app-capable"
-    content="yes"
-  />
-
-  <meta
-    name="apple-mobile-web-app-status-bar-style"
-    content="default"
-  />
-
-  <meta
-    name="apple-mobile-web-app-title"
-    content="IyanjuPay"
-  />
-
-  <!-- Android -->
-  <meta
-    name="mobile-web-app-capable"
-    content="yes"
-  />
-
-  <!-- Open Graph -->
-  <meta
-    property="og:site_name"
-    content="IyanjuPay"
-  />
-
-  <meta
-    property="og:title"
-    content="IyanjuPay — Airtime, Data, Bills & Transfers"
-  />
-
-  <meta
-    property="og:description"
-    content="Fund your wallet, transfer to any Nigerian bank, buy airtime and data, and pay bills in seconds."
-  />
-
-  <meta
-    property="og:url"
-    content="https://iyanjupay.vercel.app/"
-  />
-
-  <meta
-    property="og:type"
-    content="website"
-  />
-
-  <meta
-    property="og:image"
-    content="https://iyanjupay.vercel.app/icon-192.png"
-  />
-
-  <!-- Twitter -->
-  <meta
-    name="twitter:card"
-    content="summary_large_image"
-  />
-
-  <meta
-    name="twitter:title"
-    content="IyanjuPay — Airtime, Data, Bills & Transfers"
-  />
-
-  <meta
-    name="twitter:description"
-    content="Fund your wallet, transfer to any Nigerian bank, buy airtime and data, and pay bills in seconds."
-  />
-
-  <meta
-    name="twitter:image"
-    content="https://iyanjupay.vercel.app/icon-192.png"
-  />
+  <!-- Twitter Card Shared Link Optimization -->
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="IyanjuPay — Airtime, Data, Bills & Transfers" />
+  <meta name="twitter:description" content="Fund your wallet, transfer to any Nigerian bank, buy airtime and data, and pay bills in seconds." />
+  <meta name="twitter:image" content="https://iyanjupay.vercel.app/icon-192.png" />
 </head>

@@ -459,87 +459,22 @@ function getDataPlanDuration(item: Item): string {
 }
 
 function planGroup(item: Item): DataTab {
-  const backendGroup = clean(item.dataCategory).toUpperCase().replace(/[\s-]+/g, "_");
-
-  if (backendGroup === "HOT" || backendGroup === "HOT_DEAL" || backendGroup === "PROMO") {
-    return "HOT";
-  }
-
-  if (backendGroup === "EXTRA_NIGHT" || backendGroup === "NIGHT" || backendGroup === "NIGHT_PLAN") {
-    return "EXTRA_NIGHT";
-  }
-
-  if (backendGroup === "DAILY" || backendGroup === "WEEKLY" || backendGroup === "MONTHLY") {
+  const backendGroup = clean(item.dataCategory ?? item.data_category).toUpperCase().replace(/[\s-]+/g, "_");
+  if (["HOT", "EXTRA_NIGHT", "DAILY", "WEEKLY", "MONTHLY"].includes(backendGroup)) {
     return backendGroup as DataTab;
   }
 
-  const raw = item.raw && typeof item.raw === "object" ? item.raw : {};
-  const text = [
-    item.period,
-    item.plan_period,
-    item.planPeriod,
-    item.plan_type,
-    item.planType,
-    item.category,
-    item.type,
-    item.data_type,
-    item.dataType,
-    item.bundle_type,
-    item.bundleType,
-    item.validity,
-    item.validity_days,
-    item.validityDays,
-    item.duration,
-    item.name,
-    item.plan_name,
-    item.planName,
-    item.description,
-    raw.period,
-    raw.plan_period,
-    raw.planPeriod,
-    raw.plan_type,
-    raw.planType,
-    raw.category,
-    raw.type,
-    raw.validity,
-    raw.validity_days,
-    raw.validityDays,
-    raw.duration,
-    raw.name,
-    raw.plan_name,
-    raw.planName,
-    raw.description,
-  ]
-    .map(clean)
-    .join(" ")
-    .toLowerCase();
+  const dataType = clean(item.data_type ?? item.dataType).toLowerCase();
+  if (["sme", "awoof", "gifting"].includes(dataType)) return "HOT";
 
-  if (/extra\s*night|night\s*(data|plan|bundle)|midnight|11\s*pm|12\s*am|1\s*am|2\s*am|3\s*am|4\s*am|5\s*am/.test(text)) {
-    return "EXTRA_NIGHT";
-  }
+  const label = [item.name, item.description, item.validity, item.period]
+    .map(clean).join(" ").toLowerCase();
+  if (/extra\s*night|night\s*(plan|data)|midnight/.test(label)) return "EXTRA_NIGHT";
 
-  if (/hot\s*deal|promo|promotion|bonus|special|popular|best\s*seller/.test(text)) {
-    return "HOT";
-  }
-
-  const days = durationDays(item);
+  const days = num(item.validity_days ?? item.validityDays ?? item.duration);
   if (days >= 28) return "MONTHLY";
   if (days >= 7) return "WEEKLY";
-  if (days > 0) return "DAILY";
-
-  if (/monthly|30\s*days?|31\s*days?|1\s*month|2\s*months?|3\s*months?/.test(text)) {
-    return "MONTHLY";
-  }
-  if (/weekly|7\s*days?|14\s*days?|1\s*week|2\s*weeks?/.test(text)) {
-    return "WEEKLY";
-  }
-  if (/daily|1\s*day|2\s*days?|3\s*days?|24\s*hours?/.test(text)) {
-    return "DAILY";
-  }
-
-  // Never hide an otherwise valid catalogue item behind an "Other" tab.
-  // Unclassified plans are surfaced under HOT so every returned plan remains reachable.
-  return "HOT";
+  return "DAILY";
 }
 
 function isVariable(item: Item): boolean {
@@ -1687,7 +1622,7 @@ export default function ServicePayment({
   const serviceTitle =
     displayServiceTitle(service);
 
-  const serviceFunction = "peyflex-services";
+  const serviceFunction = "peyflex-services"; // Existing Edge Function route; implementation is now VTUGATE.
 
   const serviceRequestType =
     serviceType === "education"
@@ -1752,7 +1687,7 @@ export default function ServicePayment({
     useState("");
 
   const [dataTab, setDataTab] =
-    useState<DataTab>("DAILY");
+    useState<DataTab>("HOT");
 
   const [customAmount, setCustomAmount] =
     useState(false);
@@ -1847,7 +1782,7 @@ export default function ServicePayment({
     setAmount("");
     setMeterType("");
     setCustomAmount(false);
-    setDataTab("DAILY");
+    setDataTab("HOT");
     resetVerification();
     setError("");
     setShowPin(false);
@@ -1995,7 +1930,7 @@ export default function ServicePayment({
           setItems(loaded);
 
           if (isData) {
-            setDataTab("DAILY");
+            setDataTab("HOT");
           }
 
           if (
@@ -2483,31 +2418,37 @@ export default function ServicePayment({
       service: serviceRequestType,
       country: "NG",
 
-      // Peyflex-specific request fields.
+      // VTUGATE request fields.
+      service_id:
+        isData && selectedItem
+          ? num(selectedItem.service_id)
+          : num(selectedBillerCode),
       network:
-        isAirtime || isData || isRechargeCard
-          ? selectedBillerCode
+        isAirtime || isData
+          ? selectedBiller?.network_name ?? selectedBiller?.name ?? selectedBillerCode
           : "",
       mobile_number:
         isAirtime || isData
           ? phone
           : "",
       plan_code:
-        isData
+        isData || isCable
           ? selectedItemCode
           : "",
-      identifier:
+      plan_name:
+        isCable
+          ? getPlanName(selectedItem ?? {})
+          : "",
+      product_code:
         serviceType === "education"
-          ? "education"
-          : isCable
-            ? selectedBillerCode
-            : "",
-      plan_id:
-        serviceType === "education"
-          ? selectedItemCode
+          ? clean(selectedItem?.product_code ?? selectedItem?.plan_code ?? selectedItemCode)
+          : "",
+      disco:
+        isElectricity
+          ? clean(selectedBiller?.disco ?? selectedBiller?.raw?.disco ?? selectedBillerCode).toLowerCase()
           : "",
       quantity:
-        isRechargeCard ? 1 : undefined,
+        serviceType === "education" ? 1 : undefined,
 
       selling_amount:
         num(amount),

@@ -22,27 +22,6 @@ import {
   json,
 } from "../_shared/auth.ts";
 
-/**
- * IyanjuPay — Peyflex Services
- *
- * Customer-facing services supported from the supplied Peyflex documentation:
- *   airtime
- *   data
- *   cable
- *   electricity
- *   education
- *   airtime-card / recharge-card
- *
- * Betting and OTP/virtual-number services are intentionally NOT exposed here.
- *
- * Pricing:
- *   airtime = 0%
- *   all other supported services = 10%
- *   final selling price rounds UP to the nearest ₦5.
- *
- * The frontend never selects Peyflex directly. It talks to this function.
- */
-
 type Service =
   | "airtime"
   | "data"
@@ -53,7 +32,7 @@ type Service =
   | "data-card"
   | "recharge-card";
 
-const SUPPORTED = new Set<Service>([
+const SUPPORTED_SERVICES = new Set<Service>([
   "airtime",
   "data",
   "cable",
@@ -65,1073 +44,1491 @@ const SUPPORTED = new Set<Service>([
 ]);
 
 const STANDARD_MARKUP = 0.10;
+const AIRTIME_MARKUP = 0;
 
 function clean(value: unknown): string {
-  return text(value).trim();
+  return String(value ?? "").trim();
 }
 
-function serviceOf(value: unknown): Service | null {
-  const valueText = clean(value).toLowerCase();
-
-  const aliases: Record<string, Service> = {
-    airtime: "airtime",
-    data: "data",
-    cable: "cable",
-    cabletv: "cable",
-    "cable-tv": "cable",
-    electricity: "electricity",
-    education: "education",
-    waec: "education",
-    "airtime-card": "airtime-card",
-    "airtime_epin": "airtime-card",
-    "airtime-epin": "airtime-card",
-    "data-card": "data-card",
-    "data_epin": "data-card",
-    "data-epin": "data-card",
-    "recharge-card": "recharge-card",
-    recharge: "recharge-card",
-    epin: "recharge-card",
-  };
-
-  return aliases[valueText] ?? null;
-}
-
-function bodyObject(body: any): Record<string, any> {
-  return asObject(body);
-}
-
-function pickBody(body: any, ...keys: string[]): unknown {
-  const obj = bodyObject(body);
-  const details = asObject(obj.details);
-
+function pickBody(
+  body: Record<string, unknown>,
+  ...keys: string[]
+): unknown {
   for (const key of keys) {
-    const direct = obj[key];
-    if (direct !== undefined && direct !== null && clean(direct) !== "") {
-      return direct;
-    }
-
-    const detailValue = details[key];
     if (
-      detailValue !== undefined &&
-      detailValue !== null &&
-      clean(detailValue) !== ""
+      body[key] !== undefined &&
+      body[key] !== null &&
+      clean(body[key]) !== ""
     ) {
-      return detailValue;
+      return body[key];
     }
   }
 
   return undefined;
 }
 
-function networkCode(value: unknown): string {
-  const key = clean(value).toLowerCase().replace(/[^a-z0-9]/g, "");
+function serviceOf(value: unknown): Service | null {
+  const raw = clean(value).toLowerCase();
 
-  if (key === "mtn" || key.includes("mtn")) return "mtn";
-  if (key === "glo" || key.includes("glo")) return "glo";
-  if (key.includes("airtel")) return "airtel";
-  if (key.includes("9mobile") || key.includes("etisalat")) return "9mobile";
+  const aliases: Record<string, Service> = {
+    airtime: "airtime",
+
+    data: "data",
+    mobile_data: "data",
+    "mobile-data": "data",
+
+    cable: "cable",
+    cabletv: "cable",
+    "cable-tv": "cable",
+
+    electricity: "electricity",
+    electric: "electricity",
+
+    education: "education",
+    waec: "education",
+
+    "airtime-card": "airtime-card",
+    airtime_card: "airtime-card",
+    airtime_epin: "airtime-card",
+    "airtime-epin": "airtime-card",
+    airtimepin: "airtime-card",
+
+    "data-card": "data-card",
+    data_card: "data-card",
+    data_epin: "data-card",
+    "data-epin": "data-card",
+    datapin: "data-card",
+
+    "recharge-card": "recharge-card",
+    recharge_card: "recharge-card",
+    recharge: "recharge-card",
+    epin: "recharge-card",
+  };
+
+  return aliases[raw] ?? null;
+}
+
+function networkCode(value: unknown): string {
+  if (value && typeof value === "object") {
+    const obj = value as Record<string, unknown>;
+
+    return clean(
+      obj.code ??
+        obj.network_code ??
+        obj.networkCode ??
+        obj.identifier ??
+        obj.provider_code ??
+        obj.providerCode ??
+        obj.id ??
+        obj.value,
+    );
+  }
 
   return clean(value);
 }
 
 function normalizePhone(value: unknown): string {
-  const raw = clean(value).replace(/[\s()-]/g, "");
+  let phone = clean(value).replace(/[^\d+]/g, "");
 
-  if (/^\+234\d{10}$/.test(raw)) return raw.slice(1);
-  if (/^234\d{10}$/.test(raw)) return raw;
-  if (/^0\d{10}$/.test(raw)) return `234${raw.slice(1)}`;
+  if (phone.startsWith("+234")) {
+    phone = "0" + phone.slice(4);
+  } else if (phone.startsWith("234")) {
+    phone = "0" + phone.slice(3);
+  }
 
-  return raw;
+  return phone;
 }
 
-function validPhone(value: string): boolean {
-  return /^234\d{10}$/.test(value);
+function validPhone(phone: string): boolean {
+  return /^0[789]\d{9}$/.test(phone);
 }
 
-function itemId(item: any): string {
+function itemId(item: unknown): string {
+  if (!item || typeof item !== "object") return "";
+
+  const obj = item as Record<string, unknown>;
+
   return clean(
-    firstValue(
-      item.id,
-      item.ID,
-      item.code,
-      item.Code,
-      item.plan_id,
-      item.planId,
-      item.plan_code,
-      item.planCode,
-      item.identifier,
-    ),
+    obj.id ??
+      obj.code ??
+      obj.plan_code ??
+      obj.planCode ??
+      obj.plan_id ??
+      obj.planId ??
+      obj.identifier ??
+      obj.value,
   );
 }
 
-function itemName(item: any): string {
+function itemName(item: unknown): string {
+  if (!item || typeof item !== "object") {
+    return clean(item);
+  }
+
+  const obj = item as Record<string, unknown>;
+
   return clean(
-    firstValue(
-      item.name,
-      item.Name,
-      item.title,
-      item.Title,
-      item.plan_name,
-      item.planName,
-      item.product_name,
-      item.productName,
-      item.description,
-      item.Description,
+    obj.name ??
+      obj.plan_name ??
+      obj.planName ??
+      obj.title ??
+      obj.description ??
+      obj.package_name ??
+      obj.packageName ??
+      obj.label ??
+      obj.product_name ??
+      obj.productName ??
       itemId(item),
-    ),
   );
 }
 
-function itemPrice(item: any): number {
+function itemPrice(item: unknown): number {
+  if (!item || typeof item !== "object") {
+    return numberValue(item);
+  }
+
+  const obj = item as Record<string, unknown>;
+
   return numberValue(
-    firstValue(
-      item.price,
-      item.Price,
-      item.amount,
-      item.Amount,
-      item.cost,
-      item.Cost,
-      item.selling_price,
-      item.sellingPrice,
-      item.provider_amount,
-      item.providerAmount,
-      item.plan_amount,
-      item.planAmount,
-    ),
+    obj.price ??
+      obj.amount ??
+      obj.selling_price ??
+      obj.sellingPrice ??
+      obj.cost ??
+      obj.face_value ??
+      obj.faceValue ??
+      obj.value,
   );
 }
 
-function itemValidity(item: any): number | null {
-  const raw = firstValue(
-    item.validity_days,
-    item.validityDays,
-    item.duration_days,
-    item.durationDays,
-    item.duration,
-    item.validity,
+function itemValidity(item: unknown): string {
+  if (!item || typeof item !== "object") return "";
+
+  const obj = item as Record<string, unknown>;
+
+  return clean(
+    obj.validity ??
+      obj.validity_period ??
+      obj.validityPeriod ??
+      obj.duration ??
+      obj.period ??
+      obj.days,
   );
-
-  const numeric = Number(raw);
-  if (Number.isFinite(numeric) && numeric > 0) return numeric;
-
-  const match = itemName(item).match(/\b(\d+)\s*(day|days|week|weeks|month|months)\b/i);
-  if (!match) return null;
-
-  const count = Number(match[1]);
-  const unit = match[2].toLowerCase();
-
-  if (unit.startsWith("week")) return count * 7;
-  if (unit.startsWith("month")) return count * 30;
-  return count;
 }
 
-function publicItem(
-  item: any,
-  service: Service,
-  fallbackNetwork = "",
-): Record<string, unknown> {
-  const raw = bodyObject(item);
-  const code = itemId(raw);
-  const providerPrice = itemPrice(raw);
-  const markupRate = service === "airtime" ? 0 : STANDARD_MARKUP;
-  const price = providerPrice > 0
-    ? roundSellingPrice(providerPrice, markupRate)
-    : 0;
+function itemNetwork(item: unknown): string {
+  if (!item || typeof item !== "object") return "";
 
-  const network = clean(
-    firstValue(
-      raw.network,
-      raw.network_id,
-      raw.networkId,
-      raw.network_code,
-      raw.networkCode,
-      fallbackNetwork,
-    ),
+  const obj = item as Record<string, unknown>;
+
+  return clean(
+    obj.network ??
+      obj.network_code ??
+      obj.networkCode ??
+      obj.provider ??
+      obj.provider_code ??
+      obj.providerCode ??
+      obj.identifier,
   );
+}
 
-  const validity = itemValidity(raw);
+function publicItem(item: unknown, service: Service) {
+  const price = itemPrice(item);
 
   return {
-    id: code,
-    code,
-    name: itemName(raw),
-    price,
-    providerPrice,
-    amount: price,
-    provider_amount: providerPrice,
-    networkCode: networkCode(network),
-    networkName: network || null,
-    validityDays: validity,
-    duration: validity,
-    plan_type: clean(
-      firstValue(
-        raw.plan_type,
-        raw.planType,
-        raw.type,
-        raw.category,
-      ),
-    ) || null,
-    period: clean(
-      firstValue(
-        raw.period,
-        raw.validity_period,
-      ),
-    ) || null,
-    raw,
+    id: itemId(item),
+    code: itemId(item),
+    name: itemName(item),
+    price: roundSellingPrice(
+      price * (service === "airtime" ? 1 + AIRTIME_MARKUP : 1 + STANDARD_MARKUP),
+    ),
+    provider_price: price,
+    validity: itemValidity(item),
+    network: itemNetwork(item),
+    raw: item,
   };
 }
 
-function publicProvider(item: any): Record<string, unknown> {
-  const raw = bodyObject(item);
-  const code = clean(
-    firstValue(
-      raw.identifier,
-      raw.code,
-      raw.Code,
-      raw.id,
-      raw.ID,
-      raw.provider_code,
-      raw.providerCode,
-    ),
-  );
-
-  return {
-    id: code,
-    code,
-    name: clean(
-      firstValue(
-        raw.name,
-        raw.Name,
-        raw.title,
-        raw.Title,
-        raw.provider_name,
-        raw.providerName,
-        code,
-      ),
-    ),
-    logo: clean(
-      firstValue(
-        raw.logo,
-        raw.logo_url,
-        raw.logoUrl,
-        raw.image,
-        raw.image_url,
-      ),
-    ) || null,
-    raw,
-  };
-}
-
-async function catalog(service: Service, code?: string) {
-  if (service === "airtime") {
-    const result = await peyflexPublicGet("/api/airtime/networks/");
-    const networks = asArray(result.body).map(publicProvider);
-
+function publicProvider(item: unknown) {
+  if (typeof item === "string") {
     return {
-      success: result.ok,
-      service,
-      networks,
-      billers: networks,
-      providers: networks,
-      items: [],
-      plans: [],
-      packages: [],
-      amount_based: true,
-      requires_verification: false,
-      provider_http_status: result.httpStatus,
+      id: item,
+      code: item,
+      name: item,
     };
   }
 
-  if (service === "data") {
-    const networksResult = await peyflexPublicGet("/api/data/networks/");
-    const networks = asArray(networksResult.body).map(publicProvider);
+  const obj = asObject(item);
 
-    let items: Record<string, unknown>[] = [];
+  return {
+    id: clean(
+      obj.id ??
+        obj.code ??
+        obj.identifier ??
+        obj.network_code ??
+        obj.networkCode ??
+        obj.provider_code ??
+        obj.providerCode,
+    ),
+    code: clean(
+      obj.code ??
+        obj.identifier ??
+        obj.network_code ??
+        obj.networkCode ??
+        obj.provider_code ??
+        obj.providerCode ??
+        obj.id,
+    ),
+    name: clean(
+      obj.name ??
+        obj.network_name ??
+        obj.networkName ??
+        obj.provider_name ??
+        obj.providerName ??
+        obj.title ??
+        obj.label ??
+        obj.description,
+    ),
+  };
+}
 
-    if (code) {
-      const plansResult = await peyflexPublicGet("/api/data/plans/", {
-        network: code,
-      });
+function calculateSellingPrice(
+  providerPrice: number,
+  service: Service,
+): number {
+  const markup =
+    service === "airtime"
+      ? AIRTIME_MARKUP
+      : STANDARD_MARKUP;
 
-      items = asArray(plansResult.body).map((item) =>
-        publicItem(item, service, code)
+  return roundSellingPrice(providerPrice * (1 + markup));
+}
+
+function extractList(value: unknown): unknown[] {
+  if (Array.isArray(value)) return value;
+
+  const obj = asObject(value);
+
+  for (const key of [
+    "data",
+    "results",
+    "items",
+    "plans",
+    "providers",
+    "networks",
+    "billers",
+    "options",
+    "products",
+    "available_plans",
+  ]) {
+    if (Array.isArray(obj[key])) {
+      return obj[key] as unknown[];
+    }
+  }
+
+  return [];
+}
+
+function extractObjectData(value: unknown): Record<string, unknown> {
+  const obj = asObject(value);
+
+  if (obj.data && typeof obj.data === "object") {
+    return asObject(obj.data);
+  }
+
+  return obj;
+}
+
+function responseList(value: unknown): unknown[] {
+  const direct = extractList(value);
+
+  if (direct.length > 0) {
+    return direct;
+  }
+
+  const data = extractObjectData(value);
+
+  return extractList(data);
+}
+
+function flattenEducationPlans(
+  value: unknown,
+  providerCode = "",
+): unknown[] {
+  const result: unknown[] = [];
+
+  const providers = responseList(value);
+
+  for (const provider of providers) {
+    const providerObj = asObject(provider);
+
+    const currentProviderCode = clean(
+      providerObj.code ??
+        providerObj.identifier ??
+        providerObj.id ??
+        providerCode,
+    );
+
+    const plans =
+      extractList(providerObj.plans).length > 0
+        ? extractList(providerObj.plans)
+        : extractList(providerObj.items).length > 0
+        ? extractList(providerObj.items)
+        : extractList(providerObj.products).length > 0
+        ? extractList(providerObj.products)
+        : extractList(providerObj.available_plans);
+
+    if (plans.length > 0) {
+      for (const plan of plans) {
+        if (
+          plan &&
+          typeof plan === "object" &&
+          !("provider" in (plan as Record<string, unknown>))
+        ) {
+          result.push({
+            ...(plan as Record<string, unknown>),
+            provider: currentProviderCode,
+            provider_code: currentProviderCode,
+          });
+        } else {
+          result.push(plan);
+        }
+      }
+    } else {
+      result.push(provider);
+    }
+  }
+
+  return result;
+}
+
+async function catalog(
+  service: Service,
+  code?: string,
+) {
+  switch (service) {
+    case "airtime": {
+      const response = await peyflexPublicGet(
+        "/api/airtime/networks/",
+      );
+
+      const providers = responseList(response).map(publicProvider);
+
+      return {
+        success: true,
+        service,
+        amount_based: true,
+        billers: providers,
+        networks: providers,
+        items: [],
+        plans: [],
+      };
+    }
+
+    case "data": {
+      const networksResponse = await peyflexPublicGet(
+        "/api/data/networks/",
+      );
+
+      const networks = responseList(networksResponse).map(
+        publicProvider,
+      );
+
+      if (!code) {
+        return {
+          success: true,
+          service,
+          amount_based: false,
+          billers: networks,
+          networks,
+          items: [],
+          plans: [],
+        };
+      }
+
+      const plansResponse = await peyflexPublicGet(
+        "/api/data/plans/",
+        {
+          network: code,
+        },
+      );
+
+      const rawPlans = responseList(plansResponse);
+
+      const items = rawPlans.map((item) =>
+        publicItem(item, service)
       );
 
       return {
-        success: plansResult.ok,
+        success: true,
         service,
-        networks,
+        amount_based: false,
         billers: networks,
-        providers: networks,
+        networks,
         items,
         plans: items,
-        packages: items,
-        amount_based: false,
-        requires_verification: false,
-        provider_http_status: plansResult.httpStatus,
       };
     }
 
-    return {
-      success: networksResult.ok,
-      service,
-      networks,
-      billers: networks,
-      providers: networks,
-      items,
-      plans: items,
-      packages: items,
-      amount_based: false,
-      requires_verification: false,
-      provider_http_status: networksResult.httpStatus,
-    };
-  }
+    case "cable": {
+      const providersResponse = await peyflexPublicGet(
+        "/api/cable/providers/",
+      );
 
-  if (service === "cable") {
-    const providersResult = await peyflexPublicGet("/api/cable/providers/");
-    const providers = asArray(providersResult.body).map(publicProvider);
+      const providers = responseList(providersResponse).map(
+        publicProvider,
+      );
 
-    if (!code) {
+      if (!code) {
+        return {
+          success: true,
+          service,
+          amount_based: false,
+          billers: providers,
+          providers,
+          items: [],
+          plans: [],
+        };
+      }
+
+      const plansResponse = await peyflexPublicGet(
+        `/api/cable/plans/${encodeURIComponent(code)}/`,
+      );
+
+      const rawPlans = responseList(plansResponse);
+
+      const items = rawPlans.map((item) =>
+        publicItem(item, service)
+      );
+
       return {
-        success: providersResult.ok,
+        success: true,
         service,
+        amount_based: false,
         billers: providers,
-        networks: providers,
         providers,
-        cableProviders: providers,
+        items,
+        plans: items,
+      };
+    }
+
+    case "electricity": {
+      const response = await peyflexPublicGet(
+        "/api/electricity/plans/",
+        {
+          identifier: "electricity",
+        },
+      );
+
+      const companies = responseList(response).map(
+        publicProvider,
+      );
+
+      return {
+        success: true,
+        service,
+        amount_based: true,
+        billers: companies,
+        providers: companies,
         items: [],
         plans: [],
-        packages: [],
-        amount_based: false,
-        requires_verification: true,
-        provider_http_status: providersResult.httpStatus,
       };
     }
 
-    const plansResult = await peyflexPublicGet(
-      `/api/cable/plans/${encodeURIComponent(code)}/`,
-    );
+    case "education": {
+      const response = await peyflexPublicGet(
+        "/api/education/providers/",
+      );
 
-    const items = asArray(plansResult.body).map((item) =>
-      publicItem(item, service, code)
-    );
+      const providers = responseList(response).map(
+        publicProvider,
+      );
 
-    return {
-      success: plansResult.ok,
-      service,
-      billers: providers,
-      networks: providers,
-      providers,
-      cableProviders: providers,
-      selected_provider: code,
-      items,
-      plans: items,
-      packages: items,
-      amount_based: false,
-      requires_verification: true,
-      provider_http_status: plansResult.httpStatus,
-    };
-  }
+      let items: unknown[] = [];
 
-  if (service === "electricity") {
-    const result = await peyflexPublicGet("/api/electricity/plans/", {
-      identifier: "electricity",
-    });
+      const flattened = flattenEducationPlans(response);
 
-    const companies = asArray(result.body).map(publicProvider);
+      if (flattened.length > 0) {
+        items = flattened.map((item) =>
+          publicItem(item, service)
+        );
+      }
 
-    return {
-      success: result.ok,
-      service,
-      billers: companies,
-      networks: companies,
-      providers: companies,
-      electricityCompanies: companies,
-      serviceProviders: companies,
-      meterTypes: ["prepaid", "postpaid"],
-      items: [],
-      plans: [],
-      packages: [],
-      amount_based: true,
-      requires_verification: true,
-      provider_http_status: result.httpStatus,
-    };
-  }
+      if (code) {
+        items = items.filter((item) => {
+          const raw = asObject(item.raw);
 
-  if (service === "education") {
-    const result = await peyflexPublicGet("/api/education/providers/");
-    const providers = asArray(result.body).map((item) => {
-      const raw = bodyObject(item);
-      const provider = publicProvider(raw);
+          const provider = clean(
+            raw.provider ??
+              raw.provider_code ??
+              raw.providerCode ??
+              raw.identifier,
+          );
 
-      const plans = asArray(
-        firstValue(
-          raw.plans,
-          raw.items,
-          raw.products,
-          raw.available_plans,
-        ),
-      ).map((plan) => publicItem(plan, service, clean(provider.code)));
+          return (
+            !provider ||
+            provider === code
+          );
+        });
+      }
 
       return {
-        ...provider,
-        plans,
+        success: true,
+        service,
+        amount_based: false,
+        billers: providers,
+        providers,
+        items,
+        plans: items,
       };
-    });
+    }
 
-    const allPlans = providers.flatMap((provider: any) =>
-      (provider.plans ?? []).map((plan: any) => ({
-        ...plan,
-        providerCode: provider.code,
-        providerName: provider.name,
-      }))
-    );
+    case "airtime-card":
+    case "data-card":
+    case "recharge-card": {
+      const response = await peyflexPublicGet(
+        "/api/rc/options/",
+      );
 
-    return {
-      success: result.ok,
-      service,
-      billers: providers,
-      providers,
-      networks: providers,
-      educationProviders: providers,
-      items: allPlans,
-      plans: allPlans,
-      packages: allPlans,
-      amount_based: false,
-      requires_verification: false,
-      provider_http_status: result.httpStatus,
-    };
+      const options = responseList(response);
+
+      const items = options.map((item) =>
+        publicItem(item, service)
+      );
+
+      return {
+        success: true,
+        service,
+        amount_based: false,
+        billers: [],
+        providers: [],
+        items,
+        plans: items,
+      };
+    }
+
+    default:
+      throw new Error("Unsupported service.");
   }
-
-  if (service === "airtime-card" || service === "data-card" || service === "recharge-card") {
-    const result = await peyflexPublicGet("/api/rc/options/");
-    const items = asArray(result.body).map((item) =>
-      publicItem(item, service)
-    );
-
-    const networks = asArray(result.body)
-      .map((item: any) => {
-        const raw = bodyObject(item);
-        return firstValue(
-          raw.network,
-          raw.network_name,
-          raw.networkName,
-          raw.provider,
-        );
-      })
-      .filter((value, index, array) =>
-        clean(value) && array.findIndex((x) => clean(x).toLowerCase() === clean(value).toLowerCase()) === index
-      )
-      .map((value) => ({
-        id: clean(value),
-        code: clean(value),
-        name: clean(value),
-      }));
-
-    return {
-      success: result.ok,
-      service,
-      networks,
-      billers: networks,
-      providers: networks,
-      items,
-      plans: items,
-      packages: items,
-      amount_based: false,
-      requires_verification: false,
-      provider_http_status: result.httpStatus,
-    };
-  }
-
-  throw new Error("Unsupported service.");
 }
 
 async function verifyCustomer(
   service: Service,
-  body: any,
-): Promise<Record<string, unknown>> {
+  body: Record<string, unknown>,
+) {
   if (service === "cable") {
-    const iuc = clean(pickBody(body, "customer", "iuc", "smartcard", "smartcard_number"));
-    const identifier = clean(
-      pickBody(body, "biller_code", "billerCode", "provider", "identifier"),
+    const iuc = clean(
+      pickBody(
+        body,
+        "iuc",
+        "smartcard",
+        "smartcard_number",
+        "smartcardNumber",
+      ),
     );
 
-    if (!iuc || !identifier) {
-      throw new Error("Cable provider and IUC number are required.");
+    const identifier = clean(
+      pickBody(
+        body,
+        "identifier",
+        "provider",
+        "provider_code",
+        "providerCode",
+        "cable_tv",
+        "cableTv",
+      ),
+    );
+
+    if (!iuc) {
+      return {
+        success: false,
+        error: "IUC/Smartcard number is required.",
+      };
     }
 
-    const result = await peyflexPost("/api/cable/verify/", {
-      iuc,
-      identifier,
-    });
+    if (!identifier) {
+      return {
+        success: false,
+        error: "Cable provider is required.",
+      };
+    }
+
+    const response = await peyflexPost(
+      "/api/cable/verify/",
+      {
+        iuc,
+        identifier,
+      },
+    );
 
     return {
-      success: result.ok && !providerLooksFailed(result.body, result.ok),
-      status: normalizeStatus(result.body),
-      message: providerMessage(result.body) || "Cable customer verification completed.",
-      data: asObject(result.body),
-      raw: result.body,
+      success: !providerLooksFailed(response),
+      verified: providerLooksSuccessful(response),
+      customer: extractObjectData(response),
+      data: response,
+      message: providerMessage(response),
     };
   }
 
   if (service === "electricity") {
-    const meter = clean(pickBody(body, "customer", "meter", "meter_number", "meterNumber"));
-    const plan = clean(
-      pickBody(body, "biller_code", "billerCode", "provider", "plan"),
+    const meter = clean(
+      pickBody(
+        body,
+        "meter",
+        "meter_number",
+        "meterNumber",
+      ),
     );
-    const type = clean(
-      pickBody(body, "meter_type", "meterType", "type"),
-    ) || "prepaid";
 
-    if (!meter || !plan) {
-      throw new Error("Electricity plan and meter number are required.");
+    const identifier = clean(
+      pickBody(
+        body,
+        "identifier",
+        "provider",
+        "provider_code",
+        "providerCode",
+      ),
+    );
+
+    const plan = clean(
+      pickBody(
+        body,
+        "plan",
+        "plan_code",
+        "planCode",
+      ),
+    );
+
+    const type = clean(
+      pickBody(
+        body,
+        "type",
+        "meter_type",
+        "meterType",
+      ),
+    );
+
+    if (!meter) {
+      return {
+        success: false,
+        error: "Meter number is required.",
+      };
     }
 
-    const result = await peyflexPublicGet("/api/electricity/verify/", {
-      identifier: "electricity",
-      meter,
-      plan,
-      type,
-    });
+    if (!identifier) {
+      return {
+        success: false,
+        error: "Electricity provider is required.",
+      };
+    }
+
+    const response = await peyflexGet(
+      "/api/electricity/verify/",
+      {
+        identifier: identifier || "electricity",
+        meter,
+        plan,
+        type,
+      },
+    );
 
     return {
-      success: result.ok && !providerLooksFailed(result.body, result.ok),
-      status: normalizeStatus(result.body),
-      message: providerMessage(result.body) || "Meter verification completed.",
-      data: asObject(result.body),
-      raw: result.body,
+      success: !providerLooksFailed(response),
+      verified: providerLooksSuccessful(response),
+      customer: extractObjectData(response),
+      data: response,
+      message: providerMessage(response),
     };
   }
 
-  throw new Error("Verification is not supported for this service.");
+  return {
+    success: true,
+    verified: true,
+    message: "Verification is not required for this service.",
+  };
 }
 
-function findCatalogItem(
-  items: any[],
-  requestedCode: string,
-): any | null {
-  const requested = clean(requestedCode).toLowerCase();
-  if (!requested) return null;
+async function findCatalogItem(
+  service: Service,
+  body: Record<string, unknown>,
+) {
+  const requestedCode = clean(
+    pickBody(
+      body,
+      "plan_code",
+      "planCode",
+      "plan_id",
+      "planId",
+      "item_id",
+      "itemId",
+      "item_code",
+      "itemCode",
+      "code",
+      "plan",
+    ),
+  );
 
-  return items.find((item) =>
-    clean(
-      firstValue(
-        item.id,
-        item.code,
-        item.plan_id,
-        item.planId,
-        item.plan_code,
-        item.planCode,
-      ),
-    ).toLowerCase() === requested
-  ) ?? null;
+  const requestedNetwork = clean(
+    pickBody(
+      body,
+      "network",
+      "network_code",
+      "networkCode",
+      "provider",
+      "provider_code",
+      "providerCode",
+      "identifier",
+    ),
+  );
+
+  const catalogue = await catalog(
+    service,
+    requestedNetwork || undefined,
+  );
+
+  const items = Array.isArray(catalogue.items)
+    ? catalogue.items
+    : [];
+
+  if (!requestedCode) {
+    return null;
+  }
+
+  const found = items.find((item) => {
+    const obj = asObject(item);
+
+    return (
+      clean(obj.id) === requestedCode ||
+      clean(obj.code) === requestedCode ||
+      clean(obj.plan_code) === requestedCode ||
+      clean(obj.plan_id) === requestedCode
+    );
+  });
+
+  return found ?? null;
 }
 
 async function authoritativePrice(
   service: Service,
-  body: any,
+  body: Record<string, unknown>,
 ): Promise<{
   providerPrice: number;
-  sellingAmount: number;
-  selected: any;
-  providerNetwork?: string;
+  sellingPrice: number;
+  item: unknown;
 }> {
-  if (service === "airtime" || service === "electricity") {
+  if (service === "airtime") {
     const amount = numberValue(
-      pickBody(body, "amount", "selling_amount", "sellingAmount"),
+      pickBody(
+        body,
+        "amount",
+        "value",
+        "price",
+      ),
     );
 
-    if (amount <= 0) {
-      throw new Error("A valid amount is required.");
+    if (!amount || amount <= 0) {
+      throw new Error("A valid airtime amount is required.");
     }
-
-    // Airtime has 0% markup. Electricity is amount-based; the user pays the
-    // amount entered plus the configured service markup.
-    const markup = service === "airtime" ? 0 : STANDARD_MARKUP;
-    const sellingAmount = roundSellingPrice(amount, markup);
 
     return {
       providerPrice: amount,
-      sellingAmount,
-      selected: null,
+      sellingPrice: amount,
+      item: null,
     };
   }
 
-  const code = clean(
-    pickBody(
-      body,
-      "item_code",
-      "itemCode",
-      "plan_code",
-      "planCode",
-      "package_code",
-      "packageCode",
-    ),
+  if (service === "electricity") {
+    const amount = numberValue(
+      pickBody(
+        body,
+        "amount",
+        "value",
+        "price",
+      ),
+    );
+
+    if (!amount || amount <= 0) {
+      throw new Error("A valid electricity amount is required.");
+    }
+
+    return {
+      providerPrice: amount,
+      sellingPrice: calculateSellingPrice(
+        amount,
+        service,
+      ),
+      item: null,
+    };
+  }
+
+  const item = await findCatalogItem(
+    service,
+    body,
   );
 
-  if (!code) {
-    throw new Error("A valid service package is required.");
+  if (!item) {
+    throw new Error(
+      "The selected service plan could not be found in the Peyflex catalogue.",
+    );
   }
 
-  let rawItems: any[] = [];
+  const providerPrice = itemPrice(item);
 
-  if (service === "data") {
-    const network = clean(
-      pickBody(body, "biller_code", "billerCode", "network", "network_code", "networkCode"),
+  if (!providerPrice || providerPrice <= 0) {
+    throw new Error(
+      "The selected Peyflex plan has an invalid price.",
     );
-
-    if (!network) throw new Error("Please select a network.");
-
-    const result = await peyflexPublicGet("/api/data/plans/", {
-      network,
-    });
-
-    rawItems = asArray(result.body);
-  } else if (service === "cable") {
-    const identifier = clean(
-      pickBody(body, "biller_code", "billerCode", "provider", "identifier"),
-    );
-
-    if (!identifier) throw new Error("Please select a cable provider.");
-
-    const result = await peyflexPublicGet(
-      `/api/cable/plans/${encodeURIComponent(identifier)}/`,
-    );
-
-    rawItems = asArray(result.body);
-  } else if (service === "education") {
-    const result = await peyflexPublicGet("/api/education/providers/");
-    const providers = asArray(result.body);
-
-    rawItems = providers.flatMap((provider: any) =>
-      asArray(
-        firstValue(
-          provider.plans,
-          provider.items,
-          provider.products,
-          provider.available_plans,
-        ),
-      )
-    );
-  } else {
-    const result = await peyflexPublicGet("/api/rc/options/");
-    rawItems = asArray(result.body);
   }
-
-  const selected = findCatalogItem(rawItems, code);
-
-  if (!selected) {
-    throw new Error("The selected package is no longer available.");
-  }
-
-  const providerPrice = itemPrice(selected);
-  if (providerPrice <= 0) {
-    throw new Error("Unable to determine the package price from the catalogue.");
-  }
-
-  const markup = service === "airtime" ? 0 : STANDARD_MARKUP;
-  const sellingAmount = roundSellingPrice(providerPrice, markup);
 
   return {
     providerPrice,
-    sellingAmount,
-    selected,
-    providerNetwork: clean(
-      firstValue(
-        selected.network,
-        selected.network_id,
-        selected.networkId,
-        selected.network_code,
-        selected.networkCode,
-        pickBody(body, "biller_code", "billerCode", "network"),
-      ),
+    sellingPrice: calculateSellingPrice(
+      providerPrice,
+      service,
     ),
+    item,
   };
 }
 
-function safeProviderResponse(body: any): any {
-  // Provider responses are stored in transaction metadata for reconciliation,
-  // but secrets are never included here.
-  return body;
-}
-
-async function updateTransaction(
-  admin: any,
-  userId: string,
-  reference: string,
-  updates: Record<string, unknown>,
+async function callProviderPurchase(
+  service: Service,
+  body: Record<string, unknown>,
+  providerPrice: number,
+  quantity: number,
 ) {
-  const { error } = await admin
-    .from("transactions")
-    .update(updates)
-    .eq("user_id", userId)
-    .eq("reference_number", reference);
+  const phone = normalizePhone(
+    pickBody(
+      body,
+      "phone",
+      "mobile_number",
+      "mobileNumber",
+      "phone_number",
+      "phoneNumber",
+    ),
+  );
 
-  if (error) {
-    console.error("Peyflex transaction update failed:", error);
+  switch (service) {
+    case "airtime": {
+      const network = networkCode(
+        pickBody(
+          body,
+          "network",
+          "network_code",
+          "networkCode",
+          "provider",
+          "provider_code",
+          "providerCode",
+        ),
+      );
+
+      return await peyflexPost(
+        "/api/airtime/topup/",
+        {
+          network,
+          amount: providerPrice,
+          mobile_number: phone,
+        },
+      );
+    }
+
+    case "data": {
+      const network = networkCode(
+        pickBody(
+          body,
+          "network",
+          "network_code",
+          "networkCode",
+          "provider",
+          "provider_code",
+          "providerCode",
+        ),
+      );
+
+      const planCode = clean(
+        pickBody(
+          body,
+          "plan_code",
+          "planCode",
+          "plan",
+          "code",
+        ),
+      );
+
+      return await peyflexPost(
+        "/api/data/purchase/",
+        {
+          network,
+          mobile_number: phone,
+          plan_code: planCode,
+        },
+      );
+    }
+
+    case "cable": {
+      const identifier = clean(
+        pickBody(
+          body,
+          "identifier",
+          "provider",
+          "provider_code",
+          "providerCode",
+          "cable_tv",
+          "cableTv",
+        ),
+      );
+
+      const plan = clean(
+        pickBody(
+          body,
+          "plan",
+          "plan_code",
+          "planCode",
+          "package",
+          "package_code",
+        ),
+      );
+
+      const iuc = clean(
+        pickBody(
+          body,
+          "iuc",
+          "smartcard",
+          "smartcard_number",
+          "smartcardNumber",
+        ),
+      );
+
+      return await peyflexPost(
+        "/api/cable/subscribe/",
+        {
+          identifier,
+          plan,
+          iuc,
+          phone,
+        },
+      );
+    }
+
+    case "electricity": {
+      const identifier = clean(
+        pickBody(
+          body,
+          "identifier",
+          "provider",
+          "provider_code",
+          "providerCode",
+        ),
+      );
+
+      const meter = clean(
+        pickBody(
+          body,
+          "meter",
+          "meter_number",
+          "meterNumber",
+        ),
+      );
+
+      const plan = clean(
+        pickBody(
+          body,
+          "plan",
+          "plan_code",
+          "planCode",
+        ),
+      );
+
+      const type = clean(
+        pickBody(
+          body,
+          "type",
+          "meter_type",
+          "meterType",
+        ),
+      );
+
+      return await peyflexPost(
+        "/api/electricity/subscribe/",
+        {
+          identifier: identifier || "electricity",
+          meter,
+          plan,
+          amount: String(providerPrice),
+          type,
+          phone,
+        },
+      );
+    }
+
+    case "education": {
+      const planId = clean(
+        pickBody(
+          body,
+          "plan_id",
+          "planId",
+          "plan",
+          "code",
+        ),
+      );
+
+      return await peyflexPost(
+        "/api/education/purchase/",
+        {
+          identifier: "education",
+          plan_id: planId,
+          quantity: String(quantity),
+          phone,
+        },
+      );
+    }
+
+    case "airtime-card":
+    case "data-card":
+    case "recharge-card": {
+      const network = networkCode(
+        pickBody(
+          body,
+          "network",
+          "network_code",
+          "networkCode",
+          "provider",
+          "provider_code",
+          "providerCode",
+        ),
+      );
+
+      const pin = clean(
+        pickBody(
+          body,
+          "pin",
+          "pin_type",
+          "pinType",
+        ),
+      );
+
+      return await peyflexPost(
+        "/api/rc/purchase/",
+        {
+          network,
+          amount: providerPrice,
+          quantity,
+          pin,
+          brand_name: "IyanjuPay",
+        },
+      );
+    }
+
+    default:
+      throw new Error("Unsupported service.");
   }
-
-  return !error;
-}
-
-async function refundTransaction(
-  admin: any,
-  userId: string,
-  reference: string,
-  amount: number,
-  reason: string,
-  metadata: Record<string, unknown>,
-) {
-  const refundReference = `REFUND_${reference}`;
-
-  const { data, error } = await admin.rpc("refund_wallet", {
-    _user_id: userId,
-    _amount: amount,
-    _description: "Peyflex service payment reversal",
-    _idempotency_key: refundReference,
-    _reference: refundReference,
-    _metadata: {
-      ...metadata,
-      original_reference: reference,
-      refund_reference: refundReference,
-      provider: "peyflex",
-      reason,
-    },
-  });
-
-  return {
-    success: !error,
-    data,
-    error: error?.message ?? null,
-  };
 }
 
 async function purchase(
-  admin: any,
-  user: any,
+  userId: string,
   service: Service,
-  body: any,
+  body: Record<string, unknown>,
 ) {
-  const explicitPhone = pickBody(
-    body,
-    "customer_phone",
-    "customerPhone",
-    "mobile_number",
-    "mobileNumber",
-    "phone",
-    "phoneNumber",
-    "phone_no",
-  );
-
-  const suppliedPhone = normalizePhone(explicitPhone);
-  const customerPhone = normalizePhone(
-    explicitPhone ??
-      (["airtime", "data", "education", "airtime-card", "data-card"].includes(service)
-        ? pickBody(body, "customer")
-        : undefined),
-  );
-
-  const customerIdentifier = clean(
+  const phone = normalizePhone(
     pickBody(
       body,
-      "customer",
-      "identifier",
-      "meter",
-      "meter_number",
-      "meterNumber",
-      "iuc",
-      "smartcard",
-      "smartcard_number",
-      "smartcardNumber",
+      "phone",
+      "mobile_number",
+      "mobileNumber",
+      "phone_number",
+      "phoneNumber",
     ),
   );
-
-  const providerPhone = validPhone(suppliedPhone)
-    ? suppliedPhone
-    : normalizePhone(user?.phone);
 
   if (
-    ["airtime", "data", "education", "airtime-card", "data-card"].includes(service) &&
-    !validPhone(customerPhone)
+    service !== "cable" &&
+    service !== "electricity" &&
+    !validPhone(phone)
   ) {
-    throw new Error("Please provide a valid Nigerian phone number.");
+    throw new Error(
+      "A valid Nigerian phone number is required.",
+    );
   }
 
-  const { providerPrice, sellingAmount, selected, providerNetwork } =
-    await authoritativePrice(service, body);
-
-  const quantity = Math.max(
-    1,
-    Math.floor(
-      numberValue(pickBody(body, "quantity", "qty")) || 1,
+  const quantityRaw = numberValue(
+    pickBody(
+      body,
+      "quantity",
+      "qty",
     ),
   );
 
-  const reference = `PEY_${crypto.randomUUID()}`;
+  const quantity =
+    quantityRaw > 0
+      ? Math.floor(quantityRaw)
+      : 1;
 
-  const metadata: Record<string, unknown> = {
+  const pricing = await authoritativePrice(
     service,
-    provider: "peyflex",
-    provider_id: "peyflex",
-    customer: customerIdentifier || customerPhone || null,
-    phone: providerPhone || null,
-    biller_code: clean(
-      pickBody(body, "biller_code", "billerCode", "provider", "identifier"),
-    ) || null,
-    item_code: clean(
-      pickBody(body, "item_code", "itemCode", "plan_code", "planCode"),
-    ) || null,
-    provider_amount: providerPrice,
-    selling_amount: sellingAmount,
-    markup_rate: service === "airtime" ? 0 : STANDARD_MARKUP,
-    markup_amount: sellingAmount - providerPrice,
-    quantity,
-    selected_item: selected,
-    request_id: reference,
-    reconciliation_required: true,
-  };
-
-  const { data: debitResult, error: debitError } = await admin.rpc(
-    "debit_wallet",
-    {
-      _user_id: user.id,
-      _amount: sellingAmount,
-      _description: `${service} purchase`,
-      _idempotency_key: reference,
-      _reference: reference,
-      _category: "bill_payment",
-      _metadata: metadata,
-    },
+    body,
   );
 
-  if (debitError) {
-    console.error("Peyflex wallet debit failed:", debitError);
-    throw new Error("Unable to process the payment from your wallet.");
-  }
+  const providerPrice =
+    pricing.providerPrice * quantity;
 
-  const transactionId = debitResult?.id ?? null;
+  const sellingPrice =
+    pricing.sellingPrice * quantity;
 
-  if (!transactionId) {
-    throw new Error("Wallet debit did not return a transaction.");
-  }
+  const reference =
+    `PEY_${crypto.randomUUID()}`;
 
-  let result: any;
+  const supabase = adminClient();
 
-  try {
-    if (service === "airtime") {
-      result = await peyflexPost("/api/airtime/topup/", {
-        network: networkCode(
-          pickBody(body, "biller_code", "billerCode", "network", "network_code"),
-        ),
-        amount: providerPrice,
-        mobile_number: customerPhone,
-      });
-    } else if (service === "data") {
-      result = await peyflexPost("/api/data/purchase/", {
-        network: networkCode(providerNetwork),
-        mobile_number: customerPhone,
-        plan_code: clean(
-          pickBody(body, "item_code", "itemCode", "plan_code", "planCode"),
-        ),
-      });
-    } else if (service === "cable") {
-      const identifier = clean(
-        pickBody(body, "biller_code", "billerCode", "provider", "identifier"),
-      );
-
-      result = await peyflexPost("/api/cable/subscribe/", {
-        identifier,
-        plan: clean(
-          pickBody(body, "item_code", "itemCode", "plan_code", "planCode"),
-        ),
-        iuc: clean(
-          pickBody(body, "customer", "iuc", "smartcard", "smartcard_number"),
-        ),
-        phone: providerPhone || undefined,
-      });
-    } else if (service === "electricity") {
-      result = await peyflexPost("/api/electricity/subscribe/", {
-        identifier: "electricity",
-        meter: clean(
-          pickBody(body, "customer", "meter", "meter_number", "meterNumber"),
-        ),
-        plan: clean(
-          pickBody(body, "biller_code", "billerCode", "provider", "plan"),
-        ),
-        amount: String(providerPrice),
-        type: clean(
-          pickBody(body, "meter_type", "meterType", "type"),
-        ) || "prepaid",
-        phone: providerPhone || undefined,
-      });
-    } else if (service === "education") {
-      result = await peyflexPost("/api/education/purchase/", {
-        identifier: "education",
-        plan_id: clean(
-          pickBody(body, "item_code", "itemCode", "plan_code", "planCode"),
-        ),
-        quantity: String(quantity),
-        phone: customerPhone,
-      });
-    } else {
-      const network = clean(
-        pickBody(body, "biller_code", "billerCode", "network", "network_code"),
-      );
-
-      result = await peyflexPost("/api/rc/purchase/", {
-        network: network || undefined,
-        amount: providerPrice,
-        quantity,
-        pin: clean(pickBody(body, "pin", "card_pin")) || undefined,
-        brand_name: clean(
-          pickBody(body, "brand_name", "brandName"),
-        ) || "IyanjuPay",
-      });
-    }
-  } catch (error) {
-    console.error("Peyflex provider request exception:", error);
-
-    await updateTransaction(admin, user.id, reference, {
-      status: "pending",
-      provider: "peyflex",
-      provider_reference: reference,
-      metadata: {
-        ...metadata,
-        provider_request_exception: true,
-        reconciliation_required: true,
-      },
-    });
-
-    return {
-      success: true,
-      status: "pending",
-      reference,
-      transaction_id: transactionId,
-      message:
-        "Your payment was sent for processing and is being verified.",
-    };
-  }
-
-  const providerRef = providerReference(result.body);
-  const status = normalizeStatus(result.body);
-
-  const safeResponse = safeProviderResponse(result.body);
-
-  if (providerLooksSuccessful(result.body, result.ok)) {
-    await updateTransaction(admin, user.id, reference, {
-      status: "completed",
-      provider: "peyflex",
-      provider_reference: providerRef ?? reference,
-      completed_at: new Date().toISOString(),
-      metadata: {
-        ...metadata,
-        peyflex_status: status,
-        peyflex_response: safeResponse,
-        reconciliation_required: false,
-      },
-    });
-
-    return {
-      success: true,
-      status: "successful",
-      reference,
-      transaction_id: transactionId,
-      provider_reference: providerRef,
-      message: providerMessage(result.body) || "Purchase completed successfully.",
-      fulfillment: safeResponse,
-    };
-  }
-
-  if (providerLooksFailed(result.body, result.ok)) {
-    const reason =
-      providerMessage(result.body) ||
-      "Peyflex rejected the purchase.";
-
-    const refund = await refundTransaction(
-      admin,
-      user.id,
-      reference,
-      sellingAmount,
-      reason,
+  const { data: debitData, error: debitError } =
+    await supabase.rpc(
+      "debit_wallet",
       {
-        ...metadata,
-        peyflex_status: status,
-        peyflex_response: safeResponse,
+        p_user_id: userId,
+        p_amount: sellingPrice,
+        p_reference: reference,
+        p_description: `${service} purchase`,
       },
     );
 
-    await updateTransaction(admin, user.id, reference, {
-      status: "failed",
-      provider: "peyflex",
-      provider_reference: providerRef ?? reference,
-      metadata: {
-        ...metadata,
-        peyflex_status: status,
-        peyflex_response: safeResponse,
-        refunded: refund.success,
-        refund_pending: !refund.success,
-        reconciliation_required: !refund.success,
-      },
-    });
+  if (debitError) {
+    throw new Error(
+      debitError.message ||
+        "Unable to debit wallet.",
+    );
+  }
 
-    if (!refund.success) {
+  const debitResult = Array.isArray(debitData)
+    ? debitData[0]
+    : debitData;
+
+  if (
+    debitResult &&
+    typeof debitResult === "object" &&
+    "success" in debitResult &&
+    !Boolean(
+      (debitResult as Record<string, unknown>).success,
+    )
+  ) {
+    throw new Error(
+      clean(
+        (debitResult as Record<string, unknown>).message,
+      ) || "Unable to debit wallet.",
+    );
+  }
+
+  const metadata = {
+    service,
+    provider: "peyflex",
+    customer_phone: phone,
+    phone,
+    biller_code: clean(
+      pickBody(
+        body,
+        "biller_code",
+        "billerCode",
+        "provider_code",
+        "providerCode",
+        "identifier",
+      ),
+    ),
+    item_code: clean(
+      pickBody(
+        body,
+        "plan_code",
+        "planCode",
+        "plan_id",
+        "planId",
+        "item_code",
+        "itemCode",
+        "code",
+      ),
+    ),
+    provider_price: providerPrice,
+    selling_price: sellingPrice,
+    markup:
+      sellingPrice - providerPrice,
+    markup_rate:
+      service === "airtime"
+        ? AIRTIME_MARKUP
+        : STANDARD_MARKUP,
+    quantity,
+    selected_item: pricing.item,
+    reconciliation_required: false,
+  };
+
+  const { data: transaction, error: transactionError } =
+    await supabase
+      .from("transactions")
+      .insert({
+        user_id: userId,
+        reference_number: reference,
+        transaction_type: "service_purchase",
+        amount: sellingPrice,
+        status: "pending",
+        provider: "peyflex",
+        provider_reference: null,
+        metadata,
+        description: `${service} purchase`,
+      })
+      .select()
+      .single();
+
+  if (transactionError) {
+    await supabase.rpc(
+      "refund_wallet",
+      {
+        p_user_id: userId,
+        p_amount: sellingPrice,
+        p_reference: `${reference}_ROLLBACK`,
+        p_description:
+          "Rollback for failed service transaction creation",
+      },
+    );
+
+    throw new Error(
+      transactionError.message ||
+        "Unable to create transaction.",
+    );
+  }
+
+  try {
+    const providerResponse =
+      await callProviderPurchase(
+        service,
+        body,
+        pricing.providerPrice,
+        quantity,
+      );
+
+    const providerRef =
+      providerReference(providerResponse);
+
+    const status =
+      normalizeStatus(providerResponse);
+
+    const message =
+      providerMessage(providerResponse);
+
+    if (
+      providerLooksSuccessful(
+        providerResponse,
+      )
+    ) {
+      await supabase
+        .from("transactions")
+        .update({
+          status: "completed",
+          provider_reference:
+            providerRef || null,
+          metadata: {
+            ...metadata,
+            provider_response:
+              providerResponse,
+            provider_status:
+              status,
+            reconciliation_required:
+              false,
+          },
+        })
+        .eq("id", transaction.id);
+
+      return {
+        success: true,
+        status: "completed",
+        reference,
+        provider_reference:
+          providerRef || null,
+        amount: sellingPrice,
+        message:
+          message ||
+          "Transaction completed successfully.",
+      };
+    }
+
+    if (
+      providerLooksFailed(
+        providerResponse,
+      )
+    ) {
+      const { error: refundError } =
+        await supabase.rpc(
+          "refund_wallet",
+          {
+            p_user_id: userId,
+            p_amount: sellingPrice,
+            p_reference: `${reference}_REFUND`,
+            p_description:
+              `Refund for failed ${service} purchase`,
+          },
+        );
+
+      if (refundError) {
+        await supabase
+          .from("transactions")
+          .update({
+            status: "failed",
+            provider_reference:
+              providerRef || null,
+            metadata: {
+              ...metadata,
+              provider_response:
+                providerResponse,
+              provider_status:
+                status,
+              reconciliation_required:
+                true,
+              refund_pending: true,
+            },
+          })
+          .eq("id", transaction.id);
+
+        return {
+          success: false,
+          status: "refund_pending",
+          reference,
+          provider_reference:
+            providerRef || null,
+          amount: sellingPrice,
+          error:
+            "The provider rejected the transaction and the automatic refund could not be completed. The transaction has been flagged for reconciliation.",
+        };
+      }
+
+      await supabase
+        .from("transactions")
+        .update({
+          status: "failed",
+          provider_reference:
+            providerRef || null,
+          metadata: {
+            ...metadata,
+            provider_response:
+              providerResponse,
+            provider_status:
+              status,
+            reconciliation_required:
+              false,
+            refunded: true,
+          },
+        })
+        .eq("id", transaction.id);
+
       return {
         success: false,
         status: "failed",
         reference,
-        transaction_id: transactionId,
+        provider_reference:
+          providerRef || null,
+        amount: sellingPrice,
+        refunded: true,
         error:
-          "The purchase failed, but the automatic refund requires retry.",
-        refund_pending: true,
+          message ||
+          "The service provider rejected the transaction.",
       };
     }
 
+    await supabase
+      .from("transactions")
+      .update({
+        status: "pending",
+        provider_reference:
+          providerRef || null,
+        metadata: {
+          ...metadata,
+          provider_response:
+            providerResponse,
+          provider_status:
+            status,
+          reconciliation_required:
+            true,
+        },
+      })
+      .eq("id", transaction.id);
+
     return {
-      success: false,
-      status: "failed",
+      success: true,
+      status: "pending",
       reference,
-      transaction_id: transactionId,
-      error: reason,
-      refunded: true,
+      provider_reference:
+        providerRef || null,
+      amount: sellingPrice,
+      message:
+        message ||
+        "Your transaction is being processed.",
+      reconciliation_required: true,
+    };
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Provider request could not be completed.";
+
+    /*
+     * IMPORTANT:
+     *
+     * A network error / timeout is NOT automatically refunded.
+     * The provider may have received and processed the request.
+     * The transaction therefore remains pending and is flagged
+     * for reconciliation.
+     */
+
+    await supabase
+      .from("transactions")
+      .update({
+        status: "pending",
+        metadata: {
+          ...metadata,
+          provider_error: message,
+          reconciliation_required: true,
+        },
+      })
+      .eq("id", transaction.id);
+
+    return {
+      success: true,
+      status: "pending",
+      reference,
+      amount: sellingPrice,
+      message:
+        "Your transaction is being processed. Please check your transaction history for the final status.",
+      reconciliation_required: true,
     };
   }
+}
 
-  /*
-   * The supplied Peyflex documentation does not document a universal
-   * service-payment requery endpoint for airtime/data/cable/electricity/
-   * education. Therefore an ambiguous provider response MUST remain pending.
-   * We never turn an unknown result into a false success or an automatic
-   * refund that could cause double spending.
-   */
-  await updateTransaction(admin, user.id, reference, {
-    status: "pending",
-    provider: "peyflex",
-    provider_reference: providerRef ?? reference,
-    metadata: {
-      ...metadata,
-      peyflex_status: status,
-      peyflex_response: safeResponse,
-      reconciliation_required: true,
-    },
-  });
+function normalizedAction(value: unknown): string {
+  const action = clean(value).toLowerCase();
 
-  return {
-    success: true,
-    status: "pending",
-    reference,
-    transaction_id: transactionId,
-    provider_reference: providerRef,
-    message:
-      providerMessage(result.body) ||
-      "Your payment is being processed and will be verified.",
+  const aliases: Record<string, string> = {
+    catalogue: "catalog",
+    get_catalogue: "catalog",
+    get_catalog: "catalog",
+
+    get_billers: "billers",
+    get_networks: "networks",
+
+    get_items: "items",
+    get_plans: "plans",
+
+    verify_customer: "verify",
+    verifycustomer: "verify",
+
+    validate_customer: "verify",
+    validate: "verify",
+
+    pay: "purchase",
+    service: "purchase",
   };
+
+  return aliases[action] ?? action;
 }
 
 Deno.serve(async (req) => {
+  const headers = corsHeaders();
+
   if (req.method === "OPTIONS") {
     return new Response(null, {
       status: 204,
-      headers: corsHeaders,
+      headers,
     });
   }
 
@@ -1152,13 +1549,13 @@ Deno.serve(async (req) => {
       return json(
         {
           success: false,
-          error: "Authentication required.",
+          error: "Unauthorized.",
         },
         401,
       );
     }
 
-    let body: any;
+    let body: Record<string, unknown>;
 
     try {
       body = await req.json();
@@ -1172,30 +1569,94 @@ Deno.serve(async (req) => {
       );
     }
 
-    const action = clean(body?.action ?? "catalog").toLowerCase();
-    const service = serviceOf(body?.service);
+    const action = normalizedAction(
+      body?.action ?? "catalog",
+    );
 
-    if (
-      !service ||
-      !SUPPORTED.has(service)
-    ) {
+    const service = serviceOf(
+      body?.service,
+    );
+
+    /*
+     * Some catalogue calls can technically be made
+     * without a service, but ServicePayment always supplies
+     * one. Keep the validation explicit so bad requests do
+     * not silently hit the provider.
+     */
+    if (!service || !SUPPORTED_SERVICES.has(service)) {
       return json(
         {
           success: false,
-          error:
-            "This service is not available through the current Peyflex integration.",
+          error: "Unsupported or missing service.",
         },
         400,
       );
     }
 
-    const admin = adminClient();
-
+    /*
+     * -------------------------------------------------------
+     * CATALOGUE / BILLERS / NETWORKS
+     * -------------------------------------------------------
+     *
+     * ServicePayment currently calls:
+     *
+     * { action: "billers", service: "..." }
+     *
+     * and then:
+     *
+     * { action: "items", service: "...", biller_code: "..." }
+     *
+     * Both are intentionally supported here.
+     */
     if (
       action === "catalog" ||
-      action === "get_catalog" ||
       action === "billers" ||
-      action === "networks" ||
+      action === "networks"
+    ) {
+      const code = clean(
+        pickBody(
+          body,
+          "biller_code",
+          "billerCode",
+          "provider_code",
+          "providerCode",
+          "network_code",
+          "networkCode",
+          "network",
+          "provider",
+          "identifier",
+          "cable_tv",
+          "cableTv",
+        ),
+      );
+
+      const result = await catalog(
+        service,
+        code || undefined,
+      );
+
+      return json(result);
+    }
+
+    /*
+     * -------------------------------------------------------
+     * ITEMS / PLANS
+     * -------------------------------------------------------
+     *
+     * This is the critical compatibility fix for the current
+     * ServicePayment.tsx.
+     *
+     * The frontend sends:
+     *
+     * action: "items"
+     *
+     * The previous backend did NOT recognize that action and
+     * returned:
+     *
+     * Unsupported action.
+     */
+    if (
+      action === "items" ||
       action === "plans"
     ) {
       const code = clean(
@@ -1209,31 +1670,60 @@ Deno.serve(async (req) => {
           "networkCode",
           "network",
           "provider",
+          "identifier",
           "cable_tv",
           "cableTv",
         ),
       );
 
-      const result = await catalog(service, code || undefined);
+      const result = await catalog(
+        service,
+        code || undefined,
+      );
+
+      return json({
+        ...result,
+        items:
+          Array.isArray(result.items)
+            ? result.items
+            : [],
+        plans:
+          Array.isArray(result.plans)
+            ? result.plans
+            : Array.isArray(result.items)
+            ? result.items
+            : [],
+      });
+    }
+
+    /*
+     * -------------------------------------------------------
+     * CUSTOMER VERIFICATION
+     * -------------------------------------------------------
+     */
+    if (action === "verify") {
+      const result =
+        await verifyCustomer(
+          service,
+          body,
+        );
 
       return json(result);
     }
 
-    if (
-      action === "verify" ||
-      action === "validate" ||
-      action === "verify_customer"
-    ) {
-      const result = await verifyCustomer(service, body);
-      return json(result);
-    }
+    /*
+     * -------------------------------------------------------
+     * PURCHASE
+     * -------------------------------------------------------
+     */
+    if (action === "purchase") {
+      const result =
+        await purchase(
+          user.id,
+          service,
+          body,
+        );
 
-    if (
-      action === "pay" ||
-      action === "purchase" ||
-      action === "service"
-    ) {
-      const result = await purchase(admin, user, service, body);
       return json(result);
     }
 
@@ -1241,23 +1731,27 @@ Deno.serve(async (req) => {
       {
         success: false,
         error: "Unsupported action.",
+        action,
       },
       400,
     );
   } catch (error) {
-    console.error("Peyflex services error:", error);
+    console.error(
+      "peyflex-services error:",
+      error,
+    );
 
     const message =
       error instanceof Error
         ? error.message
-        : "Unable to process Peyflex service request.";
+        : "An unexpected error occurred.";
 
     return json(
       {
         success: false,
         error: message,
       },
-      400,
+      500,
     );
   }
 });

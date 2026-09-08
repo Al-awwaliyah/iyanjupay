@@ -1,5 +1,8 @@
 import {
+  asArray,
   asObject,
+  extractObjectData,
+  firstValue,
   normalizeStatus,
   numberValue,
   peyflexGet,
@@ -10,6 +13,7 @@ import {
   providerMessage,
   providerReference,
   roundSellingPrice,
+  text,
 } from "../_shared/peyflex.ts";
 
 import {
@@ -28,37 +32,38 @@ type Service =
   | "data-card"
   | "recharge-card";
 
-const SUPPORTED_SERVICES = new Set<Service>([
-  "airtime",
-  "data",
-  "cable",
-  "electricity",
-  "education",
-  "airtime-card",
-  "data-card",
-  "recharge-card",
-]);
+const SUPPORTED_SERVICES =
+  new Set<Service>([
+    "airtime",
+    "data",
+    "cable",
+    "electricity",
+    "education",
+    "airtime-card",
+    "data-card",
+    "recharge-card",
+  ]);
 
 /*
- * Pricing
+ * ---------------------------------------------------------
+ * PRICING
+ * ---------------------------------------------------------
  *
- * Airtime = 0% markup
- * Everything else = 10% markup
+ * Airtime:
+ *   0%
+ *
+ * Everything else:
+ *   10%
+ *
+ * Final selling price is rounded UP to nearest ₦5.
  */
 const STANDARD_MARKUP = 0.10;
 const AIRTIME_MARKUP = 0;
 
 /*
- * Explicit CORS headers.
- *
- * The browser sends an OPTIONS preflight before the
- * authenticated POST request. These headers MUST be
- * present on the preflight response.
- *
- * "*" is intentionally used here because the function
- * does not use browser credentials/cookies. Supabase
- * authentication is supplied through the Authorization
- * header.
+ * ---------------------------------------------------------
+ * CORS
+ * ---------------------------------------------------------
  */
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -66,24 +71,59 @@ const CORS_HEADERS = {
     "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods":
     "POST, OPTIONS",
-  "Access-Control-Max-Age": "86400",
+  "Access-Control-Max-Age":
+    "86400",
+  "Content-Type":
+    "application/json",
 };
 
-function clean(value: unknown): string {
-  return String(value ?? "").trim();
+function clean(
+  value: unknown,
+): string {
+  return text(value).trim();
+}
+
+function bodyObject(
+  value: unknown,
+): Record<string, any> {
+  return asObject(value);
 }
 
 function pickBody(
   body: Record<string, unknown>,
   ...keys: string[]
 ): unknown {
-  for (const key of keys) {
+  const obj =
+    bodyObject(body);
+
+  const details =
+    asObject(
+      obj.details,
+    );
+
+  for (
+    const key of keys
+  ) {
+    const direct =
+      obj[key];
+
     if (
-      body[key] !== undefined &&
-      body[key] !== null &&
-      clean(body[key]) !== ""
+      direct !== undefined &&
+      direct !== null &&
+      clean(direct) !== ""
     ) {
-      return body[key];
+      return direct;
+    }
+
+    const nested =
+      details[key];
+
+    if (
+      nested !== undefined &&
+      nested !== null &&
+      clean(nested) !== ""
+    ) {
+      return nested;
     }
   }
 
@@ -91,465 +131,1061 @@ function pickBody(
 }
 
 /*
- * Convert every frontend/service alias into the one
- * internal service name used by this function.
+ * ---------------------------------------------------------
+ * SERVICE NORMALIZATION
+ * ---------------------------------------------------------
  */
-function serviceOf(value: unknown): Service | null {
-  const raw = clean(value).toLowerCase();
+function serviceOf(
+  value: unknown,
+): Service | null {
+  const raw =
+    clean(value)
+      .toLowerCase();
 
-  const aliases: Record<string, Service> = {
-    airtime: "airtime",
+  const aliases:
+    Record<string, Service> = {
+      airtime:
+        "airtime",
 
-    data: "data",
-    mobile_data: "data",
-    "mobile-data": "data",
-    mobiledata: "data",
+      data:
+        "data",
+      mobile_data:
+        "data",
+      "mobile-data":
+        "data",
+      mobiledata:
+        "data",
 
-    cable: "cable",
-    cabletv: "cable",
-    "cable-tv": "cable",
+      cable:
+        "cable",
+      cabletv:
+        "cable",
+      "cable-tv":
+        "cable",
 
-    electricity: "electricity",
-    electric: "electricity",
+      electricity:
+        "electricity",
+      electric:
+        "electricity",
 
-    education: "education",
-    waec: "education",
+      education:
+        "education",
+      waec:
+        "education",
 
-    "airtime-card": "airtime-card",
-    airtime_card: "airtime-card",
-    airtime_epin: "airtime-card",
-    "airtime-epin": "airtime-card",
-    airtimepin: "airtime-card",
+      "airtime-card":
+        "airtime-card",
+      airtime_card:
+        "airtime-card",
+      airtime_epin:
+        "airtime-card",
+      "airtime-epin":
+        "airtime-card",
+      airtimepin:
+        "airtime-card",
 
-    "data-card": "data-card",
-    data_card: "data-card",
-    data_epin: "data-card",
-    "data-epin": "data-card",
-    datapin: "data-card",
+      "data-card":
+        "data-card",
+      data_card:
+        "data-card",
+      data_epin:
+        "data-card",
+      "data-epin":
+        "data-card",
+      datapin:
+        "data-card",
 
-    "recharge-card": "recharge-card",
-    recharge_card: "recharge-card",
-    recharge: "recharge-card",
-    epin: "recharge-card",
-  };
+      "recharge-card":
+        "recharge-card",
+      recharge_card:
+        "recharge-card",
+      recharge:
+        "recharge-card",
+      epin:
+        "recharge-card",
+    };
 
-  return aliases[raw] ?? null;
+  return (
+    aliases[raw] ??
+    null
+  );
 }
 
-function networkCode(value: unknown): string {
-  if (value && typeof value === "object") {
-    const obj = value as Record<string, unknown>;
+/*
+ * ---------------------------------------------------------
+ * PHONE
+ * ---------------------------------------------------------
+ */
+function normalizePhone(
+  value: unknown,
+): string {
+  let phone =
+    clean(value)
+      .replace(
+        /[^\d+]/g,
+        "",
+      );
 
-    return clean(
-      obj.code ??
-        obj.network_code ??
-        obj.networkCode ??
-        obj.identifier ??
-        obj.provider_code ??
-        obj.providerCode ??
-        obj.id ??
-        obj.value,
-    );
-  }
-
-  return clean(value);
-}
-
-function normalizePhone(value: unknown): string {
-  let phone = clean(value).replace(/[^\d+]/g, "");
-
-  if (phone.startsWith("+234")) {
-    phone = "0" + phone.slice(4);
-  } else if (phone.startsWith("234")) {
-    phone = "0" + phone.slice(3);
+  if (
+    phone.startsWith("+234")
+  ) {
+    phone =
+      "234" +
+      phone.slice(4);
+  } else if (
+    phone.startsWith("0")
+  ) {
+    phone =
+      "234" +
+      phone.slice(1);
   }
 
   return phone;
 }
 
-function validPhone(phone: string): boolean {
-  return /^0[789]\d{9}$/.test(phone);
+function validPhone(
+  phone: string,
+): boolean {
+  return /^234[789]\d{9}$/.test(
+    phone,
+  );
 }
 
 /*
- * Extract the internal provider plan/item ID.
- *
- * This remains available to the backend but is never
- * intended to be shown as a customer-facing label.
+ * ---------------------------------------------------------
+ * NETWORK
+ * ---------------------------------------------------------
  */
-function itemId(item: unknown): string {
-  if (!item || typeof item !== "object") {
-    return "";
+function networkCode(
+  value: unknown,
+): string {
+  if (
+    value &&
+    typeof value ===
+      "object"
+  ) {
+    const obj =
+      asObject(value);
+
+    return clean(
+      firstValue(
+        obj.code,
+        obj.network_code,
+        obj.networkCode,
+        obj.identifier,
+        obj.provider_code,
+        obj.providerCode,
+        obj.id,
+        obj.value,
+      ),
+    );
   }
 
-  const obj = item as Record<string, unknown>;
+  const raw =
+    clean(value);
+
+  const normalized =
+    raw
+      .toLowerCase()
+      .replace(
+        /[^a-z0-9]/g,
+        "",
+      );
+
+  if (
+    normalized.includes(
+      "airtel",
+    )
+  ) {
+    return "airtel";
+  }
+
+  if (
+    normalized === "mtn" ||
+    normalized.includes(
+      "mtn",
+    )
+  ) {
+    return "mtn";
+  }
+
+  if (
+    normalized === "glo" ||
+    normalized.includes(
+      "glo",
+    )
+  ) {
+    return "glo";
+  }
+
+  if (
+    normalized.includes(
+      "9mobile",
+    ) ||
+    normalized.includes(
+      "etisalat",
+    )
+  ) {
+    return "9mobile";
+  }
+
+  return raw;
+}
+
+/*
+ * ---------------------------------------------------------
+ * PROVIDER ITEM HELPERS
+ * ---------------------------------------------------------
+ */
+function itemId(
+  item: unknown,
+): string {
+  const obj =
+    asObject(item);
 
   return clean(
-    obj.id ??
-      obj.code ??
-      obj.plan_code ??
-      obj.planCode ??
-      obj.plan_id ??
-      obj.planId ??
-      obj.identifier ??
+    firstValue(
+      obj.id,
+      obj.ID,
+      obj.code,
+      obj.Code,
+      obj.plan_code,
+      obj.planCode,
+      obj.plan_id,
+      obj.planId,
+      obj.identifier,
       obj.value,
+    ),
   );
 }
 
-function rawItemName(item: unknown): string {
-  if (!item || typeof item !== "object") {
-    return clean(item);
-  }
-
-  const obj = item as Record<string, unknown>;
+function rawItemName(
+  item: unknown,
+): string {
+  const obj =
+    asObject(item);
 
   return clean(
-    obj.name ??
-      obj.plan_name ??
-      obj.planName ??
-      obj.title ??
-      obj.description ??
-      obj.package_name ??
-      obj.packageName ??
-      obj.label ??
-      obj.product_name ??
-      obj.productName ??
+    firstValue(
+      obj.name,
+      obj.Name,
+      obj.plan_name,
+      obj.planName,
+      obj.title,
+      obj.Title,
+      obj.description,
+      obj.Description,
+      obj.package_name,
+      obj.packageName,
+      obj.label,
+      obj.Label,
+      obj.product_name,
+      obj.productName,
       itemId(item),
+    ),
   );
 }
 
 /*
- * IMPORTANT:
- *
- * Peyflex may identify plans with labels such as:
- *
- * SME
- * Direct
- * Gifting
- * Awoof
- * Corporate
- *
- * Those are provider/product classifications and must
- * never become customer-facing plan labels.
- *
- * The underlying plan CODE remains untouched.
+ * Provider classifications must NEVER become
+ * customer-facing labels.
  */
-function cleanCustomerPlanName(value: unknown): string {
-  let name = clean(value);
+function cleanCustomerPlanName(
+  value: unknown,
+): string {
+  let name =
+    clean(value);
 
-  /*
-   * Remove common provider classifications regardless
-   * of capitalization.
-   */
-  name = name
-    .replace(/\bSME\b/gi, "")
-    .replace(/\bDIRECT\b/gi, "")
-    .replace(/\bGIFTING\b/gi, "")
-    .replace(/\bGIFT\b/gi, "")
-    .replace(/\bAWOOF\b/gi, "")
-    .replace(/\bCORPORATE\s+DATA\b/gi, "")
-    .replace(/\bCORPORATE\b/gi, "")
-    .replace(/\bBUSINESS\s+DATA\b/gi, "");
+  name =
+    name
+      .replace(
+        /\bSME\b/gi,
+        "",
+      )
+      .replace(
+        /\bDIRECT\s+DATA\b/gi,
+        "",
+      )
+      .replace(
+        /\bDIRECT\b/gi,
+        "",
+      )
+      .replace(
+        /\bGIFTING\b/gi,
+        "",
+      )
+      .replace(
+        /\bGIFT\b/gi,
+        "",
+      )
+      .replace(
+        /\bAWOOF\b/gi,
+        "",
+      )
+      .replace(
+        /\bCORPORATE\s+DATA\b/gi,
+        "",
+      )
+      .replace(
+        /\bCORPORATE\b/gi,
+        "",
+      )
+      .replace(
+        /\bBUSINESS\s+DATA\b/gi,
+        "",
+      )
+      .replace(
+        /\bPROMO\b/gi,
+        "",
+      )
+      .replace(
+        /\bPROMOTION\b/gi,
+        "",
+      )
+      .replace(
+        /\s+/g,
+        " ",
+      )
+      .trim();
 
-  /*
-   * Remove empty separators left after classification
-   * removal.
-   */
-  name = name
-    .replace(/\s*[-–—|:/]\s*/g, " ")
-    .replace(/\(\s*\)/g, "")
-    .replace(/\[\s*\]/g, "")
-    .replace(/\{\s*\}/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
+  name =
+    name
+      .replace(
+        /^\s*[-–—|:/]+\s*/,
+        "",
+      )
+      .replace(
+        /\s*[-–—|:/]+\s*$/g,
+        "",
+      )
+      .replace(
+        /\(\s*\)/g,
+        "",
+      )
+      .replace(
+        /\[\s*\]/g,
+        "",
+      )
+      .replace(
+        /\{\s*\}/g,
+        "",
+      )
+      .replace(
+        /\s+/g,
+        " ",
+      )
+      .trim();
 
   return name;
 }
 
-function itemPrice(item: unknown): number {
-  if (!item || typeof item !== "object") {
-    return numberValue(item);
-  }
+/*
+ * ---------------------------------------------------------
+ * PRICE EXTRACTION
+ * ---------------------------------------------------------
+ */
+function itemPrice(
+  item: unknown,
+): number {
+  const raw =
+    asObject(item);
 
-  const obj = item as Record<string, unknown>;
+  const nestedCandidates = [
+    raw.data,
+    raw.plan,
+    raw.product,
+    raw.option,
+    raw.details,
+    raw.package,
+  ];
+
+  let nested:
+    Record<string, any> = {};
+
+  for (
+    const candidate of
+      nestedCandidates
+  ) {
+    const obj =
+      asObject(candidate);
+
+    if (
+      Object.keys(obj)
+        .length > 0
+    ) {
+      nested = obj;
+      break;
+    }
+  }
 
   return numberValue(
-    obj.price ??
-      obj.amount ??
-      obj.selling_price ??
-      obj.sellingPrice ??
-      obj.cost ??
-      obj.face_value ??
-      obj.faceValue ??
-      obj.value,
+    firstValue(
+      raw.price,
+      raw.Price,
+
+      raw.amount,
+      raw.Amount,
+
+      raw.cost,
+      raw.Cost,
+
+      raw.selling_price,
+      raw.sellingPrice,
+
+      raw.provider_price,
+      raw.providerPrice,
+
+      raw.provider_amount,
+      raw.providerAmount,
+
+      raw.plan_amount,
+      raw.planAmount,
+
+      raw.denomination,
+
+      raw.face_value,
+      raw.faceValue,
+
+      raw.value,
+
+      nested.price,
+      nested.amount,
+      nested.cost,
+      nested.provider_price,
+      nested.provider_amount,
+      nested.denomination,
+      nested.face_value,
+      nested.faceValue,
+      nested.value,
+    ),
   );
 }
 
-function itemValidity(item: unknown): string {
-  if (!item || typeof item !== "object") {
-    return "";
-  }
+/*
+ * ---------------------------------------------------------
+ * VALIDITY
+ * ---------------------------------------------------------
+ */
+function itemValidity(
+  item: unknown,
+): string {
+  const obj =
+    asObject(item);
 
-  const obj = item as Record<string, unknown>;
-
-  return clean(
-    obj.validity ??
-      obj.validity_period ??
-      obj.validityPeriod ??
-      obj.duration ??
-      obj.period ??
+  const raw =
+    firstValue(
+      obj.validity,
+      obj.validity_period,
+      obj.validityPeriod,
+      obj.validity_days,
+      obj.validityDays,
+      obj.duration,
+      obj.duration_days,
+      obj.durationDays,
+      obj.period,
       obj.days,
-  );
-}
+    );
 
-function itemNetwork(item: unknown): string {
-  if (!item || typeof item !== "object") {
-    return "";
+  if (
+    raw !== undefined &&
+    raw !== null
+  ) {
+    const value =
+      clean(raw);
+
+    if (value) {
+      return value;
+    }
   }
 
-  const obj = item as Record<string, unknown>;
+  const name =
+    clean(
+      rawItemName(item),
+    );
+
+  const match =
+    name.match(
+      /\b\d+\s*(?:day|days|week|weeks|month|months)\b/i,
+    );
+
+  return match
+    ? match[0]
+    : "";
+}
+
+/*
+ * ---------------------------------------------------------
+ * NETWORK FROM PLAN
+ * ---------------------------------------------------------
+ */
+function itemNetwork(
+  item: unknown,
+  fallback = "",
+): string {
+  const obj =
+    asObject(item);
 
   return clean(
-    obj.network ??
-      obj.network_code ??
-      obj.networkCode ??
-      obj.provider ??
-      obj.provider_code ??
-      obj.providerCode ??
+    firstValue(
+      obj.network,
+      obj.network_code,
+      obj.networkCode,
+      obj.network_id,
+      obj.networkId,
+      obj.provider,
+      obj.provider_code,
+      obj.providerCode,
       obj.identifier,
+      fallback,
+    ),
   );
 }
 
-function calculateSellingPrice(
-  providerPrice: number,
+/*
+ * ---------------------------------------------------------
+ * EDUCATION FILTER
+ * ---------------------------------------------------------
+ *
+ * NECO must not be exposed or purchasable through
+ * the IyanjuPay customer catalogue.
+ */
+function isNeco(
+  item: unknown,
+): boolean {
+  const obj =
+    asObject(item);
+
+  const haystack = [
+    obj.name,
+    obj.Name,
+    obj.title,
+    obj.Title,
+    obj.description,
+    obj.Description,
+    obj.provider,
+    obj.provider_name,
+    obj.providerName,
+    obj.code,
+    obj.Code,
+    obj.id,
+    obj.ID,
+    obj.plan_id,
+    obj.planId,
+    obj.plan_code,
+    obj.planCode,
+  ]
+    .map(clean)
+    .join(" ")
+    .toLowerCase();
+
+  return /\bneco\b/.test(
+    haystack,
+  );
+}
+
+/*
+ * ---------------------------------------------------------
+ * PUBLIC PROVIDER
+ * ---------------------------------------------------------
+ */
+function publicProvider(
+  item: unknown,
+): Record<string, unknown> {
+  if (
+    typeof item ===
+    "string"
+  ) {
+    return {
+      id: item,
+      code: item,
+      name: item,
+    };
+  }
+
+  const obj =
+    asObject(item);
+
+  const code =
+    clean(
+      firstValue(
+        obj.identifier,
+        obj.code,
+        obj.Code,
+        obj.id,
+        obj.ID,
+        obj.network_code,
+        obj.networkCode,
+        obj.provider_code,
+        obj.providerCode,
+      ),
+    );
+
+  const name =
+    clean(
+      firstValue(
+        obj.name,
+        obj.Name,
+        obj.network_name,
+        obj.networkName,
+        obj.provider_name,
+        obj.providerName,
+        obj.title,
+        obj.Title,
+        obj.label,
+        obj.Label,
+        code,
+      ),
+    );
+
+  return {
+    id: code,
+    code,
+    name,
+  };
+}
+
+/*
+ * ---------------------------------------------------------
+ * PUBLIC ITEM
+ * ---------------------------------------------------------
+ *
+ * IMPORTANT:
+ *
+ * We intentionally expose only:
+ *
+ * id
+ * code
+ * name
+ * price
+ * provider_price
+ * validity
+ * network
+ *
+ * No provider classification fields are returned.
+ */
+function publicItem(
+  item: unknown,
   service: Service,
-): number {
+  fallbackNetwork = "",
+): Record<string, unknown> {
+  const obj =
+    asObject(item);
+
+  const id =
+    itemId(obj);
+
+  const providerPrice =
+    itemPrice(obj);
+
   const markup =
     service === "airtime"
       ? AIRTIME_MARKUP
       : STANDARD_MARKUP;
 
-  return roundSellingPrice(
-    providerPrice * (1 + markup),
-  );
-}
+  const price =
+    providerPrice > 0
+      ? roundSellingPrice(
+          providerPrice,
+          markup,
+        )
+      : 0;
 
-function publicItem(
-  item: unknown,
-  service: Service,
-) {
-  const providerPrice = itemPrice(item);
+  const network =
+    itemNetwork(
+      obj,
+      fallbackNetwork,
+    );
 
-  /*
-   * Only clean customer-facing fields are exposed.
-   *
-   * The raw Peyflex object is deliberately NOT returned.
-   * This prevents fields such as:
-   * plan_type, category, product_type, SME, Direct,
-   * Gifting, etc. from leaking into the frontend.
-   */
   return {
-    id: itemId(item),
-    code: itemId(item),
-    name: cleanCustomerPlanName(
-      rawItemName(item),
-    ),
-    price: calculateSellingPrice(
+    id,
+    code: id,
+
+    name:
+      cleanCustomerPlanName(
+        rawItemName(obj),
+      ),
+
+    price,
+
+    provider_price:
       providerPrice,
-      service,
-    ),
-    provider_price: providerPrice,
-    validity: itemValidity(item),
-    network: itemNetwork(item),
-  };
-}
 
-function publicProvider(item: unknown) {
-  if (typeof item === "string") {
-    return {
-      id: item,
-      code: item,
-      name: clean(item),
-    };
-  }
+    validity:
+      itemValidity(obj),
 
-  const obj = asObject(item);
-
-  return {
-    id: clean(
-      obj.id ??
-        obj.code ??
-        obj.identifier ??
-        obj.network_code ??
-        obj.networkCode ??
-        obj.provider_code ??
-        obj.providerCode,
-    ),
-
-    code: clean(
-      obj.code ??
-        obj.identifier ??
-        obj.network_code ??
-        obj.networkCode ??
-        obj.provider_code ??
-        obj.providerCode ??
-        obj.id,
-    ),
-
-    name: clean(
-      obj.name ??
-        obj.network_name ??
-        obj.networkName ??
-        obj.provider_name ??
-        obj.providerName ??
-        obj.title ??
-        obj.label ??
-        obj.description,
-    ),
+    network:
+      network
+        ? network
+        : "",
   };
 }
 
 /*
- * Convert common Peyflex response structures into an
- * array without exposing provider response structure
- * to the frontend.
+ * ---------------------------------------------------------
+ * RESPONSE LIST
+ * ---------------------------------------------------------
  */
-function extractList(value: unknown): unknown[] {
-  if (Array.isArray(value)) {
-    return value;
-  }
-
-  const obj = asObject(value);
-
-  for (const key of [
-    "data",
-    "results",
-    "items",
-    "plans",
-    "providers",
-    "networks",
-    "billers",
-    "options",
-    "products",
-    "available_plans",
-  ]) {
-    if (Array.isArray(obj[key])) {
-      return obj[key] as unknown[];
-    }
-  }
-
-  return [];
-}
-
-function responseList(value: unknown): unknown[] {
- 
+function extractList(
+  value: unknown,
+): unknown[] {
   if (
-    value &&
-    typeof value === "object" &&
-    !Array.isArray(value)
+    Array.isArray(value)
   ) {
-    const wrapper =
-      value as Record<string, unknown>;
-
-    if (
-      "body" in wrapper &&
-      "httpStatus" in wrapper &&
-      "ok" in wrapper
-    ) {
-      return responseList(
-        wrapper.body,
-      );
-    }
-  }
-
-  const direct =
-    extractList(value);
-
-  if (direct.length > 0) {
-    return direct;
+    return value;
   }
 
   const obj =
     asObject(value);
 
+  const candidates = [
+    obj.results,
+    obj.items,
+    obj.plans,
+    obj.providers,
+    obj.networks,
+    obj.billers,
+    obj.options,
+    obj.products,
+    obj.available_plans,
+  ];
+
+  for (
+    const candidate of
+      candidates
+  ) {
+    if (
+      Array.isArray(candidate)
+    ) {
+      return candidate;
+    }
+  }
+
+  if (
+    Array.isArray(obj.data)
+  ) {
+    return obj.data;
+  }
+
   if (
     obj.data &&
-    typeof obj.data === "object"
+    typeof obj.data ===
+      "object"
   ) {
-    return extractList(
-      obj.data,
-    );
+    const nested =
+      extractList(
+        obj.data,
+      );
+
+    if (
+      nested.length > 0
+    ) {
+      return nested;
+    }
   }
 
   return [];
 }
+
+function responseList(
+  value: unknown,
+): unknown[] {
+  const direct =
+    extractList(value);
+
+  if (
+    direct.length > 0
+  ) {
+    return direct;
+  }
+
+  return asArray(value);
+}
+
+/*
+ * ---------------------------------------------------------
+ * EDUCATION FLATTENER
+ * ---------------------------------------------------------
+ *
+ * Peyflex education catalogue may return providers
+ * containing nested plans.
+ */
 function flattenEducationPlans(
   value: unknown,
 ): unknown[] {
-  const result: unknown[] = [];
+  const result:
+    unknown[] = [];
 
-  const providers = responseList(value);
+  const topLevel =
+    responseList(value);
 
-  for (const provider of providers) {
-    const providerObj = asObject(provider);
-
-    const providerCode = clean(
-      providerObj.code ??
-        providerObj.identifier ??
-        providerObj.id,
-    );
-
-    let plans: unknown[] = [];
-
-    const directPlans =
-      extractList(providerObj.plans);
-
-    if (directPlans.length > 0) {
-      plans = directPlans;
-    } else {
-      const items =
-        extractList(providerObj.items);
-
-      if (items.length > 0) {
-        plans = items;
-      } else {
-        const products =
-          extractList(providerObj.products);
-
-        if (products.length > 0) {
-          plans = products;
-        } else {
-          plans = extractList(
-            providerObj.available_plans,
-          );
-        }
-      }
-    }
-
-    if (plans.length === 0) {
-      /*
-       * Some provider responses may already represent
-       * an individual purchasable plan.
-       */
-      result.push(provider);
+  for (
+    const provider of
+      topLevel
+  ) {
+    if (
+      isNeco(provider)
+    ) {
       continue;
     }
 
-    for (const plan of plans) {
+    const providerObj =
+      asObject(provider);
+
+    const providerCode =
+      clean(
+        firstValue(
+          providerObj.identifier,
+          providerObj.code,
+          providerObj.id,
+          providerObj.provider_code,
+          providerObj.providerCode,
+        ),
+      );
+
+    const nestedCandidates = [
+      providerObj.plans,
+      providerObj.items,
+      providerObj.products,
+      providerObj.available_plans,
+      providerObj.options,
+    ];
+
+    let plans:
+      unknown[] = [];
+
+    for (
+      const candidate of
+        nestedCandidates
+    ) {
+      const extracted =
+        extractList(
+          candidate,
+        );
+
+      if (
+        extracted.length > 0
+      ) {
+        plans =
+          extracted;
+        break;
+      }
+    }
+
+    /*
+     * If no nested plans exist, the provider itself
+     * may already be the purchasable product.
+     */
+    if (
+      plans.length === 0
+    ) {
+      if (
+        !isNeco(
+          provider,
+        )
+      ) {
+        result.push(
+          provider,
+        );
+      }
+
+      continue;
+    }
+
+    for (
+      const plan of
+        plans
+    ) {
+      if (
+        isNeco(plan)
+      ) {
+        continue;
+      }
+
       if (
         plan &&
-        typeof plan === "object"
+        typeof plan ===
+          "object"
       ) {
         result.push({
-          ...(plan as Record<string, unknown>),
-          provider: providerCode,
-          provider_code: providerCode,
+          ...(
+            plan as Record<
+              string,
+              unknown
+            >
+          ),
+
+          provider:
+            providerCode,
+
+          provider_code:
+            providerCode,
         });
       } else {
         result.push({
           value: plan,
-          provider: providerCode,
-          provider_code: providerCode,
+          provider:
+            providerCode,
+          provider_code:
+            providerCode,
+        });
+      }
+    }
+  }
+
+  /*
+   * Some Peyflex responses may return the actual
+   * plans directly rather than nesting them.
+   */
+  if (
+    result.length === 0 &&
+    topLevel.length > 0
+  ) {
+    for (
+      const item of
+        topLevel
+    ) {
+      if (
+        !isNeco(item)
+      ) {
+        result.push(
+          item,
+        );
+      }
+    }
+  }
+
+  return result;
+}
+
+/*
+ * ---------------------------------------------------------
+ * RECHARGE CARD FLATTENER
+ * ---------------------------------------------------------
+ *
+ * /api/rc/options/ may return:
+ *
+ * - an array
+ * - data array
+ * - an object containing options
+ * - an object containing denominations
+ * - provider/network keyed objects
+ *
+ * This normalizes those structures without exposing
+ * the raw provider response.
+ */
+function flattenRechargeOptions(
+  value: unknown,
+): unknown[] {
+  const result:
+    unknown[] = [];
+
+  const payload =
+    asObject(value);
+
+  const direct =
+    responseList(value);
+
+  if (
+    direct.length > 0
+  ) {
+    return direct;
+  }
+
+  /*
+   * If options is an object instead of an array,
+   * convert each keyed value into an item.
+   */
+  const options =
+    payload.options;
+
+  if (
+    options &&
+    typeof options ===
+      "object" &&
+    !Array.isArray(options)
+  ) {
+    for (
+      const [
+        key,
+        option,
+      ] of Object.entries(
+        options as Record<
+          string,
+          unknown
+        >,
+      )
+    ) {
+      if (
+        option &&
+        typeof option ===
+          "object"
+      ) {
+        result.push({
+          ...(
+            option as Record<
+              string,
+              unknown
+            >
+          ),
+          code:
+            firstValue(
+              asObject(
+                option,
+              ).code,
+              key,
+            ),
+        });
+      } else {
+        result.push({
+          code: key,
+          value: option,
+          name: key,
+        });
+      }
+    }
+  }
+
+  /*
+   * Check data object.
+   */
+  const data =
+    payload.data;
+
+  if (
+    data &&
+    typeof data ===
+      "object" &&
+    !Array.isArray(data)
+  ) {
+    for (
+      const [
+        key,
+        option,
+      ] of Object.entries(
+        data as Record<
+          string,
+          unknown
+        >,
+      ) {
+      if (
+        option &&
+        typeof option ===
+          "object"
+      ) {
+        result.push({
+          ...(
+            option as Record<
+              string,
+              unknown
+            >
+          ),
+          code:
+            firstValue(
+              asObject(
+                option,
+              ).code,
+              key,
+            ),
         });
       }
     }
@@ -567,277 +1203,470 @@ async function catalog(
   service: Service,
   code?: string,
 ) {
-  switch (service) {
-    /*
-     * AIRTIME
-     *
-     * Amount based.
-     * No plan cards are required.
-     */
-    case "airtime": {
-      const response =
-        await peyflexPublicGet(
-          "/api/airtime/networks/",
-        );
-
-      const providers =
-        responseList(response).map(
-          publicProvider,
-        );
-
-      return {
-        success: true,
-        service,
-        amount_based: true,
-        billers: providers,
-        networks: providers,
-        items: [],
-        plans: [],
-      };
-    }
-
-    /*
-     * DATA
-     */
-    case "data": {
-      const networksResponse =
-        await peyflexPublicGet(
-          "/api/data/networks/",
-        );
-
-      const networks =
-        responseList(
-          networksResponse,
-        ).map(publicProvider);
-
-      /*
-       * Initial request:
-       * action = billers
-       *
-       * No selected network yet.
-       */
-      if (!code) {
-        return {
-          success: true,
-          service,
-          amount_based: false,
-          billers: networks,
-          networks,
-          items: [],
-          plans: [],
-        };
-      }
-
-      /*
-       * Second request:
-       * action = items
-       *
-       * Current ServicePayment sends the selected
-       * network as biller_code.
-       */
-      const plansResponse =
-        await peyflexPublicGet(
-          "/api/data/plans/",
-          {
-            network: code,
-          },
-        );
-
-      const rawPlans =
-        responseList(plansResponse);
-
-      const items =
-        rawPlans.map((item) =>
-          publicItem(item, service),
-        );
-
-      return {
-        success: true,
-        service,
-        amount_based: false,
-        billers: networks,
-        networks,
-        items,
-        plans: items,
-      };
-    }
-
-    /*
-     * CABLE TV
-     */
-    case "cable": {
-      const providersResponse =
-        await peyflexPublicGet(
-          "/api/cable/providers/",
-        );
-
-      const providers =
-        responseList(
-          providersResponse,
-        ).map(publicProvider);
-
-      if (!code) {
-        return {
-          success: true,
-          service,
-          amount_based: false,
-          billers: providers,
-          providers,
-          items: [],
-          plans: [],
-        };
-      }
-
-      const plansResponse =
-        await peyflexPublicGet(
-          `/api/cable/plans/${encodeURIComponent(code)}/`,
-        );
-
-      const rawPlans =
-        responseList(plansResponse);
-
-      const items =
-        rawPlans.map((item) =>
-          publicItem(item, service),
-        );
-
-      return {
-        success: true,
-        service,
-        amount_based: false,
-        billers: providers,
-        providers,
-        items,
-        plans: items,
-      };
-    }
-
-    /*
-     * ELECTRICITY
-     *
-     * Amount based.
-     */
-    case "electricity": {
-      const response =
-        await peyflexPublicGet(
-          "/api/electricity/plans/",
-          {
-            identifier: "electricity",
-          },
-        );
-
-      const companies =
-        responseList(response).map(
-          publicProvider,
-        );
-
-      return {
-        success: true,
-        service,
-        amount_based: true,
-        billers: companies,
-        providers: companies,
-        items: [],
-        plans: [],
-      };
-    }
-
-    /*
-     * EDUCATION / WAEC
-     */
-    case "education": {
-      const response =
-        await peyflexPublicGet(
-          "/api/education/providers/",
-        );
-
-      const providers =
-        responseList(response).map(
-          publicProvider,
-        );
-
-      let items: unknown[] = [];
-
-      const flattened =
-        flattenEducationPlans(response);
-
-      if (flattened.length > 0) {
-        items = flattened.map(
-          (item) =>
-            publicItem(item, service),
-        );
-      }
-
-      /*
-       * If a specific education provider was selected,
-       * filter plans belonging to that provider.
-       */
-      if (code) {
-        items = items.filter((item) => {
-          const itemObj =
-            asObject(item);
-
-          const rawProvider =
-            clean(
-              itemObj.network ??
-                itemObj.provider ??
-                itemObj.provider_code ??
-                itemObj.providerCode,
-            );
-
-          return (
-            !rawProvider ||
-            rawProvider === code
-          );
-        });
-      }
-
-      return {
-        success: true,
-        service,
-        amount_based: false,
-        billers: providers,
-        providers,
-        items,
-        plans: items,
-      };
-    }
-
-    /*
-     * AIRTIME CARD / DATA CARD / RECHARGE CARD
-     */
-    case "airtime-card":
-    case "data-card":
-    case "recharge-card": {
-      const response =
-        await peyflexPublicGet(
-          "/api/rc/options/",
-        );
-
-      const options =
-        responseList(response);
-
-      const items =
-        options.map((item) =>
-          publicItem(item, service),
-        );
-
-      return {
-        success: true,
-        service,
-        amount_based: false,
-        billers: [],
-        providers: [],
-        items,
-        plans: items,
-      };
-    }
-
-    default:
-      throw new Error(
-        "Unsupported service.",
+  /*
+   * -------------------------------------------------------
+   * AIRTIME
+   * -------------------------------------------------------
+   */
+  if (
+    service === "airtime"
+  ) {
+    const response =
+      await peyflexPublicGet(
+        "/api/airtime/networks/",
       );
+
+    const networks =
+      responseList(
+        response,
+      ).map(
+        publicProvider,
+      );
+
+    return {
+      success:
+        response.ok,
+      service,
+
+      amount_based:
+        true,
+
+      billers:
+        networks,
+
+      networks,
+
+      providers:
+        networks,
+
+      items: [],
+      plans: [],
+    };
   }
+
+  /*
+   * -------------------------------------------------------
+   * DATA
+   * -------------------------------------------------------
+   */
+  if (
+    service === "data"
+  ) {
+    const networksResponse =
+      await peyflexPublicGet(
+        "/api/data/networks/",
+      );
+
+    const networks =
+      responseList(
+        networksResponse,
+      ).map(
+        publicProvider,
+      );
+
+    if (!code) {
+      return {
+        success:
+          networksResponse.ok,
+
+        service,
+
+        amount_based:
+          false,
+
+        billers:
+          networks,
+
+        networks,
+
+        providers:
+          networks,
+
+        items: [],
+        plans: [],
+      };
+    }
+
+    const plansResponse =
+      await peyflexPublicGet(
+        "/api/data/plans/",
+        {
+          network:
+            networkCode(code),
+        },
+      );
+
+    const rawPlans =
+      responseList(
+        plansResponse,
+      );
+
+    const items =
+      rawPlans
+        .filter(
+          (item) =>
+            !isNeco(item),
+        )
+        .map(
+          (item) =>
+            publicItem(
+              item,
+              service,
+              code,
+            ),
+        )
+        .filter(
+          (item) =>
+            clean(item.id) !==
+              "" &&
+            numberValue(
+              item.provider_price,
+            ) > 0,
+        );
+
+    return {
+      success:
+        plansResponse.ok,
+
+      service,
+
+      amount_based:
+        false,
+
+      billers:
+        networks,
+
+      networks,
+
+      providers:
+        networks,
+
+      items,
+
+      plans:
+        items,
+    };
+  }
+
+  /*
+   * -------------------------------------------------------
+   * CABLE
+   * -------------------------------------------------------
+   */
+  if (
+    service === "cable"
+  ) {
+    const providersResponse =
+      await peyflexPublicGet(
+        "/api/cable/providers/",
+      );
+
+    const providers =
+      responseList(
+        providersResponse,
+      ).map(
+        publicProvider,
+      );
+
+    if (!code) {
+      return {
+        success:
+          providersResponse.ok,
+
+        service,
+
+        amount_based:
+          false,
+
+        billers:
+          providers,
+
+        providers,
+
+        items: [],
+        plans: [],
+      };
+    }
+
+    const plansResponse =
+      await peyflexPublicGet(
+        `/api/cable/plans/${encodeURIComponent(
+          code,
+        )}/`,
+      );
+
+    const rawPlans =
+      responseList(
+        plansResponse,
+      );
+
+    const items =
+      rawPlans
+        .map(
+          (item) =>
+            publicItem(
+              item,
+              service,
+              code,
+            ),
+        )
+        .filter(
+          (item) =>
+            clean(item.id) !==
+              "" &&
+            numberValue(
+              item.provider_price,
+            ) > 0,
+        );
+
+    return {
+      success:
+        plansResponse.ok,
+
+      service,
+
+      amount_based:
+        false,
+
+      billers:
+        providers,
+
+      providers,
+
+      items,
+
+      plans:
+        items,
+    };
+  }
+
+  /*
+   * -------------------------------------------------------
+   * ELECTRICITY
+   * -------------------------------------------------------
+   */
+  if (
+    service === "electricity"
+  ) {
+    const response =
+      await peyflexPublicGet(
+        "/api/electricity/plans/",
+        {
+          identifier:
+            "electricity",
+        },
+      );
+
+    const companies =
+      responseList(
+        response,
+      ).map(
+        publicProvider,
+      );
+
+    return {
+      success:
+        response.ok,
+
+      service,
+
+      amount_based:
+        true,
+
+      billers:
+        companies,
+
+      providers:
+        companies,
+
+      items: [],
+      plans: [],
+    };
+  }
+
+  /*
+   * -------------------------------------------------------
+   * EDUCATION
+   * -------------------------------------------------------
+   */
+  if (
+    service === "education"
+  ) {
+    const response =
+      await peyflexPublicGet(
+        "/api/education/providers/",
+      );
+
+    /*
+     * Never expose NECO as a provider.
+     */
+    const providerRaw =
+      responseList(
+        response,
+      ).filter(
+        (provider) =>
+          !isNeco(provider),
+      );
+
+    const providers =
+      providerRaw.map(
+        publicProvider,
+      );
+
+    let rawItems =
+      flattenEducationPlans(
+        response,
+      );
+
+    /*
+     * Remove NECO again after flattening because
+     * NECO may appear as a nested plan.
+     */
+    rawItems =
+      rawItems.filter(
+        (item) =>
+          !isNeco(item),
+      );
+
+    let items =
+      rawItems
+        .map(
+          (item) =>
+            publicItem(
+              item,
+              service,
+              code ||
+                "education",
+            ),
+        )
+        .filter(
+          (item) =>
+            clean(item.id) !==
+              "" &&
+            numberValue(
+              item.provider_price,
+            ) > 0,
+        );
+
+    /*
+     * If a provider was selected, filter by its
+     * provider/network identifier.
+     */
+    if (code) {
+      const selected =
+        clean(code)
+          .toLowerCase();
+
+      items =
+        items.filter(
+          (item) => {
+            const itemNetwork =
+              clean(
+                item.network,
+              ).toLowerCase();
+
+            return (
+              !itemNetwork ||
+              itemNetwork ===
+                selected
+            );
+          },
+        );
+    }
+
+    return {
+      success:
+        response.ok,
+
+      service,
+
+      amount_based:
+        false,
+
+      billers:
+        providers,
+
+      providers,
+
+      items,
+
+      plans:
+        items,
+    };
+  }
+
+  /*
+   * -------------------------------------------------------
+   * RECHARGE / AIRTIME CARD / DATA CARD
+   * -------------------------------------------------------
+   */
+  if (
+    service ===
+      "airtime-card" ||
+    service ===
+      "data-card" ||
+    service ===
+      "recharge-card"
+  ) {
+    const response =
+      await peyflexPublicGet(
+        "/api/rc/options/",
+      );
+
+    const options =
+      flattenRechargeOptions(
+        response,
+      );
+
+    /*
+     * For recharge-card services, the endpoint may expose
+     * multiple product types. We retain only records that
+     * have a usable product identity and price.
+     */
+    const items =
+      options
+        .filter(
+          (item) =>
+            !isNeco(item),
+        )
+        .map(
+          (item) =>
+            publicItem(
+              item,
+              service,
+            ),
+        )
+        .filter(
+          (item) =>
+            clean(item.id) !==
+              "" &&
+            numberValue(
+              item.provider_price,
+            ) > 0,
+        );
+
+    return {
+      success:
+        response.ok,
+
+      service,
+
+      amount_based:
+        false,
+
+      billers: [],
+      providers: [],
+
+      items,
+
+      plans:
+        items,
+    };
+  }
+
+  throw new Error(
+    "Unsupported service.",
+  );
 }
 
 /*
@@ -850,32 +1679,38 @@ async function verifyCustomer(
   body: Record<string, unknown>,
 ) {
   /*
-   * CABLE CUSTOMER VERIFICATION
+   * -------------------------------------------------------
+   * CABLE
+   * -------------------------------------------------------
    */
-  if (service === "cable") {
-    const iuc = clean(
-      pickBody(
-        body,
-        "iuc",
-        "smartcard",
-        "smartcard_number",
-        "smartcardNumber",
-      ),
-    );
+  if (
+    service === "cable"
+  ) {
+    const iuc =
+      clean(
+        pickBody(
+          body,
+          "iuc",
+          "smartcard",
+          "smartcard_number",
+          "smartcardNumber",
+        ),
+      );
 
-    const identifier = clean(
-      pickBody(
-        body,
-        "identifier",
-        "provider",
-        "provider_code",
-        "providerCode",
-        "cable_tv",
-        "cableTv",
-        "biller_code",
-        "billerCode",
-      ),
-    );
+    const identifier =
+      clean(
+        pickBody(
+          body,
+          "identifier",
+          "provider",
+          "provider_code",
+          "providerCode",
+          "cable_tv",
+          "cableTv",
+          "biller_code",
+          "billerCode",
+        ),
+      );
 
     if (!iuc) {
       return {
@@ -907,61 +1742,77 @@ async function verifyCustomer(
         !providerLooksFailed(
           response,
         ),
+
       verified:
         providerLooksSuccessful(
           response,
         ),
-      customer: extractObjectData(
+
+      customer:
+        extractObjectData(
+          response,
+        ),
+
+      data:
         response,
-      ),
-      data: response,
+
       message:
-        providerMessage(response),
+        providerMessage(
+          response,
+        ),
     };
   }
 
   /*
-   * ELECTRICITY METER VERIFICATION
+   * -------------------------------------------------------
+   * ELECTRICITY
+   * -------------------------------------------------------
    */
-  if (service === "electricity") {
-    const meter = clean(
-      pickBody(
-        body,
-        "meter",
-        "meter_number",
-        "meterNumber",
-      ),
-    );
+  if (
+    service === "electricity"
+  ) {
+    const meter =
+      clean(
+        pickBody(
+          body,
+          "meter",
+          "meter_number",
+          "meterNumber",
+        ),
+      );
 
-    const identifier = clean(
-      pickBody(
-        body,
-        "identifier",
-        "provider",
-        "provider_code",
-        "providerCode",
-        "biller_code",
-        "billerCode",
-      ),
-    );
+    const identifier =
+      clean(
+        pickBody(
+          body,
+          "identifier",
+          "provider",
+          "provider_code",
+          "providerCode",
+          "biller_code",
+          "billerCode",
+        ),
+      );
 
-    const plan = clean(
-      pickBody(
-        body,
-        "plan",
-        "plan_code",
-        "planCode",
-      ),
-    );
+    const plan =
+      clean(
+        pickBody(
+          body,
+          "plan",
+          "plan_code",
+          "planCode",
+        ),
+      );
 
-    const type = clean(
-      pickBody(
-        body,
-        "type",
-        "meter_type",
-        "meterType",
-      ),
-    );
+    const type =
+      clean(
+        pickBody(
+          body,
+          "type",
+          "meter_type",
+          "meterType",
+        ),
+      );
 
     if (!meter) {
       return {
@@ -983,8 +1834,7 @@ async function verifyCustomer(
       await peyflexGet(
         "/api/electricity/verify/",
         {
-          identifier:
-            identifier || "electricity",
+          identifier,
           meter,
           plan,
           type,
@@ -996,23 +1846,27 @@ async function verifyCustomer(
         !providerLooksFailed(
           response,
         ),
+
       verified:
         providerLooksSuccessful(
           response,
         ),
-      customer: extractObjectData(
+
+      customer:
+        extractObjectData(
+          response,
+        ),
+
+      data:
         response,
-      ),
-      data: response,
+
       message:
-        providerMessage(response),
+        providerMessage(
+          response,
+        ),
     };
   }
 
-  /*
-   * Airtime/Data/Education/Card services do not require
-   * customer verification before purchase.
-   */
   return {
     success: true,
     verified: true,
@@ -1022,43 +1876,50 @@ async function verifyCustomer(
 }
 
 /*
- * Extract the selected plan from the authoritative
- * Peyflex catalogue.
+ * ---------------------------------------------------------
+ * FIND AUTHORITATIVE CATALOGUE ITEM
+ * ---------------------------------------------------------
  */
 async function findCatalogItem(
   service: Service,
   body: Record<string, unknown>,
 ) {
-  const requestedCode = clean(
-    pickBody(
-      body,
-      "plan_code",
-      "planCode",
-      "plan_id",
-      "planId",
-      "item_id",
-      "itemId",
-      "item_code",
-      "itemCode",
-      "code",
-      "plan",
-    ),
-  );
+  const requestedCode =
+    clean(
+      pickBody(
+        body,
+        "plan_code",
+        "planCode",
+        "plan_id",
+        "planId",
+        "item_id",
+        "itemId",
+        "item_code",
+        "itemCode",
+        "code",
+        "plan",
+      ),
+    );
 
-  const requestedNetwork = clean(
-    pickBody(
-      body,
-      "network",
-      "network_code",
-      "networkCode",
-      "provider",
-      "provider_code",
-      "providerCode",
-      "identifier",
-      "biller_code",
-      "billerCode",
-    ),
-  );
+  if (!requestedCode) {
+    return null;
+  }
+
+  const requestedNetwork =
+    clean(
+      pickBody(
+        body,
+        "network",
+        "network_code",
+        "networkCode",
+        "provider",
+        "provider_code",
+        "providerCode",
+        "identifier",
+        "biller_code",
+        "billerCode",
+      ),
+    );
 
   const catalogue =
     await catalog(
@@ -1068,44 +1929,51 @@ async function findCatalogItem(
     );
 
   const items =
-    Array.isArray(catalogue.items)
+    Array.isArray(
+      catalogue.items,
+    )
       ? catalogue.items
       : [];
 
-  if (!requestedCode) {
-    return null;
-  }
+  const wanted =
+    requestedCode
+      .trim()
+      .toLowerCase();
 
-  const found = items.find(
-    (item) => {
-      const obj =
-        asObject(item);
+  const found =
+    items.find(
+      (item) => {
+        const obj =
+          asObject(item);
 
-      return (
-        clean(obj.id) ===
-          requestedCode ||
-        clean(obj.code) ===
-          requestedCode ||
-        clean(obj.plan_code) ===
-          requestedCode ||
-        clean(obj.plan_id) ===
-          requestedCode
-      );
-    },
-  );
+        const values = [
+          obj.id,
+          obj.code,
+          obj.plan_code,
+          obj.planCode,
+          obj.plan_id,
+          obj.planId,
+        ]
+          .map(clean)
+          .map(
+            (value) =>
+              value.toLowerCase(),
+          );
 
-  return found ?? null;
+        return values.includes(
+          wanted,
+        );
+      },
+    );
+
+  return found ??
+    null;
 }
 
 /*
  * ---------------------------------------------------------
  * AUTHORITATIVE PRICE
  * ---------------------------------------------------------
- *
- * Never trust a frontend-supplied selling price.
- *
- * The backend obtains the provider price and calculates
- * the actual IyanjuPay selling price itself.
  */
 async function authoritativePrice(
   service: Service,
@@ -1118,9 +1986,11 @@ async function authoritativePrice(
   /*
    * AIRTIME
    *
-   * Airtime is amount based and has 0% markup.
+   * 0% markup.
    */
-  if (service === "airtime") {
+  if (
+    service === "airtime"
+  ) {
     const amount =
       numberValue(
         pickBody(
@@ -1131,23 +2001,38 @@ async function authoritativePrice(
         ),
       );
 
-    if (!amount || amount <= 0) {
+    if (
+      !amount ||
+      amount <= 0
+    ) {
       throw new Error(
         "A valid airtime amount is required.",
       );
     }
 
     return {
-      providerPrice: amount,
-      sellingPrice: amount,
+      providerPrice:
+        amount,
+
+      sellingPrice:
+        roundSellingPrice(
+          amount,
+          AIRTIME_MARKUP,
+        ),
+
       item: null,
     };
   }
 
   /*
    * ELECTRICITY
+   *
+   * Amount based.
    */
-  if (service === "electricity") {
+  if (
+    service ===
+      "electricity"
+  ) {
     const amount =
       numberValue(
         pickBody(
@@ -1158,26 +2043,32 @@ async function authoritativePrice(
         ),
       );
 
-    if (!amount || amount <= 0) {
+    if (
+      !amount ||
+      amount <= 0
+    ) {
       throw new Error(
         "A valid electricity amount is required.",
       );
     }
 
     return {
-      providerPrice: amount,
+      providerPrice:
+        amount,
+
       sellingPrice:
-        calculateSellingPrice(
+        roundSellingPrice(
           amount,
-          service,
+          STANDARD_MARKUP,
         ),
+
       item: null,
     };
   }
 
   /*
-   * All plan-based services must match an authoritative
-   * Peyflex catalogue item.
+   * All other services must match an actual Peyflex
+   * catalogue item.
    */
   const item =
     await findCatalogItem(
@@ -1191,13 +2082,22 @@ async function authoritativePrice(
     );
   }
 
+  const obj =
+    asObject(item);
+
   const providerPrice =
     numberValue(
-      asObject(item).provider_price ??
-        asObject(item).price,
+      firstValue(
+        obj.provider_price,
+        obj.providerPrice,
+        obj.price,
+      ),
     );
 
-  if (!providerPrice || providerPrice <= 0) {
+  if (
+    !providerPrice ||
+    providerPrice <= 0
+  ) {
     throw new Error(
       "The selected Peyflex plan has an invalid price.",
     );
@@ -1205,18 +2105,20 @@ async function authoritativePrice(
 
   return {
     providerPrice,
+
     sellingPrice:
-      calculateSellingPrice(
+      roundSellingPrice(
         providerPrice,
-        service,
+        STANDARD_MARKUP,
       ),
+
     item,
   };
 }
 
 /*
  * ---------------------------------------------------------
- * PEYFLEX PURCHASE
+ * PROVIDER PURCHASE
  * ---------------------------------------------------------
  */
 async function callProviderPurchase(
@@ -1240,7 +2142,9 @@ async function callProviderPurchase(
   /*
    * AIRTIME
    */
-  if (service === "airtime") {
+  if (
+    service === "airtime"
+  ) {
     const network =
       networkCode(
         pickBody(
@@ -1256,23 +2160,36 @@ async function callProviderPurchase(
         ),
       );
 
+    if (!network) {
+      throw new Error(
+        "Airtime network is required.",
+      );
+    }
+
+    if (!validPhone(phone)) {
+      throw new Error(
+        "A valid Nigerian phone number is required.",
+      );
+    }
+
     return await peyflexPost(
       "/api/airtime/topup/",
       {
         network,
-        amount: providerPrice,
-        mobile_number: phone,
+        amount:
+          providerPrice,
+        mobile_number:
+          phone,
       },
     );
   }
 
   /*
    * DATA
-   *
-   * The actual Peyflex plan code is sent to Peyflex.
-   * The classification is never sent to the customer.
    */
-  if (service === "data") {
+  if (
+    service === "data"
+  ) {
     const network =
       networkCode(
         pickBody(
@@ -1311,12 +2228,20 @@ async function callProviderPurchase(
       );
     }
 
+    if (!validPhone(phone)) {
+      throw new Error(
+        "A valid Nigerian phone number is required.",
+      );
+    }
+
     return await peyflexPost(
       "/api/data/purchase/",
       {
         network,
-        mobile_number: phone,
-        plan_code: planCode,
+        mobile_number:
+          phone,
+        plan_code:
+          planCode,
       },
     );
   }
@@ -1324,7 +2249,9 @@ async function callProviderPurchase(
   /*
    * CABLE
    */
-  if (service === "cable") {
+  if (
+    service === "cable"
+  ) {
     const identifier =
       clean(
         pickBody(
@@ -1395,7 +2322,10 @@ async function callProviderPurchase(
   /*
    * ELECTRICITY
    */
-  if (service === "electricity") {
+  if (
+    service ===
+      "electricity"
+  ) {
     const identifier =
       clean(
         pickBody(
@@ -1439,12 +2369,22 @@ async function callProviderPurchase(
         ),
       );
 
+    if (!identifier) {
+      throw new Error(
+        "Electricity provider is required.",
+      );
+    }
+
+    if (!meter) {
+      throw new Error(
+        "Meter number is required.",
+      );
+    }
+
     return await peyflexPost(
       "/api/electricity/subscribe/",
       {
-        identifier:
-          identifier ||
-          "electricity",
+        identifier,
         meter,
         plan,
         amount:
@@ -1456,9 +2396,11 @@ async function callProviderPurchase(
   }
 
   /*
-   * EDUCATION / WAEC
+   * EDUCATION
    */
-  if (service === "education") {
+  if (
+    service === "education"
+  ) {
     const planId =
       clean(
         pickBody(
@@ -1476,11 +2418,27 @@ async function callProviderPurchase(
       );
     }
 
+    /*
+     * Explicitly reject NECO even if someone manually
+     * submits a hidden provider code.
+     */
+    if (
+      /\bneco\b/i.test(
+        planId,
+      )
+    ) {
+      throw new Error(
+        "This education service is not available.",
+      );
+    }
+
     return await peyflexPost(
       "/api/education/purchase/",
       {
-        identifier: "education",
-        plan_id: planId,
+        identifier:
+          "education",
+        plan_id:
+          planId,
         quantity:
           String(quantity),
         phone,
@@ -1489,12 +2447,15 @@ async function callProviderPurchase(
   }
 
   /*
-   * RECHARGE / EPIN
+   * RECHARGE / CARD
    */
   if (
-    service === "airtime-card" ||
-    service === "data-card" ||
-    service === "recharge-card"
+    service ===
+      "airtime-card" ||
+    service ===
+      "data-card" ||
+    service ===
+      "recharge-card"
   ) {
     const network =
       networkCode(
@@ -1525,10 +2486,12 @@ async function callProviderPurchase(
       "/api/rc/purchase/",
       {
         network,
-        amount: providerPrice,
+        amount:
+          providerPrice,
         quantity,
         pin,
-        brand_name: "IyanjuPay",
+        brand_name:
+          "IyanjuPay",
       },
     );
   }
@@ -1540,7 +2503,49 @@ async function callProviderPurchase(
 
 /*
  * ---------------------------------------------------------
- * PURCHASE FLOW
+ * SELECTED ITEM METADATA
+ * ---------------------------------------------------------
+ */
+function safeSelectedItem(
+  item: unknown,
+): Record<string, unknown> | null {
+  if (!item) {
+    return null;
+  }
+
+  const obj =
+    asObject(item);
+
+  return {
+    id:
+      itemId(obj),
+
+    code:
+      itemId(obj),
+
+    name:
+      cleanCustomerPlanName(
+        rawItemName(obj),
+      ),
+
+    price:
+      numberValue(
+        obj.price,
+      ),
+
+    validity:
+      itemValidity(obj),
+
+    network:
+      clean(
+        obj.network,
+      ),
+  };
+}
+
+/*
+ * ---------------------------------------------------------
+ * PURCHASE
  * ---------------------------------------------------------
  */
 async function purchase(
@@ -1561,9 +2566,8 @@ async function purchase(
     );
 
   /*
-   * Cable and electricity may use different customer
-   * identifiers, so phone is not mandatory for those
-   * two services.
+   * Cable and electricity have their own customer
+   * identifiers. Other services require phone.
    */
   if (
     service !== "cable" &&
@@ -1586,13 +2590,21 @@ async function purchase(
 
   const quantity =
     quantityRaw > 0
-      ? Math.floor(quantityRaw)
+      ? Math.floor(
+          quantityRaw,
+        )
       : 1;
 
+  if (
+    quantity < 1
+  ) {
+    throw new Error(
+      "Quantity must be at least 1.",
+    );
+  }
+
   /*
-   * NEVER use frontend selling price.
-   *
-   * Get authoritative Peyflex pricing.
+   * NEVER trust frontend price.
    */
   const pricing =
     await authoritativePrice(
@@ -1608,9 +2620,14 @@ async function purchase(
     pricing.sellingPrice *
     quantity;
 
-  /*
-   * Unique internal transaction reference.
-   */
+  if (
+    sellingPrice <= 0
+  ) {
+    throw new Error(
+      "Invalid transaction amount.",
+    );
+  }
+
   const reference =
     `PEY_${crypto.randomUUID()}`;
 
@@ -1629,9 +2646,15 @@ async function purchase(
     await supabase.rpc(
       "debit_wallet",
       {
-        p_user_id: userId,
-        p_amount: sellingPrice,
-        p_reference: reference,
+        p_user_id:
+          userId,
+
+        p_amount:
+          sellingPrice,
+
+        p_reference:
+          reference,
+
         p_description:
           `${service} purchase`,
       },
@@ -1645,81 +2668,56 @@ async function purchase(
   }
 
   const debitResult =
-    Array.isArray(debitData)
+    Array.isArray(
+      debitData,
+    )
       ? debitData[0]
       : debitData;
 
   if (
     debitResult &&
-    typeof debitResult === "object" &&
-    "success" in debitResult &&
-    !Boolean(
-      (
-        debitResult as Record<
-          string,
-          unknown
-        >
-      ).success,
-    )
+    typeof debitResult ===
+      "object" &&
+    "success" in
+      debitResult
   ) {
-    throw new Error(
-      clean(
+    const success =
+      Boolean(
         (
           debitResult as Record<
             string,
             unknown
           >
-        ).message,
-      ) ||
-        "Unable to debit wallet.",
-    );
+        ).success,
+      );
+
+    if (!success) {
+      throw new Error(
+        clean(
+          (
+            debitResult as Record<
+              string,
+              unknown
+            >
+          ).message,
+        ) ||
+          "Unable to debit wallet.",
+      );
+    }
   }
 
   /*
-   * IMPORTANT:
-   *
-   * We intentionally do not store the provider's raw
-   * catalogue object here because it can contain labels
-   * such as SME / Direct / Gifting.
-   *
-   * Store only the safe selected-item fields.
+   * -------------------------------------------------------
+   * SAFE METADATA
+   * -------------------------------------------------------
    */
   const selectedItem =
-    pricing.item
-      ? {
-          id: itemId(
-            pricing.item,
-          ),
-          code: itemId(
-            pricing.item,
-          ),
-          name:
-            cleanCustomerPlanName(
-              rawItemName(
-                pricing.item,
-              ),
-            ),
-          price:
-            numberValue(
-              asObject(
-                pricing.item,
-              ).price,
-            ),
-          validity:
-            itemValidity(
-              pricing.item,
-            ),
-        }
-      : null;
+    safeSelectedItem(
+      pricing.item,
+    );
 
-  const metadata = {
-    service,
-    provider: "peyflex",
-
-    customer_phone: phone,
-    phone,
-
-    biller_code: clean(
+  const billerCode =
+    clean(
       pickBody(
         body,
         "biller_code",
@@ -1728,9 +2726,10 @@ async function purchase(
         "providerCode",
         "identifier",
       ),
-    ),
+    );
 
-    item_code: clean(
+  const itemCode =
+    clean(
       pickBody(
         body,
         "plan_code",
@@ -1741,17 +2740,41 @@ async function purchase(
         "itemCode",
         "code",
       ),
-    ),
+    );
 
-    provider_price: providerPrice,
-    selling_price: sellingPrice,
+  const markupAmount =
+    sellingPrice -
+    providerPrice;
 
-    markup:
-      sellingPrice -
+  const metadata = {
+    service,
+
+    provider:
+      "peyflex",
+
+    customer_phone:
+      phone,
+
+    phone,
+
+    biller_code:
+      billerCode,
+
+    item_code:
+      itemCode,
+
+    provider_price:
       providerPrice,
 
+    selling_price:
+      sellingPrice,
+
+    markup:
+      markupAmount,
+
     markup_rate:
-      service === "airtime"
+      service ===
+        "airtime"
         ? AIRTIME_MARKUP
         : STANDARD_MARKUP,
 
@@ -1774,37 +2797,58 @@ async function purchase(
     error: transactionError,
   } =
     await supabase
-      .from("transactions")
+      .from(
+        "transactions",
+      )
       .insert({
-        user_id: userId,
+        user_id:
+          userId,
+
         reference_number:
           reference,
+
         transaction_type:
           "service_purchase",
-        amount: sellingPrice,
-        status: "pending",
-        provider: "peyflex",
+
+        amount:
+          sellingPrice,
+
+        status:
+          "pending",
+
+        provider:
+          "peyflex",
+
         provider_reference:
           null,
+
         metadata,
+
         description:
           `${service} purchase`,
       })
       .select()
       .single();
 
-  if (transactionError) {
+  if (
+    transactionError
+  ) {
     /*
-     * If the transaction itself could not be created,
-     * attempt to undo the wallet debit.
+     * Transaction record failed after wallet debit.
+     * Roll the debit back.
      */
     await supabase.rpc(
       "refund_wallet",
       {
-        p_user_id: userId,
-        p_amount: sellingPrice,
+        p_user_id:
+          userId,
+
+        p_amount:
+          sellingPrice,
+
         p_reference:
           `${reference}_ROLLBACK`,
+
         p_description:
           "Rollback for failed service transaction creation",
       },
@@ -1847,7 +2891,7 @@ async function purchase(
 
     /*
      * -----------------------------------------------------
-     * PROVIDER SUCCESS
+     * SUCCESS
      * -----------------------------------------------------
      */
     if (
@@ -1856,18 +2900,27 @@ async function purchase(
       )
     ) {
       await supabase
-        .from("transactions")
+        .from(
+          "transactions",
+        )
         .update({
-          status: "completed",
+          status:
+            "completed",
+
           provider_reference:
-            providerRef || null,
+            providerRef ||
+            null,
 
           metadata: {
             ...metadata,
+
             provider_status:
               status,
+
             provider_message:
-              message || null,
+              message ||
+              null,
+
             reconciliation_required:
               false,
           },
@@ -1879,11 +2932,19 @@ async function purchase(
 
       return {
         success: true,
-        status: "completed",
+
+        status:
+          "completed",
+
         reference,
+
         provider_reference:
-          providerRef || null,
-        amount: sellingPrice,
+          providerRef ||
+          null,
+
+        amount:
+          sellingPrice,
+
         message:
           message ||
           "Transaction completed successfully.",
@@ -1892,7 +2953,7 @@ async function purchase(
 
     /*
      * -----------------------------------------------------
-     * PROVIDER DEFINITIVE FAILURE
+     * DEFINITIVE FAILURE
      * -----------------------------------------------------
      */
     if (
@@ -1900,47 +2961,58 @@ async function purchase(
         providerResponse,
       )
     ) {
-      /*
-       * The provider definitively rejected the request,
-       * therefore it is safe to refund.
-       */
       const {
-        error: refundError,
+        error:
+          refundError,
       } =
         await supabase.rpc(
           "refund_wallet",
           {
-            p_user_id: userId,
+            p_user_id:
+              userId,
+
             p_amount:
               sellingPrice,
+
             p_reference:
               `${reference}_REFUND`,
+
             p_description:
               `Refund for failed ${service} purchase`,
           },
         );
 
       /*
-       * Refund failed.
-       *
-       * Keep transaction flagged for reconciliation.
+       * Refund failure must remain flagged.
        */
-      if (refundError) {
+      if (
+        refundError
+      ) {
         await supabase
-          .from("transactions")
+          .from(
+            "transactions",
+          )
           .update({
-            status: "failed",
+            status:
+              "failed",
+
             provider_reference:
-              providerRef || null,
+              providerRef ||
+              null,
 
             metadata: {
               ...metadata,
+
               provider_status:
                 status,
+
               provider_message:
-                message || null,
+                message ||
+                null,
+
               reconciliation_required:
                 true,
+
               refund_pending:
                 true,
             },
@@ -1952,12 +3024,19 @@ async function purchase(
 
         return {
           success: false,
+
           status:
             "refund_pending",
+
           reference,
+
           provider_reference:
-            providerRef || null,
-          amount: sellingPrice,
+            providerRef ||
+            null,
+
+          amount:
+            sellingPrice,
+
           error:
             "The provider rejected the transaction, but the automatic refund could not be completed. The transaction has been flagged for reconciliation.",
         };
@@ -1967,21 +3046,32 @@ async function purchase(
        * Refund succeeded.
        */
       await supabase
-        .from("transactions")
+        .from(
+          "transactions",
+        )
         .update({
-          status: "failed",
+          status:
+            "failed",
+
           provider_reference:
-            providerRef || null,
+            providerRef ||
+            null,
 
           metadata: {
             ...metadata,
+
             provider_status:
               status,
+
             provider_message:
-              message || null,
+              message ||
+              null,
+
             reconciliation_required:
               false,
-            refunded: true,
+
+            refunded:
+              true,
           },
         })
         .eq(
@@ -1991,12 +3081,22 @@ async function purchase(
 
       return {
         success: false,
-        status: "failed",
+
+        status:
+          "failed",
+
         reference,
+
         provider_reference:
-          providerRef || null,
-        amount: sellingPrice,
-        refunded: true,
+          providerRef ||
+          null,
+
+        amount:
+          sellingPrice,
+
+        refunded:
+          true,
+
         error:
           message ||
           "The service provider rejected the transaction.",
@@ -2005,27 +3105,33 @@ async function purchase(
 
     /*
      * -----------------------------------------------------
-     * AMBIGUOUS PROVIDER RESPONSE
+     * AMBIGUOUS RESPONSE
      * -----------------------------------------------------
      *
-     * Do NOT refund automatically.
-     *
-     * The provider may have processed the transaction
-     * even if the response was incomplete/ambiguous.
+     * DO NOT REFUND.
      */
     await supabase
-      .from("transactions")
+      .from(
+        "transactions",
+      )
       .update({
-        status: "pending",
+        status:
+          "pending",
+
         provider_reference:
-          providerRef || null,
+          providerRef ||
+          null,
 
         metadata: {
           ...metadata,
+
           provider_status:
             status,
+
           provider_message:
-            message || null,
+            message ||
+            null,
+
           reconciliation_required:
             true,
         },
@@ -2037,42 +3143,55 @@ async function purchase(
 
     return {
       success: true,
-      status: "pending",
+
+      status:
+        "pending",
+
       reference,
+
       provider_reference:
-        providerRef || null,
-      amount: sellingPrice,
+        providerRef ||
+        null,
+
+      amount:
+        sellingPrice,
+
       message:
         message ||
         "Your transaction is being processed.",
+
       reconciliation_required:
         true,
     };
-  } catch (error) {
+  } catch (
+    error
+  ) {
     /*
-     * -------------------------------------------------------
+     * -----------------------------------------------------
      * NETWORK / TIMEOUT / UNKNOWN ERROR
-     * -------------------------------------------------------
+     * -----------------------------------------------------
      *
-     * NEVER automatically refund here.
-     *
-     * The request could have reached Peyflex and completed
-     * even though IyanjuPay did not receive a response.
+     * NEVER automatically refund.
      */
-    const message =
+    const errorMessage =
       error instanceof Error
         ? error.message
         : "Provider request could not be completed.";
 
     await supabase
-      .from("transactions")
+      .from(
+        "transactions",
+      )
       .update({
-        status: "pending",
+        status:
+          "pending",
 
         metadata: {
           ...metadata,
+
           provider_error:
-            message,
+            errorMessage,
+
           reconciliation_required:
             true,
         },
@@ -2084,11 +3203,18 @@ async function purchase(
 
     return {
       success: true,
-      status: "pending",
+
+      status:
+        "pending",
+
       reference,
-      amount: sellingPrice,
+
+      amount:
+        sellingPrice,
+
       message:
         "Your transaction is being processed. Please check your transaction history for the final status.",
+
       reconciliation_required:
         true,
     };
@@ -2099,40 +3225,55 @@ async function purchase(
  * ---------------------------------------------------------
  * ACTION NORMALIZATION
  * ---------------------------------------------------------
- *
- * This explicitly supports the action names used by the
- * current ServicePayment.tsx.
  */
 function normalizedAction(
   value: unknown,
 ): string {
   const action =
-    clean(value).toLowerCase();
+    clean(value)
+      .toLowerCase();
 
-  const aliases: Record<
-    string,
-    string
-  > = {
-    catalogue: "catalog",
-    get_catalogue: "catalog",
-    get_catalog: "catalog",
+  const aliases:
+    Record<string, string> = {
+      catalogue:
+        "catalog",
 
-    get_billers: "billers",
-    get_networks: "networks",
+      get_catalogue:
+        "catalog",
 
-    get_items: "items",
-    get_plans: "plans",
+      get_catalog:
+        "catalog",
 
-    verify_customer: "verify",
-    verifycustomer: "verify",
+      get_billers:
+        "billers",
 
-    validate_customer:
-      "verify",
-    validate: "verify",
+      get_networks:
+        "networks",
 
-    pay: "purchase",
-    service: "purchase",
-  };
+      get_items:
+        "items",
+
+      get_plans:
+        "plans",
+
+      verify_customer:
+        "verify",
+
+      verifycustomer:
+        "verify",
+
+      validate_customer:
+        "verify",
+
+      validate:
+        "verify",
+
+      pay:
+        "purchase",
+
+      service:
+        "purchase",
+    };
 
   return (
     aliases[action] ??
@@ -2142,384 +3283,380 @@ function normalizedAction(
 
 /*
  * ---------------------------------------------------------
+ * JSON RESPONSE
+ * ---------------------------------------------------------
+ */
+function response(
+  body: unknown,
+  status = 200,
+): Response {
+  return new Response(
+    JSON.stringify(body),
+    {
+      status,
+      headers:
+        CORS_HEADERS,
+    },
+  );
+}
+
+/*
+ * ---------------------------------------------------------
  * HTTP HANDLER
  * ---------------------------------------------------------
  */
-Deno.serve(async (req) => {
-  /*
-   * -------------------------------------------------------
-   * CORS PREFLIGHT
-   * -------------------------------------------------------
-   *
-   * This MUST happen before authentication.
-   *
-   * The browser sends OPTIONS without the user's normal
-   * authenticated POST request. If getUser() were called
-   * before this block, the browser could receive an
-   * unauthorized response without CORS headers.
-   */
-  if (req.method === "OPTIONS") {
-    return new Response(
-      null,
-      {
-        status: 204,
-        headers:
-          CORS_HEADERS,
-      },
-    );
-  }
-
-  /*
-   * Only POST is supported.
-   */
-  if (req.method !== "POST") {
-    return new Response(
-      JSON.stringify({
-        success: false,
-        error:
-          "Method not allowed.",
-      }),
-      {
-        status: 405,
-        headers: {
-          ...CORS_HEADERS,
-          "Content-Type":
-            "application/json",
-        },
-      },
-    );
-  }
-
-  try {
+Deno.serve(
+  async (req) => {
     /*
-     * -----------------------------------------------------
-     * AUTHENTICATION
-     * -----------------------------------------------------
+     * CORS PREFLIGHT MUST COME FIRST.
      */
-    const user =
-      await getUser(req);
-
-    if (!user) {
+    if (
+      req.method ===
+      "OPTIONS"
+    ) {
       return new Response(
-        JSON.stringify({
-          success: false,
-          error:
-            "Unauthorized.",
-        }),
+        null,
         {
-          status: 401,
-          headers: {
-            ...CORS_HEADERS,
-            "Content-Type":
-              "application/json",
-          },
+          status:
+            204,
+
+          headers:
+            CORS_HEADERS,
         },
       );
     }
 
     /*
-     * -----------------------------------------------------
-     * PARSE REQUEST
-     * -----------------------------------------------------
+     * POST only.
      */
-    let body:
-      Record<
-        string,
-        unknown
-      >;
+    if (
+      req.method !==
+      "POST"
+    ) {
+      return response(
+        {
+          success:
+            false,
+
+          error:
+            "Method not allowed.",
+        },
+        405,
+      );
+    }
 
     try {
-      body =
-        await req.json();
-    } catch {
-      return new Response(
-        JSON.stringify({
-          success: false,
-          error:
-            "Invalid JSON request body.",
-        }),
-        {
-          status: 400,
-          headers: {
-            ...CORS_HEADERS,
-            "Content-Type":
-              "application/json",
+      /*
+       * ---------------------------------------------------
+       * AUTH
+       * ---------------------------------------------------
+       */
+      const user =
+        await getUser(
+          req,
+        );
+
+      if (!user) {
+        return response(
+          {
+            success:
+              false,
+
+            error:
+              "Unauthorized.",
           },
-        },
-      );
-    }
+          401,
+        );
+      }
 
-    const action =
-      normalizedAction(
-        body?.action ??
-          "catalog",
-      );
+      /*
+       * ---------------------------------------------------
+       * REQUEST BODY
+       * ---------------------------------------------------
+       */
+      let body:
+        Record<
+          string,
+          unknown
+        >;
 
-    const service =
-      serviceOf(
-        body?.service,
-      );
+      try {
+        const parsed =
+          await req.json();
 
-    /*
-     * Validate service before processing any action.
-     */
-    if (
-      !service ||
-      !SUPPORTED_SERVICES.has(
-        service,
-      )
-    ) {
-      return new Response(
-        JSON.stringify({
-          success: false,
-          error:
-            "Unsupported or missing service.",
-        }),
-        {
-          status: 400,
-          headers: {
-            ...CORS_HEADERS,
-            "Content-Type":
-              "application/json",
+        if (
+          !parsed ||
+          typeof parsed !==
+            "object" ||
+          Array.isArray(
+            parsed,
+          )
+        ) {
+          return response(
+            {
+              success:
+                false,
+
+              error:
+                "Invalid JSON request body.",
+            },
+            400,
+          );
+        }
+
+        body =
+          parsed as Record<
+            string,
+            unknown
+          >;
+      } catch {
+        return response(
+          {
+            success:
+              false,
+
+            error:
+              "Invalid JSON request body.",
           },
-        },
-      );
-    }
+          400,
+        );
+      }
 
-    /*
-     * -----------------------------------------------------
-     * BILLERS / NETWORKS / CATALOG
-     * -----------------------------------------------------
-     *
-     * Current ServicePayment:
-     *
-     * action: "billers"
-     *
-     * is supported.
-     */
-    if (
-      action === "catalog" ||
-      action === "billers" ||
-      action === "networks"
-    ) {
-      const code =
-        clean(
-          pickBody(
+      /*
+       * ---------------------------------------------------
+       * ACTION
+       * ---------------------------------------------------
+       */
+      const action =
+        normalizedAction(
+          body.action ??
+            "catalog",
+        );
+
+      /*
+       * ---------------------------------------------------
+       * SERVICE
+       * ---------------------------------------------------
+       */
+      const service =
+        serviceOf(
+          body.service,
+        );
+
+      if (
+        !service ||
+        !SUPPORTED_SERVICES.has(
+          service,
+        )
+      ) {
+        return response(
+          {
+            success:
+              false,
+
+            error:
+              "Unsupported or missing service.",
+          },
+          400,
+        );
+      }
+
+      /*
+       * ---------------------------------------------------
+       * BILLERS / NETWORKS / CATALOG
+       * ---------------------------------------------------
+       */
+      if (
+        action ===
+          "catalog" ||
+        action ===
+          "billers" ||
+        action ===
+          "networks"
+      ) {
+        const code =
+          clean(
+            pickBody(
+              body,
+              "biller_code",
+              "billerCode",
+              "provider_code",
+              "providerCode",
+              "network_code",
+              "networkCode",
+              "network",
+              "provider",
+              "identifier",
+              "cable_tv",
+              "cableTv",
+            ),
+          );
+
+        const result =
+          await catalog(
+            service,
+            code ||
+              undefined,
+          );
+
+        return response(
+          result,
+          result.success
+            ? 200
+            : 502,
+        );
+      }
+
+      /*
+       * ---------------------------------------------------
+       * ITEMS / PLANS
+       * ---------------------------------------------------
+       *
+       * This is the action used by the current
+       * ServicePayment.tsx.
+       */
+      if (
+        action ===
+          "items" ||
+        action ===
+          "plans"
+      ) {
+        const code =
+          clean(
+            pickBody(
+              body,
+              "biller_code",
+              "billerCode",
+              "provider_code",
+              "providerCode",
+              "network_code",
+              "networkCode",
+              "network",
+              "provider",
+              "identifier",
+              "cable_tv",
+              "cableTv",
+            ),
+          );
+
+        const result =
+          await catalog(
+            service,
+            code ||
+              undefined,
+          );
+
+        return response(
+          {
+            ...result,
+
+            items:
+              Array.isArray(
+                result.items,
+              )
+                ? result.items
+                : [],
+
+            plans:
+              Array.isArray(
+                result.plans,
+              )
+                ? result.plans
+                : Array.isArray(
+                    result.items,
+                  )
+                ? result.items
+                : [],
+          },
+          result.success
+            ? 200
+            : 502,
+        );
+      }
+
+      /*
+       * ---------------------------------------------------
+       * VERIFY
+       * ---------------------------------------------------
+       */
+      if (
+        action ===
+        "verify"
+      ) {
+        const result =
+          await verifyCustomer(
+            service,
             body,
-            "biller_code",
-            "billerCode",
-            "provider_code",
-            "providerCode",
-            "network_code",
-            "networkCode",
-            "network",
-            "provider",
-            "identifier",
-            "cable_tv",
-            "cableTv",
-          ),
-        );
+          );
 
-      const result =
-        await catalog(
-          service,
-          code ||
-            undefined,
-        );
-
-      return new Response(
-        JSON.stringify(
+        return response(
           result,
-        ),
-        {
-          status: 200,
-          headers: {
-            ...CORS_HEADERS,
-            "Content-Type":
-              "application/json",
-          },
-        },
-      );
-    }
+          200,
+        );
+      }
 
-    /*
-     * -----------------------------------------------------
-     * ITEMS / PLANS
-     * -----------------------------------------------------
-     *
-     * THIS IS THE IMPORTANT FIX.
-     *
-     * Your current ServicePayment sends:
-     *
-     * action: "items"
-     *
-     * The previous backend did not support this action,
-     * which caused:
-     *
-     * "Unsupported action."
-     *
-     * It is now explicitly supported.
-     */
-    if (
-      action === "items" ||
-      action === "plans"
-    ) {
-      const code =
-        clean(
-          pickBody(
+      /*
+       * ---------------------------------------------------
+       * PURCHASE
+       * ---------------------------------------------------
+       */
+      if (
+        action ===
+        "purchase"
+      ) {
+        const result =
+          await purchase(
+            user.id,
+            service,
             body,
-            "biller_code",
-            "billerCode",
-            "provider_code",
-            "providerCode",
-            "network_code",
-            "networkCode",
-            "network",
-            "provider",
-            "identifier",
-            "cable_tv",
-            "cableTv",
-          ),
-        );
+          );
 
-      const result =
-        await catalog(
-          service,
-          code ||
-            undefined,
-        );
-
-      return new Response(
-        JSON.stringify({
-          ...result,
-
-          items:
-            Array.isArray(
-              result.items,
-            )
-              ? result.items
-              : [],
-
-          plans:
-            Array.isArray(
-              result.plans,
-            )
-              ? result.plans
-              : Array.isArray(
-                  result.items,
-                )
-              ? result.items
-              : [],
-        }),
-        {
-          status: 200,
-          headers: {
-            ...CORS_HEADERS,
-            "Content-Type":
-              "application/json",
-          },
-        },
-      );
-    }
-
-    /*
-     * -----------------------------------------------------
-     * CUSTOMER VERIFICATION
-     * -----------------------------------------------------
-     */
-    if (action === "verify") {
-      const result =
-        await verifyCustomer(
-          service,
-          body,
-        );
-
-      return new Response(
-        JSON.stringify(
+        return response(
           result,
-        ),
-        {
-          status: 200,
-          headers: {
-            ...CORS_HEADERS,
-            "Content-Type":
-              "application/json",
-          },
-        },
-      );
-    }
-
-    /*
-     * -----------------------------------------------------
-     * PURCHASE
-     * -----------------------------------------------------
-     */
-    if (action === "purchase") {
-      const result =
-        await purchase(
-          user.id,
-          service,
-          body,
+          200,
         );
+      }
 
-      return new Response(
-        JSON.stringify(
-          result,
-        ),
+      /*
+       * ---------------------------------------------------
+       * UNKNOWN ACTION
+       * ---------------------------------------------------
+       */
+      return response(
         {
-          status: 200,
-          headers: {
-            ...CORS_HEADERS,
-            "Content-Type":
-              "application/json",
-          },
+          success:
+            false,
+
+          error:
+            "Unsupported action.",
+
+          action,
         },
+        400,
+      );
+    } catch (
+      error
+    ) {
+      console.error(
+        "peyflex-services error:",
+        error,
+      );
+
+      const message =
+        error instanceof Error
+          ? error.message
+          : "An unexpected error occurred.";
+
+      return response(
+        {
+          success:
+            false,
+
+          error:
+            message,
+        },
+        500,
       );
     }
-
-    /*
-     * Unknown action.
-     */
-    return new Response(
-      JSON.stringify({
-        success: false,
-        error:
-          "Unsupported action.",
-        action,
-      }),
-      {
-        status: 400,
-        headers: {
-          ...CORS_HEADERS,
-          "Content-Type":
-            "application/json",
-        },
-      },
-    );
-  } catch (error) {
-    console.error(
-      "peyflex-services error:",
-      error,
-    );
-
-    const message =
-      error instanceof Error
-        ? error.message
-        : "An unexpected error occurred.";
-
-    return new Response(
-      JSON.stringify({
-        success: false,
-        error: message,
-      }),
-      {
-        status: 500,
-        headers: {
-          ...CORS_HEADERS,
-          "Content-Type":
-            "application/json",
-        },
-      },
-    );
-  }
-});
+  },
+);

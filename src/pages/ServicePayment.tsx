@@ -304,34 +304,98 @@ function getProviderPrice(
   );
 }
 
+function normaliseDataPlanLabel(value: unknown): string {
+  let label = clean(value).replace(/\s+/g, " ").trim();
+  if (!label) return "Data plan";
+
+  const compact = label.replace(/\s+/g, "");
+  const codeSize = compact.match(
+    /^m?(\d+(?:\.\d+)?)(kb|kbs|mb|mbs|gb|gbs|tb|tbs)$/i,
+  );
+  if (codeSize) {
+    return `${codeSize[1]} ${codeSize[2].replace(/s$/i, "").toUpperCase()}`;
+  }
+
+  const embeddedSize = label.match(
+    /(\d+(?:\.\d+)?)\s*(KB|KBS|MB|MBS|GB|GBS|TB|TBS)\b/i,
+  );
+  if (embeddedSize) {
+    return `${embeddedSize[1]} ${embeddedSize[2].replace(/s$/i, "").toUpperCase()}`;
+  }
+
+  label = label
+    .replace(/\b(sme|awoof|direct|direct\s+data|gifting|gift|corporate|business|promo|promotion|bonus|hot\s*deal|hot)\b/gi, "")
+    .replace(/\s*[-|–—]\s*/g, " ")
+    .replace(/\(\s*\)/g, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+
+  return label || "Data plan";
+}
+
+function durationDays(item: Item): number {
+  const candidates = [
+    item.validity_days,
+    item.validityDays,
+    item.duration_days,
+    item.durationDays,
+    item.duration,
+    item.validity,
+    item.validity_period,
+    item.validityPeriod,
+    item.period,
+    item.plan_period,
+    item.planPeriod,
+    item.plan_type,
+    item.planType,
+    item.name,
+    item.plan_name,
+    item.planName,
+    item.description,
+    getItemCode(item),
+  ];
+
+  for (const value of candidates) {
+    const numeric = num(value);
+    if (numeric > 0 && numeric <= 1000) return numeric;
+
+    const match = clean(value).match(
+      /(\d+(?:\.\d+)?)\s*(day|days|week|weeks|month|months)/i,
+    );
+    if (!match) continue;
+
+    const count = Number(match[1]);
+    const unit = match[2].toLowerCase();
+    if (unit.startsWith("month")) return count * 30;
+    if (unit.startsWith("week")) return count * 7;
+    return count;
+  }
+
+  return 0;
+}
+
 function getPlanName(item: Item): string {
-  return clean(
-    item.name ??
+  return normaliseDataPlanLabel(
+    item.display_name ??
+      item.displayName ??
+      item.name ??
       item.plan_name ??
       item.planName ??
       item.packageName ??
       item.package_name ??
       item.description ??
-      getItemCode(item)
+      getItemCode(item),
   );
 }
 
 function getDataPlanSize(item: Item): string {
-  const raw = getPlanName(item);
-
-  const normalized = raw
-    .replace(/\s+/g, " ")
-    .trim();
-
-  const sizeMatch = normalized.match(
-    /(\d+(?:\.\d+)?)\s*(KB|MB|GB|TB)\b/i
-  );
-
-  if (sizeMatch) {
-    return `${sizeMatch[1]} ${sizeMatch[2].toUpperCase()}`;
-  }
-
-  const separateSize = [
+  const candidates = [
+    item.display_name,
+    item.displayName,
+    item.name,
+    item.plan_name,
+    item.planName,
+    getItemCode(item),
     item.data,
     item.data_amount,
     item.dataAmount,
@@ -339,46 +403,67 @@ function getDataPlanSize(item: Item): string {
     item.bundle_size,
     item.bundleSize,
     item.size,
-  ]
-    .map(clean)
-    .find((value) =>
-      /\d+(?:\.\d+)?\s*(KB|MB|GB|TB)\b/i.test(value)
-    );
+  ];
 
-  if (separateSize) {
-    const match = separateSize.match(
-      /(\d+(?:\.\d+)?)\s*(KB|MB|GB|TB)\b/i
+  for (const value of candidates) {
+    const label = clean(value).replace(/\s+/g, " ").trim();
+    const match = label.match(
+      /(?:^|\s|m)(\d+(?:\.\d+)?)\s*(KB|KBS|MB|MBS|GB|GBS|TB|TBS)\b/i,
     );
-
     if (match) {
-      return `${match[1]} ${match[2].toUpperCase()}`;
+      return `${match[1]} ${match[2].replace(/s$/i, "").toUpperCase()}`;
     }
   }
 
-  return normalized
-    .replace(
-      /\b(sme|awoof|direct|direct\s+data|gifting|gift|corporate|promo|promotion|bonus|hot\s*deal|hot)\b/gi,
-      ""
-    )
-    .replace(/\s*[-|–—]\s*/g, " ")
-    .replace(/\(\s*\)/g, "")
-    .replace(/\s{2,}/g, " ")
-    .trim();
+  return normaliseDataPlanLabel(getPlanName(item));
 }
 
 function getDataPlanDuration(item: Item): string {
+  const days = durationDays(item);
+  if (days > 0) {
+    if (days >= 28) return `${days} days`;
+    if (days % 7 === 0) return `${days / 7} week${days / 7 === 1 ? "" : "s"}`;
+    return `${days} days`;
+  }
+
+  const explicit = clean(
+    item.validity ??
+      item.duration ??
+      item.period ??
+      item.plan_period ??
+      item.planPeriod ??
+      item.validity_period ??
+      item.validityPeriod,
+  );
+
+  return explicit || "Data plan";
+}
+
+function planGroup(
+  item: Item
+): Exclude<DataTab, "HOT DEALS"> {
+  const days = durationDays(item);
+
+  if (days >= 28) return "MONTHLY";
+  if (days >= 7) return "WEEKLY";
+  if (days > 0) return "DAILY";
+
   const text = [
     item.period,
     item.plan_period,
     item.planPeriod,
     item.plan_type,
     item.planType,
+    item.category,
+    item.type,
+    item.data_type,
+    item.dataType,
+    item.bundle_type,
+    item.bundleType,
     item.validity,
     item.validity_days,
     item.validityDays,
     item.duration,
-    item.validity_period,
-    item.validityPeriod,
     item.name,
     item.plan_name,
     item.planName,
@@ -388,102 +473,13 @@ function getDataPlanDuration(item: Item): string {
     .join(" ")
     .toLowerCase();
 
-  if (
-    /monthly|\b30\s*days?\b|\b31\s*days?\b|\b1\s*month\b|\b2\s*months?\b|\b3\s*months?\b/.test(
-      text
-    )
-  ) {
-    return "Monthly";
-  }
-
-  if (
-    /weekly|\b7\s*days?\b|\b14\s*days?\b|\b1\s*week\b|\b2\s*weeks?\b/.test(
-      text
-    )
-  ) {
-    return "Weekly";
-  }
-
-  if (
-    /daily|\b1\s*day\b|\b2\s*days?\b|\b3\s*days?\b|\b24\s*hours?\b/.test(
-      text
-    )
-  ) {
-    return "Daily";
-  }
-
-  const explicitDuration = clean(
-    item.validity ??
-      item.duration ??
-      item.period ??
-      item.plan_period ??
-      item.planPeriod ??
-      item.validity_period ??
-      item.validityPeriod
-  );
-
-  if (explicitDuration) {
-    return explicitDuration
-      .replace(
-        /\b(sme|awoof|direct|direct\s+data|gifting|gift|corporate)\b/gi,
-        ""
-      )
-      .replace(/\s{2,}/g, " ")
-      .trim();
-  }
-
-  const validityDays = num(
-    item.validity_days ?? item.validityDays
-  );
-
-  if (validityDays > 0) {
-    return `${validityDays} days`;
-  }
-
-  return "Data plan";
-}
-
-function planGroup(
-  item: Item
-): Exclude<DataTab, "HOT DEALS"> {
-  const text = [
-    item.period,
-    item.plan_period,
-    item.planPeriod,
-    item.plan_type,
-    item.planType,
-    item.validity,
-    item.validity_days,
-    item.validityDays,
-    item.duration,
-    item.name,
-    item.description,
-  ]
-    .map(clean)
-    .join(" ")
-    .toLowerCase();
-
-  if (
-    /monthly|\b30\s*days?\b|\b31\s*days?\b|\b1\s*month\b|\b2\s*months?\b|\b3\s*months?\b/.test(
-      text
-    )
-  ) {
+  if (/monthly|30\s*days?|31\s*days?|1\s*month|2\s*months?|3\s*months?/.test(text)) {
     return "MONTHLY";
   }
-
-  if (
-    /weekly|\b7\s*days?\b|\b14\s*days?\b|\b1\s*week\b|\b2\s*weeks?\b/.test(
-      text
-    )
-  ) {
+  if (/weekly|7\s*days?|14\s*days?|1\s*week|2\s*weeks?/.test(text)) {
     return "WEEKLY";
   }
-
-  if (
-    /daily|\b1\s*day\b|\b2\s*days?\b|\b3\s*days?\b|\b24\s*hours?\b/.test(
-      text
-    )
-  ) {
+  if (/daily|1\s*day|2\s*days?|3\s*days?|24\s*hours?/.test(text)) {
     return "DAILY";
   }
 

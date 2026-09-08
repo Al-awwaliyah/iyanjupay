@@ -11,7 +11,6 @@ import {
   CheckCircle2,
   Clock3,
   Copy,
-  Flame,
   History,
   Loader2,
   LockKeyhole,
@@ -43,7 +42,6 @@ type Biller = Record<string, any>;
 type Item = Record<string, any>;
 
 type DataTab =
-  | "HOT DEALS"
   | "DAILY"
   | "WEEKLY"
   | "MONTHLY"
@@ -93,7 +91,6 @@ const BILL_AMOUNTS = [
 ];
 
 const DATA_TABS: DataTab[] = [
-  "HOT DEALS",
   "DAILY",
   "WEEKLY",
   "MONTHLY",
@@ -334,6 +331,7 @@ function normaliseDataPlanLabel(value: unknown): string {
 }
 
 function durationDays(item: Item): number {
+  const raw = item.raw && typeof item.raw === "object" ? item.raw : {};
   const candidates = [
     item.validity_days,
     item.validityDays,
@@ -353,6 +351,25 @@ function durationDays(item: Item): number {
     item.planName,
     item.description,
     getItemCode(item),
+    raw.validity_days,
+    raw.validityDays,
+    raw.duration_days,
+    raw.durationDays,
+    raw.duration,
+    raw.validity,
+    raw.validity_period,
+    raw.validityPeriod,
+    raw.period,
+    raw.plan_period,
+    raw.planPeriod,
+    raw.plan_type,
+    raw.planType,
+    raw.type,
+    raw.category,
+    raw.name,
+    raw.plan_name,
+    raw.planName,
+    raw.description,
   ];
 
   for (const value of candidates) {
@@ -439,15 +456,19 @@ function getDataPlanDuration(item: Item): string {
   return explicit || "Data plan";
 }
 
-function planGroup(
-  item: Item
-): Exclude<DataTab, "HOT DEALS"> {
+function planGroup(item: Item): DataTab {
+  const backendGroup = clean(item.dataCategory).toUpperCase();
+  if (backendGroup === "DAILY" || backendGroup === "WEEKLY" || backendGroup === "MONTHLY" || backendGroup === "OTHER") {
+    return backendGroup as DataTab;
+  }
+
   const days = durationDays(item);
 
   if (days >= 28) return "MONTHLY";
   if (days >= 7) return "WEEKLY";
   if (days > 0) return "DAILY";
 
+  const raw = item.raw && typeof item.raw === "object" ? item.raw : {};
   const text = [
     item.period,
     item.plan_period,
@@ -468,6 +489,21 @@ function planGroup(
     item.plan_name,
     item.planName,
     item.description,
+    raw.period,
+    raw.plan_period,
+    raw.planPeriod,
+    raw.plan_type,
+    raw.planType,
+    raw.category,
+    raw.type,
+    raw.validity,
+    raw.validity_days,
+    raw.validityDays,
+    raw.duration,
+    raw.name,
+    raw.plan_name,
+    raw.planName,
+    raw.description,
   ]
     .map(clean)
     .join(" ")
@@ -484,63 +520,6 @@ function planGroup(
   }
 
   return "OTHER";
-}
-
-function isHot(item: Item): boolean {
-  const flags = [
-    item.is_hot_deal,
-    item.isHotDeal,
-    item.hot_deal,
-    item.hotDeal,
-    item.is_hot,
-    item.isHot,
-  ];
-
-  if (
-    flags.some((value) => {
-      if (typeof value === "boolean") return value;
-
-      const normalized = clean(value).toLowerCase();
-
-      return [
-        "true",
-        "1",
-        "yes",
-        "y",
-        "hot",
-      ].includes(normalized);
-    })
-  ) {
-    return true;
-  }
-
-  const text = [
-    item.name,
-    item.title,
-    item.description,
-    item.plan_type,
-    item.planType,
-    item.plan_period,
-    item.planPeriod,
-    item.category,
-    item.type,
-    item.data_type,
-    item.dataType,
-    item.bundle_type,
-    item.bundleType,
-    item.product_type,
-    item.productType,
-    item.period,
-    item.validity,
-    item.duration,
-  ]
-    .map(clean)
-    .join(" ")
-    .toLowerCase();
-
-  return /\bsme\+?\b|hot[ -]?deal|promo|bonus|special|corporate|gifting/.test(
-    text
-  );
 }
 
 function isVariable(item: Item): boolean {
@@ -1753,7 +1732,7 @@ export default function ServicePayment({
     useState("");
 
   const [dataTab, setDataTab] =
-    useState<DataTab>("HOT DEALS");
+    useState<DataTab>("DAILY");
 
   const [customAmount, setCustomAmount] =
     useState(false);
@@ -1848,7 +1827,7 @@ export default function ServicePayment({
     setAmount("");
     setMeterType("");
     setCustomAmount(false);
-    setDataTab("HOT DEALS");
+    setDataTab("DAILY");
     resetVerification();
     setError("");
     setShowPin(false);
@@ -1996,7 +1975,7 @@ export default function ServicePayment({
           setItems(loaded);
 
           if (isData) {
-            setDataTab("HOT DEALS");
+            setDataTab("DAILY");
           }
 
           if (
@@ -2268,17 +2247,6 @@ export default function ServicePayment({
         items.filter(
           (i) => !isVariable(i)
         );
-
-      const hot =
-        available.filter((i) =>
-          isHot(i)
-        );
-
-      if (dataTab === "HOT DEALS") {
-        return hot.length
-          ? hot
-          : available;
-      }
 
       return available.filter(
         (i) =>
@@ -2721,8 +2689,7 @@ export default function ServicePayment({
   };
 
   const renderDataPlan = (
-    item: Item,
-    showHotBadge = false
+    item: Item
   ) => {
     const code =
       getItemCode(item);
@@ -2733,9 +2700,6 @@ export default function ServicePayment({
     const selected =
       code ===
       selectedItemCode;
-
-    const actualHotPlan =
-      isHot(item);
 
     const size =
       getDataPlanSize(item);
@@ -2762,13 +2726,6 @@ export default function ServicePayment({
             : "border-gray-200 bg-white hover:border-violet-300 hover:bg-violet-50/30"
         }`}
       >
-        {showHotBadge &&
-          actualHotPlan && (
-            <span className="absolute right-1 top-1 inline-flex items-center gap-0.5 rounded-full bg-orange-500 px-1.5 py-0.5 text-[8px] font-extrabold uppercase leading-none text-white shadow-sm">
-              <Flame className="h-2.5 w-2.5" />
-            </span>
-          )}
-
         <div
           className={`truncate text-[11px] font-extrabold leading-tight sm:text-xs ${
             selected
@@ -3780,11 +3737,6 @@ export default function ServicePayment({
                                 : "bg-gray-100 text-gray-600"
                             }`}
                           >
-                            {tab ===
-                              "HOT DEALS" && (
-                              <Flame className="mr-1 inline h-3.5 w-3.5" />
-                            )}
-
                             {tab}
                           </button>
                         )
@@ -3800,11 +3752,7 @@ export default function ServicePayment({
                       <div className="grid grid-cols-5 gap-1.5 sm:gap-2">
                         {visibleDataPlans.map(
                           (item) =>
-                            renderDataPlan(
-                              item,
-                              dataTab ===
-                                "HOT DEALS"
-                            )
+                            renderDataPlan(item)
                         )}
                       </div>
                     ) : (

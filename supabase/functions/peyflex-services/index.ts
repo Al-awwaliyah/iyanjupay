@@ -1628,8 +1628,6 @@ async function purchase(
       amount: String(providerAmount),
       action: "vend",
       user_reference: "PENDING_REFERENCE",
-      processing_mode: processingMode(),
-      ...(callbackUrl() ? { callback: callbackUrl() } : {}),
     };
   } else if (service === "data") {
     providerRequest = {
@@ -1637,8 +1635,6 @@ async function purchase(
       phone_number: phone,
       action: "vend",
       user_reference: "PENDING_REFERENCE",
-      processing_mode: processingMode(),
-      ...(callbackUrl() ? { callback: callbackUrl() } : {}),
     };
   } else if (service === "cable") {
     const smartcard = clean(pickBody(
@@ -1661,8 +1657,6 @@ async function purchase(
       amount: String(providerAmount),
       action: "vend",
       user_reference: "PENDING_REFERENCE",
-      processing_mode: processingMode(),
-      ...(callbackUrl() ? { callback: callbackUrl() } : {}),
     };
   } else if (service === "electricity") {
     const meter = clean(pickBody(
@@ -1682,8 +1676,6 @@ async function purchase(
       amount: String(providerAmount),
       action: "vend",
       user_reference: "PENDING_REFERENCE",
-      processing_mode: processingMode(),
-      ...(callbackUrl() ? { callback: callbackUrl() } : {}),
     };
   } else if (service === "internet") {
     const customerIdentifier = clean(pickBody(
@@ -1713,8 +1705,6 @@ async function purchase(
       action: "vend",
       quantity,
       user_reference: "PENDING_REFERENCE",
-      processing_mode: processingMode(),
-      ...(callbackUrl() ? { callback: callbackUrl() } : {}),
     };
   } else {
     const quantity = Math.max(
@@ -1728,8 +1718,6 @@ async function purchase(
       action: "vend",
       quantity,
       user_reference: "PENDING_REFERENCE",
-      processing_mode: processingMode(),
-      ...(callbackUrl() ? { callback: callbackUrl() } : {}),
     };
   }
 

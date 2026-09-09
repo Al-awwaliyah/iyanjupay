@@ -107,97 +107,97 @@ const DATA_TABS: DataTab[] = [
  */
 
 const ELECTRICITY_DISCO_NAMES = [
-  "AEDC Abuja Disco",
-  "BEDC Benin Disco",
-  "EEDC Enugu Disco",
-  "EKEDC Eko Disco",
-  "IBEDC Ibadan Disco",
-  "IKEDC Ikeja Disco",
-  "JED Jos Disco",
-  "KAEDCO Kaduna Disco",
-  "KEDCO Kano Disco",
-  "PHED Port Harcourt Disco",
-  "YEDC Yola Disco",
+  "Abuja Electric",
+  "Benin Electric",
+  "Enugu Electric",
+  "Eko Electric",
+  "Ibadan Electric",
+  "Ikeja Electric",
+  "Jos Electric",
+  "Kaduna Electric",
+  "Kano Electric",
+  "Port Harcourt Electric",
+  "Yola Electric",
 ] as const;
 
 const ELECTRICITY_DISCO_ALIASES: Record<string, string> = {
-  aedc: "AEDC Abuja Disco",
-  abuja: "AEDC Abuja Disco",
-  "abuja disco": "AEDC Abuja Disco",
-  "abuja electricity": "AEDC Abuja Disco",
+  aedc: "Abuja Electric",
+  abuja: "Abuja Electric",
+  "abuja disco": "Abuja Electric",
+  "abuja electricity": "Abuja Electric",
   "abuja electricity distribution company":
-    "AEDC Abuja Disco",
+    "Abuja Electric",
 
-  bedc: "BEDC Benin Disco",
-  benin: "BEDC Benin Disco",
-  "benin disco": "BEDC Benin Disco",
-  "benin electricity": "BEDC Benin Disco",
+  bedc: "Benin Electric",
+  benin: "Benin Electric",
+  "benin disco": "Benin Electric",
+  "benin electricity": "Benin Electric",
   "benin electricity distribution company":
-    "BEDC Benin Disco",
+    "Benin Electric",
 
-  eedc: "EEDC Enugu Disco",
-  enugu: "EEDC Enugu Disco",
-  "enugu disco": "EEDC Enugu Disco",
-  "enugu electricity": "EEDC Enugu Disco",
+  eedc: "Enugu Electric",
+  enugu: "Enugu Electric",
+  "enugu disco": "Enugu Electric",
+  "enugu electricity": "Enugu Electric",
   "enugu electricity distribution company":
-    "EEDC Enugu Disco",
+    "Enugu Electric",
 
-  ekedc: "EKEDC Eko Disco",
-  eko: "EKEDC Eko Disco",
-  "eko disco": "EKEDC Eko Disco",
-  "eko electricity": "EKEDC Eko Disco",
+  ekedc: "Eko Electric",
+  eko: "Eko Electric",
+  "eko disco": "Eko Electric",
+  "eko electricity": "Eko Electric",
   "eko electricity distribution company":
-    "EKEDC Eko Disco",
+    "Eko Electric",
 
-  ibedc: "IBEDC Ibadan Disco",
-  ibadan: "IBEDC Ibadan Disco",
-  "ibadan disco": "IBEDC Ibadan Disco",
-  "ibadan electricity": "IBEDC Ibadan Disco",
+  ibedc: "Ibadan Electric",
+  ibadan: "Ibadan Electric",
+  "ibadan disco": "Ibadan Electric",
+  "ibadan electricity": "Ibadan Electric",
   "ibadan electricity distribution company":
-    "IBEDC Ibadan Disco",
+    "Ibadan Electric",
 
-  ikedc: "IKEDC Ikeja Disco",
-  ikeja: "IKEDC Ikeja Disco",
-  "ikeja disco": "IKEDC Ikeja Disco",
-  "ikeja electricity": "IKEDC Ikeja Disco",
+  ikedc: "Ikeja Electric",
+  ikeja: "Ikeja Electric",
+  "ikeja disco": "Ikeja Electric",
+  "ikeja electricity": "Ikeja Electric",
   "ikeja electricity distribution company":
-    "IKEDC Ikeja Disco",
+    "Ikeja Electric",
 
-  jed: "JED Jos Disco",
-  jos: "JED Jos Disco",
-  "jos disco": "JED Jos Disco",
-  "jos electricity": "JED Jos Disco",
+  jed: "Jos Electric",
+  jos: "Jos Electric",
+  "jos disco": "Jos Electric",
+  "jos electricity": "Jos Electric",
   "jos electricity distribution company":
-    "JED Jos Disco",
+    "Jos Electric",
 
-  kaedco: "KAEDCO Kaduna Disco",
-  kaduna: "KAEDCO Kaduna Disco",
-  "kaduna disco": "KAEDCO Kaduna Disco",
-  "kaduna electricity": "KAEDCO Kaduna Disco",
+  kaedco: "Kaduna Electric",
+  kaduna: "Kaduna Electric",
+  "kaduna disco": "Kaduna Electric",
+  "kaduna electricity": "Kaduna Electric",
   "kaduna electricity distribution company":
-    "KAEDCO Kaduna Disco",
+    "Kaduna Electric",
 
-  kedco: "KEDCO Kano Disco",
-  kano: "KEDCO Kano Disco",
-  "kano disco": "KEDCO Kano Disco",
-  "kano electricity": "KEDCO Kano Disco",
+  kedco: "Kano Electric",
+  kano: "Kano Electric",
+  "kano disco": "Kano Electric",
+  "kano electricity": "Kano Electric",
   "kano electricity distribution company":
-    "KEDCO Kano Disco",
+    "Kano Electric",
 
-  phed: "PHED Port Harcourt Disco",
-  "port harcourt": "PHED Port Harcourt Disco",
-  "port harcourt disco": "PHED Port Harcourt Disco",
+  phed: "Port Harcourt Electric",
+  "port harcourt": "Port Harcourt Electric",
+  "port harcourt disco": "Port Harcourt Electric",
   "port harcourt electricity":
-    "PHED Port Harcourt Disco",
+    "Port Harcourt Electric",
   "port harcourt electricity distribution company":
-    "PHED Port Harcourt Disco",
+    "Port Harcourt Electric",
 
-  yedc: "YEDC Yola Disco",
-  yola: "YEDC Yola Disco",
-  "yola disco": "YEDC Yola Disco",
-  "yola electricity": "YEDC Yola Disco",
+  yedc: "Yola Electric",
+  yola: "Yola Electric",
+  "yola disco": "Yola Electric",
+  "yola electricity": "Yola Electric",
   "yola electricity distribution company":
-    "YEDC Yola Disco",
+    "Yola Electric",
 };
 
 function clean(value: unknown): string {
@@ -512,10 +512,58 @@ function firstArray(...values: any[]): any[] {
   return [];
 }
 
+function canonicalNetworkName(
+  name: unknown,
+  code = ""
+): string {
+  const value = `${clean(name)} ${clean(code)}`
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (value.includes("9mobile") || value.includes("etisalat") || /\b03\b/.test(value)) {
+    return "9mobile";
+  }
+
+  if (value.includes("airtel") || /\b04\b/.test(value)) {
+    return "Airtel";
+  }
+
+  if (value.includes("mtn") || /\b01\b/.test(value)) {
+    return "MTN";
+  }
+
+  if (value.includes("glo") || /\b02\b/.test(value)) {
+    return "Glo";
+  }
+
+  return "";
+}
+
 function providerLogo(
   name: string,
   code = ""
 ): string | null {
+  const network = canonicalNetworkName(name, code);
+
+  if (network === "MTN") {
+    return "https://www.google.com/s2/favicons?domain=mtn.ng&sz=128";
+  }
+
+  if (network === "Glo") {
+    return "https://www.google.com/s2/favicons?domain=gloworld.com&sz=128";
+  }
+
+  if (network === "Airtel") {
+    return "https://www.google.com/s2/favicons?domain=airtel.com.ng&sz=128";
+  }
+
+  if (network === "9mobile") {
+    // Exact 9mobile brand mark, rather than the generic website favicon.
+    return "https://images.seeklogo.com/logo-png/48/1/9mobile-logo-png_seeklogo-481168.png";
+  }
+
   const value = `${name} ${code}`
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, " ");
@@ -537,35 +585,6 @@ function providerLogo(
 
   if (value.includes("showmax")) {
     return "https://www.google.com/s2/favicons?domain=showmax.com&sz=128";
-  }
-
-  if (
-    value.includes("mtn") ||
-    /\b01\b/.test(value)
-  ) {
-    return "https://www.google.com/s2/favicons?domain=mtn.ng&sz=128";
-  }
-
-  if (
-    value.includes("glo") ||
-    /\b02\b/.test(value)
-  ) {
-    return "https://www.google.com/s2/favicons?domain=gloworld.com&sz=128";
-  }
-
-  if (
-    value.includes("9mobile") ||
-    value.includes("etisalat") ||
-    /\b03\b/.test(value)
-  ) {
-    return "https://www.google.com/s2/favicons?domain=9mobile.com.ng&sz=128";
-  }
-
-  if (
-    value.includes("airtel") ||
-    /\b04\b/.test(value)
-  ) {
-    return "https://www.google.com/s2/favicons?domain=airtel.com.ng&sz=128";
   }
 
   return null;
@@ -607,17 +626,17 @@ const OFFLINE_BILLERS: Record<string, Biller[]> = {
       ],
 
   electricity: [
-    { biller_code: "01", name: "AEDC Abuja Disco" },
-    { biller_code: "02", name: "BEDC Benin Disco" },
-    { biller_code: "03", name: "EEDC Enugu Disco" },
-    { biller_code: "04", name: "EKEDC Eko Disco" },
-    { biller_code: "05", name: "IBEDC Ibadan Disco" },
-    { biller_code: "06", name: "IKEDC Ikeja Disco" },
-    { biller_code: "07", name: "JED Jos Disco" },
-    { biller_code: "08", name: "KAEDCO Kaduna Disco" },
-    { biller_code: "09", name: "KEDCO Kano Disco" },
-    { biller_code: "10", name: "PHED Port Harcourt Disco" },
-    { biller_code: "11", name: "YEDC Yola Disco" },
+    { biller_code: "01", name: "Abuja Electric" },
+    { biller_code: "02", name: "Benin Electric" },
+    { biller_code: "03", name: "Enugu Electric" },
+    { biller_code: "04", name: "Eko Electric" },
+    { biller_code: "05", name: "Ibadan Electric" },
+    { biller_code: "06", name: "Ikeja Electric" },
+    { biller_code: "07", name: "Jos Electric" },
+    { biller_code: "08", name: "Kaduna Electric" },
+    { biller_code: "09", name: "Kano Electric" },
+    { biller_code: "10", name: "Port Harcourt Electric" },
+    { biller_code: "11", name: "Yola Electric" },
   ],
 };
 
@@ -637,6 +656,23 @@ function canonicalElectricityDisco(
   const code = normaliseDiscoText(getCode(biller));
 
   const combined = `${name} ${code}`;
+
+  // Some catalogue responses contain corrupted/prefixed Disco codes such as
+  // "KPKNEDC", "YYYEDC", "JJJEDC" or "AAAEDC". Match the real Disco
+  // identifier inside those values instead of ever displaying the raw string.
+  const discoMatch = combined.replace(/[^a-z0-9]/g, "");
+
+  if (/knedc/.test(discoMatch)) return "Kaduna Electric";
+  if (/yedc/.test(discoMatch)) return "Yola Electric";
+  if (/jedc/.test(discoMatch)) return "Jos Electric";
+  if (/aedc/.test(discoMatch)) return "Abuja Electric";
+  if (/ibedc/.test(discoMatch)) return "Ibadan Electric";
+  if (/bedc/.test(discoMatch)) return "Benin Electric";
+  if (/ikedc/.test(discoMatch)) return "Ikeja Electric";
+  if (/ekedc/.test(discoMatch)) return "Eko Electric";
+  if (/phedc/.test(discoMatch)) return "Port Harcourt Electric";
+  if (/eedc/.test(discoMatch)) return "Enugu Electric";
+  if (/kedco/.test(discoMatch)) return "Kano Electric";
 
   for (const [
     alias,
@@ -683,7 +719,7 @@ function filterElectricityDiscos(live: Biller[]): Biller[] {
     const name = getName(biller);
     const canonical = canonicalElectricityDisco(biller);
     const displayName = canonical || clean(biller.display_name) || name || code;
-    const key = code.toLowerCase() || normaliseDiscoText(displayName);
+    const key = normaliseDiscoText(displayName) || code.toLowerCase();
 
     if (!key || seen.has(key)) continue;
     seen.add(key);
@@ -699,7 +735,7 @@ function filterElectricityDiscos(live: Biller[]): Biller[] {
     for (const biller of OFFLINE_BILLERS.electricity ?? []) {
       const code = getCode(biller);
       const name = getName(biller);
-      const key = code.toLowerCase() || normaliseDiscoText(name);
+      const key = normaliseDiscoText(name) || code.toLowerCase();
       if (!key || seen.has(key)) continue;
       seen.add(key);
       result.push({ ...biller, display_name: name });
@@ -793,17 +829,37 @@ function mergeBillers(
   };
 
   const add = (biller: Biller) => {
-    const code = getCode(biller).toLowerCase();
-    const name = getName(biller).toLowerCase();
+    const code = getCode(biller);
+    const name = getName(biller);
     const canonical = canonicalName(biller);
 
-    const key =
-      canonical || code || name;
+    const isNetworkService =
+      service === "airtime" ||
+      service === "data" ||
+      service === "airtime-card" ||
+      service === "data-card";
+
+    const displayName = isNetworkService
+      ? canonicalNetworkName(name, code)
+      : canonical === "dstv"
+        ? "DStv"
+        : canonical === "gotv"
+          ? "GOtv"
+          : canonical === "startimes"
+            ? "Startimes"
+            : name;
+
+    const key = isNetworkService
+      ? displayName.toLowerCase() || code.toLowerCase()
+      : canonical || code.toLowerCase() || name.toLowerCase();
 
     if (!key || seen.has(key)) return;
 
     seen.add(key);
-    result.push(biller);
+    result.push({
+      ...biller,
+      display_name: displayName || name || code,
+    });
   };
 
   cleaned.forEach(add);
@@ -2625,14 +2681,9 @@ export default function ServicePayment({
       getCode(biller);
 
     const name =
-      serviceType === "electricity"
-        ? clean(
-            biller.display_name
-          ) ||
-          getName(biller) ||
-          code
-        : getName(biller) ||
-          code;
+      clean(biller.display_name) ||
+      getName(biller) ||
+      code;
 
     const selected =
       code ===

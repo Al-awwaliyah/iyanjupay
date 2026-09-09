@@ -130,12 +130,12 @@ const SUPPORTED_BILL_SERVICES: BillService[] = [
   "cable",
   "electricity",
   "education",
-  "recharge-card",
+  "internet",
 ];
 
 const COMING_SOON_SERVICES: BillService[] = [
   "savings",
-  "internet",
+  "recharge-card",
 ];
 
 /*
@@ -1401,11 +1401,11 @@ const Dashboard = () => {
     {
       title: "Recharge Card",
       description:
-        "Buy recharge cards",
+        "Coming soon",
       icon: Receipt,
-      color: "bg-green-500",
+      color: "bg-slate-500",
       type: "recharge-card" as BillService,
-      available: true,
+      available: false,
     },
     {
       title: "Savings",
@@ -1419,11 +1419,11 @@ const Dashboard = () => {
     {
       title: "Internet Service",
       description:
-        "Coming soon",
+        "Pay internet service bills",
       icon: Wifi,
-      color: "bg-slate-500",
+      color: "bg-indigo-500",
       type: "internet" as BillService,
-      available: false,
+      available: true,
     },
   ];
 

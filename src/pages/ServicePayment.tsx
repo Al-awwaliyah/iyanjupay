@@ -29,7 +29,6 @@ import { supabase } from "@/integrations/supabase/client";
 
 interface ServicePaymentProps {
   service: { title: string; type: string } | null;
-  walletBalance: number;
   onBack: () => void;
   onHistory?: () => void;
   onPurchase: (
@@ -1748,7 +1747,6 @@ function ServiceTransactionProcessing({
 
 export default function ServicePayment({
   service,
-  walletBalance,
   onBack,
   onHistory,
   onPurchase,
@@ -2506,13 +2504,6 @@ export default function ServicePayment({
       return `Maximum amount is ${naira(
         amountMaximum
       )}.`;
-    }
-
-    if (
-      customerPayAmount >
-      num(walletBalance)
-    ) {
-      return "Insufficient wallet balance.";
     }
 
     if (

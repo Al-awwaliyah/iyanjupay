@@ -36,12 +36,15 @@ import { adminClient, corsHeaders, getUser, json } from "../_shared/auth.ts";
  *   authoritative values used for customer catalogue and server-side pricing.
  *
  * Pricing:
- *   selling = provider price + the supplied catalogue percentage markup,
- *   then rounded UP to the next ₦50.
+ *   Airtime = provider amount exactly (0% markup).
+ *   Other fixed-price services = provider price + catalogue percentage,
+ *   falling back to 5% when the catalogue percentage is missing/zero, then
+ *   rounded UP to the next ₦50. Electricity remains amount-based and follows
+ *   the configured/default service markup.
  *
  * For variable Airtime/Electricity amounts, the amount entered by the user
- * is treated as the provider amount. The customer selling amount is calculated
- * server-side with the same markup + ₦50 rule.
+ * is treated as the provider amount. Airtime is never marked up; Electricity
+ * uses the configured/default markup server-side.
  */
 
 type Service = "airtime" | "data" | "cable" | "electricity" | "education" | "internet";
@@ -729,13 +732,16 @@ let catalogCache: { expires: number; entries: any[] } | null = null;
 
 function buildEmbeddedCatalog(): any[] {
   return EMBEDDED_CATALOG.map((entry) => {
-    // A zero/missing percentage means no percentage was supplied for the
-    // service catalogue entry. Apply the platform default of 5%.
-    // Airtime keeps its explicitly configured percentage rules.
+    // Airtime is always sold at 0% markup. For every other service, a
+    // missing/zero catalogue percentage falls back to the platform default
+    // of 5%. This is enforced server-side so the client cannot add Airtime
+    // markup by changing the submitted amount.
     const configuredMarkup = numberValue(entry.markup_percent);
-    const markupPercent = configuredMarkup > 0 || entry.service === "airtime"
-      ? configuredMarkup
-      : 5;
+    const markupPercent = entry.service === "airtime"
+      ? 0
+      : configuredMarkup > 0
+        ? configuredMarkup
+        : 5;
 
     return {
       ...entry,
@@ -858,6 +864,38 @@ function electricityProviderName(entry: any): string {
   )) || "Electricity";
 }
 
+function internetProviderName(entry: any): string {
+  const raw = entry.raw ?? {};
+  const value = [
+    entry.name,
+    entry.display_name,
+    entry.network,
+    entry.network_name,
+    entry.networkName,
+    raw.provider,
+    raw.provider_name,
+    raw.providerName,
+    raw.isp,
+    raw.isp_name,
+    raw.ispName,
+    raw.network,
+    raw.network_name,
+    raw.networkName,
+  ].map(clean).filter(Boolean).join(" ").toLowerCase();
+
+  if (/spectranet/.test(value)) return "Spectranet";
+  if (/\bsmile\b/.test(value)) return "Smile";
+
+  return "";
+}
+
+function internetProviderCode(entry: any): string {
+  const name = internetProviderName(entry);
+  if (name === "Spectranet") return "spectranet";
+  if (name === "Smile") return "smile";
+  return "";
+}
+
 function groupedProviderCode(entry: any, service: Service): string {
   if (service === "cable") return cableProviderCode(entry);
   if (service === "electricity") return electricityProviderCode(entry);
@@ -878,13 +916,7 @@ function groupedProviderCode(entry: any, service: Service): string {
   }
 
   if (service === "internet") {
-    const raw = entry.raw ?? {};
-    return clean(firstValue(
-      raw.provider_code, raw.providerCode, raw.biller_code, raw.billerCode,
-      raw.service_id, raw.serviceId, raw.provider_id, raw.providerId,
-      raw.isp_code, raw.ispCode, raw.network_code, raw.networkCode,
-      raw.provider_name, raw.providerName, raw.isp, raw.isp_name,
-    )) || entry.product_code;
+    return internetProviderCode(entry);
   }
 
   return catalogBillerCode(entry, service);
@@ -904,10 +936,7 @@ function groupedProviderName(entry: any, service: Service): string {
     return value || "Education";
   }
   if (service === "internet") {
-    return clean(firstValue(
-      raw.provider_name, raw.providerName, raw.isp_name, raw.ispName,
-      raw.isp, raw.provider, raw.network_name, raw.networkName, entry.name,
-    )) || "Internet Service";
+    return internetProviderName(entry);
   }
   if (service === "cable") return cableProviderName(entry);
   return clean(entry.name);
@@ -1232,7 +1261,9 @@ async function catalog(service: Service, code?: string): Promise<Record<string, 
         ))}`.toLowerCase();
         return /waec|neco|nabteb/.test(label);
       })
-    : entries;
+    : service === "internet"
+      ? entries.filter((entry) => Boolean(internetProviderCode(entry)))
+      : entries;
 
   const billerMap = new Map<string, any>();
   for (const entry of filteredEntries) {
@@ -1555,10 +1586,14 @@ async function purchase(
 
     if (providerAmount <= 0) throw new Error("Please enter a valid amount.");
 
-    sellingAmount = roundUp50(
-      providerAmount,
-      numberValue(selected.markup_percent),
-    );
+    // Airtime is strictly 0% markup. Do not trust the catalogue row or any
+    // client-supplied markup value for this service.
+    sellingAmount = service === "airtime"
+      ? providerAmount
+      : roundUp50(
+          providerAmount,
+          numberValue(selected.markup_percent),
+        );
   } else {
     if (!selectedCode) throw new Error("Please select a valid product.");
 
@@ -1715,7 +1750,7 @@ async function purchase(
     customer: phone || null,
     selling_amount: sellingAmount,
     provider_amount: providerAmount,
-    markup_percent: numberValue(selected?.markup_percent),
+    markup_percent: service === "airtime" ? 0 : numberValue(selected?.markup_percent),
     selected_item: selected,
     provider_request: { ...providerRequest, user_reference: reference },
     request_id: reference,

@@ -63,6 +63,7 @@ const SERVICE_TITLES: Record<string, string> = {
   cable: "Cable TV",
   electricity: "Electricity",
   education: "Education",
+  internet: "Internet Service",
   "airtime-card": "Airtime E-pin",
   "data-card": "Data E-pin",
   airtime_epin: "Airtime E-pin",
@@ -212,6 +213,12 @@ function naira(value: unknown): string {
   return `₦${num(value).toLocaleString("en-NG", {
     maximumFractionDigits: 2,
   })}`;
+}
+
+function roundUpTo50(value: number): number {
+  const amount = Math.max(0, num(value));
+  if (amount <= 0) return 0;
+  return Math.ceil(amount / 50) * 50;
 }
 
 function normaliseServiceType(type: string): string {
@@ -597,8 +604,7 @@ const OFFLINE_BILLERS: Record<string, Biller[]> = {
     { biller_code: "dstv", name: "DStv" },
     { biller_code: "gotv", name: "GOtv" },
     { biller_code: "startimes", name: "Startimes" },
-    { biller_code: "showmax", name: "Showmax" },
-  ],
+      ],
 
   electricity: [
     { biller_code: "01", name: "AEDC Abuja Disco" },
@@ -782,7 +788,6 @@ function mergeBillers(
       return "startimes";
     }
 
-    if (raw.includes("showmax")) return "showmax";
 
     return "";
   };
@@ -1622,7 +1627,7 @@ export default function ServicePayment({
   const serviceTitle =
     displayServiceTitle(service);
 
-  const serviceFunction = "peyflex-services"; // Existing Edge Function route; implementation is now VTUGATE.
+  const serviceFunction = "peyflex-services"; // Existing Edge Function route; implementation is now ZOEDATA.
 
   const serviceRequestType =
     serviceType === "education"
@@ -1640,6 +1645,9 @@ export default function ServicePayment({
 
   const isElectricity =
     serviceType === "electricity";
+
+  const isInternet =
+    serviceType === "internet";
 
   const isEpin =
     serviceType === "airtime-card" ||
@@ -1756,7 +1764,9 @@ export default function ServicePayment({
         ? "SmartCard / IUC Number"
         : isElectricity
           ? "Meter Number"
-          : "Customer Number";
+          : isInternet
+            ? "Account Number"
+            : "Customer Number";
 
   const customerPlaceholder =
     isPhoneService
@@ -1765,7 +1775,9 @@ export default function ServicePayment({
         ? "Enter SmartCard / IUC number"
         : isElectricity
           ? "Enter meter number"
-          : "Enter customer number";
+          : isInternet
+            ? "Enter internet account number"
+            : "Enter customer number";
 
   const resetVerification =
     useCallback(() => {
@@ -1828,6 +1840,11 @@ export default function ServicePayment({
   const loadBillers =
     useCallback(async () => {
       if (!serviceType) return;
+      if (isRechargeCard) {
+        setBillers([]);
+        setError("Recharge Card is coming soon.");
+        return;
+      }
 
       setLoadingBillers(true);
       setError("");
@@ -1883,6 +1900,7 @@ export default function ServicePayment({
       invoke,
       isAmountOnly,
       serviceType,
+      isRechargeCard,
       toast,
     ]);
 
@@ -2182,6 +2200,26 @@ export default function ServicePayment({
     setError("");
   };
 
+  const variableMarkupPercent = num(
+    selectedBiller?.markup_percent ??
+      selectedBiller?.markupPercentage ??
+      selectedBiller?.percentage ??
+      0
+  );
+
+  const customerPayAmount =
+    isAmountOnly && num(amount) > 0
+      ? roundUpTo50(
+          num(amount) *
+            (1 + variableMarkupPercent / 100)
+        )
+      : num(amount);
+
+  const providerVariableAmount =
+    isAmountOnly && num(amount) > 0
+      ? num(amount)
+      : 0;
+
   const amountMinimum = num(
     selectedItem?.minimum ??
       selectedItem?.min_amount ??
@@ -2256,13 +2294,14 @@ export default function ServicePayment({
         : !!customer.trim();
 
   const hasAmount =
-    num(amount) > 0;
+    customerPayAmount > 0;
 
   const hasItem =
     !needsItem ||
     !!selectedItemCode;
 
   const canPurchase =
+    !isRechargeCard &&
     !!selectedBillerCode &&
     hasRequiredIdentifier &&
     hasAmount &&
@@ -2332,7 +2371,7 @@ export default function ServicePayment({
     }
 
     if (
-      num(amount) >
+      customerPayAmount >
       num(walletBalance)
     ) {
       return "Insufficient wallet balance.";
@@ -2377,6 +2416,16 @@ export default function ServicePayment({
 
       phoneNumber: phone,
       phone,
+
+      account_number:
+        isInternet
+          ? customer.trim()
+          : "",
+
+      accountNumber:
+        isInternet
+          ? customer.trim()
+          : "",
 
       meterNumber:
         isElectricity
@@ -2440,7 +2489,7 @@ export default function ServicePayment({
           ? getPlanName(selectedItem ?? {})
           : "",
       product_code:
-        serviceType === "education"
+        serviceType === "education" || isInternet
           ? clean(selectedItem?.product_code ?? selectedItem?.plan_code ?? selectedItemCode)
           : "",
       disco:
@@ -2451,10 +2500,13 @@ export default function ServicePayment({
         serviceType === "education" ? 1 : undefined,
 
       selling_amount:
-        num(amount),
+        customerPayAmount,
 
       amount:
-        num(amount),
+        customerPayAmount,
+
+      provider_amount:
+        isAmountOnly ? providerVariableAmount : undefined,
 
       item: selectedItem,
       biller: selectedBiller,
@@ -2544,7 +2596,7 @@ export default function ServicePayment({
         setPaymentPin("");
 
         setProcessingSession({
-          amount: num(amount),
+          amount: customerPayAmount,
           details,
           idempotencyKey,
         });
@@ -3380,7 +3432,26 @@ export default function ServicePayment({
         </header>
 
         <main className="mx-auto max-w-5xl space-y-3 px-3 py-4 pb-8 sm:px-4">
-          {showPin ? (
+          {isRechargeCard ? (
+            <section className="rounded-3xl border bg-white p-8 text-center shadow-sm">
+              <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-gray-100">
+                <Receipt className="h-7 w-7 text-gray-500" />
+              </div>
+              <h2 className="mt-4 text-lg font-bold text-gray-900">
+                Recharge Card is coming soon
+              </h2>
+              <p className="mx-auto mt-1 max-w-sm text-sm text-gray-500">
+                This service is not available yet. Please check back later.
+              </p>
+              <Button
+                variant="outline"
+                className="mt-5 rounded-xl"
+                onClick={onBack}
+              >
+                Back to Services
+              </Button>
+            </section>
+          ) : showPin ? (
             /*
              * ==================================================
              * PAYMENT PIN SCREEN
@@ -3488,7 +3559,7 @@ export default function ServicePayment({
                 <div className="mb-3 flex items-center justify-between gap-3">
                   <div className="min-w-0">
                     <h2 className="text-sm font-bold text-gray-900">
-                      {isAirtime ? "Select network" : isData ? "Select network" : isCable ? "Select service" : isElectricity ? "Select Disco" : serviceType === "education" ? "Select examination" : "Select option"}
+                      {isAirtime ? "Select network" : isData ? "Select network" : isCable ? "Select service" : isElectricity ? "Select Disco" : serviceType === "education" ? "Select examination" : isInternet ? "Select service" : "Select option"}
                     </h2>
                     <p className="mt-0.5 text-[11px] text-gray-500">
                       Choose an option to continue.
@@ -3645,11 +3716,11 @@ export default function ServicePayment({
                 </section>
               )}
 
-              {((isCable && selectedBillerCode) || (isEpin && selectedBillerCode) || (isRechargeCard && selectedBillerCode) || (serviceType === "education" && selectedBillerCode)) && (
+              {((isCable && selectedBillerCode) || (isEpin && selectedBillerCode) || (isRechargeCard && selectedBillerCode) || ((serviceType === "education" || isInternet) && selectedBillerCode)) && (
                 <section className="rounded-2xl border bg-white p-3 shadow-sm sm:p-4">
                   <div className="mb-3 flex items-center justify-between">
                     <div>
-                      <h2 className="text-xs font-bold text-gray-900">{serviceType === "education" ? "Select product" : "Select package"}</h2>
+                      <h2 className="text-xs font-bold text-gray-900">{serviceType === "education" || isInternet ? "Select product" : "Select package"}</h2>
                       <p className="mt-0.5 text-[11px] text-gray-500">Choose the option you want.</p>
                     </div>
                   </div>
@@ -3739,7 +3810,7 @@ export default function ServicePayment({
                 {hasAmount && (
                   <div className="mb-3 flex items-center justify-between rounded-xl bg-gray-50 px-3 py-2.5">
                     <span className="text-xs text-gray-500">Amount</span>
-                    <span className="text-sm font-extrabold text-[#082A63]">{naira(amount)}</span>
+                    <span className="text-sm font-extrabold text-[#082A63]">{naira(customerPayAmount)}</span>
                   </div>
                 )}
                 <Button
@@ -3747,7 +3818,7 @@ export default function ServicePayment({
                   onClick={startPurchase}
                   disabled={!canPurchase}
                 >
-                  {isAirtime ? "Buy Airtime" : `Continue${hasAmount ? ` to Pay ${naira(amount)}` : ""}`}
+                  {isAirtime ? "Buy Airtime" : `Continue${hasAmount ? ` to Pay ${naira(customerPayAmount)}` : ""}`}
                 </Button>
                 <p className="mt-2 text-center text-[10px] text-gray-500">
                   Your payment PIN is required to complete this purchase.

@@ -697,23 +697,61 @@ const EMBEDDED_CATALOG: any[] = [
   {"service":"internet","product_code":"1097","code":"1097","id":"1097","name":"Unlimited 100 90 Days - Data - 100.0 Mbps (90 Days)","display_name":"Unlimited 100 90 Days - Data - 100.0 Mbps (90 Days)","provider_price":121500,"price":121500,"providerPrice":121500,"provider_amount":121500,"markup_percent":0,"percentage":0,"selling_price":0,"network":"","network_code":"","data_type":null,"dataCategory":null,"validityDays":0,"validity_days":0,"duration":0,"period":null,"raw":{"product_code":"1097","name":"Unlimited 100 90 Days - Data - 100.0 Mbps (90 Days)","PRODUCT_AMOUNT":121500,"percentage":0}},
   {"service":"internet","product_code":"1098","code":"1098","id":"1098","name":"Unlimited 50 180 Days - Data - 50.0 Mbps (180 Days)","display_name":"Unlimited 50 180 Days - Data - 50.0 Mbps (180 Days)","provider_price":125000,"price":125000,"providerPrice":125000,"provider_amount":125000,"markup_percent":0,"percentage":0,"selling_price":0,"network":"","network_code":"","data_type":null,"dataCategory":null,"validityDays":0,"validity_days":0,"duration":0,"period":null,"raw":{"product_code":"1098","name":"Unlimited 50 180 Days - Data - 50.0 Mbps (180 Days)","PRODUCT_AMOUNT":125000,"percentage":0}},
   {"service":"internet","product_code":"1099","code":"1099","id":"1099","name":"Unlimited 100 180 Days - Data - 100.0 Mbps (180 Days)","display_name":"Unlimited 100 180 Days - Data - 100.0 Mbps (180 Days)","provider_price":225000,"price":225000,"providerPrice":225000,"provider_amount":225000,"markup_percent":0,"percentage":0,"selling_price":0,"network":"","network_code":"","data_type":null,"dataCategory":null,"validityDays":0,"validity_days":0,"duration":0,"period":null,"raw":{"product_code":"1099","name":"Unlimited 100 180 Days - Data - 100.0 Mbps (180 Days)","PRODUCT_AMOUNT":225000,"percentage":0}},
+  {"service":"internet","product_code":"365","code":"365","id":"365","name":"Smile 1GB FlexiDaily (1 day)","display_name":"Smile 1GB FlexiDaily (1 day)","provider_price":500,"price":500,"providerPrice":500,"provider_amount":500,"markup_percent":0,"percentage":0,"selling_price":0,"network":"","network_code":"","data_type":null,"dataCategory":null,"validityDays":0,"validity_days":0,"duration":0,"period":null,"raw":{"product_code":"365","name":"Smile 1GB FlexiDaily (1 day)","PRODUCT_AMOUNT":500,"percentage":0,"provider":"Smile","provider_name":"Smile"}},
+  {"service":"internet","product_code":"366","code":"366","id":"366","name":"Smile 2GB FlexiWeekly (7 days)","display_name":"Smile 2GB FlexiWeekly (7 days)","provider_price":1200,"price":1200,"providerPrice":1200,"provider_amount":1200,"markup_percent":0,"percentage":0,"selling_price":0,"network":"","network_code":"","data_type":null,"dataCategory":null,"validityDays":0,"validity_days":0,"duration":0,"period":null,"raw":{"product_code":"366","name":"Smile 2GB FlexiWeekly (7 days)","PRODUCT_AMOUNT":1200,"percentage":0,"provider":"Smile","provider_name":"Smile"}},
+  {"service":"internet","product_code":"367","code":"367","id":"367","name":"Smile 1GB SmileLite (30 days)","display_name":"Smile 1GB SmileLite (30 days)","provider_price":1000,"price":1000,"providerPrice":1000,"provider_amount":1000,"markup_percent":0,"percentage":0,"selling_price":0,"network":"","network_code":"","data_type":null,"dataCategory":null,"validityDays":0,"validity_days":0,"duration":0,"period":null,"raw":{"product_code":"367","name":"Smile 1GB SmileLite (30 days)","PRODUCT_AMOUNT":1000,"percentage":0,"provider":"Smile","provider_name":"Smile"}},
+  {"service":"internet","product_code":"368","code":"368","id":"368","name":"Smile 2GB SmileLite (30 days)","display_name":"Smile 2GB SmileLite (30 days)","provider_price":2000,"price":2000,"providerPrice":2000,"provider_amount":2000,"markup_percent":0,"percentage":0,"selling_price":0,"network":"","network_code":"","data_type":null,"dataCategory":null,"validityDays":0,"validity_days":0,"duration":0,"period":null,"raw":{"product_code":"368","name":"Smile 2GB SmileLite (30 days)","PRODUCT_AMOUNT":2000,"percentage":0,"provider":"Smile","provider_name":"Smile"}},
+  {"service":"internet","product_code":"369","code":"369","id":"369","name":"Smile 2GB MidNite (7 days)","display_name":"Smile 2GB MidNite (7 days)","provider_price":1000,"price":1000,"providerPrice":1000,"provider_amount":1000,"markup_percent":0,"percentage":0,"selling_price":0,"network":"","network_code":"","data_type":null,"dataCategory":null,"validityDays":0,"validity_days":0,"duration":0,"period":null,"raw":{"product_code":"369","name":"Smile 2GB MidNite (7 days)","PRODUCT_AMOUNT":1000,"percentage":0,"provider":"Smile","provider_name":"Smile"}},
+  {"service":"internet","product_code":"370","code":"370","id":"370","name":"Smile 3GB MidNite (7 days)","display_name":"Smile 3GB MidNite (7 days)","provider_price":1500,"price":1500,"providerPrice":1500,"provider_amount":1500,"markup_percent":0,"percentage":0,"selling_price":0,"network":"","network_code":"","data_type":null,"dataCategory":null,"validityDays":0,"validity_days":0,"duration":0,"period":null,"raw":{"product_code":"370","name":"Smile 3GB MidNite (7 days)","PRODUCT_AMOUNT":1500,"percentage":0,"provider":"Smile","provider_name":"Smile"}},
+  {"service":"internet","product_code":"371","code":"371","id":"371","name":"Smile 3GB Weekend Only (3 days)","display_name":"Smile 3GB Weekend Only (3 days)","provider_price":1500,"price":1500,"providerPrice":1500,"provider_amount":1500,"markup_percent":0,"percentage":0,"selling_price":0,"network":"","network_code":"","data_type":null,"dataCategory":null,"validityDays":0,"validity_days":0,"duration":0,"period":null,"raw":{"product_code":"371","name":"Smile 3GB Weekend Only (3 days)","PRODUCT_AMOUNT":1500,"percentage":0,"provider":"Smile","provider_name":"Smile"}},
+  {"service":"internet","product_code":"372","code":"372","id":"372","name":"Smile 3GB Anytime (30 days)","display_name":"Smile 3GB Anytime (30 days)","provider_price":3000,"price":3000,"providerPrice":3000,"provider_amount":3000,"markup_percent":0,"percentage":0,"selling_price":0,"network":"","network_code":"","data_type":null,"dataCategory":null,"validityDays":0,"validity_days":0,"duration":0,"period":null,"raw":{"product_code":"372","name":"Smile 3GB Anytime (30 days)","PRODUCT_AMOUNT":3000,"percentage":0,"provider":"Smile","provider_name":"Smile"}},
+  {"service":"internet","product_code":"373","code":"373","id":"373","name":"Smile 5GB Anytime (30 days)","display_name":"Smile 5GB Anytime (30 days)","provider_price":4000,"price":4000,"providerPrice":4000,"provider_amount":4000,"markup_percent":0,"percentage":0,"selling_price":0,"network":"","network_code":"","data_type":null,"dataCategory":null,"validityDays":0,"validity_days":0,"duration":0,"period":null,"raw":{"product_code":"373","name":"Smile 5GB Anytime (30 days)","PRODUCT_AMOUNT":4000,"percentage":0,"provider":"Smile","provider_name":"Smile"}},
+  {"service":"internet","product_code":"374","code":"374","id":"374","name":"Smile 7GB Anytime (30 days)","display_name":"Smile 7GB Anytime (30 days)","provider_price":5000,"price":5000,"providerPrice":5000,"provider_amount":5000,"markup_percent":0,"percentage":0,"selling_price":0,"network":"","network_code":"","data_type":null,"dataCategory":null,"validityDays":0,"validity_days":0,"duration":0,"period":null,"raw":{"product_code":"374","name":"Smile 7GB Anytime (30 days)","PRODUCT_AMOUNT":5000,"percentage":0,"provider":"Smile","provider_name":"Smile"}},
+  {"service":"internet","product_code":"375","code":"375","id":"375","name":"Smile 10GB Anytime (30 days)","display_name":"Smile 10GB Anytime (30 days)","provider_price":7500,"price":7500,"providerPrice":7500,"provider_amount":7500,"markup_percent":0,"percentage":0,"selling_price":0,"network":"","network_code":"","data_type":null,"dataCategory":null,"validityDays":0,"validity_days":0,"duration":0,"period":null,"raw":{"product_code":"375","name":"Smile 10GB Anytime (30 days)","PRODUCT_AMOUNT":7500,"percentage":0,"provider":"Smile","provider_name":"Smile"}},
+  {"service":"internet","product_code":"376","code":"376","id":"376","name":"Smile 15GB Anytime (30 days)","display_name":"Smile 15GB Anytime (30 days)","provider_price":10000,"price":10000,"providerPrice":10000,"provider_amount":10000,"markup_percent":0,"percentage":0,"selling_price":0,"network":"","network_code":"","data_type":null,"dataCategory":null,"validityDays":0,"validity_days":0,"duration":0,"period":null,"raw":{"product_code":"376","name":"Smile 15GB Anytime (30 days)","PRODUCT_AMOUNT":10000,"percentage":0,"provider":"Smile","provider_name":"Smile"}},
+  {"service":"internet","product_code":"377","code":"377","id":"377","name":"Smile Unlimited Lite (30 days)","display_name":"Smile Unlimited Lite (30 days)","provider_price":10000,"price":10000,"providerPrice":10000,"provider_amount":10000,"markup_percent":0,"percentage":0,"selling_price":0,"network":"","network_code":"","data_type":null,"dataCategory":null,"validityDays":0,"validity_days":0,"duration":0,"period":null,"raw":{"product_code":"377","name":"Smile Unlimited Lite (30 days)","PRODUCT_AMOUNT":10000,"percentage":0,"provider":"Smile","provider_name":"Smile"}},
+  {"service":"internet","product_code":"378","code":"378","id":"378","name":"Smile Unlimited Premium (30 days)","display_name":"Smile Unlimited Premium (30 days)","provider_price":19800,"price":19800,"providerPrice":19800,"provider_amount":19800,"markup_percent":0,"percentage":0,"selling_price":0,"network":"","network_code":"","data_type":null,"dataCategory":null,"validityDays":0,"validity_days":0,"duration":0,"period":null,"raw":{"product_code":"378","name":"Smile Unlimited Premium (30 days)","PRODUCT_AMOUNT":19800,"percentage":0,"provider":"Smile","provider_name":"Smile"}},
+  {"service":"internet","product_code":"379","code":"379","id":"379","name":"Smile 30GB BumpaValue (60 days)","display_name":"Smile 30GB BumpaValue (60 days)","provider_price":15000,"price":15000,"providerPrice":15000,"provider_amount":15000,"markup_percent":0,"percentage":0,"selling_price":0,"network":"","network_code":"","data_type":null,"dataCategory":null,"validityDays":0,"validity_days":0,"duration":0,"period":null,"raw":{"product_code":"379","name":"Smile 30GB BumpaValue (60 days)","PRODUCT_AMOUNT":15000,"percentage":0,"provider":"Smile","provider_name":"Smile"}},
+  {"service":"internet","product_code":"380","code":"380","id":"380","name":"Smile 60GB BumpaValue (90 days)","display_name":"Smile 60GB BumpaValue (90 days)","provider_price":30000,"price":30000,"providerPrice":30000,"provider_amount":30000,"markup_percent":0,"percentage":0,"selling_price":0,"network":"","network_code":"","data_type":null,"dataCategory":null,"validityDays":0,"validity_days":0,"duration":0,"period":null,"raw":{"product_code":"380","name":"Smile 60GB BumpaValue (90 days)","PRODUCT_AMOUNT":30000,"percentage":0,"provider":"Smile","provider_name":"Smile"}},
+  {"service":"internet","product_code":"381","code":"381","id":"381","name":"Smile 80GB BumpaValue (120 days)","display_name":"Smile 80GB BumpaValue (120 days)","provider_price":50000,"price":50000,"providerPrice":50000,"provider_amount":50000,"markup_percent":0,"percentage":0,"selling_price":0,"network":"","network_code":"","data_type":null,"dataCategory":null,"validityDays":0,"validity_days":0,"duration":0,"period":null,"raw":{"product_code":"381","name":"Smile 80GB BumpaValue (120 days)","PRODUCT_AMOUNT":50000,"percentage":0,"provider":"Smile","provider_name":"Smile"}},
+  {"service":"internet","product_code":"382","code":"382","id":"382","name":"Smile 10GB Anytime (365 days)","display_name":"Smile 10GB Anytime (365 days)","provider_price":9000,"price":9000,"providerPrice":9000,"provider_amount":9000,"markup_percent":0,"percentage":0,"selling_price":0,"network":"","network_code":"","data_type":null,"dataCategory":null,"validityDays":0,"validity_days":0,"duration":0,"period":null,"raw":{"product_code":"382","name":"Smile 10GB Anytime (365 days)","PRODUCT_AMOUNT":9000,"percentage":0,"provider":"Smile","provider_name":"Smile"}},
+  {"service":"internet","product_code":"383","code":"383","id":"383","name":"Smile 20GB Anytime (365 days)","display_name":"Smile 20GB Anytime (365 days)","provider_price":17000,"price":17000,"providerPrice":17000,"provider_amount":17000,"markup_percent":0,"percentage":0,"selling_price":0,"network":"","network_code":"","data_type":null,"dataCategory":null,"validityDays":0,"validity_days":0,"duration":0,"period":null,"raw":{"product_code":"383","name":"Smile 20GB Anytime (365 days)","PRODUCT_AMOUNT":17000,"percentage":0,"provider":"Smile","provider_name":"Smile"}},
+  {"service":"internet","product_code":"384","code":"384","id":"384","name":"Smile 200GB Anytime (365 days)","display_name":"Smile 200GB Anytime (365 days)","provider_price":135000,"price":135000,"providerPrice":135000,"provider_amount":135000,"markup_percent":0,"percentage":0,"selling_price":0,"network":"","network_code":"","data_type":null,"dataCategory":null,"validityDays":0,"validity_days":0,"duration":0,"period":null,"raw":{"product_code":"384","name":"Smile 200GB Anytime (365 days)","PRODUCT_AMOUNT":135000,"percentage":0,"provider":"Smile","provider_name":"Smile"}},
+  {"service":"internet","product_code":"385","code":"385","id":"385","name":"Smile 50GB Anytime (365 days)","display_name":"Smile 50GB Anytime (365 days)","provider_price":36000,"price":36000,"providerPrice":36000,"provider_amount":36000,"markup_percent":0,"percentage":0,"selling_price":0,"network":"","network_code":"","data_type":null,"dataCategory":null,"validityDays":0,"validity_days":0,"duration":0,"period":null,"raw":{"product_code":"385","name":"Smile 50GB Anytime (365 days)","PRODUCT_AMOUNT":36000,"percentage":0,"provider":"Smile","provider_name":"Smile"}},
+  {"service":"internet","product_code":"386","code":"386","id":"386","name":"Smile 100GB Anytime (365 days)","display_name":"Smile 100GB Anytime (365 days)","provider_price":70000,"price":70000,"providerPrice":70000,"provider_amount":70000,"markup_percent":0,"percentage":0,"selling_price":0,"network":"","network_code":"","data_type":null,"dataCategory":null,"validityDays":0,"validity_days":0,"duration":0,"period":null,"raw":{"product_code":"386","name":"Smile 100GB Anytime (365 days)","PRODUCT_AMOUNT":70000,"percentage":0,"provider":"Smile","provider_name":"Smile"}},
+  {"service":"internet","product_code":"446","code":"446","id":"446","name":"SmileVoice ONLY 75","display_name":"SmileVoice ONLY 75","provider_price":500,"price":500,"providerPrice":500,"provider_amount":500,"markup_percent":0,"percentage":0,"selling_price":0,"network":"","network_code":"","data_type":null,"dataCategory":null,"validityDays":0,"validity_days":0,"duration":0,"period":null,"raw":{"product_code":"446","name":"SmileVoice ONLY 75","PRODUCT_AMOUNT":500,"percentage":0,"provider":"Smile","provider_name":"Smile"}},
+  {"service":"internet","product_code":"447","code":"447","id":"447","name":"SmileVoice ONLY 500","display_name":"SmileVoice ONLY 500","provider_price":3000,"price":3000,"providerPrice":3000,"provider_amount":3000,"markup_percent":0,"percentage":0,"selling_price":0,"network":"","network_code":"","data_type":null,"dataCategory":null,"validityDays":0,"validity_days":0,"duration":0,"period":null,"raw":{"product_code":"447","name":"SmileVoice ONLY 500","PRODUCT_AMOUNT":3000,"percentage":0,"provider":"Smile","provider_name":"Smile"}},
+  {"service":"internet","product_code":"448","code":"448","id":"448","name":"SmileVoice ONLY 165","display_name":"SmileVoice ONLY 165","provider_price":1000,"price":1000,"providerPrice":1000,"provider_amount":1000,"markup_percent":0,"percentage":0,"selling_price":0,"network":"","network_code":"","data_type":null,"dataCategory":null,"validityDays":0,"validity_days":0,"duration":0,"period":null,"raw":{"product_code":"448","name":"SmileVoice ONLY 165","PRODUCT_AMOUNT":1000,"percentage":0,"provider":"Smile","provider_name":"Smile"}},
+  {"service":"internet","product_code":"445","code":"445","id":"445","name":"Smile Recharge","display_name":"Smile Recharge","provider_price":100,"price":100,"providerPrice":100,"provider_amount":100,"markup_percent":0,"percentage":0,"selling_price":0,"network":"","network_code":"","data_type":null,"dataCategory":null,"validityDays":0,"validity_days":0,"duration":0,"period":null,"raw":{"product_code":"445","name":"Smile Recharge","PRODUCT_AMOUNT":100,"percentage":0,"provider":"Smile","provider_name":"Smile"}},
 ];
 
 let catalogCache: { expires: number; entries: any[] } | null = null;
 
 function buildEmbeddedCatalog(): any[] {
-  return EMBEDDED_CATALOG.map((entry) => ({
-    ...entry,
-    selling_price: entry.provider_price > 0
-      ? roundUp50(entry.provider_price, entry.markup_percent)
-      : 0,
-  }));
+  return EMBEDDED_CATALOG.map((entry) => {
+    // A zero/missing percentage means no percentage was supplied for the
+    // service catalogue entry. Apply the platform default of 5%.
+    // Airtime keeps its explicitly configured percentage rules.
+    const configuredMarkup = numberValue(entry.markup_percent);
+    const markupPercent = configuredMarkup > 0 || entry.service === "airtime"
+      ? configuredMarkup
+      : 5;
+
+    return {
+      ...entry,
+      markup_percent: markupPercent,
+      percentage: markupPercent,
+      selling_price: entry.provider_price > 0
+        ? roundUp50(entry.provider_price, markupPercent)
+        : 0,
+    };
+  });
 }
 
 async function loadCatalog(): Promise<any[]> {
   if (catalogCache && catalogCache.expires > Date.now()) return catalogCache.entries;
   const entries = buildEmbeddedCatalog();
-  if (entries.length !== 242) throw new Error("Service catalogue integrity check failed.");
+  if (entries.length !== 268) throw new Error("Service catalogue integrity check failed.");
   catalogCache = { expires: Date.now() + 300_000, entries };
   return entries;
 }
@@ -743,7 +781,87 @@ function catalogBillerCode(entry: any, service: Service): string {
   ));
 }
 
+function cableProviderCode(entry: any): string {
+  const value = `${clean(entry.name)} ${clean(entry.raw?.provider_name)} ${clean(entry.raw?.providerName)} ${clean(entry.raw?.tv_name)} ${clean(entry.raw?.tvName)}`.toLowerCase();
+
+  if (/gotv|gotv/i.test(value)) return "gotv";
+  if (/dstv|dstv/i.test(value)) return "dstv";
+  if (/startimes|startime/i.test(value)) return "startimes";
+
+  return clean(firstValue(
+    entry.raw?.provider_code,
+    entry.raw?.providerCode,
+    entry.raw?.biller_code,
+    entry.raw?.billerCode,
+    entry.raw?.provider_id,
+    entry.raw?.providerId,
+  )) || clean(entry.product_code);
+}
+
+function cableProviderName(entry: any): string {
+  const value = `${clean(entry.name)} ${clean(entry.raw?.provider_name)} ${clean(entry.raw?.providerName)} ${clean(entry.raw?.tv_name)} ${clean(entry.raw?.tvName)}`.toLowerCase();
+
+  if (/gotv/i.test(value)) return "GOtv";
+  if (/dstv/i.test(value)) return "DSTV";
+  if (/startimes/i.test(value)) return "StarTimes";
+
+  return clean(firstValue(
+    entry.raw?.provider_name,
+    entry.raw?.providerName,
+    entry.raw?.tv_name,
+    entry.raw?.tvName,
+  )) || "Cable TV";
+}
+
+function electricityProviderCode(entry: any): string {
+  const raw = entry.raw ?? {};
+  const value = clean(firstValue(
+    raw.disco_name, raw.discoName, raw.disco, raw.network_name, raw.networkName,
+    raw.provider_name, raw.providerName, entry.name,
+  )).toLowerCase();
+
+  if (/knedc/.test(value)) return "knedc";
+  if (/yedc/.test(value)) return "yedc";
+  if (/jedc/.test(value)) return "jedc";
+  if (/aedc/.test(value)) return "aedc";
+  if (/ibedc/.test(value)) return "ibedc";
+  if (/bedc/.test(value)) return "bedc";
+  if (/ikedc|ikeja/.test(value)) return "ikedc";
+  if (/ekedc|eko/.test(value)) return "ekedc";
+  if (/phedc|port harcourt/.test(value)) return "phedc";
+  if (/eedc|enugu/.test(value)) return "eedc";
+  return clean(firstValue(
+    raw.disco_code, raw.discoCode, raw.provider_code, raw.providerCode,
+    raw.biller_code, raw.billerCode, entry.product_code,
+  )).toLowerCase();
+}
+
+function electricityProviderName(entry: any): string {
+  const raw = entry.raw ?? {};
+  const value = clean(firstValue(
+    raw.disco_name, raw.discoName, raw.disco, raw.network_name, raw.networkName,
+    raw.provider_name, raw.providerName, entry.name,
+  )).toLowerCase();
+
+  if (/knedc/.test(value)) return "Kaduna Electric";
+  if (/yedc/.test(value)) return "Yola Electric";
+  if (/jedc/.test(value)) return "Jos Electric";
+  if (/aedc/.test(value)) return "Abuja Electric";
+  if (/ibedc/.test(value)) return "Ibadan Electric";
+  if (/bedc/.test(value)) return "Benin Electric";
+  if (/ikedc|ikeja/.test(value)) return "Ikeja Electric";
+  if (/ekedc|eko/.test(value)) return "Eko Electric";
+  if (/phedc|port harcourt/.test(value)) return "Port Harcourt Electric";
+  if (/eedc|enugu/.test(value)) return "Enugu Electric";
+  return clean(firstValue(
+    raw.disco_name, raw.discoName, raw.disco, raw.provider_name, raw.providerName, entry.name,
+  )) || "Electricity";
+}
+
 function groupedProviderCode(entry: any, service: Service): string {
+  if (service === "cable") return cableProviderCode(entry);
+  if (service === "electricity") return electricityProviderCode(entry);
+
   if (service === "education") {
     const raw = entry.raw ?? {};
     const name = `${clean(firstValue(
@@ -774,6 +892,7 @@ function groupedProviderCode(entry: any, service: Service): string {
 
 function groupedProviderName(entry: any, service: Service): string {
   const raw = entry.raw ?? {};
+  if (service === "electricity") return electricityProviderName(entry);
   if (service === "education") {
     const value = clean(firstValue(
       raw.provider_name, raw.providerName, raw.education_type, raw.educationType,
@@ -790,6 +909,7 @@ function groupedProviderName(entry: any, service: Service): string {
       raw.isp, raw.provider, raw.network_name, raw.networkName, entry.name,
     )) || "Internet Service";
   }
+  if (service === "cable") return cableProviderName(entry);
   return clean(entry.name);
 }
 
@@ -798,17 +918,19 @@ function billerFromEntry(entry: any, service: Service): Record<string, unknown> 
   const code = catalogBillerCode(entry, service);
   const name = service === "airtime" || service === "data"
     ? network || itemName(entry.raw, entry.name)
-    : clean(firstValue(
-        entry.raw.provider_name,
-        entry.raw.providerName,
-        entry.raw.disco_name,
-        entry.raw.discoName,
-        entry.raw.tv_name,
-        entry.raw.tvName,
-        entry.raw.edu_type,
-        entry.raw.education_type,
-        entry.name,
-      ));
+    : service === "electricity"
+      ? electricityProviderName(entry)
+      : clean(firstValue(
+          entry.raw.provider_name,
+          entry.raw.providerName,
+          entry.raw.disco_name,
+          entry.raw.discoName,
+          entry.raw.tv_name,
+          entry.raw.tvName,
+          entry.raw.edu_type,
+          entry.raw.education_type,
+          entry.name,
+        ));
 
   return {
     id: code,
@@ -941,6 +1063,164 @@ async function catalog(service: Service, code?: string): Promise<Record<string, 
       packages: items,
       amount_based: false,
       requires_verification: false,
+    };
+  }
+
+  if (service === "electricity") {
+    const discoGroups = new Map<string, any[]>();
+
+    for (const entry of entries) {
+      const discoCode = electricityProviderCode(entry);
+      const group = discoGroups.get(discoCode) ?? [];
+      group.push(entry);
+      discoGroups.set(discoCode, group);
+    }
+
+    const billers = [...discoGroups.entries()].map(([discoCode, group]) => {
+      const representative = group[0];
+      const percentageEntry = group.find((entry) => numberValue(entry.markup_percent) > 0) ?? representative;
+      const providerName = electricityProviderName(representative);
+
+      return {
+        ...billerFromEntry(representative, service),
+        id: discoCode,
+        code: discoCode,
+        biller_code: discoCode,
+        product_code: representative.product_code,
+        name: providerName,
+        display_name: providerName,
+        markup_percent: percentageEntry.markup_percent,
+        percentage: percentageEntry.percentage,
+        plans_count: group.length,
+        meterTypes: [
+          { id: "prepaid", code: "prepaid", name: "Prepaid" },
+          { id: "postpaid", code: "postpaid", name: "Postpaid" },
+        ],
+      };
+    });
+
+    if (!code) {
+      return {
+        success: true,
+        service,
+        billers,
+        networks: billers,
+        providers: billers,
+        items: [],
+        plans: [],
+        packages: [],
+        amount_based: true,
+        requires_verification: true,
+        meterTypes: [
+          { id: "prepaid", code: "prepaid", name: "Prepaid" },
+          { id: "postpaid", code: "postpaid", name: "Postpaid" },
+        ],
+      };
+    }
+
+    const normalizedCode = code.toLowerCase().trim();
+    const selectedGroup = discoGroups.get(normalizedCode) ?? null;
+    if (!selectedGroup?.length) {
+      throw new Error("The selected electricity provider is no longer available.");
+    }
+
+    const selectedBiller = billers.find((biller) =>
+      String(biller.code).toLowerCase() === normalizedCode
+    ) ?? null;
+
+    return {
+      success: true,
+      service,
+      billers,
+      networks: billers,
+      providers: billers,
+      selected_biller: selectedBiller,
+      items: [],
+      plans: [],
+      packages: [],
+      amount_based: true,
+      requires_verification: true,
+      meterTypes: [
+        { id: "prepaid", code: "prepaid", name: "Prepaid" },
+        { id: "postpaid", code: "postpaid", name: "Postpaid" },
+      ],
+    };
+  }
+
+  if (service === "cable") {
+    const providerGroups = new Map<string, any[]>();
+
+    for (const entry of entries) {
+      const providerCode = cableProviderCode(entry);
+      const group = providerGroups.get(providerCode) ?? [];
+      group.push(entry);
+      providerGroups.set(providerCode, group);
+    }
+
+    const billers = [...providerGroups.entries()].map(([providerCode, group]) => {
+      const representative = group[0];
+      const providerName = cableProviderName(representative);
+      const firstPrice = group.find((entry) => numberValue(entry.provider_price) > 0) ?? representative;
+
+      return {
+        ...billerFromEntry(representative, service),
+        id: providerCode,
+        code: providerCode,
+        biller_code: providerCode,
+        product_code: representative.product_code,
+        name: providerName,
+        display_name: providerName,
+        markup_percent: firstPrice.markup_percent,
+        percentage: firstPrice.percentage,
+        plans_count: group.length,
+      };
+    });
+
+    if (!code) {
+      return {
+        success: true,
+        service,
+        billers,
+        networks: billers,
+        providers: billers,
+        items: [],
+        plans: [],
+        packages: [],
+        amount_based: false,
+        requires_verification: true,
+      };
+    }
+
+    const normalizedCode = code.toLowerCase().trim();
+    const selectedGroup = providerGroups.get(normalizedCode) ??
+      [...providerGroups.entries()].find(([providerCode, group]) =>
+        providerCode === normalizedCode ||
+        group.some((entry) => entry.product_code.toLowerCase() === normalizedCode)
+      )?.[1] ?? null;
+
+    if (!selectedGroup?.length) {
+      throw new Error("The selected cable provider is no longer available.");
+    }
+
+    const items = selectedGroup.map((entry) => publicItem(entry, service));
+    const selectedProvider = billers.find((biller) =>
+      String(biller.code).toLowerCase() === normalizedCode
+    ) ?? billers.find((biller) =>
+      selectedGroup.some((entry) => entry.product_code === biller.product_code)
+    );
+
+    return {
+      success: true,
+      service,
+      billers,
+      networks: billers,
+      providers: billers,
+      selected_biller: selectedProvider ?? null,
+      items,
+      plans: items,
+      packages: items,
+      amount_based: false,
+      requires_verification: true,
     };
   }
 

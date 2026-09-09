@@ -42,11 +42,10 @@ type Biller = Record<string, any>;
 type Item = Record<string, any>;
 
 type DataTab =
-  | "HOT"
-  | "EXTRA_NIGHT"
   | "DAILY"
   | "WEEKLY"
-  | "MONTHLY";
+  | "MONTHLY"
+  | "OTHER";
 
 const SERVICE_ALIASES: Record<string, string> = {
   airtime_epin: "airtime-card",
@@ -93,11 +92,10 @@ const BILL_AMOUNTS = [
 ];
 
 const DATA_TABS: DataTab[] = [
-  "HOT",
-  "EXTRA_NIGHT",
   "DAILY",
   "WEEKLY",
   "MONTHLY",
+  "OTHER",
 ];
 
 /*
@@ -466,22 +464,35 @@ function getDataPlanDuration(item: Item): string {
 }
 
 function planGroup(item: Item): DataTab {
-  const backendGroup = clean(item.dataCategory ?? item.data_category).toUpperCase().replace(/[\s-]+/g, "_");
-  if (["HOT", "EXTRA_NIGHT", "DAILY", "WEEKLY", "MONTHLY"].includes(backendGroup)) {
-    return backendGroup as DataTab;
-  }
+  // Customer-facing data groups are based only on validity, never on
+  // commercial/provider labels such as SME, Awoof, Gifting or Hot Deals.
+  const label = [
+    item.display_name,
+    item.displayName,
+    item.name,
+    item.description,
+    item.validity,
+    item.period,
+    item.validity_period,
+    item.validityPeriod,
+  ].map(clean).join(" ").toLowerCase();
 
-  const dataType = clean(item.data_type ?? item.dataType).toLowerCase();
-  if (["sme", "awoof", "gifting"].includes(dataType)) return "HOT";
+  const days = durationDays(item);
 
-  const label = [item.name, item.description, item.validity, item.period]
-    .map(clean).join(" ").toLowerCase();
-  if (/extra\s*night|night\s*(plan|data)|midnight/.test(label)) return "EXTRA_NIGHT";
+  // Daily = 1–3 days.
+  if (days >= 1 && days <= 3) return "DAILY";
+  if (/\b(?:1|2|3)\s*days?\b/.test(label)) return "DAILY";
+  if (/\bdaily\b/.test(label)) return "DAILY";
 
-  const days = num(item.validity_days ?? item.validityDays ?? item.duration);
+  // Weekly = 7, 14, 21 days or explicitly weekly.
+  if (days >= 7 && days < 28) return "WEEKLY";
+  if (/\b(?:weekly|7\s*days?|14\s*days?|21\s*days?)\b/.test(label)) return "WEEKLY";
+
+  // Monthly = 28 days or more, or explicitly monthly/30 days.
   if (days >= 28) return "MONTHLY";
-  if (days >= 7) return "WEEKLY";
-  return "DAILY";
+  if (/\b(?:monthly|30\s*days?|month|months)\b/.test(label)) return "MONTHLY";
+
+  return "OTHER";
 }
 
 function isVariable(item: Item): boolean {
@@ -561,7 +572,7 @@ function providerLogo(
 
   if (network === "9mobile") {
     // Exact 9mobile brand mark, rather than the generic website favicon.
-    return "https://images.seeklogo.com/logo-png/48/1/9mobile-logo-png_seeklogo-481168.png";
+    return "https://seeklogo.com/images/9/9mobile-logo-2E5E0C0F4D-seeklogo.com.png";
   }
 
   const value = `${name} ${code}`
@@ -569,7 +580,7 @@ function providerLogo(
     .replace(/[^a-z0-9]+/g, " ");
 
   if (value.includes("dstv")) {
-    return "https://www.google.com/s2/favicons?domain=dstv.com&sz=128";
+    return "https://seeklogo.com/images/D/DSTV-logo-214D0468CA-seeklogo.com.png";
   }
 
   if (value.includes("gotv")) {
@@ -762,6 +773,63 @@ function isPlaceholderBiller(
   );
 }
 
+function canonicalInternetProvider(biller: Biller): string {
+  const raw = [
+    getName(biller),
+    getCode(biller),
+    biller.provider_name,
+    biller.providerName,
+    biller.network_name,
+    biller.networkName,
+    biller.service_name,
+    biller.serviceName,
+    biller.raw?.name,
+    biller.raw?.provider_name,
+    biller.raw?.providerName,
+  ].map(clean).join(" ").toLowerCase();
+
+  if (raw.includes("smile")) return "Smile";
+  if (raw.includes("spectranet")) return "Spectranet";
+  if (raw.includes("swift")) return "Swift";
+  if (raw.includes("ntel")) return "ntel";
+  if (raw.includes("ipnx")) return "ipNX";
+  if (raw.includes("glo") && raw.includes("broadband")) return "Glo Broadband";
+
+  return "";
+}
+
+function filterNetworkProviders(service: string, live: Biller[]): Biller[] {
+  const allowed = service === "data" || service === "airtime"
+    ? new Set(["MTN", "Airtel", "Glo", "9mobile"])
+    : null;
+
+  const result: Biller[] = [];
+  const seen = new Set<string>();
+
+  for (const biller of live) {
+    if (isPlaceholderBiller(biller)) continue;
+
+    const code = getCode(biller);
+    const rawName = getName(biller);
+    const name = allowed
+      ? canonicalNetworkName(rawName, code)
+      : canonicalInternetProvider(biller);
+
+    if (!name || (allowed && !allowed.has(name))) continue;
+
+    const key = name.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+
+    result.push({
+      ...biller,
+      display_name: name,
+    });
+  }
+
+  return result;
+}
+
 function mergeBillers(
   service: string,
   live: Biller[]
@@ -772,6 +840,20 @@ function mergeBillers(
 
   if (service === "electricity") {
     return filterElectricityDiscos(cleaned);
+  }
+
+  if (service === "data" || service === "airtime" || service === "internet") {
+    const filtered = filterNetworkProviders(service, cleaned);
+    if (filtered.length) return filtered;
+
+    // Keep the four mobile networks available if the catalogue response is
+    // temporarily missing names; their stable codes are used internally only.
+    if (service === "data" || service === "airtime") {
+      return (OFFLINE_BILLERS[service] ?? []).map((b) => ({
+        ...b,
+        display_name: b.name,
+      }));
+    }
   }
 
   const result: Biller[] = [];
@@ -1751,7 +1833,7 @@ export default function ServicePayment({
     useState("");
 
   const [dataTab, setDataTab] =
-    useState<DataTab>("HOT");
+    useState<DataTab>("DAILY");
 
   const [customAmount, setCustomAmount] =
     useState(false);
@@ -1850,7 +1932,7 @@ export default function ServicePayment({
     setAmount("");
     setMeterType("");
     setCustomAmount(false);
-    setDataTab("HOT");
+    setDataTab("DAILY");
     resetVerification();
     setError("");
     setShowPin(false);
@@ -2004,7 +2086,7 @@ export default function ServicePayment({
           setItems(loaded);
 
           if (isData) {
-            setDataTab("HOT");
+            setDataTab("DAILY");
           }
 
           if (
@@ -3700,6 +3782,20 @@ export default function ServicePayment({
                 </section>
               )}
 
+              {isInternet && selectedBillerCode && (
+                <section className="rounded-2xl border bg-white p-3 shadow-sm sm:p-4">
+                  <Label className="text-xs font-bold text-gray-900">Account ID</Label>
+                  <Input
+                    value={customer}
+                    onChange={(e) => setCustomer(e.target.value.replace(/\s+/g, ""))}
+                    placeholder="Enter internet account ID"
+                    inputMode="text"
+                    className="mt-2 h-10 rounded-xl text-sm"
+                    disabled={!!processingSession}
+                  />
+                </section>
+              )}
+
               {(isCable || isElectricity) && selectedBillerCode && (
                 <section className="rounded-2xl border bg-white p-3 shadow-sm sm:p-4">
                   <div className="mb-2 flex items-center justify-between">
@@ -3745,7 +3841,7 @@ export default function ServicePayment({
                             : "bg-gray-100 text-gray-600 hover:bg-gray-200"
                         }`}
                       >
-                        {tab === "EXTRA_NIGHT" ? "Extra Night" : tab.charAt(0) + tab.slice(1).toLowerCase()}
+                        {tab === "OTHER" ? "Others" : tab.charAt(0) + tab.slice(1).toLowerCase()}
                       </button>
                     ))}
                   </div>

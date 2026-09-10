@@ -19,6 +19,7 @@ import {
   text,
   zoedataGet,
   zoedataPost,
+  ZOEDATA_BASE_URL,
 } from "../_shared/peyflex.ts";
 
 import { adminClient, corsHeaders, getUser, json } from "../_shared/auth.ts";
@@ -1573,6 +1574,63 @@ function diagnosticProviderResult(result: any): Record<string, unknown> {
   };
 }
 
+function diagnosticCatalogEntry(entry: any): Record<string, unknown> {
+  const raw = asObject(entry?.raw);
+  return {
+    service: entry?.service ?? null,
+    product_code: entry?.product_code ?? null,
+    name: entry?.name ?? null,
+    provider_price: entry?.provider_price ?? null,
+    markup_percent: entry?.markup_percent ?? null,
+    plan_id: firstValue(raw.plan_id, raw.planId) ?? null,
+    raw_id: raw.id ?? null,
+    raw_code: raw.code ?? null,
+    service_id: raw.service_id ?? raw.serviceId ?? null,
+    provider_code: raw.provider_code ?? raw.providerCode ?? null,
+    biller_code: raw.biller_code ?? raw.billerCode ?? null,
+    network: firstValue(raw.network, raw.network_name, raw.networkName) ?? null,
+    provider_name: firstValue(raw.provider_name, raw.providerName) ?? null,
+  };
+}
+
+function logSelectionDiagnostic(
+  service: Service,
+  requestedCode: string,
+  entries: any[],
+  selected: any | null,
+): void {
+  const serviceEntries = entries.filter((entry) => entry?.service === service);
+  const normalized = requestedCode.trim().toLowerCase();
+
+  const exactCandidates = serviceEntries.filter((entry) => {
+    const raw = asObject(entry?.raw);
+    return [
+      entry?.product_code,
+      raw.plan_id,
+      raw.planId,
+      raw.id,
+      raw.code,
+      raw.service_id,
+      raw.serviceId,
+      raw.provider_code,
+      raw.providerCode,
+      raw.biller_code,
+      raw.billerCode,
+    ].some((value) => clean(value).toLowerCase() === normalized);
+  });
+
+  logZOEDATADiagnostic("SELECTION", {
+    service,
+    requested_product_or_biller_code: requestedCode || null,
+    matched: Boolean(selected),
+    matched_entry: selected ? diagnosticCatalogEntry(selected) : null,
+    service_catalogue_count: serviceEntries.length,
+    exact_candidate_count: exactCandidates.length,
+    exact_candidates: exactCandidates.slice(0, 20).map(diagnosticCatalogEntry),
+    available_service_sample: serviceEntries.slice(0, 20).map(diagnosticCatalogEntry),
+  });
+}
+
 async function purchase(
   admin: any,
   user: any,
@@ -1622,6 +1680,7 @@ async function purchase(
           clean(pickBody(body, "meter_type", "meterType")) || "prepaid",
         )
       : findEntry(entries, service, billerCode);
+    logSelectionDiagnostic(service, billerCode, entries, selected);
     if (!selected) throw new Error("The selected service option is no longer available.");
 
     providerAmount = numberValue(pickBody(
@@ -1645,6 +1704,7 @@ async function purchase(
     if (!selectedCode) throw new Error("Please select a valid product.");
 
     selected = findEntry(entries, service, selectedCode);
+    logSelectionDiagnostic(service, selectedCode, entries, selected);
     if (!selected) throw new Error("The selected product is no longer available.");
 
     const quantity = service === "education"
@@ -1831,7 +1891,7 @@ async function purchase(
   try {
     logZOEDATADiagnostic("REQUEST", {
       service,
-      base_url: ZOEDATA_BASE_URL,
+      base_url: ZOEDATA_BASE_URL || "[NOT_CONFIGURED]",
       request: finalProviderRequest,
       selected_catalog_entry: selected,
       provider_amount: providerAmount,
@@ -1843,7 +1903,11 @@ async function purchase(
 
     logZOEDATADiagnostic("RESPONSE", diagnosticProviderResult(result));
   } catch (error) {
-    console.error("ZOEDATA request exception:", error);
+    logZOEDATADiagnostic("REQUEST_EXCEPTION", {
+      name: error instanceof Error ? error.name : typeof error,
+      message: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : null,
+    });
 
     await updateTransaction(admin, user.id, reference, {
       status: "pending",

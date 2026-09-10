@@ -1,3 +1,11 @@
+/**
+ * IyanjuPay — ZOEDATA diagnostic replacement.
+ *
+ * Based exactly on the current Library version. This adds only server-side
+ * diagnostics around the ZOEDATA purchase request/response.
+ * Customer-facing responses remain sanitized and credentials are never logged.
+ */
+
 import {
   asArray,
   asObject,
@@ -140,18 +148,6 @@ function normalizePhone(value: unknown): string {
 
 function validPhone(value: string): boolean {
   return /^234\d{10}$/.test(value);
-}
-
-/**
- * ZOEDATA's documented vend examples use the Nigerian local format
- * 080XXXXXXXXX. Keep our internal canonical phone format as 234XXXXXXXXXX
- * for validation, then convert only at the provider boundary.
- */
-function zoedataPhone(value: string): string {
-  const normalized = clean(value);
-  if (/^234\d{10}$/.test(normalized)) return `0${normalized.slice(3)}`;
-  if (/^0\d{10}$/.test(normalized)) return normalized;
-  return normalized;
 }
 
 function canonicalNetwork(value: unknown): string {
@@ -1514,45 +1510,6 @@ async function verifyCustomer(
     };
   }
 
-  if (service === "internet") {
-    const broadbandPhone = normalizePhone(pickBody(
-      body,
-      "phone_number",
-      "phoneNumber",
-      "phone",
-      "customer",
-    ));
-
-    if (!validPhone(broadbandPhone)) {
-      throw new Error("Please provide a valid Nigerian phone number.");
-    }
-
-    const result = await zoedataPost("", {
-      product_code: selected.product_code,
-      phone_number: zoedataPhone(broadbandPhone),
-      action: "verify",
-    });
-
-    const data = asObject(result.body?.data);
-    const success = result.ok && result.body?.status === true && !providerLooksFailed(result.body, result.ok);
-
-    if (!success) {
-      throw new Error(providerMessage(result.body) || "Internet service verification failed.");
-    }
-
-    return {
-      success: true,
-      status: "success",
-      message: "Customer verified successfully.",
-      customer_name: clean(firstValue(
-        data.customer_name,
-        data.name,
-      )),
-      data,
-      raw: result.body,
-    };
-  }
-
   throw new Error("Verification is not supported for this service.");
 }
 
@@ -1575,6 +1532,45 @@ function processingMode(): string {
 
 function providerAmountForFixed(entry: any): number {
   return numberValue(entry.provider_price);
+}
+
+function redactDiagnosticValue(value: unknown): unknown {
+  if (value === undefined || value === null) return value;
+  if (typeof value === "string") {
+    const token = value.trim();
+    if (!token) return token;
+    if (/^\d{11}$/.test(token)) return `${token.slice(0, 3)}******${token.slice(-2)}`;
+    if (/^\+?234\d{10}$/.test(token)) return `${token.slice(0, 6)}******${token.slice(-2)}`;
+    return token;
+  }
+  if (Array.isArray(value)) return value.map(redactDiagnosticValue);
+  if (typeof value === "object") {
+    const output: Record<string, unknown> = {};
+    for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+      const lower = key.toLowerCase();
+      if (["authorization", "token", "api_key", "apikey", "secret", "password"].some((x) => lower.includes(x))) output[key] = "[REDACTED]";
+      else output[key] = redactDiagnosticValue(child);
+    }
+    return output;
+  }
+  return value;
+}
+
+function logZOEDATADiagnostic(label: string, value: unknown): void {
+  try {
+    console.error(`[IyanjuPay][ZOEDATA_DIAGNOSTIC] ${label}`, JSON.stringify(redactDiagnosticValue(value)));
+  } catch {
+    console.error(`[IyanjuPay][ZOEDATA_DIAGNOSTIC] ${label}`, String(value));
+  }
+}
+
+function diagnosticProviderResult(result: any): Record<string, unknown> {
+  return {
+    http_ok: result?.ok === true,
+    http_status: result?.httpStatus ?? null,
+    body: redactDiagnosticValue(result?.body ?? null),
+    raw_text: redactDiagnosticValue(result?.rawText ?? ""),
+  };
 }
 
 async function purchase(
@@ -1675,15 +1671,15 @@ async function purchase(
   if (service === "airtime") {
     providerRequest = {
       product_code: selected.product_code,
-      phone_number: zoedataPhone(phone),
-      amount: providerAmount,
+      phone_number: phone,
+      amount: String(providerAmount),
       action: "vend",
       user_reference: "PENDING_REFERENCE",
     };
   } else if (service === "data") {
     providerRequest = {
       product_code: selected.product_code,
-      phone_number: zoedataPhone(phone),
+      phone_number: phone,
       action: "vend",
       user_reference: "PENDING_REFERENCE",
     };
@@ -1703,7 +1699,7 @@ async function purchase(
 
     providerRequest = {
       product_code: selected.product_code,
-      phone_number: zoedataPhone(cablePhone),
+      phone_number: cablePhone,
       smartcard_number: smartcard,
       amount: String(providerAmount),
       action: "vend",
@@ -1743,18 +1739,18 @@ async function purchase(
       throw new Error("Please provide a valid internet account number.");
     }
 
-    // ZOEDATA's documented Broadband vend contract accepts the product code,
-    // subscriber phone number, action and user reference. The customer/account
-    // identifier used by the UI is retained for validation/audit, but is not
-    // sent as an undocumented provider field.
-    if (!validPhone(phone)) {
-      throw new Error("Please provide a valid Nigerian phone number.");
-    }
+    const quantity = Math.max(
+      1,
+      Math.floor(numberValue(pickBody(body, "quantity")) || 1),
+    );
 
     providerRequest = {
       product_code: selected.product_code,
-      phone_number: zoedataPhone(phone),
+      customer: customerIdentifier,
+      account_number: customerIdentifier,
+      phone_number: validPhone(phone) ? phone : undefined,
       action: "vend",
+      quantity,
       user_reference: "PENDING_REFERENCE",
     };
   } else {
@@ -1765,7 +1761,7 @@ async function purchase(
 
     providerRequest = {
       product_code: selected.product_code,
-      phone_number: zoedataPhone(phone),
+      phone_number: phone,
       action: "vend",
       quantity,
       user_reference: "PENDING_REFERENCE",
@@ -1833,7 +1829,19 @@ async function purchase(
 
   let result: any;
   try {
+    logZOEDATADiagnostic("REQUEST", {
+      service,
+      base_url: ZOEDATA_BASE_URL,
+      request: finalProviderRequest,
+      selected_catalog_entry: selected,
+      provider_amount: providerAmount,
+      selling_amount: sellingAmount,
+      transaction_reference: reference,
+    });
+
     result = await zoedataPost("", finalProviderRequest);
+
+    logZOEDATADiagnostic("RESPONSE", diagnosticProviderResult(result));
   } catch (error) {
     console.error("ZOEDATA request exception:", error);
 

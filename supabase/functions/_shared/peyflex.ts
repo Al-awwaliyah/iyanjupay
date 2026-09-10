@@ -12,19 +12,22 @@
  *   ZOEDATA_CATALOG_JSON
  *   ZOEDATA_CATALOG_URL
  *
- * ZOEDATA vending endpoint:
- *   https://zoedata.ng/autobiz_vending_index.php
+ * ZOEDATA API:
+ *   Base URL:
+ *     https://zoedata.ng
  *
- * IMPORTANT:
- * ZOEDATA documentation specifies the API key header as:
+ *   Vending endpoint:
+ *     /autobiz_vending_index.php
  *
+ * Authentication documented by ZOEDATA:
  *   Bearer: YOUR_API_KEY
  *
- * Do NOT change this to:
+ * IMPORTANT:
+ * Empty paths passed to zoedataPost() are intentionally routed to the
+ * documented vending endpoint. This preserves compatibility with the
+ * existing peyflex-services/index.ts call:
  *
- *   Authorization: Bearer YOUR_API_KEY
- *
- * unless ZOEDATA changes its API documentation.
+ *   zoedataPost("", finalProviderRequest)
  */
 
 export const ZOEDATA_BASE_URL =
@@ -55,33 +58,70 @@ function getToken(): string {
   return token;
 }
 
-function buildUrl(path = ""): string {
-  const base = ZOEDATA_BASE_URL.replace(/\/+$/, "");
+/**
+ * Resolve an API path.
+ *
+ * IMPORTANT:
+ * zoedataPost("", body) is used by the existing
+ * peyflex-services/index.ts.
+ *
+ * An empty path MUST therefore resolve to the ZOEDATA vending
+ * endpoint rather than the website root.
+ */
+function resolvePath(
+  path: string,
+): string {
+  const normalizedPath = path.trim();
+
+  if (!normalizedPath) {
+    return ZOEDATA_VENDING_PATH;
+  }
+
+  return normalizedPath;
+}
+
+function buildUrl(
+  path = "",
+): string {
+  const base = ZOEDATA_BASE_URL.replace(
+    /\/+$/,
+    "",
+  );
 
   if (!base) {
-    throw new Error("ZOEDATA_BASE_URL is not configured.");
+    throw new Error(
+      "ZOEDATA_BASE_URL is not configured.",
+    );
   }
 
-  if (/^https?:\/\//i.test(path)) {
-    return path;
+  const resolvedPath = resolvePath(path);
+
+  if (
+    /^https?:\/\//i.test(
+      resolvedPath,
+    )
+  ) {
+    return resolvedPath;
   }
 
-  if (!path) {
-    return base;
-  }
-
-  return `${base}/${path.replace(/^\/+/, "")}`;
+  return `${base}/${resolvedPath.replace(
+    /^\/+/,
+    "",
+  )}`;
 }
 
 async function parseResponse(
   response: Response,
 ): Promise<ZOEDATAHttpResult> {
-  const rawText = await response.text();
+  const rawText =
+    await response.text();
 
   let body: any = null;
 
   try {
-    body = rawText ? JSON.parse(rawText) : null;
+    body = rawText
+      ? JSON.parse(rawText)
+      : null;
   } catch {
     body = rawText;
   }
@@ -95,41 +135,65 @@ async function parseResponse(
 }
 
 /**
- * POST request to the ZOEDATA vending API.
+ * POST request to ZOEDATA.
  *
- * If no path is supplied, the request is sent to the documented
- * ZOEDATA vending endpoint:
+ * By default:
  *
- *   /autobiz_vending_index.php
+ *   zoedataPost("", body)
+ *
+ * becomes:
+ *
+ *   POST https://zoedata.ng/autobiz_vending_index.php
+ *
+ * Authentication header:
+ *
+ *   Bearer: YOUR_API_KEY
  */
 export async function zoedataPost(
-  path = ZOEDATA_VENDING_PATH,
+  path = "",
   body: Record<string, unknown> = {},
 ): Promise<ZOEDATAHttpResult> {
-  const controller = new AbortController();
+  const controller =
+    new AbortController();
 
-  const timeout = setTimeout(() => {
-    controller.abort();
-  }, 30_000);
+  const timeout = setTimeout(
+    () => controller.abort(),
+    30_000,
+  );
 
   try {
-    const response = await fetch(buildUrl(path), {
-      method: "POST",
+    const url = buildUrl(path);
 
-      headers: {
-        Accept: "application/json",
-        "Content-Type": "application/json",
+    const response = await fetch(
+      url,
+      {
+        method: "POST",
 
-        // ZOEDATA documentation:
-        // "Bearer: YOUR_API_KEY"
-        Bearer: getToken(),
+        headers: {
+          Accept:
+            "application/json",
+          "Content-Type":
+            "application/json",
+
+          // ZOEDATA documentation:
+          //
+          // Bearer: YOUR_API_KEY
+          //
+          // This is intentionally NOT:
+          //
+          // Authorization: Bearer YOUR_API_KEY
+          Bearer: getToken(),
+        },
+
+        body: JSON.stringify(body),
+
+        signal: controller.signal,
       },
+    );
 
-      body: JSON.stringify(body),
-      signal: controller.signal,
-    });
-
-    return await parseResponse(response);
+    return await parseResponse(
+      response,
+    );
   } finally {
     clearTimeout(timeout);
   }
@@ -138,37 +202,49 @@ export async function zoedataPost(
 /**
  * GET request helper.
  *
- * Kept for compatibility with the existing IyanjuPay backend.
+ * Kept for compatibility with the
+ * existing IyanjuPay backend.
  *
- * ZOEDATA authentication uses:
+ * ZOEDATA authentication:
  *
  *   Bearer: YOUR_API_KEY
  */
 export async function zoedataGet(
   path: string,
 ): Promise<ZOEDATAHttpResult> {
-  const controller = new AbortController();
+  const controller =
+    new AbortController();
 
-  const timeout = setTimeout(() => {
-    controller.abort();
-  }, 30_000);
+  const timeout = setTimeout(
+    () => controller.abort(),
+    30_000,
+  );
 
   try {
-    const response = await fetch(buildUrl(path), {
-      method: "GET",
+    const url =
+      buildUrl(path);
 
-      headers: {
-        Accept: "application/json",
+    const response = await fetch(
+      url,
+      {
+        method: "GET",
 
-        // ZOEDATA documentation:
-        // "Bearer: YOUR_API_KEY"
-        Bearer: getToken(),
+        headers: {
+          Accept:
+            "application/json",
+
+          // ZOEDATA documentation:
+          // Bearer: YOUR_API_KEY
+          Bearer: getToken(),
+        },
+
+        signal: controller.signal,
       },
+    );
 
-      signal: controller.signal,
-    });
-
-    return await parseResponse(response);
+    return await parseResponse(
+      response,
+    );
   } finally {
     clearTimeout(timeout);
   }
@@ -191,18 +267,21 @@ export function asArray(
     return value;
   }
 
-  const obj = asObject(value);
+  const obj =
+    asObject(value);
 
-  for (const candidate of [
-    obj.data,
-    obj.results,
-    obj.items,
-    obj.plans,
-    obj.products,
-    obj.services,
-    obj.catalog,
-    obj.catalogue,
-  ]) {
+  for (
+    const candidate of [
+      obj.data,
+      obj.results,
+      obj.items,
+      obj.plans,
+      obj.products,
+      obj.services,
+      obj.catalog,
+      obj.catalogue,
+    ]
+  ) {
     if (Array.isArray(candidate)) {
       return candidate;
     }
@@ -214,7 +293,9 @@ export function asArray(
 export function firstValue(
   ...values: unknown[]
 ): unknown {
-  for (const value of values) {
+  for (
+    const value of values
+  ) {
     if (
       value !== undefined &&
       value !== null &&
@@ -230,20 +311,31 @@ export function firstValue(
 export function text(
   value: unknown,
 ): string {
-  if (value === undefined || value === null) {
+  if (
+    value === undefined ||
+    value === null
+  ) {
     return "";
   }
 
   if (
-    ["string", "number", "boolean"].includes(
+    [
+      "string",
+      "number",
+      "boolean",
+    ].includes(
       typeof value,
     )
   ) {
-    return String(value).trim();
+    return String(
+      value,
+    ).trim();
   }
 
   try {
-    return JSON.stringify(value);
+    return JSON.stringify(
+      value,
+    );
   } catch {
     return "";
   }
@@ -252,24 +344,43 @@ export function text(
 export function numberValue(
   value: unknown,
 ): number {
-  if (typeof value === "number") {
-    return Number.isFinite(value) ? value : 0;
+  if (
+    typeof value === "number"
+  ) {
+    return Number.isFinite(
+      value,
+    )
+      ? value
+      : 0;
   }
 
   const n = Number(
     text(value)
-      .replace(/[₦,\s]/g, "")
-      .replace(/NGN/gi, ""),
+      .replace(
+        /[₦,\s]/g,
+        "",
+      )
+      .replace(
+        /NGN/gi,
+        "",
+      ),
   );
 
-  return Number.isFinite(n) ? n : 0;
+  return Number.isFinite(n)
+    ? n
+    : 0;
 }
 
 export function providerMessage(
   body: any,
 ): string {
-  const obj = asObject(body);
-  const data = asObject(obj.data);
+  const obj =
+    asObject(body);
+
+  const data =
+    asObject(
+      obj.data,
+    );
 
   return text(
     firstValue(
@@ -291,24 +402,31 @@ export function providerMessage(
 export function providerReference(
   body: any,
 ): string | null {
-  const obj = asObject(body);
-  const data = asObject(obj.data);
+  const obj =
+    asObject(body);
 
-  const value = firstValue(
-    data.recharge_id,
-    obj.recharge_id,
+  const data =
+    asObject(
+      obj.data,
+    );
 
-    data.order_id,
-    obj.order_id,
+  const value =
+    firstValue(
+      data.recharge_id,
+      obj.recharge_id,
 
-    data.transaction_id,
-    obj.transaction_id,
+      data.order_id,
+      obj.order_id,
 
-    data.user_reference,
-    obj.user_reference,
-  );
+      data.transaction_id,
+      obj.transaction_id,
 
-  const result = text(value);
+      data.user_reference,
+      obj.user_reference,
+    );
+
+  const result =
+    text(value);
 
   return result || null;
 }
@@ -316,8 +434,13 @@ export function providerReference(
 export function normalizeStatus(
   body: any,
 ): string {
-  const obj = asObject(body);
-  const data = asObject(obj.data);
+  const obj =
+    asObject(body);
+
+  const data =
+    asObject(
+      obj.data,
+    );
 
   return text(
     firstValue(
@@ -332,7 +455,10 @@ export function normalizeStatus(
     ),
   )
     .toUpperCase()
-    .replace(/[\s-]+/g, "_");
+    .replace(
+      /[\s-]+/g,
+      "_",
+    );
 }
 
 export function providerLooksSuccessful(
@@ -343,10 +469,18 @@ export function providerLooksSuccessful(
     return false;
   }
 
-  const obj = asObject(body);
-  const data = asObject(obj.data);
+  const obj =
+    asObject(body);
 
-  const status = normalizeStatus(body);
+  const data =
+    asObject(
+      obj.data,
+    );
+
+  const status =
+    normalizeStatus(
+      body,
+    );
 
   if (
     obj.status === false ||
@@ -361,10 +495,15 @@ export function providerLooksSuccessful(
     "SUCCESSFUL",
     "COMPLETED",
     "COMPLETE",
-  ].includes(status) ||
-    data.text_status === "COMPLETED" ||
-    data.status === "COMPLETED" ||
-    data.status === "DONE";
+  ].includes(
+    status,
+  ) ||
+    data.text_status ===
+      "COMPLETED" ||
+    data.status ===
+      "COMPLETED" ||
+    data.status ===
+      "DONE";
 }
 
 export function providerLooksFailed(
@@ -375,10 +514,18 @@ export function providerLooksFailed(
     return true;
   }
 
-  const obj = asObject(body);
-  const data = asObject(obj.data);
+  const obj =
+    asObject(body);
 
-  const status = normalizeStatus(body);
+  const data =
+    asObject(
+      obj.data,
+    );
+
+  const status =
+    normalizeStatus(
+      body,
+    );
 
   if (
     obj.status === false ||
@@ -395,14 +542,18 @@ export function providerLooksFailed(
     "CANCELLED",
     "CANCELED",
     "REFUNDED",
-  ].includes(status) ||
+  ].includes(
+    status,
+  ) ||
     data.text_status
       ?.toString()
-      .toUpperCase() === "FAILED";
+      .toUpperCase() ===
+      "FAILED";
 }
 
 /**
- * Round UP to the next ₦50, as required by IyanjuPay pricing.
+ * Round UP to the next ₦50,
+ * as required by IyanjuPay pricing.
  */
 export function roundUpTo50(
   value: number,
@@ -414,28 +565,42 @@ export function roundUpTo50(
     return 0;
   }
 
-  return Math.ceil(value / 50) * 50;
+  return (
+    Math.ceil(
+      value / 50,
+    ) * 50
+  );
 }
 
 /**
- * Apply provider/product markup and then round UP to ₦50.
+ * Apply provider/product markup
+ * and then round UP to ₦50.
  */
 export function roundSellingPrice(
   providerPrice: number,
   markupPercent: number,
 ): number {
   if (
-    !Number.isFinite(providerPrice) ||
+    !Number.isFinite(
+      providerPrice,
+    ) ||
     providerPrice <= 0
   ) {
     return 0;
   }
 
-  const rate = Number.isFinite(markupPercent)
-    ? Math.max(0, markupPercent)
-    : 0;
+  const rate =
+    Number.isFinite(
+      markupPercent,
+    )
+      ? Math.max(
+          0,
+          markupPercent,
+        )
+      : 0;
 
   return roundUpTo50(
-    providerPrice * (1 + rate / 100),
+    providerPrice *
+      (1 + rate / 100),
   );
 }

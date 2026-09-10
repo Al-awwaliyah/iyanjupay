@@ -1531,6 +1531,45 @@ function processingMode(): string {
     : "async_wait";
 }
 
+function providerPhone(value: unknown): string {
+  const normalized = normalizePhone(value);
+  if (!validPhone(normalized)) return "";
+  return `0${normalized.slice(3)}`;
+}
+
+function providerStatusText(body: any): string {
+  const root = asObject(body);
+  const data = asObject(root.data);
+  return clean(firstValue(
+    root.text_status,
+    data.text_status,
+    root.status,
+    data.status,
+    root.pay_status,
+    data.pay_status,
+    root.off_status,
+    data.off_status,
+  )).toUpperCase();
+}
+
+function providerCompleted(body: any): boolean {
+  const status = providerStatusText(body);
+  if (["FAILED", "FAILURE", "DECLINED", "REJECTED", "CANCELLED", "CANCELED"].includes(status)) return false;
+  return ["COMPLETED", "DONE", "SUCCESS", "SUCCESSFUL"].includes(status) || providerLooksSuccessful(body, true);
+}
+
+function providerFailed(body: any, httpOk: boolean): boolean {
+  const status = providerStatusText(body);
+  if (["FAILED", "FAILURE", "DECLINED", "REJECTED", "CANCELLED", "CANCELED"].includes(status)) return true;
+  return providerLooksFailed(body, httpOk);
+}
+
+function deterministicProviderConfigError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /ZOEDATA_(API_TOKEN|API_KEY|BASE_URL).*not configured/i.test(message) ||
+    /API_TOKEN.*not configured/i.test(message);
+}
+
 function providerAmountForFixed(entry: any): number {
   return numberValue(entry.provider_price);
 }
@@ -1639,15 +1678,11 @@ async function purchase(
 ): Promise<Record<string, unknown>> {
   const entries = await loadCatalog();
 
-  const phone = normalizePhone(pickBody(
-    body,
-    "phone_number",
-    "phoneNumber",
-    "phone",
-    "customer",
-  ));
+  const phoneInput = pickBody(body, "phone_number", "phoneNumber", "phone");
+  const phone = normalizePhone(phoneInput);
+  const providerPhoneNumber = providerPhone(phone);
 
-  if (["airtime", "data", "education"].includes(service) && !validPhone(phone)) {
+  if (["airtime", "data", "education", "cable", "internet"].includes(service) && !validPhone(phone)) {
     throw new Error("Please provide a valid Nigerian phone number.");
   }
 
@@ -1680,6 +1715,7 @@ async function purchase(
           clean(pickBody(body, "meter_type", "meterType")) || "prepaid",
         )
       : findEntry(entries, service, billerCode);
+
     logSelectionDiagnostic(service, billerCode, entries, selected);
     if (!selected) throw new Error("The selected service option is no longer available.");
 
@@ -1692,14 +1728,9 @@ async function purchase(
 
     if (providerAmount <= 0) throw new Error("Please enter a valid amount.");
 
-    // Airtime is strictly 0% markup. Do not trust the catalogue row or any
-    // client-supplied markup value for this service.
     sellingAmount = service === "airtime"
       ? providerAmount
-      : roundUp50(
-          providerAmount,
-          numberValue(selected.markup_percent),
-        );
+      : roundUp50(providerAmount, numberValue(selected.markup_percent));
   } else {
     if (!selectedCode) throw new Error("Please select a valid product.");
 
@@ -1720,28 +1751,32 @@ async function purchase(
     );
 
     const clientSellingAmount = numberValue(pickBody(body, "selling_amount", "amount"));
-    if (
-      clientSellingAmount <= 0 ||
-      Math.abs(clientSellingAmount - sellingAmount) > 0.01
-    ) {
+    if (clientSellingAmount <= 0 || Math.abs(clientSellingAmount - sellingAmount) > 0.01) {
       throw new Error("The selected product price has changed. Please reload the service and try again.");
     }
   }
 
+  const mode = processingMode();
+  const callback = callbackUrl();
+  const commonProviderFields: Record<string, unknown> = {
+    action: "vend",
+    user_reference: "PENDING_REFERENCE",
+    processing_mode: mode,
+  };
+  if (callback) commonProviderFields.callback = callback;
+
   if (service === "airtime") {
     providerRequest = {
       product_code: selected.product_code,
-      phone_number: phone,
+      phone_number: providerPhoneNumber,
       amount: String(providerAmount),
-      action: "vend",
-      user_reference: "PENDING_REFERENCE",
+      ...commonProviderFields,
     };
   } else if (service === "data") {
     providerRequest = {
       product_code: selected.product_code,
-      phone_number: phone,
-      action: "vend",
-      user_reference: "PENDING_REFERENCE",
+      phone_number: providerPhoneNumber,
+      ...commonProviderFields,
     };
   } else if (service === "cable") {
     const smartcard = clean(pickBody(
@@ -1750,20 +1785,15 @@ async function purchase(
       "smartcardNumber",
       "smartcard",
       "iuc",
-      "customer",
     ));
-
-    const cablePhone = normalizePhone(pickBody(body, "phone", "phone_number") || user.phone);
     if (!smartcard) throw new Error("SmartCard / IUC number is required.");
-    if (!validPhone(cablePhone)) throw new Error("A valid Nigerian phone number is required.");
 
     providerRequest = {
       product_code: selected.product_code,
-      phone_number: cablePhone,
+      phone_number: providerPhoneNumber,
       smartcard_number: smartcard,
       amount: String(providerAmount),
-      action: "vend",
-      user_reference: "PENDING_REFERENCE",
+      ...commonProviderFields,
     };
   } else if (service === "electricity") {
     const meter = clean(pickBody(
@@ -1772,46 +1802,20 @@ async function purchase(
       "meterNumber",
       "meter_no",
       "meter",
-      "customer",
     ));
-
     if (!meter) throw new Error("Meter number is required.");
 
     providerRequest = {
       product_code: selected.product_code,
       meter_number: meter,
       amount: String(providerAmount),
-      action: "vend",
-      user_reference: "PENDING_REFERENCE",
+      ...commonProviderFields,
     };
   } else if (service === "internet") {
-    const customerIdentifier = clean(pickBody(
-      body,
-      "customer",
-      "account_number",
-      "accountNumber",
-      "customer_id",
-      "customerId",
-      "subscriber_number",
-      "subscriberNumber",
-    ));
-    if (customerIdentifier.length < 3) {
-      throw new Error("Please provide a valid internet account number.");
-    }
-
-    const quantity = Math.max(
-      1,
-      Math.floor(numberValue(pickBody(body, "quantity")) || 1),
-    );
-
     providerRequest = {
       product_code: selected.product_code,
-      customer: customerIdentifier,
-      account_number: customerIdentifier,
-      phone_number: validPhone(phone) ? phone : undefined,
-      action: "vend",
-      quantity,
-      user_reference: "PENDING_REFERENCE",
+      phone_number: providerPhoneNumber,
+      ...commonProviderFields,
     };
   } else {
     const quantity = Math.max(
@@ -1821,10 +1825,9 @@ async function purchase(
 
     providerRequest = {
       product_code: selected.product_code,
-      phone_number: phone,
-      action: "vend",
+      phone_number: providerPhoneNumber,
       quantity,
-      user_reference: "PENDING_REFERENCE",
+      ...commonProviderFields,
     };
   }
 
@@ -1838,6 +1841,15 @@ async function purchase(
     : `VTU_${crypto.randomUUID()}`;
   const idempotencyKey = suppliedIdempotencyKey || reference;
 
+  if (!reference || reference === "VTU_") {
+    throw new Error("Unable to create a unique transaction reference.");
+  }
+
+  const finalProviderRequest = {
+    ...providerRequest,
+    user_reference: reference,
+  };
+
   const metadata: Record<string, unknown> = {
     service,
     provider: "zoedata",
@@ -1847,7 +1859,7 @@ async function purchase(
     provider_amount: providerAmount,
     markup_percent: service === "airtime" ? 0 : numberValue(selected?.markup_percent),
     selected_item: selected,
-    provider_request: { ...providerRequest, user_reference: reference },
+    provider_request: finalProviderRequest,
     request_id: reference,
     user_reference: reference,
     reconciliation_required: true,
@@ -1873,19 +1885,22 @@ async function purchase(
     throw new Error("Wallet debit did not return a transaction.");
   }
 
-  const finalProviderRequest = {
-    ...providerRequest,
-    user_reference: reference,
-  };
-
-  await updateTransaction(admin, user.id, reference, {
+  const initialUpdateOk = await updateTransaction(admin, user.id, reference, {
     provider: "zoedata",
     provider_reference: reference,
-    metadata: {
-      ...metadata,
-      provider_request: finalProviderRequest,
-    },
+    metadata,
   });
+
+  if (!initialUpdateOk) {
+    console.error("ZOEDATA initial transaction metadata update failed; keeping transaction pending.");
+    return {
+      success: true,
+      status: "pending",
+      reference,
+      transaction_id: localTransactionId,
+      message: "Your payment was received and is being verified.",
+    };
+  }
 
   let result: any;
   try {
@@ -1900,14 +1915,58 @@ async function purchase(
     });
 
     result = await zoedataPost("", finalProviderRequest);
-
     logZOEDATADiagnostic("RESPONSE", diagnosticProviderResult(result));
   } catch (error) {
     logZOEDATADiagnostic("REQUEST_EXCEPTION", {
       name: error instanceof Error ? error.name : typeof error,
       message: error instanceof Error ? error.message : String(error),
-      stack: error instanceof Error ? error.stack : null,
     });
+
+    // Configuration failures happen before a provider request can be made, so
+    // the wallet debit can safely be reversed. Network/timeout failures are
+    // ambiguous and must remain pending for reconciliation/callback handling.
+    if (deterministicProviderConfigError(error)) {
+      const reason = "The service is temporarily unavailable.";
+      const refund = await refundTransaction(
+        admin,
+        user.id,
+        reference,
+        sellingAmount,
+        reason,
+        {
+          ...metadata,
+          provider_request_exception: true,
+          configuration_error: true,
+        },
+      );
+
+      const updated = await updateTransaction(admin, user.id, reference, {
+        status: "failed",
+        provider: "zoedata",
+        provider_reference: reference,
+        metadata: {
+          ...metadata,
+          provider_request_exception: true,
+          configuration_error: true,
+          refunded: refund.success,
+          refund_pending: !refund.success,
+          reconciliation_required: !refund.success,
+        },
+      });
+
+      return {
+        success: false,
+        status: "failed",
+        reference,
+        transaction_id: localTransactionId,
+        error: refund.success
+          ? reason
+          : "The purchase could not be completed and the automatic refund requires retry.",
+        refunded: refund.success,
+        refund_pending: !refund.success,
+        reconciliation_required: !refund.success || !updated,
+      };
+    }
 
     await updateTransaction(admin, user.id, reference, {
       status: "pending",
@@ -1915,7 +1974,6 @@ async function purchase(
       provider_reference: reference,
       metadata: {
         ...metadata,
-        provider_request: finalProviderRequest,
         provider_request_exception: true,
         reconciliation_required: true,
       },
@@ -1930,19 +1988,19 @@ async function purchase(
     };
   }
 
-  const data = asObject(result.body?.data);
+  const data = asObject(result?.body?.data);
   const rechargeId = clean(firstValue(
     data.recharge_id,
-    result.body?.recharge_id,
+    result?.body?.recharge_id,
     data.order_id,
-    result.body?.order_id,
+    result?.body?.order_id,
   ));
-  const providerRef = rechargeId || providerReference(result.body) || reference;
-  const status = normalizeStatus(result.body);
-  const safeResponse = result.body;
+  const providerRef = rechargeId || providerReference(result?.body) || reference;
+  const status = providerStatusText(result?.body) || normalizeStatus(result?.body);
+  const safeResponse = result?.body ?? null;
 
-  if (providerLooksSuccessful(result.body, result.ok)) {
-    await updateTransaction(admin, user.id, reference, {
+  if (providerCompleted(result?.body)) {
+    const updated = await updateTransaction(admin, user.id, reference, {
       status: "completed",
       provider: "zoedata",
       provider_reference: providerRef,
@@ -1956,6 +2014,19 @@ async function purchase(
       },
     });
 
+    if (!updated) {
+      return {
+        success: true,
+        status: "pending",
+        reference,
+        transaction_id: localTransactionId,
+        provider_reference: providerRef,
+        recharge_id: rechargeId || null,
+        message: "Your purchase was completed and is being recorded.",
+        reconciliation_required: true,
+      };
+    }
+
     return {
       success: true,
       status: "successful",
@@ -1968,7 +2039,7 @@ async function purchase(
     };
   }
 
-  if (providerLooksFailed(result.body, result.ok)) {
+  if (providerFailed(result?.body, result?.ok === true)) {
     const reason = providerMessage(result.body) || "The service purchase failed.";
     const refund = await refundTransaction(
       admin,
@@ -1984,7 +2055,7 @@ async function purchase(
       },
     );
 
-    await updateTransaction(admin, user.id, reference, {
+    const updated = await updateTransaction(admin, user.id, reference, {
       status: "failed",
       provider: "zoedata",
       provider_reference: providerRef,
@@ -1999,24 +2070,17 @@ async function purchase(
       },
     });
 
-    if (!refund.success) {
-      return {
-        success: false,
-        status: "failed",
-        reference,
-        transaction_id: localTransactionId,
-        error: "The purchase failed, but the automatic refund requires retry.",
-        refund_pending: true,
-      };
-    }
-
     return {
       success: false,
       status: "failed",
       reference,
       transaction_id: localTransactionId,
-      error: reason,
-      refunded: true,
+      error: refund.success
+        ? reason
+        : "The purchase failed, but the automatic refund requires retry.",
+      refunded: refund.success,
+      refund_pending: !refund.success,
+      reconciliation_required: !refund.success || !updated,
     };
   }
 
@@ -2040,7 +2104,7 @@ async function purchase(
     transaction_id: localTransactionId,
     provider_reference: providerRef,
     recharge_id: rechargeId || null,
-    message: providerMessage(result.body) || "Your payment is being processed and will be verified.",
+    message: "Your payment is being processed and will be verified.",
   };
 }
 
@@ -2172,6 +2236,8 @@ async function callbackHandler(req: Request): Promise<Response> {
     payload.status,
     payload.pay_status,
     payload.off_status,
+    payload.text_status,
+    asObject(payload.data).text_status,
   )).toUpperCase();
 
   const rechargeId = clean(firstValue(
@@ -2276,8 +2342,8 @@ async function transactionStatus(body: any) {
     action: "status",
   });
 
-  if (!result.ok || result.body?.status !== true) {
-    throw new Error(providerMessage(result.body) || "Unable to fetch ZOEDATA transaction status.");
+  if (!result.ok || providerFailed(result.body, result.ok)) {
+    throw new Error("Unable to fetch transaction status.");
   }
 
   const data = asObject(result.body?.data);
@@ -2292,8 +2358,8 @@ async function transactionStatus(body: any) {
 async function accountBalance() {
   const result = await zoedataPost("", { action: "balance" });
 
-  if (!result.ok || result.body?.status !== true) {
-    throw new Error(providerMessage(result.body) || "Unable to fetch provider balance.");
+  if (!result.ok || providerFailed(result.body, result.ok)) {
+    throw new Error("Unable to fetch account balance.");
   }
 
   return {
@@ -2394,11 +2460,27 @@ Deno.serve(async (req) => {
     return json({ success: false, error: "Unsupported action." }, 400);
   } catch (error) {
     console.error("ZOEDATA services error:", error);
+    const message = error instanceof Error ? error.message : String(error);
+    const customerSafeMessages = new Set([
+      "Please provide a valid Nigerian phone number.",
+      "Please select a valid product.",
+      "Please enter a valid amount.",
+      "The selected service option is no longer available.",
+      "The selected product is no longer available.",
+      "The selected product does not have a valid provider price.",
+      "The selected product price has changed. Please reload the service and try again.",
+      "SmartCard / IUC number is required.",
+      "A valid Nigerian phone number is required.",
+      "Meter number is required.",
+      "Please provide a valid internet account number.",
+      "A valid payment amount is required.",
+      "Unable to fetch transaction status.",
+      "Unable to fetch account balance.",
+    ]);
+
     return json({
       success: false,
-      error: error instanceof Error
-        ? error.message
-        : "Unable to process service request.",
+      error: customerSafeMessages.has(message) ? message : "Unable to process service request.",
     }, 400);
   }
 });

@@ -142,6 +142,18 @@ function validPhone(value: string): boolean {
   return /^234\d{10}$/.test(value);
 }
 
+/**
+ * ZOEDATA's documented vend examples use the Nigerian local format
+ * 080XXXXXXXXX. Keep our internal canonical phone format as 234XXXXXXXXXX
+ * for validation, then convert only at the provider boundary.
+ */
+function zoedataPhone(value: string): string {
+  const normalized = clean(value);
+  if (/^234\d{10}$/.test(normalized)) return `0${normalized.slice(3)}`;
+  if (/^0\d{10}$/.test(normalized)) return normalized;
+  return normalized;
+}
+
 function canonicalNetwork(value: unknown): string {
   const raw = clean(value);
   const key = raw.toLowerCase().replace(/[^a-z0-9]/g, "");
@@ -1502,6 +1514,45 @@ async function verifyCustomer(
     };
   }
 
+  if (service === "internet") {
+    const broadbandPhone = normalizePhone(pickBody(
+      body,
+      "phone_number",
+      "phoneNumber",
+      "phone",
+      "customer",
+    ));
+
+    if (!validPhone(broadbandPhone)) {
+      throw new Error("Please provide a valid Nigerian phone number.");
+    }
+
+    const result = await zoedataPost("", {
+      product_code: selected.product_code,
+      phone_number: zoedataPhone(broadbandPhone),
+      action: "verify",
+    });
+
+    const data = asObject(result.body?.data);
+    const success = result.ok && result.body?.status === true && !providerLooksFailed(result.body, result.ok);
+
+    if (!success) {
+      throw new Error(providerMessage(result.body) || "Internet service verification failed.");
+    }
+
+    return {
+      success: true,
+      status: "success",
+      message: "Customer verified successfully.",
+      customer_name: clean(firstValue(
+        data.customer_name,
+        data.name,
+      )),
+      data,
+      raw: result.body,
+    };
+  }
+
   throw new Error("Verification is not supported for this service.");
 }
 
@@ -1624,15 +1675,15 @@ async function purchase(
   if (service === "airtime") {
     providerRequest = {
       product_code: selected.product_code,
-      phone_number: phone,
-      amount: String(providerAmount),
+      phone_number: zoedataPhone(phone),
+      amount: providerAmount,
       action: "vend",
       user_reference: "PENDING_REFERENCE",
     };
   } else if (service === "data") {
     providerRequest = {
       product_code: selected.product_code,
-      phone_number: phone,
+      phone_number: zoedataPhone(phone),
       action: "vend",
       user_reference: "PENDING_REFERENCE",
     };
@@ -1652,7 +1703,7 @@ async function purchase(
 
     providerRequest = {
       product_code: selected.product_code,
-      phone_number: cablePhone,
+      phone_number: zoedataPhone(cablePhone),
       smartcard_number: smartcard,
       amount: String(providerAmount),
       action: "vend",
@@ -1692,18 +1743,18 @@ async function purchase(
       throw new Error("Please provide a valid internet account number.");
     }
 
-    const quantity = Math.max(
-      1,
-      Math.floor(numberValue(pickBody(body, "quantity")) || 1),
-    );
+    // ZOEDATA's documented Broadband vend contract accepts the product code,
+    // subscriber phone number, action and user reference. The customer/account
+    // identifier used by the UI is retained for validation/audit, but is not
+    // sent as an undocumented provider field.
+    if (!validPhone(phone)) {
+      throw new Error("Please provide a valid Nigerian phone number.");
+    }
 
     providerRequest = {
       product_code: selected.product_code,
-      customer: customerIdentifier,
-      account_number: customerIdentifier,
-      phone_number: validPhone(phone) ? phone : undefined,
+      phone_number: zoedataPhone(phone),
       action: "vend",
-      quantity,
       user_reference: "PENDING_REFERENCE",
     };
   } else {
@@ -1714,7 +1765,7 @@ async function purchase(
 
     providerRequest = {
       product_code: selected.product_code,
-      phone_number: phone,
+      phone_number: zoedataPhone(phone),
       action: "vend",
       quantity,
       user_reference: "PENDING_REFERENCE",

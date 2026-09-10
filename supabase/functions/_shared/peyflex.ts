@@ -6,17 +6,33 @@
  *
  * Required Supabase secrets:
  *   ZOEDATA_API_TOKEN   (or ZOEDATA_API_KEY)
- *   ZOEDATA_BASE_URL
  *
  * Optional:
+ *   ZOEDATA_BASE_URL
  *   ZOEDATA_CATALOG_JSON
  *   ZOEDATA_CATALOG_URL
  *
- * ZOEDATA requests are JSON POST requests authenticated with Bearer token.
+ * ZOEDATA vending endpoint:
+ *   https://zoedata.ng/autobiz_vending_index.php
+ *
+ * IMPORTANT:
+ * ZOEDATA documentation specifies the API key header as:
+ *
+ *   Bearer: YOUR_API_KEY
+ *
+ * Do NOT change this to:
+ *
+ *   Authorization: Bearer YOUR_API_KEY
+ *
+ * unless ZOEDATA changes its API documentation.
  */
 
 export const ZOEDATA_BASE_URL =
-  Deno.env.get("ZOEDATA_BASE_URL")?.trim() || "";
+  Deno.env.get("ZOEDATA_BASE_URL")?.trim() ||
+  "https://zoedata.ng";
+
+export const ZOEDATA_VENDING_PATH =
+  "/autobiz_vending_index.php";
 
 export type ZOEDATAHttpResult = {
   ok: boolean;
@@ -41,12 +57,19 @@ function getToken(): string {
 
 function buildUrl(path = ""): string {
   const base = ZOEDATA_BASE_URL.replace(/\/+$/, "");
+
   if (!base) {
     throw new Error("ZOEDATA_BASE_URL is not configured.");
   }
 
-  if (/^https?:\/\//i.test(path)) return path;
-  if (!path) return base;
+  if (/^https?:\/\//i.test(path)) {
+    return path;
+  }
+
+  if (!path) {
+    return base;
+  }
+
   return `${base}/${path.replace(/^\/+/, "")}`;
 }
 
@@ -54,6 +77,7 @@ async function parseResponse(
   response: Response,
 ): Promise<ZOEDATAHttpResult> {
   const rawText = await response.text();
+
   let body: any = null;
 
   try {
@@ -70,21 +94,37 @@ async function parseResponse(
   };
 }
 
+/**
+ * POST request to the ZOEDATA vending API.
+ *
+ * If no path is supplied, the request is sent to the documented
+ * ZOEDATA vending endpoint:
+ *
+ *   /autobiz_vending_index.php
+ */
 export async function zoedataPost(
-  path = "",
+  path = ZOEDATA_VENDING_PATH,
   body: Record<string, unknown> = {},
 ): Promise<ZOEDATAHttpResult> {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 30_000);
+
+  const timeout = setTimeout(() => {
+    controller.abort();
+  }, 30_000);
 
   try {
     const response = await fetch(buildUrl(path), {
       method: "POST",
+
       headers: {
         Accept: "application/json",
         "Content-Type": "application/json",
-        Authorization: `Bearer ${getToken()}`,
+
+        // ZOEDATA documentation:
+        // "Bearer: YOUR_API_KEY"
+        Bearer: getToken(),
       },
+
       body: JSON.stringify(body),
       signal: controller.signal,
     });
@@ -95,19 +135,36 @@ export async function zoedataPost(
   }
 }
 
+/**
+ * GET request helper.
+ *
+ * Kept for compatibility with the existing IyanjuPay backend.
+ *
+ * ZOEDATA authentication uses:
+ *
+ *   Bearer: YOUR_API_KEY
+ */
 export async function zoedataGet(
   path: string,
 ): Promise<ZOEDATAHttpResult> {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 30_000);
+
+  const timeout = setTimeout(() => {
+    controller.abort();
+  }, 30_000);
 
   try {
     const response = await fetch(buildUrl(path), {
       method: "GET",
+
       headers: {
         Accept: "application/json",
-        Authorization: `Bearer ${getToken()}`,
+
+        // ZOEDATA documentation:
+        // "Bearer: YOUR_API_KEY"
+        Bearer: getToken(),
       },
+
       signal: controller.signal,
     });
 
@@ -117,16 +174,25 @@ export async function zoedataGet(
   }
 }
 
-export function asObject(value: unknown): Record<string, any> {
-  return value && typeof value === "object" && !Array.isArray(value)
+export function asObject(
+  value: unknown,
+): Record<string, any> {
+  return value &&
+      typeof value === "object" &&
+      !Array.isArray(value)
     ? value as Record<string, any>
     : {};
 }
 
-export function asArray(value: unknown): any[] {
-  if (Array.isArray(value)) return value;
+export function asArray(
+  value: unknown,
+): any[] {
+  if (Array.isArray(value)) {
+    return value;
+  }
 
   const obj = asObject(value);
+
   for (const candidate of [
     obj.data,
     obj.results,
@@ -137,13 +203,17 @@ export function asArray(value: unknown): any[] {
     obj.catalog,
     obj.catalogue,
   ]) {
-    if (Array.isArray(candidate)) return candidate;
+    if (Array.isArray(candidate)) {
+      return candidate;
+    }
   }
 
   return [];
 }
 
-export function firstValue(...values: unknown[]): unknown {
+export function firstValue(
+  ...values: unknown[]
+): unknown {
   for (const value of values) {
     if (
       value !== undefined &&
@@ -157,9 +227,18 @@ export function firstValue(...values: unknown[]): unknown {
   return undefined;
 }
 
-export function text(value: unknown): string {
-  if (value === undefined || value === null) return "";
-  if (["string", "number", "boolean"].includes(typeof value)) {
+export function text(
+  value: unknown,
+): string {
+  if (value === undefined || value === null) {
+    return "";
+  }
+
+  if (
+    ["string", "number", "boolean"].includes(
+      typeof value,
+    )
+  ) {
     return String(value).trim();
   }
 
@@ -170,7 +249,9 @@ export function text(value: unknown): string {
   }
 }
 
-export function numberValue(value: unknown): number {
+export function numberValue(
+  value: unknown,
+): number {
   if (typeof value === "number") {
     return Number.isFinite(value) ? value : 0;
   }
@@ -184,56 +265,72 @@ export function numberValue(value: unknown): number {
   return Number.isFinite(n) ? n : 0;
 }
 
-export function providerMessage(body: any): string {
+export function providerMessage(
+  body: any,
+): string {
   const obj = asObject(body);
   const data = asObject(obj.data);
 
-  return text(firstValue(
-    obj.message,
-    obj.server_message,
-    obj.error,
-    obj.detail,
-    obj.true_response,
-    data.message,
-    data.server_message,
-    data.error,
-    data.true_response,
-    data.text_status,
-  ));
+  return text(
+    firstValue(
+      obj.message,
+      obj.server_message,
+      obj.error,
+      obj.detail,
+      obj.true_response,
+
+      data.message,
+      data.server_message,
+      data.error,
+      data.true_response,
+      data.text_status,
+    ),
+  );
 }
 
-export function providerReference(body: any): string | null {
+export function providerReference(
+  body: any,
+): string | null {
   const obj = asObject(body);
   const data = asObject(obj.data);
 
   const value = firstValue(
     data.recharge_id,
     obj.recharge_id,
+
     data.order_id,
     obj.order_id,
+
     data.transaction_id,
     obj.transaction_id,
+
     data.user_reference,
     obj.user_reference,
   );
 
   const result = text(value);
+
   return result || null;
 }
 
-export function normalizeStatus(body: any): string {
+export function normalizeStatus(
+  body: any,
+): string {
   const obj = asObject(body);
   const data = asObject(obj.data);
 
-  return text(firstValue(
-    data.status,
-    data.text_status,
-    data.pay_status,
-    obj.status,
-    obj.text_status,
-    obj.pay_status,
-    obj.off_status,
-  ))
+  return text(
+    firstValue(
+      data.status,
+      data.text_status,
+      data.pay_status,
+
+      obj.status,
+      obj.text_status,
+      obj.pay_status,
+      obj.off_status,
+    ),
+  )
     .toUpperCase()
     .replace(/[\s-]+/g, "_");
 }
@@ -242,13 +339,21 @@ export function providerLooksSuccessful(
   body: any,
   httpOk: boolean,
 ): boolean {
-  if (!httpOk) return false;
+  if (!httpOk) {
+    return false;
+  }
 
   const obj = asObject(body);
   const data = asObject(obj.data);
+
   const status = normalizeStatus(body);
 
-  if (obj.status === false || data.status === false) return false;
+  if (
+    obj.status === false ||
+    data.status === false
+  ) {
+    return false;
+  }
 
   return [
     "DONE",
@@ -266,13 +371,21 @@ export function providerLooksFailed(
   body: any,
   httpOk: boolean,
 ): boolean {
-  if (!httpOk) return true;
+  if (!httpOk) {
+    return true;
+  }
 
   const obj = asObject(body);
   const data = asObject(obj.data);
+
   const status = normalizeStatus(body);
 
-  if (obj.status === false || data.status === false) return true;
+  if (
+    obj.status === false ||
+    data.status === false
+  ) {
+    return true;
+  }
 
   return [
     "FAILED",
@@ -283,12 +396,24 @@ export function providerLooksFailed(
     "CANCELED",
     "REFUNDED",
   ].includes(status) ||
-    data.text_status?.toString().toUpperCase() === "FAILED";
+    data.text_status
+      ?.toString()
+      .toUpperCase() === "FAILED";
 }
 
-/** Round UP to the next ₦50, as required by IyanjuPay pricing. */
-export function roundUpTo50(value: number): number {
-  if (!Number.isFinite(value) || value <= 0) return 0;
+/**
+ * Round UP to the next ₦50, as required by IyanjuPay pricing.
+ */
+export function roundUpTo50(
+  value: number,
+): number {
+  if (
+    !Number.isFinite(value) ||
+    value <= 0
+  ) {
+    return 0;
+  }
+
   return Math.ceil(value / 50) * 50;
 }
 
@@ -299,11 +424,18 @@ export function roundSellingPrice(
   providerPrice: number,
   markupPercent: number,
 ): number {
-  if (!Number.isFinite(providerPrice) || providerPrice <= 0) return 0;
+  if (
+    !Number.isFinite(providerPrice) ||
+    providerPrice <= 0
+  ) {
+    return 0;
+  }
 
   const rate = Number.isFinite(markupPercent)
     ? Math.max(0, markupPercent)
     : 0;
 
-  return roundUpTo50(providerPrice * (1 + rate / 100));
+  return roundUpTo50(
+    providerPrice * (1 + rate / 100),
+  );
 }

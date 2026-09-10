@@ -1,33 +1,51 @@
 /**
- * IyanjuPay — ZOEDATA server-side API client.
+ * IyanjuPay — ZOEDATA server-side API client via VPS proxy.
  *
- * The file intentionally keeps the existing _shared/peyflex.ts filename so
- * the existing Supabase function import path remains unchanged.
+ * IMPORTANT:
+ * This file intentionally keeps the existing
+ * _shared/peyflex.ts filename so existing Supabase
+ * function imports remain unchanged.
  *
- * Required Supabase secrets:
- *   ZOEDATA_API_TOKEN   (or ZOEDATA_API_KEY)
+ * ARCHITECTURE:
  *
- * Optional:
+ *   Supabase Edge Function
+ *          ↓
+ *   VPS /zoedata proxy
+ *          ↓
+ *   ZOEDATA API
+ *
+ * The ZOEDATA API key MUST stay on the VPS.
+ * Supabase no longer calls ZOEDATA directly.
+ *
+ * REQUIRED SUPABASE SECRETS:
+ *
+ *   ZOEDATA_PROXY_URL
+ *     Example:
+ *     https://your-vps-domain.com/zoedata
+ *
+ *   ZOEDATA_PROXY_SECRET
+ *     Must exactly match the VPS PROXY_SECRET.
+ *
+ * OPTIONAL:
+ *
  *   ZOEDATA_BASE_URL
  *   ZOEDATA_CATALOG_JSON
  *   ZOEDATA_CATALOG_URL
  *
- * ZOEDATA API:
- *   Base URL:
- *     https://zoedata.ng
- *
- *   Vending endpoint:
- *     /autobiz_vending_index.php
- *
- * Authentication documented by ZOEDATA:
- *   Bearer: YOUR_API_KEY
- *
  * IMPORTANT:
- * Empty paths passed to zoedataPost() are intentionally routed to the
- * documented vending endpoint. This preserves compatibility with the
- * existing peyflex-services/index.ts call:
+ * ZOEDATA_API_TOKEN / ZOEDATA_API_KEY is intentionally
+ * NOT read by this file anymore.
+ *
+ * The ZOEDATA API token stays exclusively on the VPS.
+ *
+ * Existing compatibility:
  *
  *   zoedataPost("", finalProviderRequest)
+ *
+ * continues to work exactly as before.
+ *
+ * The empty path is retained because the existing
+ * peyflex-services/index.ts uses it for ZOEDATA vending.
  */
 
 export const ZOEDATA_BASE_URL =
@@ -37,6 +55,40 @@ export const ZOEDATA_BASE_URL =
 export const ZOEDATA_VENDING_PATH =
   "/autobiz_vending_index.php";
 
+/**
+ * VPS proxy URL.
+ *
+ * Example:
+ *
+ *   https://api.example.com/zoedata
+ *
+ * Do NOT put the ZOEDATA API key here.
+ */
+export const ZOEDATA_PROXY_URL =
+  Deno.env.get("ZOEDATA_PROXY_URL")?.trim() || "";
+
+/**
+ * Shared secret used between Supabase and the VPS.
+ *
+ * This MUST match:
+ *
+ *   PROXY_SECRET
+ *
+ * on the VPS.
+ */
+function getProxySecret(): string {
+  const secret =
+    Deno.env.get("ZOEDATA_PROXY_SECRET")?.trim();
+
+  if (!secret) {
+    throw new Error(
+      "ZOEDATA_PROXY_SECRET is not configured.",
+    );
+  }
+
+  return secret;
+}
+
 export type ZOEDATAHttpResult = {
   ok: boolean;
   httpStatus: number;
@@ -44,70 +96,100 @@ export type ZOEDATAHttpResult = {
   rawText: string;
 };
 
-function getToken(): string {
-  const token =
-    Deno.env.get("ZOEDATA_API_TOKEN")?.trim() ||
-    Deno.env.get("ZOEDATA_API_KEY")?.trim();
-
-  if (!token) {
-    throw new Error(
-      "ZOEDATA_API_TOKEN (or ZOEDATA_API_KEY) is not configured.",
-    );
-  }
-
-  return token;
-}
-
 /**
  * Resolve an API path.
  *
- * IMPORTANT:
- * zoedataPost("", body) is used by the existing
- * peyflex-services/index.ts.
+ * The VPS proxy currently exposes:
  *
- * An empty path MUST therefore resolve to the ZOEDATA vending
- * endpoint rather than the website root.
+ *   POST /zoedata
+ *
+ * The path parameter is retained for compatibility
+ * with the existing backend.
+ *
+ * IMPORTANT:
+ * zoedataPost("", body) is the normal provider call.
  */
 function resolvePath(
   path: string,
 ): string {
-  const normalizedPath = path.trim();
+  const normalizedPath =
+    path.trim();
 
+  /*
+   * The current VPS proxy accepts all supported
+   * ZOEDATA operations through /zoedata.
+   *
+   * Therefore an empty path still means the normal
+   * ZOEDATA vending/provider request.
+   */
   if (!normalizedPath) {
-    return ZOEDATA_VENDING_PATH;
+    return "/zoedata";
   }
 
-  return normalizedPath;
+  /*
+   * If an existing backend passes the ZOEDATA
+   * vending endpoint explicitly, continue routing
+   * it through the VPS proxy.
+   */
+  if (
+    normalizedPath ===
+      ZOEDATA_VENDING_PATH ||
+    normalizedPath ===
+      ZOEDATA_VENDING_PATH.replace(
+        /^\/+/,
+        "",
+      )
+  ) {
+    return "/zoedata";
+  }
+
+  /*
+   * If a full URL is supplied, it is intentionally
+   * NOT allowed to bypass the VPS.
+   *
+   * All provider traffic must go through the
+   * whitelisted VPS IP.
+   */
+  return "/zoedata";
 }
 
-function buildUrl(
+/**
+ * Build the VPS proxy URL.
+ *
+ * IMPORTANT:
+ * No direct ZOEDATA URL is generated here.
+ */
+function buildProxyUrl(
   path = "",
 ): string {
-  const base = ZOEDATA_BASE_URL.replace(
-    /\/+$/,
-    "",
-  );
-
-  if (!base) {
+  if (!ZOEDATA_PROXY_URL) {
     throw new Error(
-      "ZOEDATA_BASE_URL is not configured.",
+      "ZOEDATA_PROXY_URL is not configured.",
     );
   }
 
-  const resolvedPath = resolvePath(path);
+  const base =
+    ZOEDATA_PROXY_URL.replace(
+      /\/+$/,
+      "",
+    );
 
+  const resolvedPath =
+    resolvePath(path);
+
+  /*
+   * If the configured proxy URL already ends
+   * with /zoedata, don't append /zoedata again.
+   */
   if (
-    /^https?:\/\//i.test(
-      resolvedPath,
-    )
+    base
+      .toLowerCase()
+      .endsWith("/zoedata")
   ) {
-    return resolvedPath;
+    return base;
   }
 
-  return `${base}/${resolvedPath.replace(
-    /^\/+/,
-    "",
-  )}`;
+  return `${base}${resolvedPath}`;
 }
 
 async function parseResponse(
@@ -135,19 +217,25 @@ async function parseResponse(
 }
 
 /**
- * POST request to ZOEDATA.
+ * POST request through the VPS.
  *
- * By default:
+ * IMPORTANT:
  *
- *   zoedataPost("", body)
+ * BEFORE:
  *
- * becomes:
+ *   Supabase → https://zoedata.ng/autobiz_vending_index.php
  *
- *   POST https://zoedata.ng/autobiz_vending_index.php
+ * NOW:
  *
- * Authentication header:
+ *   Supabase → VPS /zoedata
+ *          → ZOEDATA
  *
- *   Bearer: YOUR_API_KEY
+ * The VPS adds the ZOEDATA API authentication
+ * header using the API key stored on the VPS.
+ *
+ * The Supabase function only sends:
+ *
+ *   X-Proxy-Secret
  */
 export async function zoedataPost(
   path = "",
@@ -156,40 +244,52 @@ export async function zoedataPost(
   const controller =
     new AbortController();
 
-  const timeout = setTimeout(
-    () => controller.abort(),
-    30_000,
-  );
+  const timeout =
+    setTimeout(
+      () => controller.abort(),
+      35_000,
+    );
 
   try {
-    const url = buildUrl(path);
+    const url =
+      buildProxyUrl(path);
 
-    const response = await fetch(
-      url,
-      {
-        method: "POST",
+    const proxySecret =
+      getProxySecret();
 
-        headers: {
-          Accept:
-            "application/json",
-          "Content-Type":
-            "application/json",
+    /*
+     * Never log the proxy secret.
+     *
+     * The VPS is responsible for adding:
+     *
+     *   Bearer: ZOEDATA_API_KEY
+     *
+     * to the provider request.
+     */
+    const response =
+      await fetch(
+        url,
+        {
+          method: "POST",
 
-          // ZOEDATA documentation:
-          //
-          // Bearer: YOUR_API_KEY
-          //
-          // This is intentionally NOT:
-          //
-          // Authorization: Bearer YOUR_API_KEY
-          Bearer: getToken(),
+          headers: {
+            Accept:
+              "application/json",
+
+            "Content-Type":
+              "application/json",
+
+            "X-Proxy-Secret":
+              proxySecret,
+          },
+
+          body:
+            JSON.stringify(body),
+
+          signal:
+            controller.signal,
         },
-
-        body: JSON.stringify(body),
-
-        signal: controller.signal,
-      },
-    );
+      );
 
     return await parseResponse(
       response,
@@ -202,45 +302,80 @@ export async function zoedataPost(
 /**
  * GET request helper.
  *
- * Kept for compatibility with the
- * existing IyanjuPay backend.
+ * Kept for compatibility with the existing
+ * IyanjuPay backend.
  *
- * ZOEDATA authentication:
+ * Provider traffic must still go through the VPS.
  *
- *   Bearer: YOUR_API_KEY
+ * The current VPS /zoedata endpoint is POST-based,
+ * so this helper is retained primarily for
+ * compatibility with existing imports.
+ *
+ * If a GET operation is ever required by the
+ * backend, the VPS must expose a corresponding
+ * authenticated GET endpoint before it can be used.
  */
 export async function zoedataGet(
   path: string,
 ): Promise<ZOEDATAHttpResult> {
+  const normalizedPath =
+    path.trim();
+
+  /*
+   * The current VPS proxy's /zoedata endpoint
+   * accepts POST requests only.
+   *
+   * We therefore use POST with an action/path
+   * wrapper only when this compatibility helper
+   * is explicitly called.
+   *
+   * This avoids making any direct request to ZOEDATA.
+   */
   const controller =
     new AbortController();
 
-  const timeout = setTimeout(
-    () => controller.abort(),
-    30_000,
-  );
+  const timeout =
+    setTimeout(
+      () => controller.abort(),
+      35_000,
+    );
 
   try {
     const url =
-      buildUrl(path);
+      buildProxyUrl(
+        normalizedPath,
+      );
 
-    const response = await fetch(
-      url,
-      {
-        method: "GET",
+    const proxySecret =
+      getProxySecret();
 
-        headers: {
-          Accept:
-            "application/json",
+    const response =
+      await fetch(
+        url,
+        {
+          method: "POST",
 
-          // ZOEDATA documentation:
-          // Bearer: YOUR_API_KEY
-          Bearer: getToken(),
+          headers: {
+            Accept:
+              "application/json",
+
+            "Content-Type":
+              "application/json",
+
+            "X-Proxy-Secret":
+              proxySecret,
+          },
+
+          body:
+            JSON.stringify({
+              action:
+                "balance",
+            }),
+
+          signal:
+            controller.signal,
         },
-
-        signal: controller.signal,
-      },
-    );
+      );
 
     return await parseResponse(
       response,
@@ -354,17 +489,18 @@ export function numberValue(
       : 0;
   }
 
-  const n = Number(
-    text(value)
-      .replace(
-        /[₦,\s]/g,
-        "",
-      )
-      .replace(
-        /NGN/gi,
-        "",
-      ),
-  );
+  const n =
+    Number(
+      text(value)
+        .replace(
+          /[₦,\s]/g,
+          "",
+        )
+        .replace(
+          /NGN/gi,
+          "",
+        ),
+    );
 
   return Number.isFinite(n)
     ? n

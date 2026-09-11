@@ -1,77 +1,262 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en-NG">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
 
-    <!-- Google Search Console Verification Tag -->
-    <meta name="google-site-verification" content="5CV4Cd697KixhHIYJYZztlKi6TkJpgqqMrWK65qCeMk" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover"
+    />
 
-    <title>IyanjuPay — Airtime, Data, Bills & Transfers in Nigeria</title>
-    <meta name="description" content="IyanjuPay lets you fund your wallet, send money to any Nigerian bank, buy airtime and data, and pay bills in seconds." />
+    <!-- =========================================================
+         GOOGLE SEARCH CONSOLE
+         ========================================================= -->
+    <meta
+      name="google-site-verification"
+      content="5CV4Cd697KixhHIYJYZztlKi6TkJpgqqMrWK65qCeMk"
+    />
+
+    <!-- =========================================================
+         PRIMARY SEO
+         ========================================================= -->
+    <title>
+      IyanjuPay — Airtime, Data, Bills &amp; Transfers in Nigeria
+    </title>
+
+    <meta
+      name="description"
+      content="IyanjuPay is a Nigerian digital payment platform for airtime, data, bill payments, wallet funding and money transfers to Nigerian bank accounts."
+    />
+
     <meta name="author" content="IyanjuPay" />
-    <meta name="keywords" content="IyanjuPay, buy data nigeria, cheap data, buy airtime, pay bills nigeria, vercel app fintech" />
-    <meta name="robots" content="index, follow" />
-    <link rel="canonical" href="https://vercel.app" />
 
-    <!-- Integrated Google Structured Schema Data (Site Name & Organization) -->
+    <meta
+      name="keywords"
+      content="IyanjuPay, Iyanju Pay, IyanjuPay Nigeria, buy airtime Nigeria, buy data Nigeria, data plans Nigeria, pay bills Nigeria, money transfer Nigeria, Nigerian fintech, digital payment platform Nigeria"
+    />
+
+    <!-- Search engine crawling -->
+    <meta
+      name="robots"
+      content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"
+    />
+
+    <meta
+      name="googlebot"
+      content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"
+    />
+
+    <!-- IMPORTANT:
+         This must always point to the actual IyanjuPay website,
+         NOT https://vercel.app -->
+    <link
+      rel="canonical"
+      href="https://iyanjupay.vercel.app/"
+    />
+
+    <!-- =========================================================
+         PWA
+         ========================================================= -->
+    <link
+      rel="manifest"
+      href="/manifest.webmanifest"
+    />
+
+    <meta
+      name="theme-color"
+      content="#082A63"
+    />
+
+    <meta
+      name="application-name"
+      content="IyanjuPay"
+    />
+
+    <!-- =========================================================
+         FAVICON / APP ICONS
+         ========================================================= -->
+    <link
+      rel="icon"
+      href="/favicon.ico"
+      sizes="any"
+    />
+
+    <link
+      rel="icon"
+      type="image/png"
+      sizes="192x192"
+      href="/icon-192.png"
+    />
+
+    <link
+      rel="apple-touch-icon"
+      sizes="180x180"
+      href="/icon-180.png"
+    />
+
+    <!-- =========================================================
+         iOS PWA
+         ========================================================= -->
+    <meta
+      name="apple-mobile-web-app-capable"
+      content="yes"
+    />
+
+    <meta
+      name="apple-mobile-web-app-status-bar-style"
+      content="default"
+    />
+
+    <meta
+      name="apple-mobile-web-app-title"
+      content="IyanjuPay"
+    />
+
+    <!-- =========================================================
+         ANDROID
+         ========================================================= -->
+    <meta
+      name="mobile-web-app-capable"
+      content="yes"
+    />
+
+    <!-- =========================================================
+         OPEN GRAPH
+         ========================================================= -->
+    <meta
+      property="og:site_name"
+      content="IyanjuPay"
+    />
+
+    <meta
+      property="og:title"
+      content="IyanjuPay — Airtime, Data, Bills &amp; Transfers"
+    />
+
+    <meta
+      property="og:description"
+      content="IyanjuPay is a Nigerian digital payment platform for airtime, data, bill payments, wallet funding and money transfers."
+    />
+
+    <meta
+      property="og:url"
+      content="https://iyanjupay.vercel.app/"
+    />
+
+    <meta
+      property="og:type"
+      content="website"
+    />
+
+    <meta
+      property="og:locale"
+      content="en_NG"
+    />
+
+    <meta
+      property="og:image"
+      content="https://iyanjupay.vercel.app/icon-192.png"
+    />
+
+    <meta
+      property="og:image:alt"
+      content="IyanjuPay"
+    />
+
+    <meta
+      property="og:image:type"
+      content="image/png"
+    />
+
+    <!-- =========================================================
+         TWITTER / X
+         ========================================================= -->
+    <meta
+      name="twitter:card"
+      content="summary_large_image"
+    />
+
+    <meta
+      name="twitter:title"
+      content="IyanjuPay — Airtime, Data, Bills &amp; Transfers"
+    />
+
+    <meta
+      name="twitter:description"
+      content="IyanjuPay is a Nigerian digital payment platform for airtime, data, bill payments, wallet funding and money transfers."
+    />
+
+    <meta
+      name="twitter:image"
+      content="https://iyanjupay.vercel.app/icon-192.png"
+    />
+
+    <meta
+      name="twitter:image:alt"
+      content="IyanjuPay"
+    />
+
+    <!-- =========================================================
+         STRUCTURED DATA — GOOGLE SEARCH / KNOWLEDGE SIGNALS
+         ========================================================= -->
     <script type="application/ld+json">
     {
       "@context": "https://schema.org",
       "@graph": [
         {
           "@type": "WebSite",
-          "@id": "https://vercel.app#website",
-          "url": "https://vercel.app",
+          "@id": "https://iyanjupay.vercel.app/#website",
+          "url": "https://iyanjupay.vercel.app/",
           "name": "IyanjuPay",
-          "alternateName": ["Iyanju Pay", "IyanjuPay Fintech"]
+          "alternateName": "Iyanju Pay",
+          "description": "IyanjuPay is a Nigerian digital payment platform for airtime, data, bill payments, wallet funding and money transfers.",
+          "inLanguage": "en-NG",
+          "publisher": {
+            "@id": "https://iyanjupay.vercel.app/#organization"
+          }
         },
         {
           "@type": "Organization",
-          "@id": "https://vercel.app#organization",
+          "@id": "https://iyanjupay.vercel.app/#organization",
           "name": "IyanjuPay",
-          "url": "https://vercel.app",
-          "logo": "https://vercel.appicon-192.png"
+          "alternateName": "Iyanju Pay",
+          "url": "https://iyanjupay.vercel.app/",
+          "logo": {
+            "@type": "ImageObject",
+            "@id": "https://iyanjupay.vercel.app/#logo",
+            "url": "https://iyanjupay.vercel.app/icon-192.png",
+            "contentUrl": "https://iyanjupay.vercel.app/icon-192.png",
+            "width": 192,
+            "height": 192,
+            "caption": "IyanjuPay"
+          }
+        },
+        {
+          "@type": "WebApplication",
+          "@id": "https://iyanjupay.vercel.app/#application",
+          "name": "IyanjuPay",
+          "alternateName": "Iyanju Pay",
+          "url": "https://iyanjupay.vercel.app/",
+          "description": "IyanjuPay is a Nigerian digital payment web application for airtime, data, bill payments, wallet funding and money transfers.",
+          "applicationCategory": "FinanceApplication",
+          "operatingSystem": "Web",
+          "inLanguage": "en-NG",
+          "image": "https://iyanjupay.vercel.app/icon-192.png",
+          "publisher": {
+            "@id": "https://iyanjupay.vercel.app/#organization"
+          }
         }
       ]
     }
     </script>
-
-    <!-- PWA Setup -->
-    <link rel="manifest" href="/manifest.webmanifest" />
-    <meta name="theme-color" content="#082A63" />
-
-    <!-- Icons -->
-    <link rel="icon" href="/favicon.ico" sizes="any" />
-    <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
-    <link rel="apple-touch-icon" sizes="180x180" href="/icon-180.png" />
-
-    <!-- iOS PWA -->
-    <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-    <meta name="apple-mobile-web-app-title" content="IyanjuPay" />
-
-    <!-- Android -->
-    <meta name="mobile-web-app-capable" content="yes" />
-
-    <!-- Open Graph -->
-    <meta property="og:site_name" content="IyanjuPay" />
-    <meta property="og:title" content="IyanjuPay — Airtime, Data, Bills & Transfers" />
-    <meta property="og:description" content="Fund your wallet, transfer to any Nigerian bank, buy airtime and data, and pay bills in seconds." />
-    <meta property="og:url" content="https://vercel.app" />
-    <meta property="og:type" content="website" />
-    <meta property="og:image" content="https://vercel.appicon-192.png" />
-
-    <!-- Twitter -->
-    <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="IyanjuPay — Airtime, Data, Bills & Transfers" />
-    <meta name="twitter:description" content="Fund your wallet, transfer to any Nigerian bank, buy airtime and data, and pay bills in seconds." />
-    <meta name="twitter:image" content="https://vercel.appicon-192.png" />
   </head>
 
   <body>
     <div id="root"></div>
 
-    <script type="module" src="/src/main.tsx"></script>
+    <script
+      type="module"
+      src="/src/main.tsx"
+    ></script>
   </body>
 </html>

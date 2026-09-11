@@ -1,9 +1,12 @@
 {
   "cleanUrls": true,
-  "rewrites": [
+  "routes": [
     {
-      "source": "/((?!\\.well-known|static|assets|sitemap\\.xml|robots\\.txt|manifest\\.webmanifest|favicon\\.ico|icon-[0-9]+\\.png).*)",
-      "destination": "/index.html"
+      "handle": "filesystem"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/index.html"
     }
   ],
   "headers": [

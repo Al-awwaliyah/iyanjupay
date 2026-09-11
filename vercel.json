@@ -2,7 +2,7 @@
   "cleanUrls": true,
   "rewrites": [
     {
-      "source": "/((?!\\.well-known|static|assets).*)" ,
+      "source": "/((?!\\.well-known|static|assets|sitemap\\.xml|robots\\.txt|manifest\\.webmanifest|favicon\\.ico|icon-[0-9]+\\.png).*)",
       "destination": "/index.html"
     }
   ],

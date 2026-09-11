@@ -24,7 +24,9 @@ export default defineConfig(() => ({
         "icon-180.png",
         "icon-192.png",
         "icon-512.png",
-        ".well-known/assetlinks.json"
+        ".well-known/assetlinks.json",
+        "robots.txt",
+        "sitemap.xml"
       ],
 
       manifest: {

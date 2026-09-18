@@ -3802,3 +3802,387 @@ html.iyanjupay-theme-blue textarea {
   background-color: #ffffff;
   color: #111827;
 }
+
+
+/* ============================================================
+   IYANJUPAY UNIFIED MOBILE VISUAL SYSTEM
+   Reference: IyanjuPay Mobile Data / Service Payment screen.
+
+   This is the final cascade layer for the customer application.
+   It does not create a second theme controller. ThemeProvider
+   remains the only source of theme state.
+
+   DARK MODE:
+   - navy page background
+   - dark navy cards and fields
+   - indigo/blue gradient headers
+   - white primary text
+   - muted slate secondary text
+   - indigo/purple active controls
+
+   LIGHT / BLUE:
+   - preserve light surfaces and dark readable text
+   - retain the same card, spacing, border and control language.
+   ============================================================ */
+
+/* ---------- Shared customer page geometry ---------- */
+
+html[data-iyanjupay-theme] body {
+  min-height: 100vh;
+}
+
+html[data-iyanjupay-theme] #root {
+  min-height: 100vh;
+}
+
+html[data-iyanjupay-theme] button,
+html[data-iyanjupay-theme] input,
+html[data-iyanjupay-theme] select,
+html[data-iyanjupay-theme] textarea {
+  -webkit-tap-highlight-color: transparent;
+}
+
+html[data-iyanjupay-theme] input::placeholder,
+html[data-iyanjupay-theme] textarea::placeholder {
+  opacity: 1;
+}
+
+/* ---------- DARK: screenshot-matched surface system ---------- */
+
+html[data-iyanjupay-theme="dark"] {
+  --iyanjupay-page: #080d18;
+  --iyanjupay-surface: #111827;
+  --iyanjupay-surface-2: #0f172a;
+  --iyanjupay-surface-3: #1e293b;
+  --iyanjupay-border: #334155;
+  --iyanjupay-border-strong: #475569;
+  --iyanjupay-text: #f8fafc;
+  --iyanjupay-text-secondary: #cbd5e1;
+  --iyanjupay-text-muted: #94a3b8;
+  --iyanjupay-primary: #4f46e5;
+  --iyanjupay-primary-2: #6d28d9;
+  --iyanjupay-primary-blue: #2563eb;
+}
+
+/* Page-level backgrounds */
+html[data-iyanjupay-theme="dark"] body,
+html[data-iyanjupay-theme="dark"] .min-h-screen {
+  background-color: var(--iyanjupay-page);
+  color: var(--iyanjupay-text);
+}
+
+/* Standard white/light surfaces become screenshot-style cards. */
+html[data-iyanjupay-theme="dark"] .bg-white,
+html[data-iyanjupay-theme="dark"] [class*="bg-white/"] {
+  background-color: var(--iyanjupay-surface) !important;
+}
+
+/* Common light utility surfaces */
+html[data-iyanjupay-theme="dark"] .bg-gray-50,
+html[data-iyanjupay-theme="dark"] .bg-slate-50 {
+  background-color: var(--iyanjupay-page) !important;
+}
+
+html[data-iyanjupay-theme="dark"] .bg-gray-100,
+html[data-iyanjupay-theme="dark"] .bg-slate-100,
+html[data-iyanjupay-theme="dark"] .bg-gray-200,
+html[data-iyanjupay-theme="dark"] .bg-slate-200 {
+  background-color: var(--iyanjupay-surface-3) !important;
+}
+
+html[data-iyanjupay-theme="dark"] .bg-background {
+  background-color: var(--iyanjupay-page) !important;
+}
+
+html[data-iyanjupay-theme="dark"] .bg-card {
+  background-color: var(--iyanjupay-surface) !important;
+}
+
+/* Semantic popovers/selects/dialogs */
+html[data-iyanjupay-theme="dark"] .bg-popover {
+  background-color: var(--iyanjupay-surface) !important;
+}
+
+html[data-iyanjupay-theme="dark"] [role="dialog"],
+html[data-iyanjupay-theme="dark"] [data-radix-popper-content-wrapper] > *,
+html[data-iyanjupay-theme="dark"] [data-radix-select-content] {
+  background-color: var(--iyanjupay-surface) !important;
+  color: var(--iyanjupay-text) !important;
+  border-color: var(--iyanjupay-border) !important;
+}
+
+/* Borders */
+html[data-iyanjupay-theme="dark"] [class*="border-slate-200"],
+html[data-iyanjupay-theme="dark"] [class*="border-gray-200"],
+html[data-iyanjupay-theme="dark"] [class*="border-slate-300"],
+html[data-iyanjupay-theme="dark"] [class*="border-gray-300"],
+html[data-iyanjupay-theme="dark"] .border-border,
+html[data-iyanjupay-theme="dark"] .border-input {
+  border-color: var(--iyanjupay-border) !important;
+}
+
+/* Primary text */
+html[data-iyanjupay-theme="dark"] .text-gray-950,
+html[data-iyanjupay-theme="dark"] .text-gray-900,
+html[data-iyanjupay-theme="dark"] .text-gray-800,
+html[data-iyanjupay-theme="dark"] .text-gray-700,
+html[data-iyanjupay-theme="dark"] .text-slate-950,
+html[data-iyanjupay-theme="dark"] .text-slate-900,
+html[data-iyanjupay-theme="dark"] .text-slate-800,
+html[data-iyanjupay-theme="dark"] .text-slate-700 {
+  color: var(--iyanjupay-text) !important;
+}
+
+/* Secondary text */
+html[data-iyanjupay-theme="dark"] .text-gray-600,
+html[data-iyanjupay-theme="dark"] .text-gray-500,
+html[data-iyanjupay-theme="dark"] .text-gray-400,
+html[data-iyanjupay-theme="dark"] .text-slate-600,
+html[data-iyanjupay-theme="dark"] .text-slate-500,
+html[data-iyanjupay-theme="dark"] .text-slate-400,
+html[data-iyanjupay-theme="dark"] .text-muted-foreground {
+  color: var(--iyanjupay-text-secondary) !important;
+}
+
+/* Preserve intentional white text. */
+html[data-iyanjupay-theme="dark"] .text-white {
+  color: #ffffff !important;
+}
+
+/* ---------- Inputs / selects / textareas ---------- */
+
+html[data-iyanjupay-theme="dark"] input,
+html[data-iyanjupay-theme="dark"] select,
+html[data-iyanjupay-theme="dark"] textarea,
+html[data-iyanjupay-theme="dark"] [role="combobox"] {
+  background-color: var(--iyanjupay-surface-2) !important;
+  color: var(--iyanjupay-text) !important;
+  border-color: var(--iyanjupay-border) !important;
+}
+
+html[data-iyanjupay-theme="dark"] input:focus,
+html[data-iyanjupay-theme="dark"] select:focus,
+html[data-iyanjupay-theme="dark"] textarea:focus,
+html[data-iyanjupay-theme="dark"] [role="combobox"]:focus {
+  border-color: #6366f1 !important;
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.18) !important;
+}
+
+html[data-iyanjupay-theme="dark"] input::placeholder,
+html[data-iyanjupay-theme="dark"] textarea::placeholder {
+  color: #64748b !important;
+}
+
+/* ---------- Screenshot-style accent surfaces ---------- */
+
+html[data-iyanjupay-theme="dark"] .bg-purple-50,
+html[data-iyanjupay-theme="dark"] .bg-purple-100 {
+  background-color: #241b4f !important;
+}
+
+html[data-iyanjupay-theme="dark"] .bg-blue-50,
+html[data-iyanjupay-theme="dark"] .bg-blue-100 {
+  background-color: #102a4d !important;
+}
+
+html[data-iyanjupay-theme="dark"] .bg-green-50,
+html[data-iyanjupay-theme="dark"] .bg-green-100,
+html[data-iyanjupay-theme="dark"] .bg-emerald-50,
+html[data-iyanjupay-theme="dark"] .bg-emerald-100 {
+  background-color: #062f2a !important;
+}
+
+html[data-iyanjupay-theme="dark"] .bg-red-50,
+html[data-iyanjupay-theme="dark"] .bg-red-100 {
+  background-color: #3a161d !important;
+}
+
+html[data-iyanjupay-theme="dark"] .bg-orange-50,
+html[data-iyanjupay-theme="dark"] .bg-orange-100 {
+  background-color: #3a2815 !important;
+}
+
+html[data-iyanjupay-theme="dark"] .bg-yellow-50,
+html[data-iyanjupay-theme="dark"] .bg-yellow-100 {
+  background-color: #3a3010 !important;
+}
+
+/* Keep accent text bright enough on dark accent surfaces. */
+html[data-iyanjupay-theme="dark"] .text-purple-600,
+html[data-iyanjupay-theme="dark"] .text-purple-700 {
+  color: #a78bfa !important;
+}
+
+html[data-iyanjupay-theme="dark"] .text-blue-600,
+html[data-iyanjupay-theme="dark"] .text-blue-700 {
+  color: #60a5fa !important;
+}
+
+html[data-iyanjupay-theme="dark"] .text-green-600,
+html[data-iyanjupay-theme="dark"] .text-green-700,
+html[data-iyanjupay-theme="dark"] .text-emerald-600,
+html[data-iyanjupay-theme="dark"] .text-emerald-700 {
+  color: #6ee7b7 !important;
+}
+
+html[data-iyanjupay-theme="dark"] .text-red-600,
+html[data-iyanjupay-theme="dark"] .text-red-700 {
+  color: #fca5a5 !important;
+}
+
+html[data-iyanjupay-theme="dark"] .text-orange-600,
+html[data-iyanjupay-theme="dark"] .text-orange-700 {
+  color: #fdba74 !important;
+}
+
+/* ---------- Buttons / active controls ---------- */
+
+html[data-iyanjupay-theme="dark"] .bg-purple-600 {
+  background-color: #4f46e5 !important;
+}
+
+html[data-iyanjupay-theme="dark"] .bg-blue-600 {
+  background-color: #2563eb !important;
+}
+
+html[data-iyanjupay-theme="dark"] [class*="hover:bg-purple-700"]:hover {
+  background-color: #4338ca !important;
+}
+
+html[data-iyanjupay-theme="dark"] [class*="hover:bg-blue-700"]:hover {
+  background-color: #1d4ed8 !important;
+}
+
+html[data-iyanjupay-theme="dark"] .iyanjupay-service-primary {
+  background-image: linear-gradient(to right, #4c1d95, #6d28d9, #2563eb) !important;
+  color: #ffffff !important;
+}
+
+/* ---------- Shared IyanjuPay page headers ---------- */
+
+html[data-iyanjupay-theme="dark"] .iyanjupay-service-header,
+html[data-iyanjupay-theme="dark"] .iyanjupay-dashboard-header {
+  background-image: linear-gradient(
+    to right,
+    #111827,
+    #312e81,
+    #1e40af
+  ) !important;
+  color: #ffffff !important;
+}
+
+/* Service cards and generic cards */
+html[data-iyanjupay-theme="dark"] .iyanjupay-processing-card,
+html[data-iyanjupay-theme="dark"] .iyanjupay-processing-summary,
+html[data-iyanjupay-theme="dark"] .iyanjupay-processing-reference,
+html[data-iyanjupay-theme="dark"] .iyanjupay-processing-reference-value,
+html[data-iyanjupay-theme="dark"] .card,
+html[data-iyanjupay-theme="dark"] [data-slot="card"] {
+  border-color: var(--iyanjupay-border) !important;
+}
+
+/* Dashboard wallet remains a deliberate gradient surface. */
+html[data-iyanjupay-theme="dark"] .iyanjupay-dashboard-wallet {
+  background-image: linear-gradient(
+    to bottom right,
+    #111827,
+    #312e81,
+    #1e40af
+  ) !important;
+}
+
+/* Bottom navigation should be the same dark surface as the rest of
+   the app, including translucent Tailwind utility classes. */
+html[data-iyanjupay-theme="dark"] [class*="bg-white/95"],
+html[data-iyanjupay-theme="dark"] [class*="bg-white/90"],
+html[data-iyanjupay-theme="dark"] [class*="bg-white/80"] {
+  background-color: rgba(17, 24, 39, 0.96) !important;
+  border-color: var(--iyanjupay-border) !important;
+}
+
+/* Header utility controls keep their white-on-gradient appearance. */
+html[data-iyanjupay-theme="dark"] .iyanjupay-dashboard-header [class*="bg-white"] {
+  background-color: #ffffff !important;
+}
+
+html[data-iyanjupay-theme="dark"] .iyanjupay-dashboard-header .text-purple-100 {
+  color: #e0e7ff !important;
+}
+
+/* Cards inside dark pages should not become bright because of
+   explicitly white utility classes. */
+html[data-iyanjupay-theme="dark"] .iyanjupay-service-processing-page .bg-white,
+html[data-iyanjupay-theme="dark"] .iyanjupay-service-processing-page [class*="bg-white/"] {
+  background-color: var(--iyanjupay-surface) !important;
+}
+
+/* ---------- Light / Blue keep the same structure ---------- */
+
+html[data-iyanjupay-theme="light"],
+html[data-iyanjupay-theme="blue"] {
+  --iyanjupay-page: #f7f8fc;
+  --iyanjupay-surface: #ffffff;
+  --iyanjupay-surface-2: #ffffff;
+  --iyanjupay-surface-3: #f1f5f9;
+  --iyanjupay-border: #dbe2ea;
+  --iyanjupay-text: #111827;
+  --iyanjupay-text-secondary: #475569;
+}
+
+html[data-iyanjupay-theme="light"] body,
+html[data-iyanjupay-theme="blue"] body {
+  background-color: var(--iyanjupay-page);
+  color: var(--iyanjupay-text);
+}
+
+/* Ensure form controls remain white/dark in light modes. */
+html[data-iyanjupay-theme="light"] input,
+html[data-iyanjupay-theme="light"] select,
+html[data-iyanjupay-theme="light"] textarea,
+html[data-iyanjupay-theme="light"] [role="combobox"],
+html[data-iyanjupay-theme="blue"] input,
+html[data-iyanjupay-theme="blue"] select,
+html[data-iyanjupay-theme="blue"] textarea,
+html[data-iyanjupay-theme="blue"] [role="combobox"] {
+  background-color: #ffffff !important;
+  color: #111827 !important;
+}
+
+/* ============================================================
+   END UNIFIED MOBILE VISUAL SYSTEM
+   ============================================================ */
+
+/* Service selector details: logo tiles stay intentionally white,
+   while the surrounding biller/item cards follow the dark system. */
+html[data-iyanjupay-theme="dark"] .iyanjupay-service-biller-logo {
+  background-color: #ffffff !important;
+  color: #334155 !important;
+}
+
+html[data-iyanjupay-theme="dark"] .bg-violet-50,
+html[data-iyanjupay-theme="dark"] .bg-violet-100 {
+  background-color: #241b4f !important;
+}
+
+html[data-iyanjupay-theme="dark"] .text-violet-600,
+html[data-iyanjupay-theme="dark"] .text-violet-700,
+html[data-iyanjupay-theme="dark"] .text-violet-800 {
+  color: #a78bfa !important;
+}
+
+html[data-iyanjupay-theme="dark"] .border-violet-100,
+html[data-iyanjupay-theme="dark"] .border-violet-200,
+html[data-iyanjupay-theme="dark"] .border-violet-300 {
+  border-color: #4338ca !important;
+}
+
+/* Wallet's primary action is intentionally white, as in the
+   reference design; its text stays indigo for contrast. */
+html[data-iyanjupay-theme="dark"] .iyanjupay-dashboard-wallet .bg-white {
+  background-color: #ffffff !important;
+}
+
+html[data-iyanjupay-theme="dark"] .iyanjupay-dashboard-wallet .bg-white.text-purple-700,
+html[data-iyanjupay-theme="dark"] .iyanjupay-dashboard-wallet .bg-white .text-purple-700 {
+  color: #5b21b6 !important;
+}

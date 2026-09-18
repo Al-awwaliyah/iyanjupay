@@ -64,7 +64,8 @@
     "tailwindcss-animate": "^1.0.7",
     "vaul": "^0.9.3",
     "zod": "^3.23.8",
-    "@capacitor/push-notifications": "^7.0.7"
+    "@capacitor/push-notifications": "^7.0.7",
+    "@capgo/capacitor-native-biometric": "^7.6.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.9.0",

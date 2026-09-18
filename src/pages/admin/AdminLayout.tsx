@@ -264,6 +264,43 @@ const AdminLayout = ({
   const [loggingOut, setLoggingOut] =
     useState(false);
 
+  /*
+   * The customer dashboard owns Light / Blue / Dark.
+   * The administrator console is intentionally Light-only.
+   * Temporarily force the document theme while the admin shell is
+   * mounted, then restore the customer's selected theme on exit.
+   */
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+
+    const html = document.documentElement;
+    const body = document.body;
+    const previousHtmlTheme = html.dataset.iyanjupayTheme;
+    const previousClasses = [
+      "iyanjupay-theme-light",
+      "iyanjupay-theme-blue",
+      "iyanjupay-theme-dark",
+    ];
+
+    html.dataset.iyanjupayTheme = "light";
+    body.dataset.iyanjupayTheme = "light";
+    html.classList.remove(...previousClasses);
+    html.classList.add("iyanjupay-theme-light");
+
+    return () => {
+      const saved = window.localStorage.getItem("iyanjupay-dashboard-theme");
+      const nextTheme =
+        saved === "blue" || saved === "dark" || saved === "light"
+          ? saved
+          : previousHtmlTheme || "light";
+
+      html.dataset.iyanjupayTheme = nextTheme;
+      body.dataset.iyanjupayTheme = nextTheme;
+      html.classList.remove(...previousClasses);
+      html.classList.add(`iyanjupay-theme-${nextTheme}`);
+    };
+  }, []);
+
   const checkAdminAccess =
     useCallback(async () => {
       if (!user?.id) {

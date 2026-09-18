@@ -296,7 +296,7 @@ const SendMoneyPage = ({
   // CHECK PAYMENT PIN
   // ==========================================================
 
-  const checkPaymentPin = async (): Promise<boolean> => {
+  const checkPaymentPin = async (): Promise<boolean | null> => {
     if (!isOnline) {
       toast({
         title: "No internet connection",
@@ -305,7 +305,7 @@ const SendMoneyPage = ({
         variant: "destructive",
       });
 
-      return false;
+      return null;
     }
 
     setCheckingPaymentPin(true);
@@ -333,7 +333,7 @@ const SendMoneyPage = ({
           variant: "destructive",
         });
 
-        return false;
+        return null;
       }
 
       const exists =
@@ -361,7 +361,7 @@ const SendMoneyPage = ({
         variant: "destructive",
       });
 
-      return false;
+      return null;
     } finally {
       setCheckingPaymentPin(false);
     }
@@ -1230,10 +1230,14 @@ const SendMoneyPage = ({
         return;
       }
 
-      const pinExists =
-        hasPaymentPin !== null
-          ? hasPaymentPin
-          : await checkPaymentPin();
+      // Always refresh the PIN status at the moment the transfer is
+      // authorized. This prevents a stale "no PIN" state after a PIN
+      // was created on another screen or earlier in the session.
+      const pinExists = await checkPaymentPin();
+
+      if (pinExists === null) {
+        return;
+      }
 
       if (!pinExists) {
         setPendingPinAction(true);
@@ -1350,10 +1354,12 @@ const SendMoneyPage = ({
       details,
     });
 
-    const pinExists =
-      hasPaymentPin !== null
-        ? hasPaymentPin
-        : await checkPaymentPin();
+    // Refresh the PIN status before every bank transfer as well.
+    const pinExists = await checkPaymentPin();
+
+    if (pinExists === null) {
+      return;
+    }
 
     if (!pinExists) {
       setPendingPinAction(true);

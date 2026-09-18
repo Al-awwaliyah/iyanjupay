@@ -42,6 +42,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 
 import { supabase } from "@/integrations/supabase/client";
+import { useCustomerAppSettings } from "@/hooks/useCustomerAppSettings";
 
 import PaymentPinModal from "@/components/security/PaymentPinModal";
 import TransactionProcessingPage from "@/pages/TransactionProcessing";
@@ -116,6 +117,7 @@ const SendMoneyPage = ({
   onTransfer,
   onTransferSuccess,
 }: SendMoneyPageProps) => {
+  const { allowTransfers } = useCustomerAppSettings();
   const { toast } = useToast();
 
   // ==========================================================
@@ -1607,11 +1609,34 @@ const SendMoneyPage = ({
   };
 
   // ==========================================================
+  // ADMIN CONTROL: TRANSFERS
+  // ==========================================================
+
+  if (!allowTransfers) {
+    return (
+      <div className="min-h-screen bg-background px-4 py-6 text-foreground">
+        <div className="mx-auto max-w-lg">
+          <Button variant="ghost" onClick={onBack} className="mb-4">
+            <ArrowLeft className="mr-2 h-4 w-4" /> Back
+          </Button>
+          <div className="rounded-2xl border bg-card p-6 text-center shadow-sm">
+            <ShieldCheck className="mx-auto mb-3 h-10 w-10" />
+            <h2 className="text-lg font-bold">Transfers temporarily unavailable</h2>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Transfers have been temporarily disabled by IyanjuPay administration.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ==========================================================
   // PROCESSING SCREEN
   // ==========================================================
 
   if (processingTransfer) {
-    return (
+  return (
       <TransactionProcessingPage
         transferType={
           processingTransfer.transferType

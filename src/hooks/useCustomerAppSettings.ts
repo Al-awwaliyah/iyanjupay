@@ -36,10 +36,18 @@ export function useCustomerAppSettings() {
   useEffect(() => { void load(); }, [load]);
 
   useEffect(() => {
-    const channel = supabase.channel("customer-app-settings")
-      .on("postgres_changes", { event: "*", schema: "public", table: "customer_app_settings" }, () => { void load(); })
+    const channel = supabase
+      .channel("customer-app-settings-live")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "customer_app_settings" },
+        () => void load(),
+      )
       .subscribe();
-    return () => { void supabase.removeChannel(channel); };
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
   }, [load]);
 
   return {
@@ -52,6 +60,8 @@ export function useCustomerAppSettings() {
     allowWalletFunding: bool(settings, "allowWalletFunding", true),
     allowBillPayments: bool(settings, "allowBillPayments", true),
     allowVirtualAccounts: bool(settings, "allowVirtualAccounts", true),
+    customerEmailNotifications: bool(settings, "customerEmailNotifications", true),
+    enableFeatureFlags: bool(settings, "enableFeatureFlags", true),
     allowNewRegistrations: bool(settings, "allowNewRegistrations", true),
     customerPushNotifications: bool(settings, "customerPushNotifications", true),
   };

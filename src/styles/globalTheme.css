@@ -301,7 +301,7 @@
   
 
 /* ===== Migrated from src/components/Dashboard.tsx ===== */
-{`
+
       .iyanjupay-dashboard {
         background: #f7f8fc;
         color: #0f172a;
@@ -727,10 +727,10 @@
         [class*="hover:bg-red-50"]:hover {
         background-color: #fee2e2 !important;
       }
-    `}
+    
 
 /* ===== Migrated from src/components/me/MePage.tsx ===== */
-{`
+
         /*
          * ============================================================
          * IYANJUPAY DASHBOARD THEME BRIDGE
@@ -986,10 +986,10 @@
           [class*="hover:bg-red-50"]:hover {
           background-color: #fee2e2 !important;
         }
-      `}
+      
 
 /* ===== Migrated from src/components/rewards/RewardsPage.tsx ===== */
-{`
+
         /*
          * ============================================================
          * IYANJUPAY DASHBOARD THEME BRIDGE
@@ -1228,10 +1228,10 @@
           .text-purple-100 {
           color: #dbeafe !important;
         }
-      `}
+      
 
 /* ===== Migrated from src/components/transactions/TransactionHistory.tsx ===== */
-{`
+
         /* =========================================================
            IYANJUPAY TRANSACTION HISTORY THEME
            Theme is controlled by Dashboard through:
@@ -1944,10 +1944,10 @@
         .hover\\:bg-purple-700:hover {
           background-color: #1d4ed8 !important;
         }
-      `}
+      
 
 /* ===== Migrated from src/pages/ServicePayment.tsx ===== */
-{`
+
         /*
          * =====================================================
          * SERVICE TRANSACTION PROCESSING THEME
@@ -2247,10 +2247,10 @@
           .text-red-600 {
           color: #fca5a5 !important;
         }
-      `}
+      
 
 /* ===== Migrated from src/pages/ServicePayment.tsx ===== */
-{`
+
         /*
          * =====================================================
          * IYANJUPAY SERVICE PAYMENT THEME
@@ -2774,10 +2774,10 @@
           .iyanjupay-service-page {
           background-color: #090d18;
         }
-      `}
+      
 
 /* ===== Migrated from src/pages/SendMoney.tsx ===== */
-{`
+
         /* =====================================================
            BASE / LIGHT / BLUE THEME
            White surfaces + dark text
@@ -3326,10 +3326,10 @@
           background-color: rgb(21 128 61) !important;
           color: #ffffff !important;
         }
-      `}
+      
 
 /* ===== Migrated from src/components/security/PaymentPinModal.tsx ===== */
-{`
+
         /* =====================================================
            PAYMENT PIN MODAL
            LIGHT / NORMAL / BLUE THEME
@@ -3488,7 +3488,7 @@
           .payment-pin-lock-message {
           color: #cbd5e1 !important;
         }
-      `}
+      
 
 /* ============================================================
    DASHBOARD THEME-CONTROLLED SURFACES

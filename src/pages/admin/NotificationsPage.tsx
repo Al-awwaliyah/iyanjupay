@@ -1237,7 +1237,7 @@ function NotificationsPage() {
     useCallback(
       (
         field: keyof BroadcastForm,
-        value: BroadcastForm[keyof BroadcastForm],
+        value: string,
       ) => {
         setBroadcastForm(
           (current) => ({

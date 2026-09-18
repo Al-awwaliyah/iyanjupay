@@ -18,55 +18,17 @@ export function isWebPushSupported() {
     "Notification" in window;
 }
 
-export async function isPushEnabledForCurrentDevice() {
-  try {
-    const user = (await supabase.auth.getUser()).data.user;
-    if (!user) return false;
-
-    if (Capacitor.isNativePlatform()) {
-      const token = typeof window !== "undefined"
-        ? localStorage.getItem(NATIVE_PUSH_TOKEN_KEY)
-        : null;
-      if (!token) return false;
-
-      const { data } = await db
-        .from("user_push_subscriptions")
-        .select("id")
-        .eq("user_id", user.id)
-        .eq("device_token", token)
-        .maybeSingle();
-
-      return Boolean(data);
-    }
-
-    if (!isWebPushSupported()) return false;
-
-    const registration = await navigator.serviceWorker.ready;
-    const subscription = await registration.pushManager.getSubscription();
-    return Boolean(subscription);
-  } catch {
-    return false;
-  }
-}
-
 export async function requestWebPushPermission() {
-  if (!isWebPushSupported()) {
-    return { enabled: false, reason: "unsupported" as const };
-  }
+  if (!isWebPushSupported()) return { enabled: false, reason: "unsupported" as const };
 
   const permission = await Notification.requestPermission();
-  if (permission !== "granted") {
-    return { enabled: false, reason: permission as string };
-  }
+  if (permission !== "granted") return { enabled: false, reason: permission as string };
 
   const vapidKey = import.meta.env.VITE_VAPID_PUBLIC_KEY as string | undefined;
-  if (!vapidKey) {
-    return { enabled: false, reason: "missing_vapid_key" as const };
-  }
+  if (!vapidKey) return { enabled: false, reason: "missing_vapid_key" as const };
 
   const registration = await navigator.serviceWorker.ready;
-  const existing = await registration.pushManager.getSubscription();
-  const subscription = existing ?? await registration.pushManager.subscribe({
+  const subscription = await registration.pushManager.subscribe({
     userVisibleOnly: true,
     applicationServerKey: urlBase64ToUint8Array(vapidKey),
   });
@@ -91,70 +53,29 @@ export async function requestWebPushPermission() {
 
 export async function disableWebPush() {
   if (!isWebPushSupported()) return;
-
   const registration = await navigator.serviceWorker.ready;
   const subscription = await registration.pushManager.getSubscription();
   if (!subscription) return;
 
   const endpoint = subscription.endpoint;
   await subscription.unsubscribe();
-  const { error } = await db
-    .from("user_push_subscriptions")
-    .delete()
-    .eq("endpoint", endpoint);
-
-  if (error) throw error;
-}
-
-export async function disableNativePush() {
-  if (!Capacitor.isNativePlatform()) return;
-
-  const token = typeof window !== "undefined"
-    ? localStorage.getItem(NATIVE_PUSH_TOKEN_KEY)
-    : null;
-
-  if (token) {
-    const { error } = await db
-      .from("user_push_subscriptions")
-      .delete()
-      .eq("device_token", token);
-
-    if (error) throw error;
-    localStorage.removeItem(NATIVE_PUSH_TOKEN_KEY);
-  }
-
-  try {
-    const { PushNotifications } = await import("@capacitor/push-notifications");
-    await PushNotifications.unregister();
-  } catch (error) {
-    console.warn("Native push unregister was unavailable:", error);
-  }
+  await db.from("user_push_subscriptions").delete().eq("endpoint", endpoint);
 }
 
 export async function registerNativePush() {
-  if (!Capacitor.isNativePlatform()) {
-    return { enabled: false, reason: "web" as const };
-  }
+  if (!Capacitor.isNativePlatform()) return { enabled: false, reason: "web" as const };
 
   try {
     const { PushNotifications } = await import("@capacitor/push-notifications");
     let permission = await PushNotifications.checkPermissions();
-    if (permission.receive !== "granted") {
-      permission = await PushNotifications.requestPermissions();
-    }
-
-    if (permission.receive !== "granted") {
-      return { enabled: false, reason: "denied" as const };
-    }
+    if (permission.receive !== "granted") permission = await PushNotifications.requestPermissions();
+    if (permission.receive !== "granted") return { enabled: false, reason: "denied" as const };
 
     await PushNotifications.removeAllListeners();
-
     await PushNotifications.addListener("registration", async (token) => {
       const user = (await supabase.auth.getUser()).data.user;
       if (!user) return;
-
       localStorage.setItem(NATIVE_PUSH_TOKEN_KEY, token.value);
-
       await db.from("user_push_subscriptions").upsert({
         user_id: user.id,
         platform: Capacitor.getPlatform() === "ios" ? "ios" : "android",
@@ -163,18 +84,14 @@ export async function registerNativePush() {
         last_seen_at: new Date().toISOString(),
       }, { onConflict: "device_token" });
     });
-
     await PushNotifications.addListener("registrationError", (error) => {
       console.error("Native push registration error:", error);
     });
-
     await PushNotifications.addListener("pushNotificationActionPerformed", (event) => {
       const url = (event.notification?.data as any)?.url;
       if (url) window.location.assign(String(url));
     });
-
     await PushNotifications.register();
-
     return { enabled: true, reason: "granted" as const };
   } catch (error) {
     console.error("Native push registration failed:", error);
@@ -182,12 +99,25 @@ export async function registerNativePush() {
   }
 }
 
+export async function disableNativePush() {
+  if (!Capacitor.isNativePlatform()) return;
+
+  try {
+    const { PushNotifications } = await import("@capacitor/push-notifications");
+    const token = typeof window !== "undefined" ? localStorage.getItem(NATIVE_PUSH_TOKEN_KEY) : null;
+    if (token) {
+      await db.from("user_push_subscriptions").delete().eq("device_token", token);
+      localStorage.removeItem(NATIVE_PUSH_TOKEN_KEY);
+    }
+    await PushNotifications.unregister();
+    await PushNotifications.removeAllListeners();
+  } catch (error) {
+    console.error("Native push disable failed:", error);
+    throw error;
+  }
+}
+
 export async function enablePushNotifications() {
   if (Capacitor.isNativePlatform()) return registerNativePush();
   return requestWebPushPermission();
-}
-
-export async function disablePushNotifications() {
-  if (Capacitor.isNativePlatform()) return disableNativePush();
-  return disableWebPush();
 }

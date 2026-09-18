@@ -36,14 +36,28 @@ export function useCustomerAppSettings() {
   useEffect(() => { void load(); }, [load]);
 
   useEffect(() => {
-    const channel = supabase
-      .channel("customer-app-settings-live")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "customer_app_settings" },
-        () => void load(),
-      )
-      .subscribe();
+    // Always create a fresh channel instance. React StrictMode can mount/unmount
+    // effects rapidly, and reusing a channel topic while the previous channel is
+    // still being removed can cause Supabase to reject `.on(...)` after subscribe.
+    const channelName = `customer-app-settings-live-${
+      typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID()
+        : `${Date.now()}-${Math.random().toString(36).slice(2)}`
+    }`;
+
+    const channel = supabase.channel(channelName);
+
+    channel.on(
+      "postgres_changes",
+      { event: "*", schema: "public", table: "customer_app_settings" },
+      () => void load(),
+    );
+
+    channel.subscribe((status) => {
+      if (status === "CHANNEL_ERROR") {
+        console.warn("Customer app settings realtime channel error");
+      }
+    });
 
     return () => {
       void supabase.removeChannel(channel);

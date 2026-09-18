@@ -191,6 +191,8 @@ type BroadcastForm = {
   message: string;
 
   amount: string;
+
+  announcement: boolean;
 };
 
 
@@ -723,6 +725,7 @@ function NotificationsPage() {
       title: "",
       message: "",
       amount: "",
+      announcement: true,
     });
 
 
@@ -1255,6 +1258,7 @@ function NotificationsPage() {
         title: "",
         message: "",
         amount: "",
+        announcement: true,
       });
     }, []);
 
@@ -1368,7 +1372,10 @@ function NotificationsPage() {
 
               p_amount: amount,
 
-              p_metadata: {},
+              p_metadata: {
+                source: "admin",
+                kind: broadcastForm.announcement ? "announcement" : "notification",
+              },
             },
           );
 
@@ -3160,6 +3167,20 @@ function NotificationsPage() {
 
               </div>
 
+
+              <label className="flex items-start gap-3 rounded-xl border p-3">
+                <input
+                  type="checkbox"
+                  checked={broadcastForm.announcement}
+                  onChange={(event) => updateBroadcast("announcement", event.target.checked)}
+                  disabled={broadcasting}
+                  className="mt-1 h-4 w-4"
+                />
+                <span>
+                  <span className="block text-sm font-semibold">Mark as customer announcement</span>
+                  <span className="block text-xs text-muted-foreground">Shows an announcement icon in the customer notification center.</span>
+                </span>
+              </label>
 
               <div className="space-y-2">
 

@@ -52,6 +52,8 @@ import VerifyPaymentPinResetOtp from "@/pages/VerifyPaymentPinResetOtp";
 import ResetPaymentPin from "@/pages/ResetPaymentPin";
 import ResetPassword from "./pages/ResetPassword";
 import NotFound from "./pages/NotFound";
+import ThemeProvider from "@/components/theme/ThemeProvider";
+import AppLockGuard from "@/components/security/AppLockGuard";
 
 const queryClient = new QueryClient();
 
@@ -89,6 +91,7 @@ const App = () => {
     <QueryClientProvider
       client={queryClient}
     >
+      <ThemeProvider>
       <TooltipProvider>
         <Toaster />
 
@@ -126,7 +129,7 @@ const App = () => {
             
             <Route
               path="/dashboard"
-              element={<Dashboard />}
+              element={<AppLockGuard><Dashboard /></AppLockGuard>}
             />
 
             {/* ==================================================
@@ -340,6 +343,7 @@ const App = () => {
 
           </BrowserRouter>
         </TooltipProvider>
+      </ThemeProvider>
     </QueryClientProvider>
   );
 };

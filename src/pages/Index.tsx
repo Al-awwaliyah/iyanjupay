@@ -4,6 +4,7 @@ import { useAuth } from "@/hooks/useAuth";
 
 import AuthForm from "@/components/auth/AuthForm";
 import Dashboard from "@/components/Dashboard";
+import AppLockGuard from "@/components/security/AppLockGuard";
 
 const Index = () => {
   const {
@@ -50,7 +51,7 @@ const Index = () => {
   // authenticated users see Dashboard immediately.
   // ==========================================================
 
-  return <Dashboard />;
+  return <AppLockGuard><Dashboard /></AppLockGuard>;
 };
 
 export default Index;

@@ -41,6 +41,8 @@ import AdminDisputesPage from "@/pages/admin/AdminDisputesPage";
 import ReconciliationPage from "@/pages/admin/ReconciliationPage";
 import AnalyticsPage from "@/pages/admin/AnalyticsPage";
 import NotificationsPage from "@/pages/admin/NotificationsPage";
+import UserNotificationsPage from "@/pages/NotificationsPage";
+import NotificationDetailsPage from "@/pages/NotificationDetailsPage";
 import AuditLogsPage from "@/pages/admin/AuditLogsPage";
 import AdminManagementPage from "@/pages/admin/AdminManagementPage";
 import AdminSettingsPage from "@/pages/admin/AdminSettingsPage";
@@ -130,6 +132,16 @@ const App = () => {
             <Route
               path="/dashboard"
               element={<AppLockGuard><Dashboard /></AppLockGuard>}
+            />
+
+            <Route
+              path="/notifications"
+              element={<AppLockGuard><UserNotificationsPage /></AppLockGuard>}
+            />
+
+            <Route
+              path="/notifications/:id"
+              element={<AppLockGuard><NotificationDetailsPage /></AppLockGuard>}
             />
 
             {/* ==================================================

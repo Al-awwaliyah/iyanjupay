@@ -3,6 +3,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, } from "@/components/
 import { Button } from "@/components/ui/button";
 import { Copy, Loader2, Building2, ShieldCheck, RefreshCw, } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useCustomerAppSettings } from "@/hooks/useCustomerAppSettings";
 import { supabase } from "@/integrations/supabase/client";
 
 interface FundWalletModalProps {
@@ -26,6 +27,7 @@ const FundWalletModal = ({
   onFunded,
 }: FundWalletModalProps) => {
   const { toast } = useToast();
+  const { allowWalletFunding, allowVirtualAccounts } = useCustomerAppSettings();
 
   const [account, setAccount] =
     useState<VirtualAccount | null>(null);
@@ -151,14 +153,14 @@ const FundWalletModal = ({
   // --------------------------------------------------
 
   useEffect(() => {
-    if (isOpen) {
+    if (isOpen && allowWalletFunding && allowVirtualAccounts) {
       loadVirtualAccount();
     } else {
       setAccount(null);
       setKycRequired(false);
       setChecking(false);
     }
-  }, [isOpen]);
+  }, [isOpen, allowWalletFunding, allowVirtualAccounts]);
 
   // --------------------------------------------------
   // AUTOMATIC 10-SECOND DEPOSIT CHECK
@@ -223,6 +225,24 @@ const FundWalletModal = ({
   // --------------------------------------------------
   // UI
   // --------------------------------------------------
+
+  if (isOpen && (!allowWalletFunding || !allowVirtualAccounts)) {
+    return (
+      <Dialog open={isOpen} onOpenChange={onClose}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Wallet funding temporarily unavailable</DialogTitle>
+          </DialogHeader>
+          <div className="rounded-xl border bg-card p-4 text-sm text-muted-foreground">
+            {!allowWalletFunding
+              ? "Wallet funding has been temporarily disabled by IyanjuPay administration."
+              : "Dedicated virtual accounts have been temporarily disabled by IyanjuPay administration."}
+          </div>
+          <Button onClick={onClose}>Close</Button>
+        </DialogContent>
+      </Dialog>
+    );
+  }
 
   return (
     <Dialog

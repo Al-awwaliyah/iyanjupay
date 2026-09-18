@@ -8,7 +8,6 @@ import React, {
 } from "react";
 
 import { Moon, Palette, Sun } from "lucide-react";
-import "./../../styles/globalTheme.css";
 
 export type IyanjuPayTheme =
   | "light"

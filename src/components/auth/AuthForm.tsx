@@ -31,6 +31,7 @@ import {
 
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { useCustomerAppSettings } from "@/hooks/useCustomerAppSettings";
 
 type VerificationMethod = "phone" | "email" | null;
 
@@ -38,6 +39,7 @@ const AuthForm = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { toast } = useToast();
+  const { allowNewRegistrations, loading: customerSettingsLoading } = useCustomerAppSettings();
 
   const [isLoading, setIsLoading] = useState(false);
 
@@ -506,6 +508,15 @@ const AuthForm = () => {
     e: React.FormEvent,
   ) => {
     e.preventDefault();
+
+    if (!allowNewRegistrations) {
+      toast({
+        title: "Registration temporarily unavailable",
+        description: "New customer registrations have been disabled by IyanjuPay administration.",
+        variant: "destructive",
+      });
+      return;
+    }
 
     if (!fullName.trim()) {
       toast({
@@ -1187,8 +1198,8 @@ const AuthForm = () => {
 
           <CardContent>
             <Tabs
-              key={initialTab}
-              defaultValue={initialTab}
+              key={`${initialTab}-${allowNewRegistrations}`}
+              defaultValue={initialTab === "signup" && !allowNewRegistrations ? "signin" : initialTab}
               className="w-full"
             >
               <TabsList className="grid w-full grid-cols-2">
@@ -1196,7 +1207,7 @@ const AuthForm = () => {
                   Sign In
                 </TabsTrigger>
 
-                <TabsTrigger value="signup">
+                <TabsTrigger value="signup" disabled={!allowNewRegistrations || customerSettingsLoading}>
                   Sign Up
                 </TabsTrigger>
               </TabsList>
@@ -1307,6 +1318,11 @@ const AuthForm = () => {
               ================================================== */}
 
               <TabsContent value="signup">
+                {!allowNewRegistrations && (
+                  <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                    New customer registration is temporarily disabled by IyanjuPay administration.
+                  </div>
+                )}
                 <form
                   onSubmit={handleSignUp}
                   className="space-y-4"

@@ -922,6 +922,14 @@ const Dashboard = () => {
   const handleServiceClick = (
     service: (typeof services)[number]
   ) => {
+    if (!allowBillPayments) {
+      toast({
+        title: "Bill payments temporarily unavailable",
+        description: "Airtime, data and other service payments have been disabled by IyanjuPay administration.",
+      });
+      return;
+    }
+
     if (
       COMING_SOON_SERVICES.includes(
         service.type

@@ -4186,3 +4186,200 @@ html[data-iyanjupay-theme="dark"] .iyanjupay-dashboard-wallet .bg-white.text-pur
 html[data-iyanjupay-theme="dark"] .iyanjupay-dashboard-wallet .bg-white .text-purple-700 {
   color: #5b21b6 !important;
 }
+
+/* ============================================================
+   FINAL GLOBAL THEME CONTRACT
+   Tailwind gradient utility classes intentionally remain on the
+   components for structure, but the global theme controller owns
+   the actual gradient. !important prevents the utility's
+   background-image from replacing the theme gradient.
+   ============================================================ */
+
+/* ---------- Shared page chrome ---------- */
+html[data-iyanjupay-theme="light"] .iyanjupay-dashboard-header,
+html.iyanjupay-theme-light .iyanjupay-dashboard-header,
+html[data-iyanjupay-theme="light"] .iyanjupay-service-header,
+html.iyanjupay-theme-light .iyanjupay-service-header {
+  background-color: #4c1d95 !important;
+  background-image: linear-gradient(to right, #5b21b6, #6d28d9, #2563eb) !important;
+  color: #ffffff !important;
+}
+
+html[data-iyanjupay-theme="blue"] .iyanjupay-dashboard-header,
+html.iyanjupay-theme-blue .iyanjupay-dashboard-header,
+html[data-iyanjupay-theme="blue"] .iyanjupay-service-header,
+html.iyanjupay-theme-blue .iyanjupay-service-header {
+  background-color: #082a63 !important;
+  background-image: linear-gradient(to right, #082a63, #1554b8, #2563eb) !important;
+  color: #ffffff !important;
+}
+
+html[data-iyanjupay-theme="dark"] .iyanjupay-dashboard-header,
+html.iyanjupay-theme-dark .iyanjupay-dashboard-header,
+html[data-iyanjupay-theme="dark"] .iyanjupay-service-header,
+html.iyanjupay-theme-dark .iyanjupay-service-header {
+  background-color: #111827 !important;
+  background-image: linear-gradient(to right, #111827, #312e81, #1e40af) !important;
+  color: #ffffff !important;
+}
+
+/* ---------- Dashboard wallet ---------- */
+html[data-iyanjupay-theme="light"] .iyanjupay-dashboard-wallet,
+html.iyanjupay-theme-light .iyanjupay-dashboard-wallet {
+  background-color: #4c1d95 !important;
+  background-image: linear-gradient(to bottom right, #4c1d95, #6d28d9, #2563eb) !important;
+  color: #ffffff !important;
+}
+
+html[data-iyanjupay-theme="blue"] .iyanjupay-dashboard-wallet,
+html.iyanjupay-theme-blue .iyanjupay-dashboard-wallet {
+  background-color: #082a63 !important;
+  background-image: linear-gradient(to bottom right, #082a63, #1554b8, #2563eb) !important;
+  color: #ffffff !important;
+}
+
+html[data-iyanjupay-theme="dark"] .iyanjupay-dashboard-wallet,
+html.iyanjupay-theme-dark .iyanjupay-dashboard-wallet {
+  background-color: #111827 !important;
+  background-image: linear-gradient(to bottom right, #111827, #312e81, #1e40af) !important;
+  color: #ffffff !important;
+}
+
+/* Wallet is a deliberate colored surface in every theme.
+   Its secondary labels therefore stay light instead of inheriting
+   the page's normal text color. */
+html[data-iyanjupay-theme="light"] .iyanjupay-dashboard-wallet .text-purple-100,
+html.iyanjupay-theme-light .iyanjupay-dashboard-wallet .text-purple-100,
+html[data-iyanjupay-theme="blue"] .iyanjupay-dashboard-wallet .text-purple-100,
+html.iyanjupay-theme-blue .iyanjupay-dashboard-wallet .text-purple-100,
+html[data-iyanjupay-theme="dark"] .iyanjupay-dashboard-wallet .text-purple-100,
+html.iyanjupay-theme-dark .iyanjupay-dashboard-wallet .text-purple-100 {
+  color: #ede9fe !important;
+}
+
+html[data-iyanjupay-theme="light"] .iyanjupay-dashboard-wallet .text-white,
+html.iyanjupay-theme-light .iyanjupay-dashboard-wallet .text-white,
+html[data-iyanjupay-theme="blue"] .iyanjupay-dashboard-wallet .text-white,
+html.iyanjupay-theme-blue .iyanjupay-dashboard-wallet .text-white,
+html[data-iyanjupay-theme="dark"] .iyanjupay-dashboard-wallet .text-white,
+html.iyanjupay-theme-dark .iyanjupay-dashboard-wallet .text-white {
+  color: #ffffff !important;
+}
+
+/* ---------- Normal light/blue page text ---------- */
+html[data-iyanjupay-theme="light"] body,
+html.iyanjupay-theme-light body,
+html[data-iyanjupay-theme="blue"] body,
+html.iyanjupay-theme-blue body {
+  color: #111827;
+}
+
+html[data-iyanjupay-theme="light"] .text-slate-950,
+html[data-iyanjupay-theme="light"] .text-slate-900,
+html[data-iyanjupay-theme="light"] .text-slate-800,
+html[data-iyanjupay-theme="light"] .text-slate-700,
+html[data-iyanjupay-theme="light"] .text-gray-950,
+html[data-iyanjupay-theme="light"] .text-gray-900,
+html[data-iyanjupay-theme="light"] .text-gray-800,
+html[data-iyanjupay-theme="light"] .text-gray-700,
+html.iyanjupay-theme-light .text-slate-950,
+html.iyanjupay-theme-light .text-slate-900,
+html.iyanjupay-theme-light .text-slate-800,
+html.iyanjupay-theme-light .text-slate-700,
+html.iyanjupay-theme-light .text-gray-950,
+html.iyanjupay-theme-light .text-gray-900,
+html.iyanjupay-theme-light .text-gray-800,
+html.iyanjupay-theme-light .text-gray-700,
+html[data-iyanjupay-theme="blue"] .text-slate-950,
+html[data-iyanjupay-theme="blue"] .text-slate-900,
+html[data-iyanjupay-theme="blue"] .text-slate-800,
+html[data-iyanjupay-theme="blue"] .text-slate-700,
+html[data-iyanjupay-theme="blue"] .text-gray-950,
+html[data-iyanjupay-theme="blue"] .text-gray-900,
+html[data-iyanjupay-theme="blue"] .text-gray-800,
+html[data-iyanjupay-theme="blue"] .text-gray-700,
+html.iyanjupay-theme-blue .text-slate-950,
+html.iyanjupay-theme-blue .text-slate-900,
+html.iyanjupay-theme-blue .text-slate-800,
+html.iyanjupay-theme-blue .text-slate-700,
+html.iyanjupay-theme-blue .text-gray-950,
+html.iyanjupay-theme-blue .text-gray-900,
+html.iyanjupay-theme-blue .text-gray-800,
+html.iyanjupay-theme-blue .text-gray-700 {
+  color: #111827 !important;
+}
+
+/* ---------- Light/blue cards and page surfaces ---------- */
+html[data-iyanjupay-theme="light"] .bg-white,
+html.iyanjupay-theme-light .bg-white,
+html[data-iyanjupay-theme="blue"] .bg-white,
+html.iyanjupay-theme-blue .bg-white {
+  background-color: #ffffff !important;
+}
+
+html[data-iyanjupay-theme="light"] .bg-slate-50,
+html.iyanjupay-theme-light .bg-slate-50 {
+  background-color: #f7f8fc !important;
+}
+
+html[data-iyanjupay-theme="blue"] .bg-slate-50,
+html.iyanjupay-theme-blue .bg-slate-50 {
+  background-color: #f4f8ff !important;
+}
+
+/* ---------- Theme-safe inputs ---------- */
+html[data-iyanjupay-theme="light"] input,
+html[data-iyanjupay-theme="light"] select,
+html[data-iyanjupay-theme="light"] textarea,
+html.iyanjupay-theme-light input,
+html.iyanjupay-theme-light select,
+html.iyanjupay-theme-light textarea,
+html[data-iyanjupay-theme="blue"] input,
+html[data-iyanjupay-theme="blue"] select,
+html[data-iyanjupay-theme="blue"] textarea,
+html.iyanjupay-theme-blue input,
+html.iyanjupay-theme-blue select,
+html.iyanjupay-theme-blue textarea {
+  background-color: #ffffff !important;
+  color: #111827 !important;
+  border-color: #dbe2ea;
+}
+
+html[data-iyanjupay-theme="light"] input::placeholder,
+html[data-iyanjupay-theme="light"] textarea::placeholder,
+html.iyanjupay-theme-light input::placeholder,
+html.iyanjupay-theme-light textarea::placeholder,
+html[data-iyanjupay-theme="blue"] input::placeholder,
+html[data-iyanjupay-theme="blue"] textarea::placeholder,
+html.iyanjupay-theme-blue input::placeholder,
+html.iyanjupay-theme-blue textarea::placeholder {
+  color: #94a3b8 !important;
+}
+
+/* ---------- Bottom navigation ---------- */
+html[data-iyanjupay-theme="light"] [class*="bg-white/95"],
+html[data-iyanjupay-theme="light"] [class*="bg-white/90"],
+html[data-iyanjupay-theme="light"] [class*="bg-white/80"],
+html.iyanjupay-theme-light [class*="bg-white/95"],
+html.iyanjupay-theme-light [class*="bg-white/90"],
+html.iyanjupay-theme-light [class*="bg-white/80"],
+html[data-iyanjupay-theme="blue"] [class*="bg-white/95"],
+html[data-iyanjupay-theme="blue"] [class*="bg-white/90"],
+html[data-iyanjupay-theme="blue"] [class*="bg-white/80"],
+html.iyanjupay-theme-blue [class*="bg-white/95"],
+html.iyanjupay-theme-blue [class*="bg-white/90"],
+html.iyanjupay-theme-blue [class*="bg-white/80"] {
+  background-color: rgba(255, 255, 255, 0.96) !important;
+}
+
+/* Keep header controls white regardless of the selected light/blue theme. */
+html[data-iyanjupay-theme="light"] .iyanjupay-dashboard-header .text-white,
+html.iyanjupay-theme-light .iyanjupay-dashboard-header .text-white,
+html[data-iyanjupay-theme="blue"] .iyanjupay-dashboard-header .text-white,
+html.iyanjupay-theme-blue .iyanjupay-dashboard-header .text-white,
+html[data-iyanjupay-theme="light"] .iyanjupay-dashboard-header .text-purple-100,
+html.iyanjupay-theme-light .iyanjupay-dashboard-header .text-purple-100,
+html[data-iyanjupay-theme="blue"] .iyanjupay-dashboard-header .text-purple-100,
+html.iyanjupay-theme-blue .iyanjupay-dashboard-header .text-purple-100 {
+  color: #ffffff !important;
+}

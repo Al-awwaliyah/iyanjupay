@@ -30,7 +30,7 @@ export default defineConfig(() => ({
         "icon-512.png",
         ".well-known/assetlinks.json",
         "robots.txt",
-        "sitemap.xml"
+        "sitemap.xml",
       ],
 
       manifest: {
@@ -77,32 +77,6 @@ export default defineConfig(() => ({
             sizes: "512x512",
             type: "image/png",
             purpose: "maskable",
-          },
-        ],
-      },
-
-      injectManifest: {
-        cleanupOutdatedCaches: true,
-      },
-
-      workbox: {
-        cleanupOutdatedCaches: true,
-
-        // Modified fallback rule to prevent matching on your static asset link files
-        navigateFallback: "/index.html",
-        navigateFallbackDenylist: [/^\/\.well-known/],
-
-        runtimeCaching: [
-          {
-            urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
-            handler: "CacheFirst",
-            options: {
-              cacheName: "google-fonts-stylesheets",
-              expiration: {
-                maxEntries: 10,
-                maxAgeSeconds: 60 * 60 * 24 * 365,
-              },
-            },
           },
         ],
       },

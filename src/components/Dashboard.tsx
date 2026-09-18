@@ -27,9 +27,6 @@ import {
   User,
   Wifi,
   Zap,
-  Sun,
-  Moon,
-  Palette,
   Check,
   Bell,
 } from "lucide-react";
@@ -65,7 +62,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useWallet } from "@/hooks/useWallet";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { useTheme } from "@/components/theme/ThemeProvider";
+import { THEME_OPTIONS, useTheme } from "@/components/theme/ThemeProvider";
 import NotificationCenter from "@/components/notifications/NotificationCenter";
 import SecuritySettingsPage from "@/components/security/SecuritySettingsPage";
 import { useCustomerAppSettings } from "@/hooks/useCustomerAppSettings";
@@ -383,502 +380,14 @@ const Dashboard = () => {
    * Dashboard remains the single source of truth.
    */
 
-  type DashboardTheme = "light" | "blue" | "dark";
-
   const { theme: dashboardTheme, setTheme: setDashboardTheme } = useTheme();
 
   const [appearanceOpen, setAppearanceOpen] = useState(false);
 
-  const appearanceConfig = {
-    light: {
-      label: "Light",
-      icon: Sun,
-      header:
-        "from-[#5b21b6] via-[#6d28d9] to-[#2563eb]",
-      wallet:
-        "from-[#4c1d95] via-[#6d28d9] to-[#2563eb]",
-    },
-    blue: {
-      label: "Blue",
-      icon: Palette,
-      header:
-        "from-[#082A63] via-[#1554B8] to-[#2563EB]",
-      wallet:
-        "from-[#082A63] via-[#1554B8] to-[#2563EB]",
-    },
-    dark: {
-      label: "Dark",
-      icon: Moon,
-      header:
-        "from-[#111827] via-[#1E1B4B] to-[#172554]",
-      wallet:
-        "from-[#111827] via-[#312E81] to-[#1E40AF]",
-    },
-  } as const;
-
   const ActiveAppearanceIcon =
-    appearanceConfig[
-      dashboardTheme
-    ].icon;
+    THEME_OPTIONS.find((option) => option.value === dashboardTheme)?.icon ??
+    THEME_OPTIONS[0].icon;
 
-  /*
-   * ============================================================
-   * GLOBAL IYANJUPAY THEME
-   * ============================================================
-   *
-   * IMPORTANT:
-   * This style is rendered BEFORE all child-page early returns.
-   *
-   * Therefore Dashboard controls the appearance of:
-   * - Dashboard
-   * - Rewards
-   * - Cards
-   * - Me
-   * - Profile
-   * - History
-   * - Support
-   * - Customer Service
-   * - Transaction Limit
-   * - Payment PIN
-   * - Disputes
-   * - Send Money
-   * - Service Payment
-   *
-   * Child pages do not own theme state.
-   *
-   * White cards inside the Me/Rewards child pages remain white
-   * in Dark mode and their text remains dark/black.
-   */
-
-  const dashboardThemeStyles = (
-    <style>{`
-      .iyanjupay-dashboard {
-        background: #f7f8fc;
-        color: #0f172a;
-        transition:
-          background-color 180ms ease,
-          color 180ms ease;
-      }
-
-      .iyanjupay-theme-blue {
-        background: #f4f8ff;
-      }
-
-      .iyanjupay-theme-dark {
-        background: #090d18;
-        color: #f8fafc;
-      }
-
-      /*
-       * ==========================================================
-       * DARK THEME - MAIN DASHBOARD
-       * ==========================================================
-       */
-
-      .iyanjupay-theme-dark .bg-white {
-        background-color: #111827 !important;
-      }
-
-      .iyanjupay-theme-dark .bg-slate-50 {
-        background-color: #090d18 !important;
-      }
-
-      .iyanjupay-theme-dark .bg-slate-100 {
-        background-color: #1e293b !important;
-      }
-
-      .iyanjupay-theme-dark [class*="border-slate-200"] {
-        border-color: #334155 !important;
-      }
-
-      .iyanjupay-theme-dark .text-slate-950,
-      .iyanjupay-theme-dark .text-slate-900 {
-        color: #f8fafc !important;
-      }
-
-      .iyanjupay-theme-dark .text-slate-700 {
-        color: #e2e8f0 !important;
-      }
-
-      .iyanjupay-theme-dark .text-slate-600 {
-        color: #cbd5e1 !important;
-      }
-
-      .iyanjupay-theme-dark .text-slate-500 {
-        color: #94a3b8 !important;
-      }
-
-      .iyanjupay-theme-dark .text-slate-400 {
-        color: #64748b !important;
-      }
-
-      .iyanjupay-theme-dark [class*="hover:bg-slate-50"]:hover {
-        background-color: #1e293b !important;
-      }
-
-      .iyanjupay-theme-dark .bg-purple-50 {
-        background-color: #312e81 !important;
-      }
-
-      .iyanjupay-theme-dark .text-purple-700,
-      .iyanjupay-theme-dark .text-purple-600 {
-        color: #c4b5fd !important;
-      }
-
-      .iyanjupay-theme-dark .bg-blue-50 {
-        background-color: #172554 !important;
-      }
-
-      .iyanjupay-theme-dark .bg-emerald-50 {
-        background-color: #052e2b !important;
-      }
-
-      .iyanjupay-theme-dark .bg-orange-50 {
-        background-color: #431407 !important;
-      }
-
-      /*
-       * ==========================================================
-       * CHILD PAGES
-       * ==========================================================
-       *
-       * MePage and RewardsPage use these page root classes.
-       *
-       * They remain visually controlled by Dashboard.
-       */
-
-      [data-iyanjupay-theme="dark"] .iyanjupay-me-page,
-      [data-iyanjupay-theme="dark"] .iyanjupay-rewards-page {
-        background: #090d18;
-        color: #f8fafc;
-      }
-
-      /*
-       * White cards in child pages stay WHITE.
-       */
-      [data-iyanjupay-theme="dark"]
-        .iyanjupay-me-page
-        .bg-white,
-      [data-iyanjupay-theme="dark"]
-        .iyanjupay-rewards-page
-        .bg-white {
-        background-color: #ffffff !important;
-      }
-
-      /*
-       * ==========================================================
-       * WHITE CARD TEXT MUST STAY BLACK
-       * ==========================================================
-       *
-       * This is the central fix for the Me tabs.
-       *
-       * Even when the overall Dashboard theme is Dark, anything
-       * inside a white card remains dark/black and readable.
-       */
-
-      [data-iyanjupay-theme="dark"]
-        .iyanjupay-me-page
-        .bg-white,
-      [data-iyanjupay-theme="dark"]
-        .iyanjupay-me-page
-        .bg-white h1,
-      [data-iyanjupay-theme="dark"]
-        .iyanjupay-me-page
-        .bg-white h2,
-      [data-iyanjupay-theme="dark"]
-        .iyanjupay-me-page
-        .bg-white h3,
-      [data-iyanjupay-theme="dark"]
-        .iyanjupay-me-page
-        .bg-white h4,
-      [data-iyanjupay-theme="dark"]
-        .iyanjupay-me-page
-        .bg-white h5,
-      [data-iyanjupay-theme="dark"]
-        .iyanjupay-me-page
-        .bg-white h6,
-      [data-iyanjupay-theme="dark"]
-        .iyanjupay-me-page
-        .bg-white p,
-      [data-iyanjupay-theme="dark"]
-        .iyanjupay-me-page
-        .bg-white span,
-      [data-iyanjupay-theme="dark"]
-        .iyanjupay-me-page
-        .bg-white label,
-      [data-iyanjupay-theme="dark"]
-        .iyanjupay-me-page
-        .bg-white .text-gray-900,
-      [data-iyanjupay-theme="dark"]
-        .iyanjupay-me-page
-        .bg-white .text-gray-800,
-      [data-iyanjupay-theme="dark"]
-        .iyanjupay-me-page
-        .bg-white .text-gray-700,
-      [data-iyanjupay-theme="dark"]
-        .iyanjupay-me-page
-        .bg-white .text-gray-600 {
-        color: #111827 !important;
-      }
-
-      [data-iyanjupay-theme="dark"]
-        .iyanjupay-me-page
-        .bg-white
-        .text-gray-500 {
-        color: #4b5563 !important;
-      }
-
-      [data-iyanjupay-theme="dark"]
-        .iyanjupay-me-page
-        .bg-white
-        .text-gray-400 {
-        color: #6b7280 !important;
-      }
-
-      /*
-       * Rewards white cards receive the same treatment.
-       */
-      [data-iyanjupay-theme="dark"]
-        .iyanjupay-rewards-page
-        .bg-white,
-      [data-iyanjupay-theme="dark"]
-        .iyanjupay-rewards-page
-        .bg-white h1,
-      [data-iyanjupay-theme="dark"]
-        .iyanjupay-rewards-page
-        .bg-white h2,
-      [data-iyanjupay-theme="dark"]
-        .iyanjupay-rewards-page
-        .bg-white h3,
-      [data-iyanjupay-theme="dark"]
-        .iyanjupay-rewards-page
-        .bg-white h4,
-      [data-iyanjupay-theme="dark"]
-        .iyanjupay-rewards-page
-        .bg-white h5,
-      [data-iyanjupay-theme="dark"]
-        .iyanjupay-rewards-page
-        .bg-white h6,
-      [data-iyanjupay-theme="dark"]
-        .iyanjupay-rewards-page
-        .bg-white p,
-      [data-iyanjupay-theme="dark"]
-        .iyanjupay-rewards-page
-        .bg-white span,
-      [data-iyanjupay-theme="dark"]
-        .iyanjupay-rewards-page
-        .bg-white label,
-      [data-iyanjupay-theme="dark"]
-        .iyanjupay-rewards-page
-        .bg-white .text-gray-900,
-      [data-iyanjupay-theme="dark"]
-        .iyanjupay-rewards-page
-        .bg-white .text-gray-800,
-      [data-iyanjupay-theme="dark"]
-        .iyanjupay-rewards-page
-        .bg-white .text-gray-700,
-      [data-iyanjupay-theme="dark"]
-        .iyanjupay-rewards-page
-        .bg-white .text-gray-600 {
-        color: #111827 !important;
-      }
-
-      [data-iyanjupay-theme="dark"]
-        .iyanjupay-rewards-page
-        .bg-white
-        .text-gray-500 {
-        color: #4b5563 !important;
-      }
-
-      [data-iyanjupay-theme="dark"]
-        .iyanjupay-rewards-page
-        .bg-white
-        .text-gray-400 {
-        color: #6b7280 !important;
-      }
-
-      /*
-       * ==========================================================
-       * CHILD PAGE DARK BACKGROUNDS / BORDERS
-       * ==========================================================
-       */
-
-      [data-iyanjupay-theme="dark"]
-        .iyanjupay-me-page
-        .bg-slate-50,
-      [data-iyanjupay-theme="dark"]
-        .iyanjupay-rewards-page
-        .bg-slate-50 {
-        background-color: #090d18 !important;
-      }
-
-      [data-iyanjupay-theme="dark"]
-        .iyanjupay-me-page
-        .bg-slate-100,
-      [data-iyanjupay-theme="dark"]
-        .iyanjupay-rewards-page
-        .bg-slate-100 {
-        background-color: #1e293b !important;
-      }
-
-      [data-iyanjupay-theme="dark"]
-        .iyanjupay-me-page
-        [class*="border-gray-200"],
-      [data-iyanjupay-theme="dark"]
-        .iyanjupay-rewards-page
-        [class*="border-gray-200"] {
-        border-color: #334155 !important;
-      }
-
-      [data-iyanjupay-theme="dark"]
-        .iyanjupay-me-page
-        [class*="border-gray-100"],
-      [data-iyanjupay-theme="dark"]
-        .iyanjupay-rewards-page
-        [class*="border-gray-100"] {
-        border-color: #334155 !important;
-      }
-
-      /*
-       * ==========================================================
-       * DARK PURPLE ACCENTS
-       * ==========================================================
-       */
-
-      [data-iyanjupay-theme="dark"]
-        .iyanjupay-me-page
-        .bg-purple-50,
-      [data-iyanjupay-theme="dark"]
-        .iyanjupay-rewards-page
-        .bg-purple-50 {
-        background-color: #312e81 !important;
-      }
-
-      [data-iyanjupay-theme="dark"]
-        .iyanjupay-me-page
-        .bg-purple-100,
-      [data-iyanjupay-theme="dark"]
-        .iyanjupay-rewards-page
-        .bg-purple-100 {
-        background-color: #ede9fe !important;
-      }
-
-      [data-iyanjupay-theme="dark"]
-        .iyanjupay-me-page
-        .text-purple-700,
-      [data-iyanjupay-theme="dark"]
-        .iyanjupay-me-page
-        .text-purple-600,
-      [data-iyanjupay-theme="dark"]
-        .iyanjupay-rewards-page
-        .text-purple-700,
-      [data-iyanjupay-theme="dark"]
-        .iyanjupay-rewards-page
-        .text-purple-600 {
-        color: #c4b5fd !important;
-      }
-
-      [data-iyanjupay-theme="dark"]
-        .iyanjupay-me-page
-        .bg-purple-100
-        .text-purple-600,
-      [data-iyanjupay-theme="dark"]
-        .iyanjupay-rewards-page
-        .bg-purple-100
-        .text-purple-600 {
-        color: #7c3aed !important;
-      }
-
-      /*
-       * ==========================================================
-       * BLUE THEME
-       * ==========================================================
-       */
-
-      .iyanjupay-theme-blue .bg-purple-50 {
-        background-color: #dbeafe !important;
-      }
-
-      .iyanjupay-theme-blue .text-purple-700,
-      .iyanjupay-theme-blue .text-purple-600 {
-        color: #1d4ed8 !important;
-      }
-
-      .iyanjupay-theme-blue .bg-purple-600 {
-        background-color: #2563eb !important;
-      }
-
-      .iyanjupay-theme-blue [class*="hover:bg-purple-700"]:hover {
-        background-color: #1d4ed8 !important;
-      }
-
-      [data-iyanjupay-theme="blue"]
-        .iyanjupay-me-page
-        .bg-purple-50,
-      [data-iyanjupay-theme="blue"]
-        .iyanjupay-rewards-page
-        .bg-purple-50 {
-        background-color: #dbeafe !important;
-      }
-
-      [data-iyanjupay-theme="blue"]
-        .iyanjupay-me-page
-        .bg-purple-100,
-      [data-iyanjupay-theme="blue"]
-        .iyanjupay-rewards-page
-        .bg-purple-100 {
-        background-color: #dbeafe !important;
-      }
-
-      [data-iyanjupay-theme="blue"]
-        .iyanjupay-me-page
-        .text-purple-700,
-      [data-iyanjupay-theme="blue"]
-        .iyanjupay-me-page
-        .text-purple-600,
-      [data-iyanjupay-theme="blue"]
-        .iyanjupay-rewards-page
-        .text-purple-700,
-      [data-iyanjupay-theme="blue"]
-        .iyanjupay-rewards-page
-        .text-purple-600 {
-        color: #1d4ed8 !important;
-      }
-
-      [data-iyanjupay-theme="blue"]
-        .iyanjupay-me-page
-        .border-purple-100,
-      [data-iyanjupay-theme="blue"]
-        .iyanjupay-rewards-page
-        .border-purple-100 {
-        border-color: #bfdbfe !important;
-      }
-
-      /*
-       * ==========================================================
-       * SIGN-OUT
-       * ==========================================================
-       */
-
-      [data-iyanjupay-theme="dark"]
-        .iyanjupay-me-page
-        .text-red-600 {
-        color: #dc2626 !important;
-      }
-
-      [data-iyanjupay-theme="dark"]
-        .iyanjupay-me-page
-        .text-red-700 {
-        color: #b91c1c !important;
-      }
-
-      [data-iyanjupay-theme="dark"]
-        .iyanjupay-me-page
-        [class*="hover:bg-red-50"]:hover {
-        background-color: #fee2e2 !important;
-      }
-    `}</style>
-  );
 
   /*
    * ============================================================
@@ -1906,8 +1415,6 @@ const Dashboard = () => {
   if (authLoading) {
     return (
       <>
-        {dashboardThemeStyles}
-
         <div className="min-h-screen flex items-center justify-center bg-slate-50">
           <div className="text-center">
             <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-white shadow-lg">
@@ -1932,8 +1439,6 @@ const Dashboard = () => {
   if (!user) {
     return (
       <>
-        {dashboardThemeStyles}
-
         <div className="min-h-screen flex items-center justify-center bg-slate-50">
           <Loader2 className="h-8 w-8 animate-spin text-purple-600" />
         </div>
@@ -2067,8 +1572,6 @@ const Dashboard = () => {
   ) {
     return (
       <>
-        {dashboardThemeStyles}
-
         <ServicePayment
           service={
             selectedService
@@ -2111,8 +1614,6 @@ const Dashboard = () => {
   ) {
     return (
       <>
-        {dashboardThemeStyles}
-
         <SendMoneyPage
           onBack={() =>
             setCurrentPage(
@@ -2142,8 +1643,6 @@ const Dashboard = () => {
   ) {
     return (
       <>
-        {dashboardThemeStyles}
-
         <ProfilePage
           onBack={() =>
             setCurrentPage(
@@ -2167,8 +1666,6 @@ const Dashboard = () => {
   ) {
     return (
       <>
-        {dashboardThemeStyles}
-
         <TransactionHistory
           onBack={() =>
             setCurrentPage(
@@ -2192,8 +1689,6 @@ const Dashboard = () => {
   ) {
     return (
       <>
-        {dashboardThemeStyles}
-
         <div className="min-h-screen pb-20">
           <RewardsPage
             onBack={() =>
@@ -2223,8 +1718,6 @@ const Dashboard = () => {
   ) {
     return (
       <>
-        {dashboardThemeStyles}
-
         <div className="min-h-screen pb-20">
           <CardsPage
             onBack={() =>
@@ -2254,8 +1747,6 @@ const Dashboard = () => {
   ) {
     return (
       <>
-        {dashboardThemeStyles}
-
         <CustomerServicePage
           onBack={() =>
             setCurrentPage(
@@ -2279,8 +1770,6 @@ const Dashboard = () => {
   ) {
     return (
       <>
-        {dashboardThemeStyles}
-
         <SupportPage
           onBack={() =>
             setCurrentPage(
@@ -2304,8 +1793,6 @@ const Dashboard = () => {
   ) {
     return (
       <>
-        {dashboardThemeStyles}
-
         <TransactionLimitPage
           onBack={() =>
             setCurrentPage(
@@ -2329,8 +1816,6 @@ const Dashboard = () => {
   ) {
     return (
       <>
-        {dashboardThemeStyles}
-
         <PaymentPinPage
           onBack={() =>
             setCurrentPage(
@@ -2354,8 +1839,6 @@ const Dashboard = () => {
   ) {
     return (
       <>
-        {dashboardThemeStyles}
-
         <DisputesPage
           onBack={() =>
             setCurrentPage(
@@ -2370,7 +1853,6 @@ const Dashboard = () => {
   if (currentPage === "security") {
     return (
       <>
-        {dashboardThemeStyles}
         <SecuritySettingsPage onBack={() => setCurrentPage("me")} />
       </>
     );
@@ -2388,8 +1870,6 @@ const Dashboard = () => {
   ) {
     return (
       <>
-        {dashboardThemeStyles}
-
         <div className="min-h-screen pb-20">
           <MePage
             onBack={() =>
@@ -2452,8 +1932,6 @@ const Dashboard = () => {
   if (walletLoading) {
     return (
       <>
-        {dashboardThemeStyles}
-
         <div className="min-h-screen flex items-center justify-center bg-slate-50">
           <div className="text-center">
             <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-white shadow-lg">
@@ -2517,10 +1995,8 @@ const Dashboard = () => {
 
   return (
     <>
-      {dashboardThemeStyles}
-
       <div
-        className={`min-h-screen pb-24 iyanjupay-dashboard iyanjupay-theme-${dashboardTheme}`}
+        className="min-h-screen pb-24 iyanjupay-dashboard"
         data-theme={
           dashboardTheme
         }
@@ -2531,7 +2007,7 @@ const Dashboard = () => {
         {/* ====================================================== */}
 
         <header
-          className={`sticky top-0 z-30 border-b border-white/10 bg-gradient-to-r ${appearanceConfig[dashboardTheme].header} text-white shadow-lg`}
+          className="sticky top-0 z-30 border-b border-white/10 bg-gradient-to-r iyanjupay-dashboard-header text-white shadow-lg"
         >
           <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
             <div className="flex h-[72px] items-center justify-between">
@@ -2615,20 +2091,11 @@ const Dashboard = () => {
                         Appearance
                       </div>
 
-                      {(
-                        Object.keys(
-                          appearanceConfig
-                        ) as DashboardTheme[]
-                      ).map(
-                        (
-                          theme
-                        ) => {
-                          const ThemeIcon =
-                            appearanceConfig[
-                              theme
-                            ].icon;
+                      {THEME_OPTIONS.map((option) => {
+                        const theme = option.value;
+                        const ThemeIcon = option.icon;
 
-                          return (
+                        return (
                             <button
                               key={
                                 theme
@@ -2657,11 +2124,7 @@ const Dashboard = () => {
                               </span>
 
                               <span className="flex-1">
-                                {
-                                  appearanceConfig[
-                                    theme
-                                  ].label
-                                }
+                                {option.label}
                               </span>
 
                               {dashboardTheme ===
@@ -2671,8 +2134,7 @@ const Dashboard = () => {
 
                             </button>
                           );
-                        }
-                      )}
+                      })}
 
                     </div>
                   )}
@@ -2776,7 +2238,7 @@ const Dashboard = () => {
           <section className="mb-7">
 
             <Card
-              className={`relative overflow-hidden rounded-[28px] border-0 bg-gradient-to-br ${appearanceConfig[dashboardTheme].wallet} text-white shadow-[0_20px_60px_rgba(79,70,229,0.22)]`}
+              className="relative overflow-hidden rounded-[28px] border-0 bg-gradient-to-br iyanjupay-dashboard-wallet text-white shadow-[0_20px_60px_rgba(79,70,229,0.22)]"
             >
 
               <div className="pointer-events-none absolute -right-20 -top-20 h-56 w-56 rounded-full bg-white/10" />

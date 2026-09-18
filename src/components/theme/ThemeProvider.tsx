@@ -7,6 +7,9 @@ import React, {
   useState,
 } from "react";
 
+import { Moon, Palette, Sun } from "lucide-react";
+import "./../../styles/globalTheme.css";
+
 export type IyanjuPayTheme =
   | "light"
   | "blue"
@@ -17,6 +20,16 @@ const STORAGE_KEY =
 
 const DEFAULT_THEME: IyanjuPayTheme =
   "light";
+
+export const THEME_OPTIONS = [
+  { value: "light", label: "Light", icon: Sun },
+  { value: "blue", label: "Blue", icon: Palette },
+  { value: "dark", label: "Dark", icon: Moon },
+] as const satisfies ReadonlyArray<{
+  value: IyanjuPayTheme;
+  label: string;
+  icon: typeof Sun;
+}>;
 
 type ThemeContextValue = {
   theme: IyanjuPayTheme;
@@ -84,335 +97,6 @@ function applyTheme(
     theme;
 }
 
-function installGlobalThemeStyles() {
-  if (
-    typeof document === "undefined"
-  ) {
-    return () => {};
-  }
-
-  const STYLE_ID =
-    "iyanjupay-global-theme-styles";
-
-  const existing =
-    document.getElementById(
-      STYLE_ID
-    );
-
-  if (existing) {
-    return () => {};
-  }
-
-  const style =
-    document.createElement("style");
-
-  style.id = STYLE_ID;
-
-  style.textContent = `
-    /*
-     * ============================================================
-     * IYANJUPAY GLOBAL THEME
-     * ============================================================
-     *
-     * The theme is attached to <html> so it survives route changes.
-     * Individual pages do NOT need their own theme state.
-     */
-
-    html {
-      background: #f7f8fc;
-    }
-
-    body {
-      background: #f7f8fc;
-      color: #0f172a;
-      transition:
-        background-color 180ms ease,
-        color 180ms ease;
-    }
-
-    /*
-     * ------------------------------------------------------------
-     * LIGHT
-     * ------------------------------------------------------------
-     */
-
-    html.iyanjupay-theme-light,
-    html[data-iyanjupay-theme="light"] {
-      background: #f7f8fc;
-    }
-
-    html.iyanjupay-theme-light body,
-    html[data-iyanjupay-theme="light"] body {
-      background: #f7f8fc;
-      color: #0f172a;
-    }
-
-    /*
-     * ------------------------------------------------------------
-     * BLUE
-     * ------------------------------------------------------------
-     */
-
-    html.iyanjupay-theme-blue,
-    html[data-iyanjupay-theme="blue"] {
-      background: #f4f8ff;
-    }
-
-    html.iyanjupay-theme-blue body,
-    html[data-iyanjupay-theme="blue"] body {
-      background: #f4f8ff;
-      color: #0f172a;
-    }
-
-    /*
-     * Blue theme backgrounds
-     */
-
-    html.iyanjupay-theme-blue .bg-slate-50,
-    html[data-iyanjupay-theme="blue"] .bg-slate-50 {
-      background-color: #f4f8ff !important;
-    }
-
-    html.iyanjupay-theme-blue .bg-purple-50,
-    html[data-iyanjupay-theme="blue"] .bg-purple-50 {
-      background-color: #dbeafe !important;
-    }
-
-    html.iyanjupay-theme-blue .text-purple-700,
-    html.iyanjupay-theme-blue .text-purple-600,
-    html[data-iyanjupay-theme="blue"] .text-purple-700,
-    html[data-iyanjupay-theme="blue"] .text-purple-600 {
-      color: #1d4ed8 !important;
-    }
-
-    html.iyanjupay-theme-blue .bg-purple-600,
-    html[data-iyanjupay-theme="blue"] .bg-purple-600 {
-      background-color: #2563eb !important;
-    }
-
-    html.iyanjupay-theme-blue [class*="hover:bg-purple-700"]:hover,
-    html[data-iyanjupay-theme="blue"] [class*="hover:bg-purple-700"]:hover {
-      background-color: #1d4ed8 !important;
-    }
-
-    /*
-     * ------------------------------------------------------------
-     * DARK
-     * ------------------------------------------------------------
-     */
-
-    html.iyanjupay-theme-dark,
-    html[data-iyanjupay-theme="dark"] {
-      background: #090d18;
-    }
-
-    html.iyanjupay-theme-dark body,
-    html[data-iyanjupay-theme="dark"] body {
-      background: #090d18;
-      color: #f8fafc;
-    }
-
-    /*
-     * White surfaces become dark surfaces.
-     */
-
-    html.iyanjupay-theme-dark .bg-white,
-    html[data-iyanjupay-theme="dark"] .bg-white {
-      background-color: #111827 !important;
-    }
-
-    /*
-     * Slate backgrounds.
-     */
-
-    html.iyanjupay-theme-dark .bg-slate-50,
-    html[data-iyanjupay-theme="dark"] .bg-slate-50 {
-      background-color: #090d18 !important;
-    }
-
-    html.iyanjupay-theme-dark .bg-slate-100,
-    html[data-iyanjupay-theme="dark"] .bg-slate-100 {
-      background-color: #1e293b !important;
-    }
-
-    /*
-     * Borders.
-     */
-
-    html.iyanjupay-theme-dark [class*="border-slate-200"],
-    html[data-iyanjupay-theme="dark"] [class*="border-slate-200"] {
-      border-color: #334155 !important;
-    }
-
-    html.iyanjupay-theme-dark [class*="border-slate-300"],
-    html[data-iyanjupay-theme="dark"] [class*="border-slate-300"] {
-      border-color: #475569 !important;
-    }
-
-    /*
-     * Slate text.
-     */
-
-    html.iyanjupay-theme-dark .text-slate-950,
-    html.iyanjupay-theme-dark .text-slate-900,
-    html[data-iyanjupay-theme="dark"] .text-slate-950,
-    html[data-iyanjupay-theme="dark"] .text-slate-900 {
-      color: #f8fafc !important;
-    }
-
-    html.iyanjupay-theme-dark .text-slate-800,
-    html[data-iyanjupay-theme="dark"] .text-slate-800 {
-      color: #f1f5f9 !important;
-    }
-
-    html.iyanjupay-theme-dark .text-slate-700,
-    html[data-iyanjupay-theme="dark"] .text-slate-700 {
-      color: #e2e8f0 !important;
-    }
-
-    html.iyanjupay-theme-dark .text-slate-600,
-    html[data-iyanjupay-theme="dark"] .text-slate-600 {
-      color: #cbd5e1 !important;
-    }
-
-    html.iyanjupay-theme-dark .text-slate-500,
-    html[data-iyanjupay-theme="dark"] .text-slate-500 {
-      color: #94a3b8 !important;
-    }
-
-    html.iyanjupay-theme-dark .text-slate-400,
-    html[data-iyanjupay-theme="dark"] .text-slate-400 {
-      color: #64748b !important;
-    }
-
-    /*
-     * Hover states.
-     */
-
-    html.iyanjupay-theme-dark [class*="hover:bg-slate-50"]:hover,
-    html[data-iyanjupay-theme="dark"] [class*="hover:bg-slate-50"]:hover {
-      background-color: #1e293b !important;
-    }
-
-    html.iyanjupay-theme-dark [class*="hover:bg-slate-100"]:hover,
-    html[data-iyanjupay-theme="dark"] [class*="hover:bg-slate-100"]:hover {
-      background-color: #334155 !important;
-    }
-
-    /*
-     * Purple service surfaces.
-     */
-
-    html.iyanjupay-theme-dark .bg-purple-50,
-    html[data-iyanjupay-theme="dark"] .bg-purple-50 {
-      background-color: #312e81 !important;
-    }
-
-    html.iyanjupay-theme-dark .text-purple-700,
-    html.iyanjupay-theme-dark .text-purple-600,
-    html[data-iyanjupay-theme="dark"] .text-purple-700,
-    html[data-iyanjupay-theme="dark"] .text-purple-600 {
-      color: #c4b5fd !important;
-    }
-
-    /*
-     * Other common service surfaces.
-     */
-
-    html.iyanjupay-theme-dark .bg-blue-50,
-    html[data-iyanjupay-theme="dark"] .bg-blue-50 {
-      background-color: #172554 !important;
-    }
-
-    html.iyanjupay-theme-dark .bg-emerald-50,
-    html[data-iyanjupay-theme="dark"] .bg-emerald-50 {
-      background-color: #052e2b !important;
-    }
-
-    html.iyanjupay-theme-dark .bg-orange-50,
-    html[data-iyanjupay-theme="dark"] .bg-orange-50 {
-      background-color: #431407 !important;
-    }
-
-    /*
-     * Inputs/selects/textareas.
-     *
-     * These rules help pages that use standard Tailwind form
-     * classes without requiring page-by-page modifications.
-     */
-
-    html.iyanjupay-theme-dark input.bg-white,
-    html.iyanjupay-theme-dark select.bg-white,
-    html.iyanjupay-theme-dark textarea.bg-white,
-    html[data-iyanjupay-theme="dark"] input.bg-white,
-    html[data-iyanjupay-theme="dark"] select.bg-white,
-    html[data-iyanjupay-theme="dark"] textarea.bg-white {
-      background-color: #111827 !important;
-      color: #f8fafc !important;
-    }
-
-    html.iyanjupay-theme-dark input,
-    html.iyanjupay-theme-dark select,
-    html.iyanjupay-theme-dark textarea,
-    html[data-iyanjupay-theme="dark"] input,
-    html[data-iyanjupay-theme="dark"] select,
-    html[data-iyanjupay-theme="dark"] textarea {
-      color-scheme: dark;
-    }
-
-    /*
-     * Placeholder text.
-     */
-
-    html.iyanjupay-theme-dark input::placeholder,
-    html.iyanjupay-theme-dark textarea::placeholder,
-    html[data-iyanjupay-theme="dark"] input::placeholder,
-    html[data-iyanjupay-theme="dark"] textarea::placeholder {
-      color: #64748b;
-    }
-
-    /*
-     * Global smooth transition for major surfaces.
-     */
-
-    html.iyanjupay-theme-dark *,
-    html.iyanjupay-theme-blue *,
-    html.iyanjupay-theme-light *,
-    html[data-iyanjupay-theme="dark"] *,
-    html[data-iyanjupay-theme="blue"] *,
-    html[data-iyanjupay-theme="light"] * {
-      transition-property:
-        background-color,
-        border-color,
-        color,
-        box-shadow;
-      transition-duration: 180ms;
-      transition-timing-function: ease;
-    }
-
-    /*
-     * Do not animate transforms/animations that components use
-     * for menus, dialogs, sheets, etc.
-     */
-
-    html.iyanjupay-theme-dark [data-radix-popper-content-wrapper] *,
-    html.iyanjupay-theme-blue [data-radix-popper-content-wrapper] *,
-    html.iyanjupay-theme-light [data-radix-popper-content-wrapper] *,
-    html[data-iyanjupay-theme] [data-radix-popper-content-wrapper] * {
-      transition-property:
-        background-color,
-        border-color,
-        color,
-        box-shadow;
-    }
-  `;
-
-  document.head.appendChild(style);
-
-  return () => {
-    style.remove();
-  };
-}
 
 export function ThemeProvider({
   children,
@@ -460,12 +144,7 @@ export function ThemeProvider({
   );
 
   useEffect(() => {
-    const cleanupStyles =
-      installGlobalThemeStyles();
-
     applyTheme(theme);
-
-    return cleanupStyles;
   }, []);
 
   useEffect(() => {

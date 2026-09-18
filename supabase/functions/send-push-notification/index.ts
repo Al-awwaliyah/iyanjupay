@@ -60,7 +60,6 @@ Deno.serve(async (req) => {
   let url = payload.url ?? "/";
   let userId = payload.user_id ?? null;
   let notificationId = payload.notification_id ?? null;
-  let notificationChannel = "in_app";
 
   const { data: pushSetting } = await admin
     .from("customer_app_settings")

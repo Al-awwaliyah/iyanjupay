@@ -34,8 +34,3 @@ This build adds the following without replacing the existing financial transacti
 - a Security & Notifications page under **Me**.
 
 See `PUSH_NOTIFICATIONS_SETUP.md` before deploying push notifications or enabling Passkeys in production.
-
-
-## Security
-
-App Lock uses native device biometric authentication (fingerprint/Face ID) through the Capacitor biometric plugin. IyanjuPay does not use Supabase Passkey sign-in. See `BIOMETRIC_SETUP.md` for native platform requirements.

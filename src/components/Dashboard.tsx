@@ -31,6 +31,7 @@ import {
   Moon,
   Palette,
   Check,
+  Bell,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -64,6 +65,10 @@ import { useAuth } from "@/hooks/useAuth";
 import { useWallet } from "@/hooks/useWallet";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { useTheme } from "@/components/theme/ThemeProvider";
+import NotificationCenter from "@/components/notifications/NotificationCenter";
+import SecuritySettingsPage from "@/components/security/SecuritySettingsPage";
+import { useCustomerAppSettings } from "@/hooks/useCustomerAppSettings";
 
 /*
  * ============================================================
@@ -94,7 +99,8 @@ type CurrentPage =
   | "payment-pin"
   | "disputes"
   | "send-money"
-  | "service-payment";
+  | "service-payment"
+  | "security";
 
 type SelectedService = {
   title: string;
@@ -313,6 +319,15 @@ const Dashboard = () => {
 
   const { toast } = useToast();
 
+  const {
+    maintenanceMode,
+    showMaintenanceBanner,
+    maintenanceReason,
+    allowTransfers,
+    allowWalletFunding,
+    allowBillPayments,
+  } = useCustomerAppSettings();
+
   /*
    * ============================================================
    * PAGE
@@ -368,49 +383,11 @@ const Dashboard = () => {
    * Dashboard remains the single source of truth.
    */
 
-  type DashboardTheme =
-    | "light"
-    | "blue"
-    | "dark";
+  type DashboardTheme = "light" | "blue" | "dark";
 
-  const [dashboardTheme, setDashboardTheme] =
-    useState<DashboardTheme>(() => {
-      if (
-        typeof window ===
-        "undefined"
-      ) {
-        return "light";
-      }
+  const { theme: dashboardTheme, setTheme: setDashboardTheme } = useTheme();
 
-      const saved =
-        window.localStorage.getItem(
-          "iyanjupay-dashboard-theme"
-        );
-
-      return saved === "dark" ||
-        saved === "blue" ||
-        saved === "light"
-        ? saved
-        : "light";
-    });
-
-  const [appearanceOpen, setAppearanceOpen] =
-    useState(false);
-
-  useEffect(() => {
-    window.localStorage.setItem(
-      "iyanjupay-dashboard-theme",
-      dashboardTheme
-    );
-
-    document.documentElement.dataset.iyanjupayTheme =
-      dashboardTheme;
-
-    return () => {
-      delete document.documentElement
-        .dataset.iyanjupayTheme;
-    };
-  }, [dashboardTheme]);
+  const [appearanceOpen, setAppearanceOpen] = useState(false);
 
   const appearanceConfig = {
     light: {
@@ -2390,6 +2367,15 @@ const Dashboard = () => {
     );
   }
 
+  if (currentPage === "security") {
+    return (
+      <>
+        {dashboardThemeStyles}
+        <SecuritySettingsPage onBack={() => setCurrentPage("me")} />
+      </>
+    );
+  }
+
   /*
    * ============================================================
    * ME
@@ -2446,6 +2432,7 @@ const Dashboard = () => {
                 "disputes"
               )
             }
+            onSecurityClick={() => setCurrentPage("security")}
           />
 
           {renderBottomNav(
@@ -2591,6 +2578,8 @@ const Dashboard = () => {
                 >
                   <QrCode className="h-5 w-5" />
                 </Button>
+
+                <NotificationCenter userId={user.id} />
 
                 {/* APPEARANCE */}
 
@@ -2741,6 +2730,13 @@ const Dashboard = () => {
 
         <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
 
+          {showMaintenanceBanner && (
+            <div className={`mb-5 rounded-2xl border p-4 ${maintenanceMode ? "border-amber-300 bg-amber-50 text-amber-900" : "border-blue-200 bg-blue-50 text-blue-900"}`}>
+              <p className="text-sm font-bold">{maintenanceMode ? "Maintenance mode" : "IyanjuPay update"}</p>
+              <p className="mt-1 text-sm">{maintenanceReason}</p>
+            </div>
+          )}
+
           {/* GREETING */}
 
           <section className="mb-6">
@@ -2869,11 +2865,11 @@ const Dashboard = () => {
                   <div className="grid grid-cols-2 gap-3">
 
                     <Button
-                      onClick={() =>
-                        setFundModalOpen(
-                          true
-                        )
-                      }
+                      onClick={() => {
+                        if (!allowWalletFunding) { toast({ title: "Wallet funding temporarily unavailable", description: "Please try again later." }); return; }
+                        setFundModalOpen(true);
+                      }}
+                      disabled={!allowWalletFunding}
                       className="h-12 rounded-2xl bg-white text-purple-700 shadow-lg hover:bg-purple-50"
                     >
                       <Plus className="mr-2 h-5 w-5" />
@@ -2884,11 +2880,11 @@ const Dashboard = () => {
                     </Button>
 
                     <Button
-                      onClick={() =>
-                        setCurrentPage(
-                          "send-money"
-                        )
-                      }
+                      onClick={() => {
+                        if (!allowTransfers) { toast({ title: "Transfers temporarily unavailable", description: "Please try again later." }); return; }
+                        setCurrentPage("send-money");
+                      }}
+                      disabled={!allowTransfers}
                       className="h-12 rounded-2xl border border-white/30 bg-white/10 text-white backdrop-blur-sm hover:bg-white/20"
                     >
                       <Send className="mr-2 h-5 w-5" />

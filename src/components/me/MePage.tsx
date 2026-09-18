@@ -13,6 +13,7 @@ import {
   LockKeyhole,
   LogOut,
   FileWarning,
+  ShieldCheck,
 } from "lucide-react";
 
 import { useAuth } from "@/hooks/useAuth";
@@ -26,6 +27,7 @@ interface MePageProps {
   onTransactionLimitClick: () => void;
   onPaymentPinClick: () => void;
   onDisputesClick: () => void;
+  onSecurityClick: () => void;
 }
 
 const MePage = ({
@@ -37,6 +39,7 @@ const MePage = ({
   onTransactionLimitClick,
   onPaymentPinClick,
   onDisputesClick,
+  onSecurityClick,
 }: MePageProps) => {
   const { user, signOut } = useAuth();
 
@@ -82,6 +85,12 @@ const MePage = ({
       description:
         "View and manage limits",
       onClick: onTransactionLimitClick,
+    },
+    {
+      icon: ShieldCheck,
+      title: "Security & Notifications",
+      description: "Biometrics, app lock and push alerts",
+      onClick: onSecurityClick,
     },
     {
       icon: LockKeyhole,

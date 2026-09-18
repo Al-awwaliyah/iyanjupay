@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { Fingerprint } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import { Button } from "@/components/ui/button";
@@ -1260,6 +1261,28 @@ const AuthForm = () => {
                     {isLoading
                       ? "Signing In..."
                       : "Sign In"}
+                  </Button>
+
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full"
+                    disabled={isLoading || !("PublicKeyCredential" in window)}
+                    onClick={async () => {
+                      setIsLoading(true);
+                      try {
+                        const { error } = await (supabase.auth as any).signInWithPasskey();
+                        if (error) throw error;
+                        toast({ title: "Welcome back!", description: "You signed in securely with your passkey." });
+                      } catch (error: any) {
+                        toast({ title: "Passkey sign-in failed", description: error?.message ?? "Passkey authentication was cancelled or unavailable.", variant: "destructive" });
+                      } finally {
+                        setIsLoading(false);
+                      }
+                    }}
+                  >
+                    <Fingerprint className="mr-2 h-4 w-4" />
+                    Sign in with biometrics
                   </Button>
 
                   <button

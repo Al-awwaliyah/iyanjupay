@@ -18,6 +18,10 @@ export default defineConfig(() => ({
 
       injectRegister: "auto",
 
+      strategies: "injectManifest",
+      srcDir: "src",
+      filename: "sw.ts",
+
       // Combined standard assets along with your Android App Links configuration
       includeAssets: [
         "favicon.ico",
@@ -77,6 +81,10 @@ export default defineConfig(() => ({
         ],
       },
 
+      injectManifest: {
+        cleanupOutdatedCaches: true,
+      },
+
       workbox: {
         cleanupOutdatedCaches: true,
 
@@ -101,6 +109,7 @@ export default defineConfig(() => ({
 
       devOptions: {
         enabled: true,
+        type: "module",
       },
     }),
   ],

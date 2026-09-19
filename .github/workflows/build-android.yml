@@ -1,65 +1,153 @@
 name: Build IyanjuPay Android APK
 
 on:
-  workflow_dispatch:
-  push:
-    branches:
-      - main
+workflow_dispatch:
+push:
+branches:
+- main
 
 permissions:
-  contents: read
+contents: read
 
 jobs:
-  build-android:
-    runs-on: ubuntu-latest
-    env:
-      VITE_SUPABASE_PROJECT_ID: ${{ secrets.VITE_SUPABASE_PROJECT_ID }}
-      VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
-      VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
-      VITE_VAPID_PUBLIC_KEY: ${{ secrets.VITE_VAPID_PUBLIC_KEY }}
+build-android:
+runs-on: ubuntu-latest
 
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+env:
+  VITE_SUPABASE_PROJECT_ID: ${{ secrets.VITE_SUPABASE_PROJECT_ID }}
+  VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
+  VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+  VITE_VAPID_PUBLIC_KEY: ${{ secrets.VITE_VAPID_PUBLIC_KEY }}
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
+steps:
+  # ------------------------------------------------------------
+  # 1. Checkout repository
+  # ------------------------------------------------------------
+  - name: Checkout
+    uses: actions/checkout@v4
 
-      - name: Setup Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '21'
+  # ------------------------------------------------------------
+  # 2. Setup Node.js
+  # ------------------------------------------------------------
+  - name: Setup Node.js
+    uses: actions/setup-node@v4
+    with:
+      node-version: 22
+      cache: npm
 
-      - name: Install Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: '1.3.14'
+  # ------------------------------------------------------------
+  # 3. Setup Java
+  # ------------------------------------------------------------
+  - name: Setup Java
+    uses: actions/setup-java@v4
+    with:
+      distribution: temurin
+      java-version: '21'
 
-      - name: Install dependencies
-        run: bun install
+  # ------------------------------------------------------------
+  # 4. Install Bun
+  # ------------------------------------------------------------
+  - name: Install Bun
+    uses: oven-sh/setup-bun@v2
+    with:
+      bun-version: '1.3.14'
 
-      - name: Build web app
-        run: bun run build
+  # ------------------------------------------------------------
+  # 5. Verify tool versions
+  # ------------------------------------------------------------
+  - name: Verify toolchain
+    run: |
+      node --version
+      npm --version
+      bun --version
+      java -version
 
-      - name: Generate Android project
-        run: bunx cap add android
+  # ------------------------------------------------------------
+  # 6. Install dependencies
+  # ------------------------------------------------------------
+  - name: Install dependencies
+    run: bun install --frozen-lockfile
 
-      - name: Generate native IyanjuPay icon
-        run: bunx @capacitor/assets@3.0.5 generate --android --assetPath resources --iconBackgroundColor '#ffffff'
+  # ------------------------------------------------------------
+  # 7. Verify IyanjuPay icon
+  #
+  # Expected master icon:
+  # resources/icon.png
+  #
+  # Recommended:
+  # 1024 x 1024 PNG
+  # ------------------------------------------------------------
+  - name: Verify Android icon source
+    run: |
+      if [ ! -f "resources/icon.png" ]; then
+        echo "ERROR: resources/icon.png was not found."
+        echo "Please add the 1024x1024 IyanjuPay master icon at:"
+        echo "resources/icon.png"
+        exit 1
+      fi
 
-      - name: Sync Capacitor
-        run: bunx cap sync android
+      file resources/icon.png
 
-      - name: Build debug APK
-        working-directory: android
-        run: ./gradlew assembleDebug
+  # ------------------------------------------------------------
+  # 8. Build web application
+  # ------------------------------------------------------------
+  - name: Build web app
+    run: bun run build
 
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: IyanjuPay-Android-debug
-          path: android/app/build/outputs/apk/debug/app-debug.apk
-          if-no-files-found: error
+  # ------------------------------------------------------------
+  # 9. Generate Android Capacitor project
+  # ------------------------------------------------------------
+  - name: Generate Android project
+    run: bunx cap add android
+
+  # ------------------------------------------------------------
+  # 10. Generate native Android icons
+  # ------------------------------------------------------------
+  - name: Generate native IyanjuPay Android icons
+    run: |
+      bunx @capacitor/assets@3.0.5 generate \
+        --android \
+        --assetPath resources \
+        --iconBackgroundColor '#ffffff'
+
+  # ------------------------------------------------------------
+  # 11. Sync web application with Android project
+  # ------------------------------------------------------------
+  - name: Sync Capacitor
+    run: bunx cap sync android
+
+  # ------------------------------------------------------------
+  # 12. Make Gradle executable
+  # ------------------------------------------------------------
+  - name: Prepare Gradle
+    working-directory: android
+    run: chmod +x gradlew
+
+  # ------------------------------------------------------------
+  # 13. Build DEBUG APK
+  # ------------------------------------------------------------
+  - name: Build debug APK
+    working-directory: android
+    run: ./gradlew assembleDebug --no-daemon
+
+  # ------------------------------------------------------------
+  # 14. Upload DEBUG APK
+  # ------------------------------------------------------------
+  - name: Upload debug APK
+    uses: actions/upload-artifact@v4
+    with:
+      name: IyanjuPay-Android-debug
+      path: android/app/build/outputs/apk/debug/app-debug.apk
+      if-no-files-found: error
+      retention-days: 30
+
+  # ------------------------------------------------------------
+  # 15. Display generated APK information
+  # ------------------------------------------------------------
+  - name: Show APK information
+    run: |
+      echo "=========================================="
+      echo "IyanjuPay Android APK generated successfully"
+      echo "=========================================="
+      ls -lh android/app/build/outputs/apk/debug/app-debug.apk
+      file android/app/build/outputs/apk/debug/app-debug.apk

@@ -1,3 +1,4 @@
+
 name: Build IyanjuPay Android APK
 
 on:
@@ -55,69 +56,68 @@ jobs:
         run: bunx cap sync android
 
       - name: Decode Android signing keystore
-        env:
-          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        shell: bash
         run: |
-          echo "$KEYSTORE_BASE64" | base64 --decode > android/iyanjupay-release-key.jks
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > android/app/iyanjupay-release-key.jks
 
       - name: Create Android signing properties
-        env:
-          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        shell: bash
         run: |
           cat > android/keystore.properties <<EOF
-          storeFile=iyanjupay-release-key.jks
-          storePassword=$KEYSTORE_PASSWORD
-          keyAlias=$KEY_ALIAS
-          keyPassword=$KEY_PASSWORD
+          storeFile=app/iyanjupay-release-key.jks
+          storePassword=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}
+          keyPassword=${{ secrets.ANDROID_KEY_PASSWORD }}
           EOF
 
-      - name: Configure Android release signing
-        working-directory: android
+      - name: Configure release signing
         shell: bash
+        working-directory: android
         run: |
           python3 - <<'PY'
           from pathlib import Path
 
-          path = Path("app/build.gradle")
-          text = path.read_text()
+          gradle_file = Path("app/build.gradle")
+          text = gradle_file.read_text()
 
-          signing_block = """
-          signingConfigs {
-              release {
-                  def keystorePropertiesFile = rootProject.file("keystore.properties")
-                  def keystoreProperties = new Properties()
+          signing_block = '''
+          def keystorePropertiesFile = rootProject.file("keystore.properties")
+          def keystoreProperties = new Properties()
 
-                  if (keystorePropertiesFile.exists()) {
-                      keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
-                  }
-
-                  storeFile file(keystoreProperties["storeFile"])
-                  storePassword keystoreProperties["storePassword"]
-                  keyAlias keystoreProperties["keyAlias"]
-                  keyPassword keystoreProperties["keyPassword"]
-              }
+          if (keystorePropertiesFile.exists()) {
+              keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
           }
-          """
 
-          if "signingConfigs {" not in text:
+          android {
+              signingConfigs {
+                  release {
+                      storeFile file(keystoreProperties["storeFile"])
+                      storePassword keystoreProperties["storePassword"]
+                      keyAlias keystoreProperties["keyAlias"]
+                      keyPassword keystoreProperties["keyPassword"]
+                  }
+              }
+          '''
+
+          if 'signingConfigs {' not in text:
               text = text.replace(
-                  "android {",
-                  "android {" + signing_block,
+                  'android {',
+                  signing_block,
                   1
               )
 
-          text = text.replace(
-              "buildTypes {",
-              """buildTypes {
-                  release {
-                      signingConfig signingConfigs.release
-                  }""",
-              1
-          )
+          if 'buildTypes {' in text and 'signingConfig signingConfigs.release' not in text:
+              text = text.replace(
+                  'buildTypes {',
+                  '''buildTypes {
+          release {
+              signingConfig signingConfigs.release
+          }
+          ''',
+                  1
+              )
 
-          path.write_text(text)
+          gradle_file.write_text(text)
           PY
 
       - name: Build signed release APK
@@ -127,15 +127,11 @@ jobs:
       - name: Verify APK signature
         working-directory: android
         run: |
-          APKSIGNER=$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -n 1)
-
-          "$APKSIGNER" verify --verbose --print-certs \
-            app/build/outputs/apk/release/app-release.apk
+          $ANDROID_HOME/build-tools/$(ls $ANDROID_HOME/build-tools | sort -V | tail -1)/apksigner verify --verbose app/build/outputs/apk/release/app-release.apk
 
       - name: Rename release APK
         run: |
-          cp android/app/build/outputs/apk/release/app-release.apk \
-             android/app/build/outputs/apk/release/IyanjuPay.apk
+          cp android/app/build/outputs/apk/release/app-release.apk android/app/build/outputs/apk/release/IyanjuPay.apk
 
       - name: Upload signed release APK
         uses: actions/upload-artifact@v4
@@ -143,3 +139,4 @@ jobs:
           name: IyanjuPay-Android-release
           path: android/app/build/outputs/apk/release/IyanjuPay.apk
           if-no-files-found: error
+

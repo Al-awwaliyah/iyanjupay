@@ -4385,47 +4385,6 @@ html.iyanjupay-theme-blue .iyanjupay-dashboard-header .text-purple-100 {
 }
 
 
-/* ================================================================
-   ADMIN DASHBOARD — LIGHT ONLY
-   The user dashboard keeps its Light / Blue / Dark controller.
-   Admin pages intentionally remain light regardless of the saved
-   customer theme.
-   ================================================================ */
-body.iyanjupay-admin-light {
-  color-scheme: light !important;
-  background: #f8fafc !important;
-  color: #0f172a !important;
-}
-
-body.iyanjupay-admin-light .bg-white,
-body.iyanjupay-admin-light [class*="bg-white/"] {
-  background-color: #ffffff !important;
-}
-
-body.iyanjupay-admin-light .bg-slate-50 { background-color: #f8fafc !important; }
-body.iyanjupay-admin-light .bg-slate-100 { background-color: #f1f5f9 !important; }
-body.iyanjupay-admin-light .bg-slate-900 { background-color: #0f172a !important; }
-body.iyanjupay-admin-light .text-slate-950,
-body.iyanjupay-admin-light .text-slate-900 { color: #0f172a !important; }
-body.iyanjupay-admin-light .text-slate-800 { color: #1e293b !important; }
-body.iyanjupay-admin-light .text-slate-700 { color: #334155 !important; }
-body.iyanjupay-admin-light .text-slate-600 { color: #475569 !important; }
-body.iyanjupay-admin-light .text-slate-500 { color: #64748b !important; }
-body.iyanjupay-admin-light .text-slate-400 { color: #94a3b8 !important; }
-body.iyanjupay-admin-light [class*="border-slate-200"] { border-color: #e2e8f0 !important; }
-body.iyanjupay-admin-light [class*="border-slate-300"] { border-color: #cbd5e1 !important; }
-body.iyanjupay-admin-light [class*="hover:bg-slate-50"]:hover { background-color: #f8fafc !important; }
-body.iyanjupay-admin-light [class*="hover:bg-slate-100"]:hover { background-color: #f1f5f9 !important; }
-body.iyanjupay-admin-light input,
-body.iyanjupay-admin-light select,
-body.iyanjupay-admin-light textarea {
-  color: #0f172a !important;
-  background-color: #ffffff !important;
-}
-body.iyanjupay-admin-light input::placeholder,
-body.iyanjupay-admin-light textarea::placeholder { color: #94a3b8 !important; }
-
-
 /* Customer dashboard announcement ticker */
 .iyanjupay-announcement-marquee {
   position: relative;

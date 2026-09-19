@@ -16,6 +16,7 @@ import {
   BrowserRouter,
   Routes,
   Route,
+  useLocation,
 } from "react-router-dom";
 
 import AppSplash from "@/components/AppSplash";
@@ -59,6 +60,22 @@ import AppLockGuard from "@/components/security/AppLockGuard";
 
 const queryClient = new QueryClient();
 
+/**
+ * User Dashboard only owns the IyanjuPay ThemeProvider.
+ * Admin routes intentionally render outside the provider so the
+ * admin portal has no dependency on the user dashboard theme state.
+ */
+const ThemeGate = ({ children }: { children: React.ReactNode }) => {
+  const location = useLocation();
+  const isAdminRoute = location.pathname === "/admin" || location.pathname.startsWith("/admin/");
+
+  if (isAdminRoute) {
+    return <>{children}</>;
+  }
+
+  return <ThemeProvider>{children}</ThemeProvider>;
+};
+
 const App = () => {
   const [showSplash, setShowSplash] =
     useState(true);
@@ -93,13 +110,13 @@ const App = () => {
     <QueryClientProvider
       client={queryClient}
     >
-      <ThemeProvider>
       <TooltipProvider>
         <Toaster />
 
         <Sonner />
 
         <BrowserRouter>
+          <ThemeGate>
           <Routes>
 
             {/* ==================================================
@@ -346,6 +363,7 @@ const App = () => {
             />
 
           </Routes>
+          </ThemeGate>
 
           {/* ==================================================
               PWA INSTALL PROMPT
@@ -355,7 +373,6 @@ const App = () => {
 
           </BrowserRouter>
         </TooltipProvider>
-      </ThemeProvider>
     </QueryClientProvider>
   );
 };

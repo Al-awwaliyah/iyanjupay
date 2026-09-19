@@ -264,18 +264,6 @@ const AdminLayout = ({
   const [loggingOut, setLoggingOut] =
     useState(false);
 
-  // Admin is intentionally light-only. This does not change the user's
-  // saved dashboard theme; it only scopes the admin area to a light palette.
-  useEffect(() => {
-    document.body.classList.add("iyanjupay-admin-light");
-    document.documentElement.style.colorScheme = "light";
-
-    return () => {
-      document.body.classList.remove("iyanjupay-admin-light");
-      document.documentElement.style.colorScheme = "";
-    };
-  }, []);
-
   const checkAdminAccess =
     useCallback(async () => {
       if (!user?.id) {

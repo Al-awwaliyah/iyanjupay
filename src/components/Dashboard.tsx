@@ -29,7 +29,6 @@ import {
   Zap,
   Check,
   Bell,
-  Megaphone,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -65,6 +64,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { THEME_OPTIONS, useTheme } from "@/components/theme/ThemeProvider";
 import NotificationCenter from "@/components/notifications/NotificationCenter";
+import AnnouncementBanner from "@/components/notifications/AnnouncementBanner";
 import SecuritySettingsPage from "@/components/security/SecuritySettingsPage";
 import { useCustomerAppSettings } from "@/hooks/useCustomerAppSettings";
 
@@ -120,14 +120,6 @@ type DashboardTransaction = {
   description: string | null;
   metadata: Record<string, any> | null;
   created_at: string;
-};
-
-type DashboardAnnouncement = {
-  id: string;
-  title: string;
-  message: string;
-  created_at: string;
-  metadata: Record<string, any> | null;
 };
 
 /*
@@ -333,88 +325,6 @@ const Dashboard = () => {
     allowWalletFunding,
     allowBillPayments,
   } = useCustomerAppSettings();
-
-  /*
-   * ============================================================
-   * CUSTOMER ANNOUNCEMENTS
-   * ============================================================
-   * Admin-published announcements are shown prominently between
-   * the dashboard header and wallet, while remaining in the
-   * Notification Center/history as normal notifications.
-   */
-  const [announcements, setAnnouncements] = useState<DashboardAnnouncement[]>([]);
-
-  const loadAnnouncements = useCallback(async () => {
-    if (!user?.id) {
-      setAnnouncements([]);
-      return;
-    }
-
-    try {
-      const { data, error } = await (supabase as any)
-        .from("notifications")
-        .select("id,title,message,created_at,metadata")
-        .eq("user_id", user.id)
-        .order("created_at", { ascending: false })
-        .limit(25);
-
-      if (error) throw error;
-
-      const items = (Array.isArray(data) ? data : [])
-        .filter((item: any) => item?.metadata?.kind === "announcement")
-        .map((item: any) => ({
-          id: String(item.id),
-          title: String(item.title ?? "IyanjuPay announcement"),
-          message: String(item.message ?? ""),
-          created_at: String(item.created_at),
-          metadata: item.metadata ?? null,
-        }));
-
-      setAnnouncements(items);
-    } catch (error) {
-      console.warn("Unable to load customer announcements:", error);
-    }
-  }, [user?.id]);
-
-  useEffect(() => {
-    void loadAnnouncements();
-  }, [loadAnnouncements]);
-
-  useEffect(() => {
-    if (!user?.id) return;
-
-    const channel = supabase
-      .channel(`dashboard-announcements-${user.id}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "notifications",
-          filter: `user_id=eq.${user.id}`,
-        },
-        (payload) => {
-          const next = payload.new as any;
-          if (next?.metadata?.kind !== "announcement") return;
-
-          setAnnouncements((current) => [
-            {
-              id: String(next.id),
-              title: String(next.title ?? "IyanjuPay announcement"),
-              message: String(next.message ?? ""),
-              created_at: String(next.created_at),
-              metadata: next.metadata ?? null,
-            },
-            ...current.filter((item) => item.id !== String(next.id)),
-          ].slice(0, 10));
-        },
-      )
-      .subscribe();
-
-    return () => {
-      void supabase.removeChannel(channel);
-    };
-  }, [user?.id]);
 
   /*
    * ============================================================
@@ -2291,40 +2201,7 @@ const Dashboard = () => {
 
         <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
 
-          {announcements.length > 0 && (
-            <section className="mb-5 space-y-3" aria-label="Customer announcements">
-              {announcements.map((announcement) => (
-                <div
-                  key={announcement.id}
-                  className="rounded-2xl border border-amber-200 bg-amber-50 p-4 shadow-sm sm:p-5"
-                >
-                  <div className="flex gap-3">
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-100 text-amber-700">
-                      <Megaphone className="h-5 w-5" />
-                    </div>
-
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <h2 className="text-sm font-black text-amber-950 sm:text-base">
-                          {announcement.title}
-                        </h2>
-                        <span className="text-[11px] font-medium text-amber-700">
-                          {new Date(announcement.created_at).toLocaleString("en-NG", {
-                            dateStyle: "medium",
-                            timeStyle: "short",
-                          })}
-                        </span>
-                      </div>
-
-                      <p className="mt-1 text-sm leading-6 text-amber-900">
-                        {announcement.message}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </section>
-          )}
+          <AnnouncementBanner userId={user.id} />
 
           {showMaintenanceBanner && (
             <div className={`mb-5 rounded-2xl border p-4 ${maintenanceMode ? "border-amber-300 bg-amber-50 text-amber-900" : "border-blue-200 bg-blue-50 text-blue-900"}`}>

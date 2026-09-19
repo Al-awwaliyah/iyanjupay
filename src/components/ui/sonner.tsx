@@ -1,11 +1,28 @@
-import { useTheme } from "@/components/theme/ThemeProvider"
+import { useEffect, useState } from "react"
 import { Toaster as Sonner, toast } from "sonner"
 
 type ToasterProps = React.ComponentProps<typeof Sonner>
 
 const Toaster = ({ ...props }: ToasterProps) => {
-  const { theme } = useTheme()
-  const sonnerTheme = theme === "dark" ? "dark" : "light"
+  const [sonnerTheme, setSonnerTheme] = useState<"light" | "dark">(() =>
+    typeof document !== "undefined" &&
+    document.documentElement.dataset.iyanjupayTheme === "dark"
+      ? "dark"
+      : "light"
+  )
+
+  useEffect(() => {
+    const syncTheme = () => {
+      setSonnerTheme(
+        document.documentElement.dataset.iyanjupayTheme === "dark"
+          ? "dark"
+          : "light"
+      )
+    }
+
+    window.addEventListener("iyanjupay-theme-change", syncTheme)
+    return () => window.removeEventListener("iyanjupay-theme-change", syncTheme)
+  }, [])
 
   return (
     <Sonner

@@ -4424,3 +4424,34 @@ body.iyanjupay-admin-light textarea {
 }
 body.iyanjupay-admin-light input::placeholder,
 body.iyanjupay-admin-light textarea::placeholder { color: #94a3b8 !important; }
+
+
+/* Customer dashboard announcement ticker */
+.iyanjupay-announcement-marquee {
+  position: relative;
+  width: 100%;
+}
+
+.iyanjupay-announcement-marquee-track {
+  display: inline-flex;
+  min-width: max-content;
+  animation: iyanjupay-announcement-marquee 18s linear infinite;
+  will-change: transform;
+}
+
+.iyanjupay-announcement-marquee:hover .iyanjupay-announcement-marquee-track,
+.iyanjupay-announcement-marquee:focus .iyanjupay-announcement-marquee-track,
+.iyanjupay-announcement-marquee:focus-within .iyanjupay-announcement-marquee-track {
+  animation-play-state: paused;
+}
+
+@keyframes iyanjupay-announcement-marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .iyanjupay-announcement-marquee-track {
+    animation: none;
+  }
+}

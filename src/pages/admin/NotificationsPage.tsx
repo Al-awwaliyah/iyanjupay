@@ -193,8 +193,16 @@ type BroadcastForm = {
   amount: string;
 
   announcement: boolean;
+
+  expiresAt: string;
 };
 
+
+function getDefaultAnnouncementExpiry(): string {
+  const date = new Date(Date.now() + 24 * 60 * 60 * 1000);
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
 
 // ============================================================
 // CONSTANTS
@@ -726,6 +734,7 @@ function NotificationsPage() {
       message: "",
       amount: "",
       announcement: true,
+      expiresAt: getDefaultAnnouncementExpiry(),
     });
 
 
@@ -1237,7 +1246,7 @@ function NotificationsPage() {
     useCallback(
       (
         field: keyof BroadcastForm,
-        value: string,
+        value: string | boolean,
       ) => {
         setBroadcastForm(
           (current) => ({
@@ -1259,6 +1268,7 @@ function NotificationsPage() {
         message: "",
         amount: "",
         announcement: true,
+        expiresAt: getDefaultAnnouncementExpiry(),
       });
     }, []);
 
@@ -1320,6 +1330,29 @@ function NotificationsPage() {
           return;
         }
 
+        let expiresAt: string | null = null;
+        if (broadcastForm.announcement) {
+          if (!broadcastForm.expiresAt) {
+            toast({
+              title: "Announcement expiry required",
+              description: "Choose when the announcement should disappear from customer dashboards.",
+              variant: "destructive",
+            });
+            return;
+          }
+
+          const expiryDate = new Date(broadcastForm.expiresAt);
+          if (!Number.isFinite(expiryDate.getTime()) || expiryDate.getTime() <= Date.now()) {
+            toast({
+              title: "Invalid announcement expiry",
+              description: "Choose a future date and time.",
+              variant: "destructive",
+            });
+            return;
+          }
+          expiresAt = expiryDate.toISOString();
+        }
+
         let amount:
           | number
           | null = null;
@@ -1375,6 +1408,7 @@ function NotificationsPage() {
               p_metadata: {
                 source: "admin",
                 kind: broadcastForm.announcement ? "announcement" : "notification",
+                ...(expiresAt ? { expires_at: expiresAt } : {}),
               },
             },
           );
@@ -3181,6 +3215,23 @@ function NotificationsPage() {
                   <span className="block text-xs text-muted-foreground">Shows an announcement icon in the customer notification center.</span>
                 </span>
               </label>
+
+              {broadcastForm.announcement && (
+                <div className="space-y-2 rounded-xl border border-purple-200 bg-purple-50/60 p-3">
+                  <Label htmlFor="broadcast-expires-at">Show announcement until</Label>
+                  <Input
+                    id="broadcast-expires-at"
+                    type="datetime-local"
+                    value={broadcastForm.expiresAt}
+                    min={new Date().toISOString().slice(0, 16)}
+                    onChange={(event) => updateBroadcast("expiresAt", event.target.value)}
+                    disabled={broadcasting}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    After this time, the announcement automatically disappears from the customer dashboard. It remains in Notification Center/history.
+                  </p>
+                </div>
+              )}
 
               <div className="space-y-2">
 

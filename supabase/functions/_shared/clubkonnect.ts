@@ -175,12 +175,34 @@ export async function clubKonnectRequest<T = any>(
     parameter_names: Object.keys(params),
   });
 
-  const response = await fetch(url.toString(), {
-    method: "GET",
-    headers: {
-      Accept: "application/json",
-    },
-  });
+  const timeoutMs = Math.max(
+    5000,
+    Number(Deno.env.get("CLUBKONNECT_TIMEOUT_MS") || 20000),
+  );
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  let response: Response;
+
+  try {
+    response = await fetch(url.toString(), {
+      method: "GET",
+      headers: {
+        Accept: "application/json",
+      },
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw new Error(
+        `ClubKonnect request timed out after ${timeoutMs / 1000} seconds.`,
+      );
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
 
   const text = await response.text();
 

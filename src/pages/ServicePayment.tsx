@@ -81,8 +81,6 @@ const AIRTIME_AMOUNTS = [
   5000,
 ];
 
-const AIRTIME_PIN_VALUES = [100, 200, 500] as const;
-
 const BILL_AMOUNTS = [
   100,
   200,
@@ -286,6 +284,69 @@ function getItemCode(item: Item | null | undefined): string {
       item?.id ??
       item?.value
   );
+}
+
+function canonicalCableProvider(value: unknown): string {
+  const raw = clean(value).toLowerCase().replace(/[^a-z0-9]+/g, " ");
+  if (raw.includes("dstv") || raw.includes("digital satellite")) return "dstv";
+  if (raw.includes("gotv") || raw.includes("go tv")) return "gotv";
+  if (raw.includes("startimes") || raw.includes("startime")) return "startimes";
+  if (raw.includes("showmax")) return "showmax";
+  return "";
+}
+
+function cableProviderFromItem(item: Item): string {
+  const values = [
+    item.biller_code,
+    item.billerCode,
+    item.provider_code,
+    item.providerCode,
+    item.cable_code,
+    item.cableCode,
+    item.cable_tv,
+    item.cableTv,
+    item.provider_name,
+    item.providerName,
+    item.provider,
+    item.cable_tv_name,
+    item.cableTvName,
+    item.service_name,
+    item.serviceName,
+    item.package_code,
+    item.packageCode,
+    item.package_name,
+    item.packageName,
+    item.name,
+    item.raw?.biller_code,
+    item.raw?.billerCode,
+    item.raw?.provider_code,
+    item.raw?.providerCode,
+    item.raw?.CableTV,
+    item.raw?.CableTVCode,
+    item.raw?.CableTVID,
+    item.raw?.CableTVName,
+  ];
+
+  for (const value of values) {
+    const provider = canonicalCableProvider(value);
+    if (provider) return provider;
+  }
+
+  return "";
+}
+
+function filterCableItems(items: Item[], billerCode: string): Item[] {
+  const selected = canonicalCableProvider(billerCode);
+  if (!selected) return items;
+
+  const tagged = items.filter((item) => !!cableProviderFromItem(item));
+  if (!tagged.length) return items;
+
+  const matching = tagged.filter(
+    (item) => cableProviderFromItem(item) === selected,
+  );
+
+  return matching.length ? matching : items;
 }
 
 function getItemPrice(item: Item | null | undefined): number {
@@ -574,7 +635,7 @@ function providerLogo(
 
   if (network === "9mobile") {
     // Exact 9mobile brand mark, rather than the generic website favicon.
-    return "https://www.google.com/s2/favicons?domain=9mobile.com.ng&sz=128";
+    return "https://seeklogo.com/images/9/9mobile-logo-2E5E0C0F4D-seeklogo.com.png";
   }
 
   const value = `${name} ${code}`
@@ -1520,11 +1581,6 @@ export default function ServicePayment({
 
   const serviceFunction = "clubkonnect-services";
 
-  const serviceRequestType =
-    serviceType === "education"
-      ? "education"
-      : serviceType;
-
   const isAirtime =
     serviceType === "airtime";
 
@@ -1540,6 +1596,33 @@ export default function ServicePayment({
   const isInternet =
     serviceType === "internet";
 
+  const backendServiceType = useCallback(
+    (billerCode = "", biller?: Biller) => {
+      if (serviceType === "internet") return "smile";
+
+      if (serviceType === "education") {
+        const provider = clean(
+          biller?.provider_service ??
+            biller?.providerService ??
+            biller?.service ??
+            biller?.provider_code ??
+            biller?.providerCode
+        ).toLowerCase();
+
+        if (provider === "jamb" || provider === "waec") {
+          return provider;
+        }
+
+        return clean(billerCode).toLowerCase() === "jamb"
+          ? "jamb"
+          : "waec";
+      }
+
+      return serviceType;
+    },
+    [serviceType],
+  );
+
   const isEpin =
     serviceType === "airtime-card" ||
     serviceType === "data-card";
@@ -1553,6 +1636,7 @@ export default function ServicePayment({
   const isPhoneService =
     isAirtime ||
     isData ||
+    isEpin ||
     serviceType === "education";
 
   const isAmountOnly =
@@ -1747,25 +1831,61 @@ export default function ServicePayment({
       setError("");
 
       try {
-        const data = await invoke({
-          action: "billers",
-          service: serviceRequestType,
-          country: "NG",
-        });
+        let merged: Biller[];
 
-        const loaded = firstArray(
-          data.billers,
-          data.networks,
-          data.providers,
-          data.cableProviders,
-          data.electricityCompanies,
-          data.examTypes
-        );
+        if (serviceType === "education") {
+          const [jambData, waecData] = await Promise.all([
+            invoke({ action: "billers", service: "jamb", country: "NG" }),
+            invoke({ action: "billers", service: "waec", country: "NG" }),
+          ]);
 
-        let merged = mergeBillers(
-          serviceType,
-          loaded
-        );
+          const educationOptions = [
+            ...firstArray(jambData.billers, jambData.examTypes).map((option) => ({
+              ...option,
+              provider_service: "jamb",
+              provider_name: "JAMB",
+            })),
+            ...firstArray(waecData.billers).map((option) => ({
+              ...option,
+              provider_service: "waec",
+              provider_name: "WAEC",
+            })),
+          ];
+
+          const seen = new Set<string>();
+          merged = educationOptions
+            .map((option) => ({
+              ...option,
+              biller_code: getCode(option) || clean(option.code),
+              display_name: getName(option) || clean(option.label) || clean(option.title),
+            }))
+            .filter((option) => {
+              const key = `${clean(option.provider_service).toLowerCase()}:${getCode(option).toLowerCase()}`;
+              if (!key || seen.has(key)) return false;
+              seen.add(key);
+              return true;
+            });
+        } else {
+          const data = await invoke({
+            action: "billers",
+            service: backendServiceType(),
+            country: "NG",
+          });
+
+          const loaded = firstArray(
+            data.billers,
+            data.networks,
+            data.providers,
+            data.cableProviders,
+            data.electricityCompanies,
+            data.examTypes
+          );
+
+          merged = mergeBillers(
+            serviceType,
+            loaded
+          );
+        }
 
         if (isAirtimeCard) {
           const order = ["01", "04", "03", "02"];
@@ -1804,6 +1924,7 @@ export default function ServicePayment({
       }
     }, [
       invoke,
+      backendServiceType,
       isAmountOnly,
       serviceType,
       isAirtimeCard,
@@ -1830,10 +1951,17 @@ export default function ServicePayment({
         }
 
         try {
+          const billerForCode =
+            billers.find((biller) => getCode(biller) === billerCode) ??
+            selectedBiller;
+
           const data = await invoke({
-            action: "items",
-            service: serviceRequestType,
+            action: "catalog",
+            service: backendServiceType(billerCode, billerForCode),
             biller_code: billerCode,
+            ...(isCable
+              ? { provider_name: getName(billerForCode) }
+              : {}),
             country: "NG",
 
             ...(isElectricity
@@ -1846,11 +1974,15 @@ export default function ServicePayment({
 
           });
 
-          const loaded = firstArray(
+          const loadedRaw = firstArray(
             data.items,
             data.plans,
             data.packages
           );
+
+          const loaded = isCable
+            ? filterCableItems(loadedRaw, billerCode)
+            : loadedRaw;
 
           setItems(loaded);
 
@@ -1885,10 +2017,14 @@ export default function ServicePayment({
       },
       [
         invoke,
+        backendServiceType,
         isAmountOnly,
         isData,
         isElectricity,
+        isCable,
         meterType,
+        selectedBiller,
+        billers,
         serviceType,
         toast,
       ]
@@ -2367,9 +2503,18 @@ export default function ServicePayment({
           ? customer.trim()
           : "",
 
+      provider_name:
+        isCable
+          ? getName(selectedBiller)
+          : "",
+
+      providerName:
+        isCable
+          ? getName(selectedBiller)
+          : "",
 
       type: serviceType,
-      service: serviceRequestType,
+      service: backendServiceType(selectedBillerCode, selectedBiller),
       country: "NG",
 
       // VTUGATE request fields.
@@ -3106,37 +3251,45 @@ export default function ServicePayment({
                       </div>
                     ) : (
                       <div className="grid grid-cols-3 gap-2">
-                        {AIRTIME_PIN_VALUES.map((value) => {
-                          const item = items.find(
-                            (candidate) =>
-                              num(candidate.value ?? candidate.denomination) === value,
-                          );
-                          const itemCode = item ? getItemCode(item) : "";
-                          const selected = selectedItemCode === itemCode && amount === String(getItemPrice(item));
+                        {Array.from(
+                          new Map(
+                            items
+                              .map((item) => [
+                                num(item.value ?? item.denomination),
+                                item,
+                              ] as const)
+                              .filter(([value, item]) => value > 0 && !!getItemCode(item))
+                          ).entries()
+                        )
+                          .sort(([a], [b]) => a - b)
+                          .map(([value, item]) => {
+                            const itemCode = getItemCode(item);
+                            const selected =
+                              selectedItemCode === itemCode &&
+                              amount === String(getItemPrice(item));
 
-                          return (
-                            <button
-                              key={value}
-                              type="button"
-                              disabled={!itemCode || !!processingSession || verifyingPin}
-                              onClick={() => {
-                                if (!item || !itemCode) return;
-                                setSelectedItemCode(itemCode);
-                                setAmount(String(getItemPrice(item)));
-                                setQuantity(1);
-                                setCustomAmount(false);
-                                setError("");
-                              }}
-                              className={`rounded-xl border px-3 py-3 text-sm font-extrabold transition ${
-                                selected
-                                  ? "border-[#6D28D9] bg-violet-50 text-[#4C1D95] ring-2 ring-violet-100"
-                                  : "border-gray-200 bg-white text-gray-800 hover:border-violet-300"
-                              } ${!itemCode ? "cursor-not-allowed opacity-50" : ""}`}
-                            >
-                              ₦{value.toLocaleString("en-NG")}
-                            </button>
-                          );
-                        })}
+                            return (
+                              <button
+                                key={itemCode}
+                                type="button"
+                                disabled={!!processingSession || verifyingPin}
+                                onClick={() => {
+                                  setSelectedItemCode(itemCode);
+                                  setAmount(String(getItemPrice(item)));
+                                  setQuantity(1);
+                                  setCustomAmount(false);
+                                  setError("");
+                                }}
+                                className={`rounded-xl border px-3 py-3 text-sm font-extrabold transition ${
+                                  selected
+                                    ? "border-[#6D28D9] bg-violet-50 text-[#4C1D95] ring-2 ring-violet-100"
+                                    : "border-gray-200 bg-white text-gray-800 hover:border-violet-300"
+                                }`}
+                              >
+                                ₦{value.toLocaleString("en-NG")}
+                              </button>
+                            );
+                          })}
                       </div>
                     )}
                   </section>

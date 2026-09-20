@@ -75,7 +75,9 @@ type ServiceType =
   | "data-card"
   | "smile"
   | "waec"
-  | "jamb";
+  | "jamb"
+  | "education"
+  | "internet";
 
 type CatalogItem = {
   id: string;
@@ -133,6 +135,8 @@ const SUPPORTED_SERVICES: ServiceType[] = [
   "smile",
   "waec",
   "jamb",
+  "education",
+  "internet",
 ];
 
 const FAILURE_STATUSES = new Set([
@@ -1510,10 +1514,15 @@ function normalizeCableProviderCode(value: unknown): string {
 
 function cableProviderAlias(value: unknown): string {
   const raw = normalizeCableProviderCode(value);
+
   if (raw.includes("dstv") || raw.includes("digitaltelevision")) return "dstv";
   if (raw.includes("gotv") || raw.includes("gotvafrica")) return "gotv";
   if (raw.includes("startimes") || raw.includes("startime")) return "startimes";
-  return raw;
+  if (raw.includes("showmax")) return "showmax";
+
+  // Only return recognised providers. Arbitrary metadata must not become a
+  // provider code, otherwise valid packages can be filtered out.
+  return "";
 }
 
 function cableItemProviderCode(item: JsonObject): string {
@@ -1523,6 +1532,7 @@ function cableItemProviderCode(item: JsonObject): string {
     pick(item, "provider_code", "providerCode", "provider"),
     pick(item, "CableTVName", "cableTvName", "cable_tv_name"),
     pick(item, "provider_name", "providerName"),
+    pick(item, "service_name", "serviceName"),
   ];
 
   for (const value of values) {
@@ -1539,11 +1549,7 @@ async function cablePackages(
 ): Promise<CatalogItem[]> {
   const response =
     await clubKonnectRequest(
-      "APICableTVPackagesV2.asp",
-      {
-        CableTV:
-          cableTv,
-      }
+      "APICableTVPackagesV2.asp"
     );
 
   if (!response.ok) {
@@ -1559,13 +1565,6 @@ async function cablePackages(
     response.body,
     (item) => {
       const requestedProvider = cableProviderAlias(cableName || cableTv);
-      const itemProvider = cableItemProviderCode(item);
-
-      // The upstream package endpoint has returned mixed provider catalogues
-      // in some responses. Never leak a tagged package into another provider.
-      if (itemProvider && itemProvider !== requestedProvider) {
-        return;
-      }
 
       const packageCode =
         safeDisplayName(
@@ -1623,6 +1622,16 @@ async function cablePackages(
             packageCode
           )
         );
+
+      const itemProvider =
+        cableItemProviderCode(item) ||
+        cableProviderAlias(`${packageCode} ${packageName}`);
+
+      // The package endpoint returns a combined catalogue. Filter it here
+      // using explicit provider fields first, then package code/name.
+      if (itemProvider && itemProvider !== requestedProvider) {
+        return;
+      }
 
       const providerPrice =
         n(
@@ -1956,6 +1965,7 @@ async function airtimePinCatalog(
             pick(
               item,
               "MOBILENETWORK",
+              "MOBILE_NETWORK",
               "MobileNetwork",
               "network_code",
               "networkCode",
@@ -1966,7 +1976,9 @@ async function airtimePinCatalog(
               "Network",
               "network",
               "NetworkName",
-              "network_name"
+              "network_name",
+              "MOBILE_NETWORK",
+              "mobile_network"
             )
           )
         );
@@ -1978,8 +1990,10 @@ async function airtimePinCatalog(
               item,
               "Value",
               "value",
+              "VALUE",
               "Denomination",
-              "denomination"
+              "denomination",
+              "DENOMINATION"
             ),
             pick(
               item,
@@ -3653,13 +3667,23 @@ const handler = async (
       body.action
     ).toLowerCase();
 
-  const service =
+  const requestedService =
     s(
       first(
         body.service,
         details.service
       )
-    ).toLowerCase() as ServiceType;
+    ).toLowerCase();
+
+  // Normalize customer-facing aliases before the support check.
+  // Internet Service is backed by ClubKonnect Smile only.
+  const service =
+    requestedService === "internet" ||
+    requestedService === "internet-service" ||
+    requestedService === "internet_service" ||
+    requestedService === "broadband"
+      ? "smile"
+      : requestedService as ServiceType;
 
   if (
     !SUPPORTED_SERVICES.includes(
@@ -3965,6 +3989,53 @@ const handler = async (
        *
        * ExamType is NOT treated as a package.
        */
+      if (
+        service ===
+        "education"
+      ) {
+        const [jambOptions, waecOptions] = await Promise.all([
+          jambCatalog(),
+          genericPackages("APIWAECPackagesV2.asp", "waec"),
+        ]);
+
+        const jambBillers = jambOptions.map((item) => ({
+          code: item.code,
+          id: item.code,
+          value: item.code,
+          name: item.name,
+          label: item.name,
+          title: item.name,
+          provider_service: "jamb",
+          provider_name: "JAMB",
+          providerPrice: item.providerPrice,
+          price: item.providerPrice > 0 ? sellingPrice("jamb", item.providerPrice) : 0,
+        }));
+
+        const waecBillers = waecOptions.map((item) => ({
+          code: item.code,
+          id: item.code,
+          value: item.code,
+          name: item.name,
+          label: item.name,
+          title: item.name,
+          provider_service: "waec",
+          provider_name: "WAEC",
+          providerPrice: item.providerPrice,
+          price: item.providerPrice > 0 ? sellingPrice("waec", item.providerPrice) : 0,
+        }));
+
+        return json({
+          success: true,
+          service,
+          billers: [...jambBillers, ...waecBillers],
+          providers: [
+            { code: "jamb", id: "jamb", value: "jamb", name: "JAMB", label: "JAMB", provider_service: "jamb" },
+            { code: "waec", id: "waec", value: "waec", name: "WAEC", label: "WAEC", provider_service: "waec" },
+          ],
+          examTypes: [...jambBillers, ...waecBillers],
+        });
+      }
+
       if (
         service ===
         "jamb"

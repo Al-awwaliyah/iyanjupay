@@ -1,35 +1,44 @@
-# IyanjuPay Biometric Authentication
+# IyanjuPay Native Biometric Setup
 
-IyanjuPay now uses native device biometric authentication for App Lock. The application does not use Supabase Passkeys or passkey sign-in.
+IyanjuPay uses the native device biometric APIs in the Capacitor Android/iOS app. Browser builds continue to use the existing WebAuthn/passkey path where supported.
 
-## Mobile builds
+## Capacitor dependency
 
-The project uses Capacitor 7. Add the native biometric plugin dependency:
+The project uses `@capgo/capacitor-native-biometric` for Capacitor 7-compatible native biometric prompts. Run:
 
-`@capgo/capacitor-native-biometric` (Capacitor 7 compatible line).
+```bash
+bun install
+bunx cap sync
+```
 
-For Android, the native app must include:
+The app requests **strong biometrics only** for App Lock; a device PIN/pattern/password is not treated as a biometric unlock.
+
+## Android
+
+The native build must include:
 
 ```xml
 <uses-permission android:name="android.permission.USE_BIOMETRIC" />
 ```
 
-For iOS Face ID, the native app's `Info.plist` must include:
+The build workflow adds this permission automatically after generating the Capacitor Android project.
+
+## iOS
+
+The native app must include:
 
 ```xml
 <key>NSFaceIDUsageDescription</key>
 <string>Use Face ID to securely unlock IyanjuPay.</string>
 ```
 
-After adding/updating the native platform projects, synchronize the Capacitor plugins.
+The iOS workflow adds this usage description automatically.
 
-## Browser / Vercel deployment
+## App Lock behavior
 
-A browser build does not expose real device biometric APIs to IyanjuPay without WebAuthn/passkeys. Because IyanjuPay is intentionally not using passkeys, the biometric toggle is disabled in a browser-only deployment. The real biometric flow is available in the native iOS/Android Capacitor application.
-
-## Security behavior
-
-- Biometric ON: a real native biometric check is required before App Lock can be enabled.
-- Biometric OFF: App Lock is automatically disabled so the app cannot become locked behind a disabled unlock method.
-- App Lock ON: the existing timeout controls when the session becomes locked.
-- Push Notifications remain independent from biometric/App Lock.
+- Enabling Biometrics checks that a strong native biometric is actually enrolled.
+- Enabling App Lock requires Biometrics to be enabled.
+- Native App Lock unlock calls the native biometric API directly.
+- Browser App Lock uses the existing Supabase WebAuthn/passkey flow.
+- Disabling Biometrics automatically disables App Lock.
+- No biometric fingerprint/face data is sent to Supabase.

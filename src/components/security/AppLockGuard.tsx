@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import { Fingerprint, LockKeyhole, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Capacitor } from "@capacitor/core";
 import { supabase } from "@/integrations/supabase/client";
+import { authenticateWithBiometric } from "@/lib/biometricAuth";
 import { useAuth } from "@/hooks/useAuth";
 
 const ENABLED_KEY = "iyanjupay-app-lock-enabled";
@@ -53,9 +55,13 @@ export default function AppLockGuard({ children }: { children: React.ReactNode }
     setUnlocking(true);
     setError("");
     try {
-      if (!("PublicKeyCredential" in window)) throw new Error("This device does not support biometric or secure device authentication.");
-      const { error: authError } = await (supabase.auth as any).signInWithPasskey();
-      if (authError) throw authError;
+      if (Capacitor.isNativePlatform()) {
+        await authenticateWithBiometric("Unlock IyanjuPay");
+      } else {
+        if (!("PublicKeyCredential" in window)) throw new Error("This browser does not support secure device authentication.");
+        const { error: authError } = await (supabase.auth as any).signInWithPasskey();
+        if (authError) throw authError;
+      }
       setLocked(false);
     } catch (error: any) {
       setError(error?.message || "Biometric verification failed.");

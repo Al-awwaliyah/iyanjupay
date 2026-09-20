@@ -71,6 +71,18 @@ export async function registerNativePush() {
     if (permission.receive !== "granted") permission = await PushNotifications.requestPermissions();
     if (permission.receive !== "granted") return { enabled: false, reason: "denied" as const };
 
+    if (Capacitor.getPlatform() === "android") {
+      await PushNotifications.createChannel({
+        id: "iyanjupay-default",
+        name: "IyanjuPay Notifications",
+        description: "IyanjuPay account and transaction notifications",
+        importance: 5,
+        visibility: 1,
+        sound: "default",
+        vibration: true,
+      });
+    }
+
     await PushNotifications.removeAllListeners();
     await PushNotifications.addListener("registration", async (token) => {
       const user = (await supabase.auth.getUser()).data.user;

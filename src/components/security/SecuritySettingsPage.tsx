@@ -9,6 +9,7 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { Capacitor } from "@capacitor/core";
 import { enablePushNotifications, disableWebPush, disableNativePush, isWebPushSupported } from "@/lib/pushNotifications";
+import { checkBiometricAvailability } from "@/lib/biometricAuth";
 
 const db = supabase as any;
 const APP_LOCK_KEY = "iyanjupay-app-lock-enabled";
@@ -43,6 +44,25 @@ export default function SecuritySettingsPage({ onBack }: { onBack: () => void })
   const [working, setWorking] = useState(false);
 
   const loadBiometricStatus = useCallback(async () => {
+    if (Capacitor.isNativePlatform()) {
+      try {
+        const result = await checkBiometricAvailability();
+        setHasBiometricCredential(result.available);
+        if (!result.available && localStorage.getItem(BIOMETRIC_KEY) === "true") {
+          localStorage.setItem(BIOMETRIC_KEY, "false");
+          localStorage.setItem(APP_LOCK_KEY, "false");
+          setBiometricEnabled(false);
+          setAppLock(false);
+        }
+      } catch (error) {
+        console.warn("Unable to check native biometric status:", error);
+        setHasBiometricCredential(false);
+      } finally {
+        setLoadingBiometric(false);
+      }
+      return;
+    }
+
     if (!webAuthnSupported()) {
       setHasBiometricCredential(false);
       setLoadingBiometric(false);
@@ -55,8 +75,6 @@ export default function SecuritySettingsPage({ onBack }: { onBack: () => void })
       const credentials = Array.isArray(data) ? data : [];
       const available = credentials.length > 0;
       setHasBiometricCredential(available);
-
-      // A credential is required for the biometric toggle to remain enabled.
       if (!available && localStorage.getItem(BIOMETRIC_KEY) === "true") {
         localStorage.setItem(BIOMETRIC_KEY, "false");
         localStorage.setItem(APP_LOCK_KEY, "false");
@@ -64,7 +82,7 @@ export default function SecuritySettingsPage({ onBack }: { onBack: () => void })
         setAppLock(false);
       }
     } catch (error) {
-      console.warn("Unable to check biometric credentials:", error);
+      console.warn("Unable to check browser biometric credentials:", error);
     } finally {
       setLoadingBiometric(false);
     }
@@ -102,24 +120,19 @@ export default function SecuritySettingsPage({ onBack }: { onBack: () => void })
       return;
     }
 
-    if (!webAuthnSupported()) {
-      toast({ title: "Biometric authentication unavailable", description: "Use a supported HTTPS browser or device.", variant: "destructive" });
-      return;
-    }
-
     setWorking(true);
     try {
-      const platformAvailable = await platformAuthenticatorAvailable();
-      if (!platformAvailable) {
-        throw new Error("This device does not provide a supported biometric or device-verification authenticator.");
-      }
-
-      if (!hasBiometricCredential) {
-        // Do not start a passkey-registration ceremony from this toggle.
-        // Supabase's browser biometric implementation is WebAuthn/passkey-based;
-        // without an already enrolled credential there is no biometric-only
-        // browser API that can be enabled by a toggle alone.
-        throw new Error("No device biometric credential is enrolled for this account yet. IyanjuPay will not start passkey creation from this toggle.");
+      if (Capacitor.isNativePlatform()) {
+        const availability = await checkBiometricAvailability();
+        if (!availability.available) throw new Error(availability.label);
+      } else {
+        if (!webAuthnSupported()) {
+          throw new Error("Use a supported HTTPS browser or the IyanjuPay mobile app.");
+        }
+        const platformAvailable = await platformAuthenticatorAvailable();
+        if (!platformAvailable || !hasBiometricCredential) {
+          throw new Error("No enrolled browser biometric credential is available for this account.");
+        }
       }
 
       setBiometricEnabled(true);
@@ -190,9 +203,9 @@ export default function SecuritySettingsPage({ onBack }: { onBack: () => void })
         <div className="flex items-center gap-3"><Button variant="ghost" onClick={onBack}><ArrowLeft className="mr-2 h-4 w-4" />Back</Button><h1 className="text-2xl font-bold">Security & Notifications</h1></div>
 
         <Card><CardHeader><CardTitle className="flex items-center gap-2"><Fingerprint className="h-5 w-5" />Biometric Authentication</CardTitle><CardDescription>Use Face ID, fingerprint, Windows Hello, or your device's supported secure verification to protect IyanjuPay.</CardDescription></CardHeader><CardContent className="space-y-4">
-          {!webAuthnSupported() && <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800">Biometric authentication requires a supported browser/device and HTTPS in production.</p>}
-          <div className="flex items-center justify-between gap-4"><div><Label htmlFor="biometric-auth">Biometric Authentication</Label><p className="text-sm text-slate-500">Enable device biometric or secure device verification for IyanjuPay.</p></div><Switch id="biometric-auth" checked={biometricEnabled} onCheckedChange={toggleBiometric} disabled={working || loadingBiometric || !webAuthnSupported()} /></div>
-          {loadingBiometric ? <div className="flex items-center gap-2 text-sm text-slate-500"><Loader2 className="h-4 w-4 animate-spin" />Checking biometric status...</div> : biometricEnabled && hasBiometricCredential ? <p className="text-sm font-medium text-emerald-600">✓ Biometric authentication enabled</p> : hasBiometricCredential ? <p className="text-sm text-slate-500">Biometric is available but currently disabled.</p> : <p className="text-sm text-slate-500">No enrolled device biometric credential is available. The toggle will not start passkey creation.</p>}
+          {!webAuthnSupported() && <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800">Biometric authentication uses the native device biometric prompt in the mobile app and WebAuthn in supported HTTPS browsers.</p>}
+          <div className="flex items-center justify-between gap-4"><div><Label htmlFor="biometric-auth">Biometric Authentication</Label><p className="text-sm text-slate-500">Enable device biometric or secure device verification for IyanjuPay.</p></div><Switch id="biometric-auth" checked={biometricEnabled} onCheckedChange={toggleBiometric} disabled={working || loadingBiometric || (!Capacitor.isNativePlatform() && !webAuthnSupported())} /></div>
+          {loadingBiometric ? <div className="flex items-center gap-2 text-sm text-slate-500"><Loader2 className="h-4 w-4 animate-spin" />Checking biometric status...</div> : biometricEnabled && hasBiometricCredential ? <p className="text-sm font-medium text-emerald-600">✓ Biometric authentication enabled</p> : hasBiometricCredential ? <p className="text-sm text-slate-500">Biometric is available but currently disabled.</p> : <p className="text-sm text-slate-500">No supported biometric is currently enrolled on this device/account.</p>}
         </CardContent></Card>
 
         <Card><CardHeader><CardTitle className="flex items-center gap-2"><LockKeyhole className="h-5 w-5" />App Lock</CardTitle><CardDescription>Lock the app after inactivity or backgrounding. Unlock with your enabled biometric authentication.</CardDescription></CardHeader><CardContent className="space-y-4">

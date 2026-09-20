@@ -1,4 +1,3 @@
-import { getSafeErrorMessage } from "@/lib/errorHandling";
 import React, {
   useCallback,
   useEffect,
@@ -991,7 +990,7 @@ function NotificationsPage() {
               "Unable to load notifications",
 
             description:
-              getSafeErrorMessage(error) ||
+              error?.message ||
               "Something went wrong while loading notifications.",
 
             variant:
@@ -1135,7 +1134,7 @@ function NotificationsPage() {
               "Unable to load notification",
 
             description:
-              getSafeErrorMessage(error) ||
+              error?.message ||
               "The notification could not be loaded.",
 
             variant:
@@ -1222,7 +1221,7 @@ function NotificationsPage() {
               "Retry failed",
 
             description:
-              getSafeErrorMessage(error) ||
+              error?.message ||
               "The notification could not be queued for retry.",
 
             variant:
@@ -1465,7 +1464,7 @@ function NotificationsPage() {
               "Broadcast failed",
 
             description:
-              getSafeErrorMessage(error) ||
+              error?.message ||
               "The broadcast could not be created.",
 
             variant:
@@ -3078,9 +3077,9 @@ function NotificationsPage() {
           }}
         >
 
-          <DialogContent className="max-w-2xl">
+          <DialogContent className="flex h-[100dvh] w-screen max-w-none flex-col overflow-hidden rounded-none p-0 sm:h-[96dvh] sm:w-[96vw] sm:max-w-5xl sm:rounded-2xl">
 
-            <DialogHeader>
+            <DialogHeader className="shrink-0 border-b px-5 py-4 sm:px-7">
 
               <DialogTitle className="flex items-center gap-2">
 
@@ -3098,7 +3097,9 @@ function NotificationsPage() {
             </DialogHeader>
 
 
-            <div className="space-y-5">
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-5 sm:px-7">
+
+              <div className="space-y-5">
 
               <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
 
@@ -3271,10 +3272,12 @@ function NotificationsPage() {
 
               </div>
 
+              </div>
+
             </div>
 
 
-            <DialogFooter>
+            <DialogFooter className="shrink-0 border-t bg-background px-5 py-4 sm:px-7">
 
               <Button
                 variant="outline"

@@ -2034,7 +2034,7 @@ const Dashboard = () => {
                 className="flex items-center gap-3"
                 aria-label="Go to IyanjuPay home"
               >
-                <div className="iyanjupay-header-logo flex h-10 w-10 items-center justify-center overflow-hidden rounded-2xl shadow-md">
+                <div className="iyanjupay-header-logo flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-2xl">
                   <img
                     src="/icon-180.png"
                     alt="IyanjuPay"
@@ -2064,7 +2064,7 @@ const Dashboard = () => {
                       true
                     )
                   }
-                  className="h-10 w-10 rounded-full p-0 text-white hover:bg-white/15"
+                  className="iyanjupay-header-action h-10 w-10 rounded-full p-0"
                   aria-label="Show QR code"
                 >
                   <QrCode className="h-5 w-5" />
@@ -2085,7 +2085,7 @@ const Dashboard = () => {
                           !open
                       )
                     }
-                    className="h-10 w-10 rounded-full p-0 text-white hover:bg-white/15"
+                    className="iyanjupay-header-action h-10 w-10 rounded-full p-0"
                     aria-label="Change dashboard appearance"
                     aria-expanded={
                       appearanceOpen
@@ -2099,10 +2099,10 @@ const Dashboard = () => {
                     <div
                       role="menu"
                       aria-label="Dashboard appearance"
-                      className="absolute right-0 top-12 z-[60] w-40 overflow-hidden rounded-2xl border border-slate-200 bg-white p-1.5 text-slate-900 shadow-2xl"
+                      className="iyanjupay-appearance-menu absolute right-0 top-12 z-[60] w-40 overflow-hidden rounded-2xl p-1.5 shadow-2xl"
                     >
 
-                      <div className="px-2.5 pb-1.5 pt-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                      <div className="iyanjupay-appearance-label px-2.5 pb-1.5 pt-1 text-[10px] font-bold uppercase tracking-wider">
                         Appearance
                       </div>
 
@@ -2126,15 +2126,12 @@ const Dashboard = () => {
                                   false
                                 );
                               }}
-                              className={`flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left text-xs font-semibold transition ${
-                                dashboardTheme ===
-                                theme
-                                  ? "bg-slate-100 text-slate-900"
-                                  : "text-slate-600 hover:bg-slate-50"
+                              className={`iyanjupay-appearance-option flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left text-xs font-semibold transition ${
+                                dashboardTheme === theme ? "is-selected" : ""
                               }`}
                             >
 
-                              <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-slate-100">
+                              <span className="iyanjupay-appearance-icon flex h-7 w-7 items-center justify-center rounded-lg">
                                 <ThemeIcon className="h-3.5 w-3.5" />
                               </span>
 
@@ -2164,7 +2161,7 @@ const Dashboard = () => {
                       "history"
                     )
                   }
-                  className="hidden h-10 w-10 rounded-full p-0 text-white hover:bg-white/15 sm:flex"
+                  className="iyanjupay-header-action hidden h-10 w-10 rounded-full p-0 sm:flex"
                   aria-label="Transaction history"
                 >
                   <History className="h-5 w-5" />
@@ -2178,7 +2175,7 @@ const Dashboard = () => {
                       "me"
                     )
                   }
-                  className="h-10 w-10 rounded-full p-0 text-white hover:bg-white/15"
+                  className="iyanjupay-header-action h-10 w-10 rounded-full p-0"
                   aria-label="Open profile"
                 >
                   <User className="h-5 w-5" />
@@ -2190,7 +2187,7 @@ const Dashboard = () => {
                   onClick={
                     signOut
                   }
-                  className="hidden h-10 w-10 rounded-full p-0 text-white hover:bg-white/15 sm:flex"
+                  className="iyanjupay-header-action hidden h-10 w-10 rounded-full p-0 sm:flex"
                   aria-label="Sign out"
                 >
                   <LogOut className="h-5 w-5" />

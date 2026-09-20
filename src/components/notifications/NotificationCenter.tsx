@@ -57,7 +57,7 @@ export default function NotificationCenter({ userId }: { userId: string }) {
       variant="ghost"
       size="sm"
       onClick={() => navigate("/notifications")}
-      className="relative h-10 w-10 rounded-full p-0 text-white hover:bg-white/15"
+      className="iyanjupay-header-action relative h-10 w-10 rounded-full p-0"
       aria-label="Open notifications"
     >
       <Bell className="h-5 w-5" />

@@ -79,20 +79,15 @@ const App = () => {
   const [showSplash, setShowSplash] = useState(true);
 
   useEffect(() => {
-    /*
-     * Give the application a short premium startup presentation.
-     *
-     * There is intentionally:
-     * - no spinner
-     * - no progress bar
-     * - no countdown
-     * - no "Loading..." text
-     *
-     * The splash simply presents the brand while React initializes.
-     */
+    // The HTML boot splash is only a zero-JS first-paint bridge.
+    // Once React has mounted, AppSplash owns the visible splash so
+    // the user never sees a separate logo/blank screen first.
+    const bootSplash = document.getElementById("iyanjupay-boot-splash");
+    bootSplash?.remove();
+
     const timer = window.setTimeout(() => {
       setShowSplash(false);
-    }, 1600);
+    }, 1800);
 
     return () => {
       window.clearTimeout(timer);

@@ -150,23 +150,6 @@ export function ThemeProvider({
     applyTheme(theme);
   }, [theme]);
 
-  useEffect(() => {
-    return () => {
-      // Remove all user-theme state when leaving the user dashboard.
-      // Admin routes intentionally do not use ThemeProvider/global theme state.
-      if (typeof document === "undefined") return;
-
-      const html = document.documentElement;
-      html.removeAttribute("data-iyanjupay-theme");
-      html.classList.remove(
-        "iyanjupay-theme-light",
-        "iyanjupay-theme-blue",
-        "iyanjupay-theme-dark",
-      );
-      document.body.removeAttribute("data-iyanjupay-theme");
-    };
-  }, []);
-
   /*
    * Keep multiple browser tabs/windows synchronized.
    */

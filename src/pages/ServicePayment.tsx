@@ -790,12 +790,8 @@ function canonicalInternetProvider(biller: Biller): string {
     biller.raw?.providerName,
   ].map(clean).join(" ").toLowerCase();
 
+  // Internet Service is intentionally limited to Smile.
   if (raw.includes("smile")) return "Smile";
-  if (raw.includes("spectranet")) return "Spectranet";
-  if (raw.includes("swift")) return "Swift";
-  if (raw.includes("ntel")) return "ntel";
-  if (raw.includes("ipnx")) return "ipNX";
-  if (raw.includes("glo") && raw.includes("broadband")) return "Glo Broadband";
 
   return "";
 }

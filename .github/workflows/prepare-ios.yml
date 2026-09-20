@@ -42,7 +42,7 @@ jobs:
         run: bunx cap add ios
 
       - name: Generate native IyanjuPay icon
-        run: bunx @capacitor/assets@3.0.5 generate --ios --assetPath resources --iconBackgroundColor '#ffffff'
+        run: bunx @capacitor/assets@3.0.5 generate --ios --assetPath resources --iconBackgroundColor '#ffffff' --iconBackgroundColorDark '#061329' --splashBackgroundColor '#f7f8fc' --splashBackgroundColorDark '#061329'
 
       - name: Sync Capacitor
         run: bunx cap sync ios

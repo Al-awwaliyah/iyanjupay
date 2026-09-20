@@ -1,145 +1,137 @@
-import React from "react";
+import React, { useMemo } from "react";
+
+type SplashTheme = "light" | "dark";
+
+const THEME_STORAGE_KEY = "iyanjupay-dashboard-theme";
+
+const getSplashTheme = (): SplashTheme => {
+  if (typeof window === "undefined") {
+    return "light";
+  }
+
+  try {
+    const storedTheme = window.localStorage.getItem(THEME_STORAGE_KEY);
+
+    /*
+     * IyanjuPay's saved dashboard theme can be:
+     * light, blue, or dark.
+     *
+     * Blue is treated as light for the splash because the
+     * startup experience should remain clean and bright.
+     */
+    if (storedTheme === "dark") {
+      return "dark";
+    }
+
+    if (storedTheme === "light" || storedTheme === "blue") {
+      return "light";
+    }
+  } catch {
+    /*
+     * Ignore localStorage errors and fall back to the
+     * device/browser preference.
+     */
+  }
+
+  /*
+   * If the user has never selected an IyanjuPay theme,
+   * respect the operating system/browser preference.
+   */
+  try {
+    if (
+      typeof window.matchMedia === "function" &&
+      window.matchMedia("(prefers-color-scheme: dark)").matches
+    ) {
+      return "dark";
+    }
+  } catch {
+    // Fall through to light mode.
+  }
+
+  return "light";
+};
 
 const AppSplash = () => {
+  const theme = useMemo(getSplashTheme, []);
+
+  const isDark = theme === "dark";
+
   return (
     <div
-      className="
-        fixed inset-0 z-[99999]
-        flex min-h-[100dvh]
-        items-center justify-center
-        overflow-hidden
-        bg-[#050D1C]
-      "
+      className={[
+        "fixed inset-0 z-[99999]",
+        "flex min-h-[100dvh]",
+        "items-center justify-center",
+        "overflow-hidden",
+        "transition-colors duration-500",
+        isDark ? "bg-[#061329]" : "bg-white",
+      ].join(" ")}
     >
       {/* ============================================================
-          PREMIUM CINEMATIC BACKGROUND
+          BACKGROUND LIGHT
       ============================================================ */}
 
-      {/* Very subtle ambient emerald light */}
       <div
-        className="
-          pointer-events-none
-          absolute left-1/2 top-1/2
-          h-[520px] w-[520px]
-          -translate-x-1/2
-          -translate-y-1/2
-          rounded-full
-          bg-emerald-400/[0.045]
-          blur-[130px]
-          animate-[ambientPulse_7s_ease-in-out_infinite]
-        "
+        className={[
+          "pointer-events-none absolute",
+          "left-1/2 top-1/2",
+          "h-[460px] w-[460px]",
+          "-translate-x-1/2 -translate-y-1/2",
+          "rounded-full blur-[110px]",
+          "animate-[splashAmbient_6s_ease-in-out_infinite]",
+          isDark
+            ? "bg-emerald-400/[0.07]"
+            : "bg-emerald-400/[0.055]",
+        ].join(" ")}
+      />
+
+      {/* Small premium light source */}
+      <div
+        className={[
+          "pointer-events-none absolute",
+          "left-1/2 top-[42%]",
+          "h-[180px] w-[180px]",
+          "-translate-x-1/2 -translate-y-1/2",
+          "rounded-full blur-[75px]",
+          "animate-[splashLight_5s_ease-in-out_infinite]",
+          isDark
+            ? "bg-emerald-300/[0.075]"
+            : "bg-emerald-400/[0.07]",
+        ].join(" ")}
       />
 
       {/* ============================================================
-          FLOWING LIGHT RIBBON — PRIMARY MOTION
+          EXTREMELY SUBTLE FLOWING LIGHT
       ============================================================ */}
 
       <div
-        className="
-          pointer-events-none
-          absolute left-1/2 top-1/2
-          h-[115%] w-[170%]
-          -translate-x-1/2
-          -translate-y-1/2
-          opacity-[0.30]
-          blur-[38px]
-          animate-[ribbonDrift_9s_ease-in-out_infinite]
-        "
+        className={[
+          "pointer-events-none absolute",
+          "left-1/2 top-1/2",
+          "h-[70%] w-[120%]",
+          "-translate-x-1/2 -translate-y-1/2",
+          "opacity-50 blur-[40px]",
+          "animate-[splashFlow_10s_ease-in-out_infinite]",
+        ].join(" ")}
       >
         <div
-          className="
-            absolute left-[-20%] top-[43%]
-            h-[90px] w-[140%]
-            -rotate-[12deg]
-            rounded-full
-            bg-[linear-gradient(90deg,transparent_0%,rgba(16,185,129,0.02)_15%,rgba(16,185,129,0.20)_42%,rgba(52,211,153,0.30)_50%,rgba(16,185,129,0.12)_60%,transparent_86%)]
-          "
-        />
-      </div>
-
-      {/* Secondary flowing ribbon */}
-      <div
-        className="
-          pointer-events-none
-          absolute left-1/2 top-1/2
-          h-[110%] w-[150%]
-          -translate-x-1/2
-          -translate-y-1/2
-          opacity-[0.18]
-          blur-[26px]
-          animate-[ribbonDriftReverse_12s_ease-in-out_infinite]
-        "
-      >
-        <div
-          className="
-            absolute left-[-15%] top-[52%]
-            h-[55px] w-[130%]
-            rotate-[9deg]
-            rounded-full
-            bg-[linear-gradient(90deg,transparent_5%,rgba(59,130,246,0.02)_20%,rgba(16,185,129,0.20)_48%,rgba(96,165,250,0.13)_58%,transparent_90%)]
-          "
+          className={[
+            "absolute left-[-20%] top-[48%]",
+            "h-[35px] w-[140%]",
+            "rotate-[-7deg]",
+            "rounded-full",
+            isDark
+              ? "bg-gradient-to-r from-transparent via-emerald-400/[0.08] to-transparent"
+              : "bg-gradient-to-r from-transparent via-emerald-500/[0.06] to-transparent",
+          ].join(" ")}
         />
       </div>
 
       {/* ============================================================
-          FINE LIGHT ORBIT
+          CENTER BRAND
       ============================================================ */}
 
-      <div
-        className="
-          pointer-events-none
-          absolute left-1/2 top-1/2
-          h-[310px] w-[310px]
-          -translate-x-1/2
-          -translate-y-1/2
-          rounded-full
-          border
-          border-emerald-300/[0.045]
-          animate-[orbitRotate_18s_linear_infinite]
-        "
-      />
-
-      <div
-        className="
-          pointer-events-none
-          absolute left-1/2 top-1/2
-          h-[430px] w-[430px]
-          -translate-x-1/2
-          -translate-y-1/2
-          rounded-full
-          border
-          border-white/[0.018]
-          animate-[orbitRotateReverse_24s_linear_infinite]
-        "
-      />
-
-      {/* ============================================================
-          VIGNETTE
-      ============================================================ */}
-
-      <div
-        className="
-          pointer-events-none
-          absolute inset-0
-          bg-[radial-gradient(circle_at_center,transparent_15%,rgba(3,8,20,0.18)_55%,rgba(1,4,12,0.78)_100%)]
-        "
-      />
-
-      {/* ============================================================
-          BRAND CONTENT
-      ============================================================ */}
-
-      <main
-        className="
-          relative z-20
-          flex w-full
-          flex-col
-          items-center
-          justify-center
-          px-8
-          text-center
-        "
-      >
+      <main className="relative z-10 flex w-full flex-col items-center justify-center px-8 text-center">
         {/* ==========================================================
             LOGO
         ========================================================== */}
@@ -148,20 +140,20 @@ const AppSplash = () => {
           className="
             relative
             flex items-center justify-center
-            animate-[logoReveal_950ms_cubic-bezier(0.16,1,0.3,1)_both]
+            animate-[splashLogo_900ms_cubic-bezier(0.16,1,0.3,1)_both]
           "
         >
-          {/* Controlled logo aura */}
+          {/* Soft logo aura */}
           <div
-            className="
-              pointer-events-none
-              absolute
-              h-[145px] w-[145px]
-              rounded-full
-              bg-emerald-400/[0.055]
-              blur-[38px]
-              animate-[logoAura_4s_ease-in-out_infinite]
-            "
+            className={[
+              "pointer-events-none absolute",
+              "h-[145px] w-[145px]",
+              "rounded-full blur-[38px]",
+              "animate-[splashAura_4s_ease-in-out_infinite]",
+              isDark
+                ? "bg-emerald-400/[0.055]"
+                : "bg-emerald-400/[0.045]",
+            ].join(" ")}
           />
 
           <img
@@ -169,18 +161,15 @@ const AppSplash = () => {
             alt="IyanjuPay"
             className="
               relative
-              h-[112px] w-[112px]
+              h-[110px] w-[110px]
               object-contain
               select-none
-              drop-shadow-[0_22px_45px_rgba(0,0,0,0.42)]
+              drop-shadow-[0_18px_35px_rgba(0,0,0,0.16)]
             "
             draggable={false}
           />
 
-          {/* ========================================================
-              SINGLE LIGHT SWEEP
-          ======================================================== */}
-
+          {/* One restrained light sweep */}
           <span
             className="
               pointer-events-none
@@ -188,15 +177,15 @@ const AppSplash = () => {
               left-[-35%]
               top-[-25%]
               h-[150%]
-              w-[16px]
-              rotate-[25deg]
+              w-[12px]
+              rotate-[24deg]
               bg-gradient-to-b
               from-transparent
-              via-white/45
+              via-white/50
               to-transparent
-              blur-[5px]
+              blur-[4px]
               opacity-0
-              animate-[logoSweep_1200ms_700ms_ease-out_both]
+              animate-[splashSweep_1100ms_650ms_ease-out_both]
             "
           />
         </div>
@@ -206,16 +195,16 @@ const AppSplash = () => {
         ========================================================== */}
 
         <h1
-          className="
-            mt-8
-            text-[2.75rem]
-            font-extrabold
-            leading-none
-            tracking-[-0.055em]
-            text-white
-            animate-[nameReveal_900ms_250ms_cubic-bezier(0.16,1,0.3,1)_both]
-            sm:text-5xl
-          "
+          className={[
+            "mt-8",
+            "text-[2.7rem]",
+            "font-extrabold",
+            "leading-none",
+            "tracking-[-0.055em]",
+            "animate-[splashName_850ms_220ms_cubic-bezier(0.16,1,0.3,1)_both]",
+            "sm:text-5xl",
+            isDark ? "text-white" : "text-[#082A63]",
+          ].join(" ")}
         >
           IyanjuPay
         </h1>
@@ -225,23 +214,23 @@ const AppSplash = () => {
         ========================================================== */}
 
         <p
-          className="
-            mt-4
-            text-[0.72rem]
-            font-medium
-            uppercase
-            tracking-[0.24em]
-            text-white/55
-            animate-[taglineReveal_900ms_430ms_cubic-bezier(0.16,1,0.3,1)_both]
-            sm:text-xs
-          "
+          className={[
+            "mt-4",
+            "text-[0.72rem]",
+            "font-medium",
+            "uppercase",
+            "tracking-[0.23em]",
+            "animate-[splashTagline_850ms_380ms_cubic-bezier(0.16,1,0.3,1)_both]",
+            "sm:text-xs",
+            isDark ? "text-white/55" : "text-slate-500",
+          ].join(" ")}
         >
           Simple. Secure. Seamless.
         </p>
       </main>
 
       {/* ============================================================
-          MINIMAL BRAND DETAIL
+          MINIMAL BRAND ACCENT
       ============================================================ */}
 
       <div
@@ -249,28 +238,28 @@ const AppSplash = () => {
           pointer-events-none
           absolute bottom-10 left-1/2
           -translate-x-1/2
-          animate-[accentReveal_900ms_650ms_ease-out_both]
+          animate-[splashAccent_850ms_550ms_ease-out_both]
         "
       >
         <div
           className="
             h-[2px] w-8
             rounded-full
-            bg-emerald-400/65
-            shadow-[0_0_14px_rgba(52,211,153,0.25)]
+            bg-emerald-500/70
+            shadow-[0_0_14px_rgba(16,185,129,0.22)]
           "
         />
       </div>
 
       {/* ============================================================
-          MOTION SYSTEM
+          ANIMATION SYSTEM
       ============================================================ */}
 
       <style>{`
-        @keyframes logoReveal {
+        @keyframes splashLogo {
           0% {
             opacity: 0;
-            transform: translateY(16px) scale(0.82);
+            transform: translateY(14px) scale(0.84);
           }
 
           65% {
@@ -284,10 +273,10 @@ const AppSplash = () => {
           }
         }
 
-        @keyframes nameReveal {
+        @keyframes splashName {
           0% {
             opacity: 0;
-            transform: translateY(13px);
+            transform: translateY(12px);
           }
 
           100% {
@@ -296,7 +285,7 @@ const AppSplash = () => {
           }
         }
 
-        @keyframes taglineReveal {
+        @keyframes splashTagline {
           0% {
             opacity: 0;
             transform: translateY(8px);
@@ -308,7 +297,7 @@ const AppSplash = () => {
           }
         }
 
-        @keyframes accentReveal {
+        @keyframes splashAccent {
           0% {
             opacity: 0;
             transform: translateX(-50%) scaleX(0);
@@ -320,22 +309,22 @@ const AppSplash = () => {
           }
         }
 
-        @keyframes logoSweep {
+        @keyframes splashSweep {
           0% {
             left: -35%;
             opacity: 0;
           }
 
-          15% {
+          18% {
             opacity: 0;
           }
 
-          35% {
-            opacity: 0.8;
+          38% {
+            opacity: 0.7;
           }
 
           65% {
-            opacity: 0.45;
+            opacity: 0.3;
           }
 
           100% {
@@ -344,20 +333,7 @@ const AppSplash = () => {
           }
         }
 
-        @keyframes logoAura {
-          0%,
-          100% {
-            opacity: 0.45;
-            transform: scale(0.92);
-          }
-
-          50% {
-            opacity: 0.75;
-            transform: scale(1.08);
-          }
-        }
-
-        @keyframes ambientPulse {
+        @keyframes splashAmbient {
           0%,
           100% {
             opacity: 0.55;
@@ -370,7 +346,20 @@ const AppSplash = () => {
           }
         }
 
-        @keyframes ribbonDrift {
+        @keyframes splashLight {
+          0%,
+          100% {
+            opacity: 0.55;
+            transform: translate(-50%, -50%) scale(0.9);
+          }
+
+          50% {
+            opacity: 0.9;
+            transform: translate(-50%, -50%) scale(1.08);
+          }
+        }
+
+        @keyframes splashFlow {
           0%,
           100% {
             transform:
@@ -383,52 +372,20 @@ const AppSplash = () => {
             transform:
               translate(-48%, -51%)
               rotate(2deg)
-              scale(1.06);
+              scale(1.05);
           }
         }
 
-        @keyframes ribbonDriftReverse {
+        @keyframes splashAura {
           0%,
           100% {
-            transform:
-              translate(-50%, -50%)
-              rotate(1deg)
-              scale(1.04);
+            opacity: 0.45;
+            transform: scale(0.94);
           }
 
           50% {
-            transform:
-              translate(-52%, -49%)
-              rotate(-2deg)
-              scale(0.96);
-          }
-        }
-
-        @keyframes orbitRotate {
-          from {
-            transform:
-              translate(-50%, -50%)
-              rotate(0deg);
-          }
-
-          to {
-            transform:
-              translate(-50%, -50%)
-              rotate(360deg);
-          }
-        }
-
-        @keyframes orbitRotateReverse {
-          from {
-            transform:
-              translate(-50%, -50%)
-              rotate(360deg);
-          }
-
-          to {
-            transform:
-              translate(-50%, -50%)
-              rotate(0deg);
+            opacity: 0.75;
+            transform: scale(1.07);
           }
         }
 

@@ -1944,6 +1944,7 @@ function collectAirtimePinEntries(
   inheritedNetwork = "",
   inheritedDenomination = 0,
   inheritedDiscount = 0,
+  inheritedProviderPrice = 0,
   depth = 0,
   seen = new WeakSet<object>(),
 ): Array<{
@@ -1953,19 +1954,36 @@ function collectAirtimePinEntries(
   providerPrice: number;
   raw: JsonObject;
 }> {
-  if (depth > 20 || value === null || value === undefined) {
+  if (
+    depth > 30 ||
+    value === null ||
+    value === undefined
+  ) {
     return [];
   }
 
-  if (Array.isArray(value)) {
-    const output: Array<{
-      network: string;
-      denomination: number;
-      discount: number;
-      providerPrice: number;
-      raw: JsonObject;
-    }> = [];
+  const output: Array<{
+    network: string;
+    denomination: number;
+    discount: number;
+    providerPrice: number;
+    raw: JsonObject;
+  }> = [];
 
+  /*
+   * ClubKonnect has returned E-PIN discount data in more than one
+   * JSON shape. Some responses are arrays of records while others
+   * are nested maps such as:
+   *
+   *   { "01": { "100": 5, "200": 5 } }
+   *
+   * The previous parser only understood object leaves. In the map
+   * form the actual discount is a primitive leaf, so it silently
+   * produced no catalogue entries. Keep the parent network and
+   * denomination while walking every branch and interpret a numeric
+   * leaf under a denomination as the discount percentage.
+   */
+  if (Array.isArray(value)) {
     for (const child of value) {
       output.push(
         ...collectAirtimePinEntries(
@@ -1973,6 +1991,7 @@ function collectAirtimePinEntries(
           inheritedNetwork,
           inheritedDenomination,
           inheritedDiscount,
+          inheritedProviderPrice,
           depth + 1,
           seen,
         ),
@@ -1983,38 +2002,61 @@ function collectAirtimePinEntries(
   }
 
   if (typeof value !== "object") {
-    return [];
+    const numeric = n(value);
+
+    if (
+      inheritedNetwork &&
+      NETWORKS[inheritedNetwork] &&
+      inheritedDenomination > 0 &&
+      numeric >= 0 &&
+      numeric <= 100
+    ) {
+      output.push({
+        network: inheritedNetwork,
+        denomination: inheritedDenomination,
+        discount: numeric,
+        providerPrice: inheritedProviderPrice,
+        raw: {
+          network: inheritedNetwork,
+          denomination: inheritedDenomination,
+          discount: numeric,
+        },
+      });
+    }
+
+    return output;
   }
 
   const object = obj(value);
 
   if (seen.has(object)) {
-    return [];
+    return output;
   }
 
   seen.add(object);
 
-  const network =
-    networkCode(
-      first(
-        pick(
-          object,
-          "MOBILENETWORK",
-          "MOBILE_NETWORK",
-          "MobileNetwork",
-          "network_code",
-          "networkCode",
-          "NetworkCode",
-          "Network",
-          "network",
-          "NetworkName",
-          "network_name",
-        ),
-        inheritedNetwork,
+  const explicitNetwork = networkCode(
+    first(
+      pick(
+        object,
+        "MOBILENETWORK",
+        "MOBILE_NETWORK",
+        "MobileNetwork",
+        "network_code",
+        "networkCode",
+        "NetworkCode",
+        "Network",
+        "network",
+        "NetworkName",
+        "network_name",
+        "MobileNetworkName",
+        "MobileNetworkCode",
       ),
-    );
+      inheritedNetwork,
+    ),
+  );
 
-  const denomination = n(
+  const explicitDenomination = n(
     first(
       pick(
         object,
@@ -2026,65 +2068,77 @@ function collectAirtimePinEntries(
         "DENOMINATION",
         "Amount",
         "amount",
+        "FaceValue",
+        "faceValue",
+        "PinValue",
+        "pinValue",
       ),
       inheritedDenomination,
     ),
   );
 
-  const discount = n(
+  const explicitDiscount = n(
     first(
       pick(
         object,
         "Discount",
         "discount",
+        "DISCOUNT",
         "discount_percent",
         "discountPercentage",
         "DiscountPercentage",
+        "DiscountRate",
+        "discountRate",
       ),
       inheritedDiscount,
     ),
   );
 
-  const explicitCost = n(
+  const explicitProviderPrice = n(
     first(
       pick(
         object,
         "provider_amount",
         "providerAmount",
-        "cost",
-        "Cost",
         "provider_price",
         "providerPrice",
+        "cost",
+        "Cost",
         "selling_price",
         "sellingPrice",
         "price",
         "Price",
         "amount_payable",
         "AmountPayable",
+        "amountPaid",
+        "AmountPaid",
       ),
+      inheritedProviderPrice,
     ),
   );
 
-  const output: Array<{
-    network: string;
-    denomination: number;
-    discount: number;
-    providerPrice: number;
-    raw: JsonObject;
-  }> = [];
-
   if (
-    network &&
-    NETWORKS[network] &&
-    denomination > 0
+    explicitNetwork &&
+    NETWORKS[explicitNetwork] &&
+    explicitDenomination > 0
   ) {
-    output.push({
-      network,
-      denomination,
-      discount,
-      providerPrice: explicitCost,
-      raw: object,
-    });
+    const providerPrice =
+      explicitProviderPrice > 0
+        ? explicitProviderPrice
+        : 0;
+
+    if (
+      providerPrice > 0 ||
+      explicitDiscount >= 0
+    ) {
+      output.push({
+        network: explicitNetwork,
+        denomination: explicitDenomination,
+        discount: explicitDiscount,
+        providerPrice,
+        raw: object,
+      });
+    }
   }
 
   for (const [key, child] of Object.entries(object)) {
@@ -2095,28 +2149,100 @@ function collectAirtimePinEntries(
       continue;
     }
 
+    const normalized = normalizedKey(key);
     const keyNetwork =
-      networkCode(key) || network;
+      networkCode(key) || explicitNetwork;
 
-    const numericKey =
-      n(key);
-
-    const childDenomination =
-      numericKey >= 50 && numericKey <= 100000
+    const numericKey = n(key);
+    const keyDenomination =
+      numericKey >= 50 &&
+      numericKey <= 100000
         ? numericKey
-        : denomination;
+        : explicitDenomination;
 
+    const childNetwork =
+      keyNetwork && NETWORKS[keyNetwork]
+        ? keyNetwork
+        : explicitNetwork;
+
+    /*
+     * A primitive value under a denomination is the compact form
+     * used by some E-PIN discount responses. Example:
+     *
+     *   { "03": { "100": 5 } }
+     *
+     * means 9mobile / ₦100 / 5% discount.
+     */
+    if (
+      typeof child !== "object" &&
+      child !== null &&
+      childNetwork &&
+      NETWORKS[childNetwork] &&
+      keyDenomination > 0
+    ) {
+      const numericValue = n(child);
+
+      if (
+        numericValue >= 0 &&
+        numericValue <= 100
+      ) {
+        output.push({
+          network: childNetwork,
+          denomination: keyDenomination,
+          discount: numericValue,
+          providerPrice: 0,
+          raw: {
+            network: childNetwork,
+            denomination: keyDenomination,
+            discount: numericValue,
+          },
+        });
+      }
+
+      continue;
+    }
+
+    /*
+     * Some providers use a key like "100" with an object value,
+     * while others put the network code in a parent key. Preserve
+     * both contexts for the recursive call.
+     */
     const childDiscount =
-      discount > 0
-        ? discount
+      explicitDiscount > 0
+        ? explicitDiscount
         : inheritedDiscount;
+
+    const childProviderPrice =
+      explicitProviderPrice > 0
+        ? explicitProviderPrice
+        : inheritedProviderPrice;
+
+    /* Avoid treating ordinary metadata keys as network codes. */
+    const nextNetwork =
+      childNetwork && NETWORKS[childNetwork]
+        ? childNetwork
+        : inheritedNetwork;
+
+    const nextDenomination =
+      keyDenomination > 0
+        ? keyDenomination
+        : inheritedDenomination;
+
+    /*
+     * For named fields, pass their values through normally. For a
+     * network-keyed object (01/02/03/04), the network is carried to
+     * its children. For a denomination-keyed object, the amount is
+     * carried to its children.
+     */
+    void normalized;
 
     output.push(
       ...collectAirtimePinEntries(
         child,
-        keyNetwork,
-        childDenomination,
+        nextNetwork,
+        nextDenomination,
         childDiscount,
+        childProviderPrice,
         depth + 1,
         seen,
       ),
@@ -2148,6 +2274,13 @@ async function airtimePinCatalog(
   const result: CatalogItem[] = [];
 
   for (const entry of entries) {
+    /*
+     * If ClubKonnect supplied an explicit provider price, trust it.
+     * Otherwise calculate the provider cost from the actual E-PIN
+     * face value and the discount returned by ClubKonnect.
+     *
+     * Never invent a denomination or availability here.
+     */
     const providerPrice =
       entry.providerPrice > 0
         ? entry.providerPrice

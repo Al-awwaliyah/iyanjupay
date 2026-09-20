@@ -12,13 +12,6 @@ const getSplashTheme = (): SplashTheme => {
   try {
     const storedTheme = window.localStorage.getItem(THEME_STORAGE_KEY);
 
-    /*
-     * IyanjuPay's saved dashboard theme can be:
-     * light, blue, or dark.
-     *
-     * Blue is treated as light for the splash because the
-     * startup experience should remain clean and bright.
-     */
     if (storedTheme === "dark") {
       return "dark";
     }
@@ -27,16 +20,9 @@ const getSplashTheme = (): SplashTheme => {
       return "light";
     }
   } catch {
-    /*
-     * Ignore localStorage errors and fall back to the
-     * device/browser preference.
-     */
+    // Ignore localStorage errors and continue with system preference.
   }
 
-  /*
-   * If the user has never selected an IyanjuPay theme,
-   * respect the operating system/browser preference.
-   */
   try {
     if (
       typeof window.matchMedia === "function" &&
@@ -45,7 +31,7 @@ const getSplashTheme = (): SplashTheme => {
       return "dark";
     }
   } catch {
-    // Fall through to light mode.
+    // Ignore matchMedia errors.
   }
 
   return "light";
@@ -53,7 +39,6 @@ const getSplashTheme = (): SplashTheme => {
 
 const AppSplash = () => {
   const theme = useMemo(getSplashTheme, []);
-
   const isDark = theme === "dark";
 
   return (
@@ -67,10 +52,7 @@ const AppSplash = () => {
         isDark ? "bg-[#061329]" : "bg-white",
       ].join(" ")}
     >
-      {/* ============================================================
-          BACKGROUND LIGHT
-      ============================================================ */}
-
+      {/* Primary ambient light */}
       <div
         className={[
           "pointer-events-none absolute",
@@ -79,13 +61,11 @@ const AppSplash = () => {
           "-translate-x-1/2 -translate-y-1/2",
           "rounded-full blur-[110px]",
           "animate-[splashAmbient_6s_ease-in-out_infinite]",
-          isDark
-            ? "bg-emerald-400/[0.07]"
-            : "bg-emerald-400/[0.055]",
+          isDark ? "bg-emerald-400/[0.07]" : "bg-emerald-400/[0.055]",
         ].join(" ")}
       />
 
-      {/* Small premium light source */}
+      {/* Secondary emerald light */}
       <div
         className={[
           "pointer-events-none absolute",
@@ -94,16 +74,11 @@ const AppSplash = () => {
           "-translate-x-1/2 -translate-y-1/2",
           "rounded-full blur-[75px]",
           "animate-[splashLight_5s_ease-in-out_infinite]",
-          isDark
-            ? "bg-emerald-300/[0.075]"
-            : "bg-emerald-400/[0.07]",
+          isDark ? "bg-emerald-300/[0.075]" : "bg-emerald-400/[0.07]",
         ].join(" ")}
       />
 
-      {/* ============================================================
-          EXTREMELY SUBTLE FLOWING LIGHT
-      ============================================================ */}
-
+      {/* Very subtle atmospheric light */}
       <div
         className={[
           "pointer-events-none absolute",
@@ -127,15 +102,9 @@ const AppSplash = () => {
         />
       </div>
 
-      {/* ============================================================
-          CENTER BRAND
-      ============================================================ */}
-
+      {/* Main brand */}
       <main className="relative z-10 flex w-full flex-col items-center justify-center px-8 text-center">
-        {/* ==========================================================
-            LOGO
-        ========================================================== */}
-
+        {/* Rounded logo only — no surrounding border/ring */}
         <div
           className="
             relative
@@ -143,7 +112,7 @@ const AppSplash = () => {
             animate-[splashLogo_900ms_cubic-bezier(0.16,1,0.3,1)_both]
           "
         >
-          {/* Soft logo aura */}
+          {/* Soft glow behind the logo */}
           <div
             className={[
               "pointer-events-none absolute",
@@ -156,12 +125,14 @@ const AppSplash = () => {
             ].join(" ")}
           />
 
+          {/* IyanjuPay rounded logo */}
           <img
             src="/icon-180.png"
             alt="IyanjuPay"
             className="
               relative
               h-[110px] w-[110px]
+              rounded-[28px]
               object-contain
               select-none
               drop-shadow-[0_18px_35px_rgba(0,0,0,0.16)]
@@ -169,7 +140,7 @@ const AppSplash = () => {
             draggable={false}
           />
 
-          {/* One restrained light sweep */}
+          {/* Very subtle premium light sweep */}
           <span
             className="
               pointer-events-none
@@ -190,10 +161,7 @@ const AppSplash = () => {
           />
         </div>
 
-        {/* ==========================================================
-            BRAND NAME
-        ========================================================== */}
-
+        {/* Brand name */}
         <h1
           className={[
             "mt-8",
@@ -209,10 +177,7 @@ const AppSplash = () => {
           IyanjuPay
         </h1>
 
-        {/* ==========================================================
-            TAGLINE
-        ========================================================== */}
-
+        {/* Tagline */}
         <p
           className={[
             "mt-4",
@@ -229,10 +194,7 @@ const AppSplash = () => {
         </p>
       </main>
 
-      {/* ============================================================
-          MINIMAL BRAND ACCENT
-      ============================================================ */}
-
+      {/* Small brand accent */}
       <div
         className="
           pointer-events-none
@@ -250,10 +212,6 @@ const AppSplash = () => {
           "
         />
       </div>
-
-      {/* ============================================================
-          ANIMATION SYSTEM
-      ============================================================ */}
 
       <style>{`
         @keyframes splashLogo {

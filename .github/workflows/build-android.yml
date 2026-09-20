@@ -64,7 +64,6 @@ steps:
     run: |
       python3 - <<'PY'
       from pathlib import Path
-      import re
 
       root_gradle = Path("build.gradle")
       app_gradle = Path("app/build.gradle")
@@ -72,8 +71,6 @@ steps:
       root_text = root_gradle.read_text()
       app_text = app_gradle.read_text()
 
-      # Add the Google Services Gradle plugin to the project-level
-      # buildscript dependencies if it is not already present.
       plugin_dependency = "classpath 'com.google.gms:google-services:4.5.0'"
 
       if "com.google.gms:google-services" not in root_text:
@@ -85,12 +82,13 @@ steps:
               )
           else:
               root_text += """
-      
+
       buildscript {
           repositories {
               google()
               mavenCentral()
           }
+
           dependencies {
               classpath 'com.google.gms:google-services:4.5.0'
           }
@@ -99,7 +97,6 @@ steps:
 
       root_gradle.write_text(root_text)
 
-      # Apply the Google Services plugin to the Android app module.
       if "com.google.gms.google-services" not in app_text:
           app_text += """
 
@@ -107,7 +104,6 @@ steps:
       apply plugin: 'com.google.gms.google-services'
       """
 
-      # Add Firebase Messaging explicitly for FCM.
       firebase_bom = "implementation platform('com.google.firebase:firebase-bom:34.19.0')"
       firebase_messaging = "implementation 'com.google.firebase:firebase-messaging'"
 
@@ -181,8 +177,6 @@ steps:
       gradle_file = Path("app/build.gradle")
       text = gradle_file.read_text()
 
-      # Add signing properties and signing configuration inside
-      # the existing android { } block.
       if "keystore.properties" not in text:
           signing_config = """
           def keystorePropertiesFile = rootProject.file("keystore.properties")
@@ -192,6 +186,35 @@ steps:
               keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
           }
 
+          android {
+              signingConfigs {
+                  release {
+                      storeFile keystoreProperties["storeFile"] ? file(keystoreProperties["storeFile"]) : null
+                      storePassword keystoreProperties["storePassword"]
+                      keyAlias keystoreProperties["keyAlias"]
+                      keyPassword keystoreProperties["keyPassword"]
+                  }
+              }
+          }
+          """
+
+          # Insert only the signing properties before the existing
+          # android block. This avoids creating a nested android block.
+          signing_config = """
+      def keystorePropertiesFile = rootProject.file("keystore.properties")
+      def keystoreProperties = new Properties()
+
+      if (keystorePropertiesFile.exists()) {
+          keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+      }
+
+      """
+
+          text = signing_config + text
+
+          text = text.replace(
+              "android {",
+              """android {
           signingConfigs {
               release {
                   storeFile keystoreProperties["storeFile"] ? file(keystoreProperties["storeFile"]) : null
@@ -200,17 +223,10 @@ steps:
                   keyPassword keystoreProperties["keyPassword"]
               }
           }
-
-          """
-
-          text = text.replace(
-              "android {",
-              "android {\n" + signing_config,
+      """,
               1
           )
 
-      # Attach the release signing configuration to the existing
-      # release build type.
       if "signingConfig signingConfigs.release" not in text:
           release_marker = "buildTypes {"
           release_index = text.find(release_marker)
@@ -223,22 +239,11 @@ steps:
 
               if release_open != -1:
                   insert_position = release_open + len("release {")
+
                   text = (
                       text[:insert_position]
                       + "\n            signingConfig signingConfigs.release"
                       + text[insert_position:]
-                  )
-              else:
-                  # Fallback if Capacitor's generated Gradle file
-                  # does not contain a release block.
-                  text = text.replace(
-                      "buildTypes {",
-                      """buildTypes {
-      release {
-          signingConfig signingConfigs.release
-      }
-      """,
-                      1
                   )
 
       gradle_file.write_text(text)

@@ -81,6 +81,7 @@ type BillService =
   | "cable"
   | "education"
   | "recharge-card"
+  | "airtime-card"
   | "internet"
   | "savings";
 
@@ -135,11 +136,11 @@ const SUPPORTED_BILL_SERVICES: BillService[] = [
   "electricity",
   "education",
   "internet",
+  "airtime-card",
 ];
 
 const COMING_SOON_SERVICES: BillService[] = [
   "savings",
-  "recharge-card",
 ];
 
 /*
@@ -886,13 +887,13 @@ const Dashboard = () => {
       available: true,
     },
     {
-      title: "Recharge Card",
+      title: "Airtime Recharge PIN",
       description:
-        "Coming soon",
+        "Generate MTN, Glo, 9mobile & Airtel recharge PINs",
       icon: Receipt,
       color: "bg-slate-500",
-      type: "recharge-card" as BillService,
-      available: false,
+      type: "airtime-card" as BillService,
+      available: true,
     },
     {
       title: "Savings",
@@ -979,7 +980,7 @@ const Dashboard = () => {
    * ============================================================
    *
    * All VTU/service purchases are routed through the secure
-   * Peyflex Edge Function. The provider remains server-side.
+   * ClubKonnect Edge Function. The provider remains server-side.
    *
    * The frontend does NOT debit the wallet and does NOT decide
    * whether a transaction is successful. The Edge Function owns
@@ -990,7 +991,7 @@ const Dashboard = () => {
   const handlePurchase = async (
     amount: number,
     details: Record<string, any>
-  ): Promise<void> => {
+  ): Promise<any> => {
     if (!user) {
       throw new Error(
         "Authentication required. Please log in again."
@@ -1050,7 +1051,7 @@ const Dashboard = () => {
         error,
       } =
         await supabase.functions.invoke(
-          "peyflex-services",
+          "clubkonnect-services",
           {
             body: {
               action: "purchase",
@@ -1193,6 +1194,8 @@ const Dashboard = () => {
             ? `${selectedService.title} payment is being processed.`
             : `${selectedService.title} payment was completed successfully.`),
       });
+
+      return data;
     } catch (error: any) {
       console.error(
         "Service payment failed:",
@@ -2031,10 +2034,13 @@ const Dashboard = () => {
                 className="flex items-center gap-3"
                 aria-label="Go to IyanjuPay home"
               >
-                <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-white shadow-md">
-                  <span className="text-sm font-black text-purple-700">
-                    IP
-                  </span>
+                <div className="iyanjupay-header-logo flex h-10 w-10 items-center justify-center overflow-hidden rounded-2xl shadow-md">
+                  <img
+                    src="/icon-180.png"
+                    alt="IyanjuPay"
+                    className="h-full w-full object-cover"
+                    draggable={false}
+                  />
                 </div>
 
                 <div className="hidden sm:block">

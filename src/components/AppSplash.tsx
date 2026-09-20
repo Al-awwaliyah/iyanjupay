@@ -20,20 +20,12 @@ const getSplashTheme = (): SplashTheme => {
       return "light";
     }
   } catch {
-    // Ignore localStorage errors and continue with system preference.
+    // Ignore localStorage errors and use the light default.
   }
 
-  try {
-    if (
-      typeof window.matchMedia === "function" &&
-      window.matchMedia("(prefers-color-scheme: dark)").matches
-    ) {
-      return "dark";
-    }
-  } catch {
-    // Ignore matchMedia errors.
-  }
-
+  // IyanjuPay defaults to light mode. The splash follows the
+  // explicit in-app preference only and does not inherit the
+  // device system theme on first launch.
   return "light";
 };
 
@@ -127,7 +119,7 @@ const AppSplash = () => {
 
           {/* IyanjuPay rounded logo */}
           <img
-            src="/icon-180.png"
+            src="/icon-512.png"
             alt="IyanjuPay"
             className="
               relative
@@ -192,6 +184,17 @@ const AppSplash = () => {
         >
           Simple. Secure. Seamless.
         </p>
+
+        <div
+          className={[
+            "mt-6 flex items-center gap-2 text-[9px] font-semibold uppercase tracking-[0.18em]",
+            "animate-[splashTagline_850ms_520ms_cubic-bezier(0.16,1,0.3,1)_both]",
+            isDark ? "text-white/40" : "text-slate-400",
+          ].join(" ")}
+        >
+          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.45)]" />
+          Secure fintech experience
+        </div>
       </main>
 
       {/* Small brand accent */}

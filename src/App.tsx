@@ -16,7 +16,6 @@ import {
   BrowserRouter,
   Routes,
   Route,
-  useLocation,
 } from "react-router-dom";
 
 import AppSplash from "@/components/AppSplash";
@@ -61,21 +60,11 @@ import AppLockGuard from "@/components/security/AppLockGuard";
 const queryClient = new QueryClient();
 
 /**
- * User Dashboard only owns the IyanjuPay ThemeProvider.
- * Admin routes intentionally render outside the provider so the
- * admin portal has no dependency on the user dashboard theme state.
+ * One global IyanjuPay theme provider owns the theme for every route.
+ * This keeps customer and admin pages consistent and prevents a
+ * dark/light selection from leaving isolated pages behind.
  */
 const ThemeGate = ({ children }: { children: React.ReactNode }) => {
-  const location = useLocation();
-
-  const isAdminRoute =
-    location.pathname === "/admin" ||
-    location.pathname.startsWith("/admin/");
-
-  if (isAdminRoute) {
-    return <>{children}</>;
-  }
-
   return <ThemeProvider>{children}</ThemeProvider>;
 };
 
@@ -103,7 +92,7 @@ const App = () => {
      */
     const timer = window.setTimeout(() => {
       setShowSplash(false);
-    }, 2200);
+    }, 1600);
 
     return () => {
       window.clearTimeout(timer);

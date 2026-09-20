@@ -65,3 +65,43 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* IyanjuPay theme tokens. ThemeProvider updates the html data attribute. */
+html[data-iyanjupay-theme="dark"],
+html.iyanjupay-theme-dark {
+  --background: 222 47% 7%;
+  --foreground: 210 40% 98%;
+  --card: 222 39% 11%;
+  --card-foreground: 210 40% 98%;
+  --popover: 222 39% 11%;
+  --popover-foreground: 210 40% 98%;
+  --primary: 160 84% 39%;
+  --primary-foreground: 222 47% 7%;
+  --secondary: 217 33% 17%;
+  --secondary-foreground: 210 40% 98%;
+  --muted: 217 33% 17%;
+  --muted-foreground: 215 20% 65%;
+  --accent: 217 33% 17%;
+  --accent-foreground: 210 40% 98%;
+  --destructive: 0 72% 51%;
+  --destructive-foreground: 210 40% 98%;
+  --border: 217 25% 22%;
+  --input: 217 25% 22%;
+  --ring: 160 84% 39%;
+  --sidebar-background: 222 47% 7%;
+  --sidebar-foreground: 210 40% 98%;
+  --sidebar-primary: 160 84% 39%;
+  --sidebar-primary-foreground: 222 47% 7%;
+  --sidebar-accent: 217 33% 17%;
+  --sidebar-accent-foreground: 210 40% 98%;
+  --sidebar-border: 217 25% 22%;
+  --sidebar-ring: 160 84% 39%;
+  color-scheme: dark;
+}
+
+html[data-iyanjupay-theme="light"],
+html.iyanjupay-theme-light,
+html[data-iyanjupay-theme="blue"],
+html.iyanjupay-theme-blue {
+  color-scheme: light;
+}

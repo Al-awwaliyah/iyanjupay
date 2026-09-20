@@ -52,8 +52,8 @@ const SERVICE_ALIASES: Record<string, string> = {
   airtime_card: "airtime-card",
   data_epin: "data-card",
   data_card: "data-card",
-  recharge: "recharge-card",
-  recharge_card: "recharge-card",
+  recharge: "airtime-card",
+  recharge_card: "airtime-card",
 };
 
 const SERVICE_TITLES: Record<string, string> = {
@@ -63,11 +63,11 @@ const SERVICE_TITLES: Record<string, string> = {
   electricity: "Electricity",
   education: "Education",
   internet: "Internet Service",
-  "airtime-card": "Airtime E-pin",
+  "airtime-card": "Airtime Recharge PIN",
   "data-card": "Data E-pin",
-  airtime_epin: "Airtime E-pin",
+  airtime_epin: "Airtime Recharge PIN",
   data_epin: "Data E-pin",
-  "recharge-card": "Recharge Card",
+  "recharge-card": "Airtime Recharge PIN",
 };
 
 
@@ -80,6 +80,8 @@ const AIRTIME_AMOUNTS = [
   2000,
   5000,
 ];
+
+const AIRTIME_PIN_VALUES = [100, 200, 500] as const;
 
 const BILL_AMOUNTS = [
   100,
@@ -1105,6 +1107,9 @@ function ServiceTransactionProcessing({
   const [copied, setCopied] =
     useState(false);
 
+  const [fulfillment, setFulfillment] =
+    useState<Record<string, any> | null>(null);
+
   const startedRef =
     React.useRef(false);
 
@@ -1141,6 +1146,13 @@ function ServiceTransactionProcessing({
 
     try {
       const result = await execute();
+
+      setFulfillment(
+        result?.fulfillment &&
+          typeof result.fulfillment === "object"
+          ? result.fulfillment
+          : null,
+      );
 
       const nextStatus =
         transactionStatusFromResult(result);
@@ -1366,6 +1378,32 @@ function ServiceTransactionProcessing({
                 </div>
               )}
 
+              {isSuccess &&
+                details?.service === "airtime-card" &&
+                fulfillment &&
+                Object.keys(fulfillment).length > 0 && (
+                  <div className="rounded-2xl border border-emerald-200 bg-emerald-50/80 p-4 text-sm text-emerald-950">
+                    <div className="mb-2 flex items-center justify-between gap-3">
+                      <div className="font-bold">Recharge PIN details</div>
+                      <Copy className="h-4 w-4 text-emerald-700" />
+                    </div>
+                    <div className="space-y-2">
+                      {Object.entries(fulfillment).map(([key, value]) => (
+                        <div key={key} className="rounded-xl bg-white/80 px-3 py-2">
+                          <div className="text-[10px] font-bold uppercase tracking-wide text-emerald-700">
+                            {key.replace(/_/g, " ")}
+                          </div>
+                          <div className="mt-1 break-all font-mono text-sm font-semibold">
+                            {typeof value === "string"
+                              ? value
+                              : JSON.stringify(value)}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
               {isPending && (
                 <div className="iyanjupay-processing-pending rounded-2xl border p-4 text-sm">
                   <div className="flex items-start gap-3">
@@ -1484,7 +1522,7 @@ export default function ServicePayment({
   const serviceTitle =
     displayServiceTitle(service);
 
-  const serviceFunction = "peyflex-services"; // Existing Edge Function route; implementation is now ZOEDATA.
+  const serviceFunction = "clubkonnect-services";
 
   const serviceRequestType =
     serviceType === "education"
@@ -1510,13 +1548,15 @@ export default function ServicePayment({
     serviceType === "airtime-card" ||
     serviceType === "data-card";
 
+  const isAirtimeCard =
+    serviceType === "airtime-card";
+
   const isRechargeCard =
     serviceType === "recharge-card";
 
   const isPhoneService =
     isAirtime ||
     isData ||
-    isEpin ||
     serviceType === "education";
 
   const isAmountOnly =
@@ -1547,6 +1587,9 @@ export default function ServicePayment({
 
   const [amount, setAmount] =
     useState("");
+
+  const [quantity, setQuantity] =
+    useState(1);
 
   const [meterType, setMeterType] =
     useState("");
@@ -1649,6 +1692,7 @@ export default function ServicePayment({
     setSelectedItemCode("");
     setCustomer("");
     setAmount("");
+    setQuantity(1);
     setMeterType("");
     setCustomAmount(false);
     setDataTab("DAILY");
@@ -1727,6 +1771,15 @@ export default function ServicePayment({
           loaded
         );
 
+        if (isAirtimeCard) {
+          const order = ["01", "04", "03", "02"];
+          merged = [...merged].sort(
+            (a, b) =>
+              order.indexOf(getCode(a)) -
+              order.indexOf(getCode(b)),
+          );
+        }
+
         setBillers(merged);
 
         if (
@@ -1757,6 +1810,7 @@ export default function ServicePayment({
       invoke,
       isAmountOnly,
       serviceType,
+      isAirtimeCard,
       isRechargeCard,
       toast,
     ]);
@@ -2065,12 +2119,14 @@ export default function ServicePayment({
   );
 
   const customerPayAmount =
-    isAmountOnly && num(amount) > 0
-      ? roundUpTo50(
-          num(amount) *
-            (1 + variableMarkupPercent / 100)
-        )
-      : num(amount);
+    isEpin && num(amount) > 0
+      ? num(amount) * quantity
+      : isAmountOnly && num(amount) > 0
+        ? roundUpTo50(
+            num(amount) *
+              (1 + variableMarkupPercent / 100)
+          )
+        : num(amount);
 
   const providerVariableAmount =
     isAmountOnly && num(amount) > 0
@@ -2146,7 +2202,7 @@ export default function ServicePayment({
   const hasRequiredIdentifier =
     isCable || isElectricity
       ? verified
-      : isRechargeCard
+      : isEpin
         ? true
         : !!customer.trim();
 
@@ -2158,7 +2214,6 @@ export default function ServicePayment({
     !!selectedItemCode;
 
   const canPurchase =
-    !isRechargeCard &&
     !!selectedBillerCode &&
     hasRequiredIdentifier &&
     hasAmount &&
@@ -2188,6 +2243,10 @@ export default function ServicePayment({
       !selectedItemCode
     ) {
       return "Please select a package.";
+    }
+
+    if (isEpin && (!Number.isInteger(quantity) || quantity < 1 || quantity > 100)) {
+      return "Quantity must be between 1 and 100.";
     }
 
     if (!hasAmount) {
@@ -2347,7 +2406,11 @@ export default function ServicePayment({
           ? clean(selectedBiller?.disco ?? selectedBiller?.raw?.disco ?? selectedBillerCode).toLowerCase()
           : "",
       quantity:
-        serviceType === "education" ? 1 : undefined,
+        isEpin
+          ? quantity
+          : serviceType === "education"
+            ? 1
+            : undefined,
 
       selling_amount:
         customerPayAmount,
@@ -2753,26 +2816,7 @@ export default function ServicePayment({
         </header>
 
         <main className="mx-auto max-w-5xl space-y-3 px-3 py-4 pb-8 sm:px-4">
-          {isRechargeCard ? (
-            <section className="rounded-3xl border bg-white p-8 text-center shadow-sm">
-              <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-gray-100">
-                <Receipt className="h-7 w-7 text-gray-500" />
-              </div>
-              <h2 className="mt-4 text-lg font-bold text-gray-900">
-                Recharge Card is coming soon
-              </h2>
-              <p className="mx-auto mt-1 max-w-sm text-sm text-gray-500">
-                This service is not available yet. Please check back later.
-              </p>
-              <Button
-                variant="outline"
-                className="mt-5 rounded-xl"
-                onClick={onBack}
-              >
-                Back to Services
-              </Button>
-            </section>
-          ) : showPin ? (
+          {showPin ? (
             /*
              * ==================================================
              * PAYMENT PIN SCREEN
@@ -3051,7 +3095,79 @@ export default function ServicePayment({
                 </section>
               )}
 
-              {((isCable && selectedBillerCode) || (isEpin && selectedBillerCode) || (isRechargeCard && selectedBillerCode) || ((serviceType === "education" || isInternet) && selectedBillerCode)) && (
+              {isAirtimeCard && selectedBillerCode && (
+                <>
+                  <section className="rounded-2xl border bg-white p-3 shadow-sm sm:p-4">
+                    <div className="mb-3">
+                      <h2 className="text-xs font-bold text-gray-900">Value</h2>
+                      <p className="mt-0.5 text-[11px] text-gray-500">Choose the recharge card denomination.</p>
+                    </div>
+
+                    {loadingItems ? (
+                      <div className="flex items-center justify-center py-7 text-xs text-gray-500">
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Loading recharge card values...
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-3 gap-2">
+                        {AIRTIME_PIN_VALUES.map((value) => {
+                          const item = items.find(
+                            (candidate) =>
+                              num(candidate.value ?? candidate.denomination) === value,
+                          );
+                          const itemCode = item ? getItemCode(item) : "";
+                          const selected = selectedItemCode === itemCode && amount === String(getItemPrice(item));
+
+                          return (
+                            <button
+                              key={value}
+                              type="button"
+                              disabled={!itemCode || !!processingSession || verifyingPin}
+                              onClick={() => {
+                                if (!item || !itemCode) return;
+                                setSelectedItemCode(itemCode);
+                                setAmount(String(getItemPrice(item)));
+                                setQuantity(1);
+                                setCustomAmount(false);
+                                setError("");
+                              }}
+                              className={`rounded-xl border px-3 py-3 text-sm font-extrabold transition ${
+                                selected
+                                  ? "border-[#6D28D9] bg-violet-50 text-[#4C1D95] ring-2 ring-violet-100"
+                                  : "border-gray-200 bg-white text-gray-800 hover:border-violet-300"
+                              } ${!itemCode ? "cursor-not-allowed opacity-50" : ""}`}
+                            >
+                              ₦{value.toLocaleString("en-NG")}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </section>
+
+                  <section className="rounded-2xl border bg-white p-3 shadow-sm sm:p-4">
+                    <Label htmlFor="airtime-pin-quantity" className="text-xs font-bold text-gray-900">Quantity</Label>
+                    <Input
+                      id="airtime-pin-quantity"
+                      type="number"
+                      min={1}
+                      max={100}
+                      step={1}
+                      inputMode="numeric"
+                      value={quantity}
+                      onChange={(e) => {
+                        const next = Number(e.target.value);
+                        setQuantity(Number.isFinite(next) ? Math.trunc(next) : 1);
+                      }}
+                      className="mt-2 h-10 rounded-xl text-sm"
+                      disabled={!!processingSession || verifyingPin}
+                    />
+                    <p className="mt-1.5 text-[10px] text-gray-500">Allowed range: 1 to 100</p>
+                  </section>
+                </>
+              )}
+
+              {((isCable && selectedBillerCode) || (isEpin && !isAirtimeCard && selectedBillerCode) || ((serviceType === "education" || isInternet) && selectedBillerCode)) && (
                 <section className="rounded-2xl border bg-white p-3 shadow-sm sm:p-4">
                   <div className="mb-3 flex items-center justify-between">
                     <div>
@@ -3153,7 +3269,11 @@ export default function ServicePayment({
                   onClick={startPurchase}
                   disabled={!canPurchase}
                 >
-                  {isAirtime ? "Buy Airtime" : `Continue${hasAmount ? ` to Pay ${naira(customerPayAmount)}` : ""}`}
+                  {isAirtime
+                    ? "Buy Airtime"
+                    : isAirtimeCard
+                      ? "Generate PINs"
+                      : `Continue${hasAmount ? ` to Pay ${naira(customerPayAmount)}` : ""}`}
                 </Button>
                 <p className="mt-2 text-center text-[10px] text-gray-500">
                   Your payment PIN is required to complete this purchase.

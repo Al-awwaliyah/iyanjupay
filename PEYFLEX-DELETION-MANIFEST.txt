@@ -1,0 +1,8 @@
+IyanjuPay deletion manifest
+
+Delete these files from the repository:
+- supabase/functions/peyflex-services/index.ts
+- supabase/functions/_shared/peyflex.ts
+
+The patched .github/workflows/deploy-function-supabase.yml also removes the retired
+remote Supabase Edge Function named peyflex-services during deployment.

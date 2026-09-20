@@ -1,3 +1,4 @@
+import { getSafeErrorMessage } from "@/lib/errorHandling";
 import React, {
   useEffect,
   useRef,
@@ -260,7 +261,7 @@ const TransferModal = ({
           !Array.isArray(data?.banks)
         ) {
           throw new Error(
-            data?.error ||
+            getSafeErrorMessage(data) ||
               "Unable to load banks."
           );
         }
@@ -277,7 +278,7 @@ const TransferModal = ({
             "Unable to load banks",
 
           description:
-            error?.message ||
+            getSafeErrorMessage(error) ||
             "Please try again later.",
 
           variant:
@@ -360,7 +361,7 @@ const TransferModal = ({
 
             if (error) {
               let message =
-                error.message ||
+                getSafeErrorMessage(error) ||
                 "Unable to verify bank account.";
 
               try {
@@ -392,7 +393,7 @@ const TransferModal = ({
               !data?.account
             ) {
               throw new Error(
-                data?.error ||
+                getSafeErrorMessage(data) ||
                   "Bank account could not be verified."
               );
             }
@@ -439,7 +440,7 @@ const TransferModal = ({
                 "Account verification failed",
 
               description:
-                error?.message ||
+                getSafeErrorMessage(error) ||
                 "We could not verify this bank account.",
 
               variant:
@@ -542,7 +543,7 @@ const TransferModal = ({
 
             if (error) {
               let message =
-                error.message ||
+                getSafeErrorMessage(error) ||
                 "Unable to verify recipient.";
 
               try {
@@ -574,8 +575,8 @@ const TransferModal = ({
               !data?.recipient
             ) {
               throw new Error(
-                data?.error ||
-                  data?.message ||
+                getSafeErrorMessage(data) ||
+                  getSafeErrorMessage(data) ||
                   "IyanjuPay Wallet ID could not be verified."
               );
             }
@@ -632,7 +633,7 @@ const TransferModal = ({
                 "Wallet ID verification failed",
 
               description:
-                error?.message ||
+                getSafeErrorMessage(error) ||
                 "We could not find this IyanjuPay Wallet ID.",
 
               variant:
@@ -849,7 +850,7 @@ const TransferModal = ({
           );
 
           let message =
-            error.message ||
+            getSafeErrorMessage(error) ||
             "Unable to process IyanjuPay transfer.";
 
           try {
@@ -881,8 +882,8 @@ const TransferModal = ({
           data.success !== true
         ) {
           throw new Error(
-            data?.error ||
-              data?.message ||
+            getSafeErrorMessage(data) ||
+              getSafeErrorMessage(data) ||
               "IyanjuPay transfer failed."
           );
         }
@@ -896,7 +897,7 @@ const TransferModal = ({
             "Transfer Successful",
 
           description:
-            data?.message ||
+            getSafeErrorMessage(data) ||
             `₦${transferAmount.toLocaleString()} sent successfully to ${resolvedIyanjuPayRecipient.name}.`,
         });
 
@@ -941,7 +942,7 @@ const TransferModal = ({
             "Transfer Failed",
 
           description:
-            error?.message ||
+            getSafeErrorMessage(error) ||
             "Unable to complete IyanjuPay transfer.",
 
           variant:
@@ -1229,7 +1230,7 @@ const TransferModal = ({
               "Transfer Failed",
 
             description:
-              error?.message ||
+              getSafeErrorMessage(error) ||
               "Unable to complete bank transfer.",
 
             variant:

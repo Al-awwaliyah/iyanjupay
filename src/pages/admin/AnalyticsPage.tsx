@@ -1,3 +1,4 @@
+import { getSafeErrorMessage } from "@/lib/errorHandling";
 import React, {
   useCallback,
   useEffect,
@@ -821,7 +822,7 @@ function AnalyticsPage() {
 
         setError(
           err instanceof Error
-            ? err.message
+            ? getSafeErrorMessage(err)
             : "Unable to load analytics.",
         );
       } finally {

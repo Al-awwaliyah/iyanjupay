@@ -39,13 +39,13 @@ Create a Firebase project/app for the package:
 
 Download `google-services.json` and provide it to the Android build as the GitHub Actions secret:
 
-`FCM_GOOGLE_SERVICES_JSON_B64`
+`GOOGLE_SERVICES_JSON_BASE64`
 
 The workflow decodes that secret into `android/app/google-services.json`, enables the Google Services Gradle plugin, and Capacitor Push Notifications registers the FCM device token.
 
 For server-side delivery, create a Firebase service account with permission to send FCM messages. Base64-encode its JSON and store it as:
 
-`FCM_SERVICE_ACCOUNT_JSON`
+`FIREBASE_SERVICE_ACCOUNT_JSON`
 
 The `send-push-notification` Edge Function uses FCM HTTP v1 and removes stale/unregistered device tokens.
 
@@ -93,7 +93,7 @@ and include:
 
 `x-push-webhook-secret: <PUSH_WEBHOOK_SECRET>`
 
-The same function now routes delivery by subscription platform: Web Push, FCM, or APNs.
+The same function now routes delivery by subscription platform: Web Push, FCM, or APNs. Android foreground notifications use the Capacitor Local Notifications plugin so alerts remain visible while the app is open; background/closed delivery is handled by FCM. iOS uses APNs alert pushes for foreground/background/closed delivery.
 
 ## 5. Native app behavior
 
@@ -130,7 +130,8 @@ When the user enables Push Notifications in **Security & Notifications**:
 - Grant browser notification permission.
 - Enable Push Notifications.
 - Verify a `web` subscription exists.
-- Test with the PWA/browser tab closed.
+- Test with the PWA/browser tab closed or the browser tab not active.
+- For an installed PWA on supported mobile browsers, test after the PWA has been completely closed.
 
 ## Security
 

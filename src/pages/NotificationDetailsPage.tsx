@@ -1,3 +1,4 @@
+import { getSafeErrorMessage } from "@/lib/errorHandling";
 import { useCallback, useEffect, useState } from "react";
 import { ArrowLeft, Bell, CalendarDays, CircleDollarSign, FileText, Hash, Megaphone, Tag } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
@@ -66,7 +67,7 @@ export default function NotificationDetailsPage() {
         if (!readError) setNotification((current) => current ? { ...current, is_read: true } : current);
       }
     } catch (error: any) {
-      toast({ title: "Unable to open notification", description: error?.message ?? "Please try again.", variant: "destructive" });
+      toast({ title: "Unable to open notification", description: getSafeErrorMessage(error) ?? "Please try again.", variant: "destructive" });
     } finally {
       setLoading(false);
     }

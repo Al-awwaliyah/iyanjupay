@@ -1,3 +1,4 @@
+import { getSafeErrorMessage } from "@/lib/errorHandling";
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -124,7 +125,7 @@ const ResetPassword = () => {
       toast({
         title: "Unable to change password",
         description:
-          error.message ||
+          getSafeErrorMessage(error) ||
           "Please try again.",
         variant: "destructive",
       });

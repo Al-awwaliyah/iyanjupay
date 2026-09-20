@@ -1,3 +1,4 @@
+import { getSafeErrorMessage } from "@/lib/errorHandling";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ArrowLeft, Bell, CheckCheck, Loader2, Megaphone } from "lucide-react";
 import { useNavigate } from "react-router-dom";
@@ -71,7 +72,7 @@ export default function NotificationsPage() {
       if (error) throw error;
       setNotifications(normalize(data ?? []));
     } catch (error: any) {
-      toast({ title: "Unable to load notifications", description: error?.message ?? "Please try again.", variant: "destructive" });
+      toast({ title: "Unable to load notifications", description: getSafeErrorMessage(error) ?? "Please try again.", variant: "destructive" });
     } finally {
       setLoading(false);
     }
@@ -102,7 +103,7 @@ export default function NotificationsPage() {
     if (!user?.id || !unreadCount) return;
     const { error } = await db.from("notifications").update({ is_read: true }).eq("user_id", user.id).eq("is_read", false);
     if (error) {
-      toast({ title: "Unable to mark notifications read", description: error.message, variant: "destructive" });
+      toast({ title: "Unable to mark notifications read", description: getSafeErrorMessage(error), variant: "destructive" });
       return;
     }
     setNotifications((current) => current.map((n) => ({ ...n, is_read: true })));

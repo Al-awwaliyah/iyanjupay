@@ -1,3 +1,4 @@
+import { getSafeErrorMessage } from "@/lib/errorHandling";
 import React, {
   useCallback,
   useEffect,
@@ -271,7 +272,7 @@ const TransactionLimitPage = ({
 
           setError(
             err instanceof Error
-              ? err.message
+              ? getSafeErrorMessage(err)
               : "Unable to load your transaction limits.",
           );
         } finally {

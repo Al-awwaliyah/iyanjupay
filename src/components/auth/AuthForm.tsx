@@ -1,3 +1,4 @@
+import { getSafeErrorMessage } from "@/lib/errorHandling";
 import React, { useEffect, useState } from "react";
 import { Fingerprint } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -153,203 +154,21 @@ const AuthForm = () => {
     return false;
   };
 
-  const getEdgeFunctionErrorMessage =
-    async (
-      error: unknown,
-      fallback: string,
-    ): Promise<string> => {
-      if (!isOnline()) {
-        return "No internet connection. Please check your internet connection and try again.";
-      }
+  const getEdgeFunctionErrorMessage = async (
+    error: unknown,
+    fallback: string,
+  ): Promise<string> => {
+    if (!isOnline()) {
+      return "No internet connection. Please check your internet connection and try again.";
+    }
 
-      if (isNetworkError(error)) {
-        return "Unable to connect to the server. Please check your internet connection and try again.";
-      }
+    if (isNetworkError(error)) {
+      return "Unable to connect to the server. Please check your internet connection and try again.";
+    }
 
-      try {
-        const errorObject =
-          typeof error === "object" &&
-          error !== null
-            ? (error as {
-                context?: unknown;
-                message?: string;
-                error_description?: string;
-                details?: string;
-                hint?: string;
-                code?: string;
-              })
-            : null;
-
-        if (errorObject?.context) {
-          const response =
-            errorObject.context instanceof Response
-              ? errorObject.context.clone()
-              : errorObject.context;
-
-          if (
-            response &&
-            typeof (
-              response as {
-                json?: () => Promise<unknown>;
-              }
-            ).json === "function"
-          ) {
-            try {
-              const data =
-                await (
-                  response as {
-                    json: () => Promise<unknown>;
-                  }
-                ).json();
-
-              if (
-                data &&
-                typeof data === "object"
-              ) {
-                const body =
-                  data as {
-                    error?: unknown;
-                    message?: unknown;
-                    detail?: unknown;
-                    error_description?: unknown;
-                  };
-
-                if (
-                  typeof body.error === "string" &&
-                  body.error.trim()
-                ) {
-                  return body.error.trim();
-                }
-
-                if (
-                  typeof body.message === "string" &&
-                  body.message.trim()
-                ) {
-                  return body.message.trim();
-                }
-
-                if (
-                  typeof body.detail === "string" &&
-                  body.detail.trim()
-                ) {
-                  return body.detail.trim();
-                }
-
-                if (
-                  typeof body.error_description ===
-                    "string" &&
-                  body.error_description.trim()
-                ) {
-                  return body.error_description.trim();
-                }
-              }
-            } catch (jsonError) {
-              console.warn(
-                "Unable to parse Edge Function JSON error:",
-                jsonError,
-              );
-            }
-
-            try {
-              if (
-                typeof (
-                  response as {
-                    text?: () => Promise<string>;
-                  }
-                ).text === "function"
-              ) {
-                const text =
-                  await (
-                    response as {
-                      text: () => Promise<string>;
-                    }
-                  ).text();
-
-                if (text.trim()) {
-                  try {
-                    const parsed =
-                      JSON.parse(text) as {
-                        error?: unknown;
-                        message?: unknown;
-                        detail?: unknown;
-                      };
-
-                    if (
-                      typeof parsed.error === "string" &&
-                      parsed.error.trim()
-                    ) {
-                      return parsed.error.trim();
-                    }
-
-                    if (
-                      typeof parsed.message ===
-                        "string" &&
-                      parsed.message.trim()
-                    ) {
-                      return parsed.message.trim();
-                    }
-
-                    if (
-                      typeof parsed.detail === "string" &&
-                      parsed.detail.trim()
-                    ) {
-                      return parsed.detail.trim();
-                    }
-                  } catch {
-                    if (text.trim()) {
-                      return text.trim();
-                    }
-                  }
-                }
-              }
-            } catch (textError) {
-              console.warn(
-                "Unable to parse Edge Function text error:",
-                textError,
-              );
-            }
-          }
-        }
-
-        if (
-          typeof errorObject?.error_description ===
-            "string" &&
-          errorObject.error_description.trim()
-        ) {
-          return errorObject.error_description.trim();
-        }
-
-        if (
-          typeof errorObject?.message === "string" &&
-          errorObject.message.trim() &&
-          errorObject.message !==
-            "Edge Function returned a non-2xx status code"
-        ) {
-          return errorObject.message.trim();
-        }
-
-        if (
-          typeof errorObject?.details === "string" &&
-          errorObject.details.trim()
-        ) {
-          return errorObject.details.trim();
-        }
-
-        if (
-          typeof errorObject?.hint === "string" &&
-          errorObject.hint.trim()
-        ) {
-          return errorObject.hint.trim();
-        }
-      } catch (parseError) {
-        console.error(
-          "Unable to extract Edge Function error:",
-          parseError,
-        );
-      }
-
-      return fallback;
-    };
+    console.error("Technical authentication error:", error);
+    return fallback;
+  };
 
   const getGeneralErrorMessage = (
     error: unknown,
@@ -363,52 +182,7 @@ const AuthForm = () => {
       return "Unable to connect to the server. Please check your internet connection and try again.";
     }
 
-    if (
-      error &&
-      typeof error === "object"
-    ) {
-      const errorObject =
-        error as {
-          message?: unknown;
-          error_description?: unknown;
-          details?: unknown;
-          hint?: unknown;
-        };
-
-      if (
-        typeof errorObject.message === "string" &&
-        errorObject.message.trim()
-      ) {
-        return errorObject.message.trim();
-      }
-
-      if (
-        typeof errorObject.error_description ===
-          "string" &&
-        errorObject.error_description.trim()
-      ) {
-        return errorObject.error_description.trim();
-      }
-
-      if (
-        typeof errorObject.details === "string" &&
-        errorObject.details.trim()
-      ) {
-        return errorObject.details.trim();
-      }
-
-      if (
-        typeof errorObject.hint === "string" &&
-        errorObject.hint.trim()
-      ) {
-        return errorObject.hint.trim();
-      }
-    }
-
-    if (typeof error === "string" && error.trim()) {
-      return error.trim();
-    }
-
+    console.error("Technical authentication error:", error);
     return fallback;
   };
 
@@ -764,8 +538,8 @@ const AuthForm = () => {
 
         if (!data?.success) {
           throw new Error(
-            data?.error ||
-              data?.message ||
+            getSafeErrorMessage(data) ||
+              getSafeErrorMessage(data) ||
               "Unable to send verification code.",
           );
         }
@@ -872,8 +646,8 @@ const AuthForm = () => {
 
         if (!data?.verified) {
           throw new Error(
-            data?.error ||
-              data?.message ||
+            getSafeErrorMessage(data) ||
+              getSafeErrorMessage(data) ||
               "Invalid verification code.",
           );
         }
@@ -1108,8 +882,8 @@ const AuthForm = () => {
         !data?.session
       ) {
         throw new Error(
-          data?.error ||
-            data?.message ||
+          getSafeErrorMessage(data) ||
+            getSafeErrorMessage(data) ||
             "Invalid login credentials.",
         );
       }
@@ -1286,7 +1060,7 @@ const AuthForm = () => {
                         if (error) throw error;
                         toast({ title: "Welcome back!", description: "You signed in securely with your device authentication." });
                       } catch (error: any) {
-                        toast({ title: "Biometric sign-in failed", description: error?.message ?? "Biometric authentication was cancelled or unavailable.", variant: "destructive" });
+                        toast({ title: "Biometric sign-in failed", description: getSafeErrorMessage(error) ?? "Biometric authentication was cancelled or unavailable.", variant: "destructive" });
                       } finally {
                         setIsLoading(false);
                       }

@@ -1,3 +1,4 @@
+import { getSafeErrorMessage } from "@/lib/errorHandling";
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
@@ -95,7 +96,7 @@ const PaymentPinPage = () => {
 
       if (!data?.success) {
         throw new Error(
-          data?.message || "Unable to create your payment PIN."
+          getSafeErrorMessage(data) || "Unable to create your payment PIN."
         );
       }
 
@@ -115,7 +116,7 @@ const PaymentPinPage = () => {
 
       setError(
         err instanceof Error
-          ? err.message
+          ? getSafeErrorMessage(err)
           : "Unable to create your payment PIN. Please try again."
       );
     } finally {

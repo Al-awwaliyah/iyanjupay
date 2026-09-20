@@ -1,3 +1,4 @@
+import { getSafeErrorMessage } from "@/lib/errorHandling";
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -101,7 +102,7 @@ const VerifyRecoveryOtp = () => {
       toast({
         title: "Verification failed",
         description:
-          error.message ||
+          getSafeErrorMessage(error) ||
           "The verification code is incorrect or expired.",
         variant: "destructive",
       });
@@ -146,7 +147,7 @@ const VerifyRecoveryOtp = () => {
       toast({
         title: "Unable to resend code",
         description:
-          error.message ||
+          getSafeErrorMessage(error) ||
           "Please try again later.",
         variant: "destructive",
       });

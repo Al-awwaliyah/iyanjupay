@@ -1,3 +1,4 @@
+import { getSafeErrorMessage } from "@/lib/errorHandling";
 import React, {
   useCallback,
   useEffect,
@@ -383,7 +384,7 @@ const AdminDisputesPage = () => {
               "Unable to load disputes",
 
             description:
-              error?.message ||
+              getSafeErrorMessage(error) ||
               "Something went wrong while loading disputes.",
 
             variant:
@@ -567,7 +568,7 @@ const AdminDisputesPage = () => {
             "Unable to update dispute",
 
           description:
-            error?.message ||
+            getSafeErrorMessage(error) ||
             "Something went wrong while updating the dispute.",
 
           variant:

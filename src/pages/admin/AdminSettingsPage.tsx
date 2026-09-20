@@ -1,3 +1,4 @@
+import { getSafeErrorMessage } from "@/lib/errorHandling";
 import React, {
   useCallback,
   useEffect,
@@ -486,7 +487,7 @@ function getFriendlyAdminError(
 ): string {
   const message =
     error instanceof Error
-      ? error.message
+      ? getSafeErrorMessage(error)
       : "";
 
   const normalized = message.toLowerCase();

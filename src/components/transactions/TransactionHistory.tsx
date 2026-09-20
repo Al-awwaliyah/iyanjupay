@@ -1,3 +1,4 @@
+import { getSafeErrorMessage } from "@/lib/errorHandling";
 import React, {
   useCallback,
   useEffect,
@@ -1640,7 +1641,7 @@ const TransactionHistory = ({
           );
 
           setError(
-            err?.message ||
+            getSafeErrorMessage(err) ||
               "Unable to load transaction history."
           );
         } finally {

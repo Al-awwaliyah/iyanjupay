@@ -1,3 +1,4 @@
+import { getSafeErrorMessage } from "@/lib/errorHandling";
 import React, {
   useCallback,
   useEffect,
@@ -180,7 +181,7 @@ const ProfilePage = ({
 
         if (error) {
           let message =
-            error.message ??
+            getSafeErrorMessage(error) ??
             "BVN request failed.";
 
           const context =
@@ -198,7 +199,7 @@ const ProfilePage = ({
 
               if (body?.error) {
                 message =
-                  body.error;
+                  getSafeErrorMessage(body);
               }
             } catch {
               // Keep original message.
@@ -478,7 +479,7 @@ const ProfilePage = ({
             "Error",
 
           description:
-            error.message ??
+            getSafeErrorMessage(error) ??
             "Failed to update profile.",
 
           variant:
@@ -634,7 +635,7 @@ const ProfilePage = ({
             "Unable to change email",
 
           description:
-            error.message ||
+            getSafeErrorMessage(error) ||
             "Unable to send the verification code.",
 
           variant:
@@ -742,7 +743,7 @@ const ProfilePage = ({
             "Verification failed",
 
           description:
-            error.message ||
+            getSafeErrorMessage(error) ||
             "The email verification code is incorrect or expired.",
 
           variant:
@@ -906,7 +907,7 @@ const ProfilePage = ({
             "Verification failed",
 
           description:
-            error?.message ??
+            getSafeErrorMessage(error) ??
             "Unable to verify BVN.",
 
           variant:

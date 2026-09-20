@@ -1,3 +1,4 @@
+import { getSafeErrorMessage } from "@/lib/errorHandling";
 import React, {
   useEffect,
   useMemo,
@@ -22,6 +23,10 @@ import {
 
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+import {
+  authenticateWithBiometric,
+  isBiometricEnabled,
+} from "@/lib/biometricAuth";
 
 // ============================================================
 // TYPES
@@ -578,8 +583,8 @@ const ServiceModal = ({
         data.success !== true
       ) {
         throw new Error(
-          data?.error ||
-            data?.message ||
+          getSafeErrorMessage(data) ||
+            getSafeErrorMessage(data) ||
             "Unable to load bill providers."
         );
       }
@@ -609,7 +614,7 @@ const ServiceModal = ({
       );
 
       const message =
-        err?.message ||
+        getSafeErrorMessage(err) ||
         "Unable to load bill providers.";
 
       setError(message);
@@ -712,8 +717,8 @@ const ServiceModal = ({
         data.success !== true
       ) {
         throw new Error(
-          data?.error ||
-            data?.message ||
+          getSafeErrorMessage(data) ||
+            getSafeErrorMessage(data) ||
             "Unable to load bill packages."
         );
       }
@@ -743,7 +748,7 @@ const ServiceModal = ({
       );
 
       const message =
-        err?.message ||
+        getSafeErrorMessage(err) ||
         "Unable to load bill packages.";
 
       setError(message);
@@ -1373,8 +1378,36 @@ const ServiceModal = ({
       }
 
       setPaymentPin("");
-
       setError("");
+
+      if (isBiometricEnabled()) {
+        try {
+          setVerifyingPin(true);
+          await authenticateWithBiometric(
+            "Authorize IyanjuPay payment",
+          );
+
+          const details = buildPurchaseDetails();
+          const sellingAmount = amountNumber;
+
+          setProcessingPayment(true);
+          await onPurchase(sellingAmount, details);
+          resetForm();
+        } catch (error) {
+          console.error("Biometric payment authorization failed:", error);
+          setError("Unable to authorize this payment. Please try again.");
+          toast({
+            title: "Payment authorization",
+            description: "Biometric verification failed. Please try again.",
+            variant: "destructive",
+          });
+        } finally {
+          setVerifyingPin(false);
+          setProcessingPayment(false);
+        }
+
+        return;
+      }
 
       setShowPinPrompt(true);
     };
@@ -1451,8 +1484,7 @@ const ServiceModal = ({
           );
 
           throw new Error(
-            pinError.message ||
-              "Unable to verify payment PIN."
+            "Unable to verify payment PIN."
           );
         }
 
@@ -1469,9 +1501,7 @@ const ServiceModal = ({
           !data ||
           data.success !== true
         ) {
-          const message =
-            data?.message ||
-            "Invalid payment PIN.";
+          const message = "Invalid payment PIN.";
 
           /*
            * Clear the PIN but keep
@@ -1566,8 +1596,7 @@ const ServiceModal = ({
         );
 
         const message =
-          err?.message ||
-          "Unable to complete this payment.";
+          "Unable to complete this payment. Please try again.";
 
         setError(message);
 

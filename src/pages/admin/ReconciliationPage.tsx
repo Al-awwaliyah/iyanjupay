@@ -1,3 +1,4 @@
+import { getSafeErrorMessage } from "@/lib/errorHandling";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   AlertCircle,
@@ -224,7 +225,7 @@ export default function ReconciliationPage() {
       setRows(received.slice(0, PAGE_SIZE));
     } catch (err: any) {
       console.error("Reconciliation load failed:", err);
-      const message = err?.message || "Unable to load reconciliation records.";
+      const message = getSafeErrorMessage(err) || "Unable to load reconciliation records.";
       setError(message);
       setRows([]);
       toast({ title: "Reconciliation unavailable", description: message, variant: "destructive" });
@@ -255,7 +256,7 @@ export default function ReconciliationPage() {
       setDetail(data as Detail);
       setNotes((data as Detail)?.case?.notes ?? row.notes ?? "");
     } catch (err: any) {
-      toast({ title: "Unable to open case", description: err?.message || "The reconciliation detail could not be loaded.", variant: "destructive" });
+      toast({ title: "Unable to open case", description: getSafeErrorMessage(err) || "The reconciliation detail could not be loaded.", variant: "destructive" });
     } finally {
       setDetailLoading(false);
     }
@@ -285,7 +286,7 @@ export default function ReconciliationPage() {
       const refreshed = rows.find((row) => row.transaction_id === selected.transaction_id);
       if (refreshed) setSelected({ ...refreshed, reconciliation_status: nextStatus, notes: notes.trim() || null });
     } catch (err: any) {
-      toast({ title: "Update failed", description: err?.message || "Unable to update the case.", variant: "destructive" });
+      toast({ title: "Update failed", description: getSafeErrorMessage(err) || "Unable to update the case.", variant: "destructive" });
     } finally {
       setSavingCase(false);
     }
@@ -315,16 +316,16 @@ export default function ReconciliationPage() {
 
       toast({
         title: result.state === "successful" ? "Reconciliation successful" : result.state === "failed" ? "Provider failure confirmed" : "Still pending",
-        description: result.message || "ClubKonnect reconciliation completed.",
+        description: getSafeErrorMessage(result) || "ClubKonnect reconciliation completed.",
         variant: result.state === "failed" && !result.refunded ? "destructive" : "default",
       });
 
       await load(true);
     } catch (err: any) {
       console.error("Manual ClubKonnect reconciliation failed:", err);
-      const result: ReconcileResult = { success: false, error: err?.message || "Unable to reconcile the transaction." };
+      const result: ReconcileResult = { success: false, error: getSafeErrorMessage(err) || "Unable to reconcile the transaction." };
       setReconcileResult(result);
-      toast({ title: "Reconciliation failed", description: result.error, variant: "destructive" });
+      toast({ title: "Reconciliation failed", description: getSafeErrorMessage(result, "Reconciliation could not be completed. Please try again."), variant: "destructive" });
     } finally {
       setReconciling(false);
     }
@@ -513,7 +514,7 @@ export default function ReconciliationPage() {
                           {reconcileResult.state === "successful" ? <CheckCircle2 className="mt-0.5 h-5 w-5 text-emerald-600" /> : reconcileResult.state === "pending" ? <Clock3 className="mt-0.5 h-5 w-5 text-amber-600" /> : <XCircle className="mt-0.5 h-5 w-5 text-red-600" />}
                           <div className="min-w-0 flex-1">
                             <p className="font-semibold">{label(reconcileResult.state ?? "failed")}</p>
-                            <p className="mt-1 text-sm">{reconcileResult.message || reconcileResult.error}</p>
+                            <p className="mt-1 text-sm">{getSafeErrorMessage(reconcileResult)}</p>
                             <div className="mt-3 grid gap-2 text-xs sm:grid-cols-3">
                               <span>Code: <strong>{reconcileResult.statuscode ?? "—"}</strong></span>
                               <span>OrderID: <strong className="font-mono">{reconcileResult.order_id ?? "—"}</strong></span>

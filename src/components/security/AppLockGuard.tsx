@@ -1,3 +1,4 @@
+import { getSafeErrorMessage } from "@/lib/errorHandling";
 import { useEffect, useState } from "react";
 import {
   Fingerprint,
@@ -181,7 +182,7 @@ export default function AppLockGuard({
       );
 
       setError(
-        error?.message ||
+        getSafeErrorMessage(error) ||
           "Biometric verification failed. Please try again.",
       );
     } finally {

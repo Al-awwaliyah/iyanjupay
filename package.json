@@ -70,7 +70,9 @@
     "vaul": "^0.9.3",
     "zod": "^3.23.8",
     "@capacitor/push-notifications": "^7.0.7",
-    "@capgo/capacitor-native-biometric": "^8.3.7"
+    "@capgo/capacitor-native-biometric": "^8.3.7",
+    "@capacitor/local-notifications": "^7.0.2",
+    "@capacitor/splash-screen": "^7.0.3"
   },
   "devDependencies": {
     "@eslint/js": "^9.9.0",

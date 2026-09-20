@@ -1,3 +1,4 @@
+import { getSafeErrorMessage } from "@/lib/errorHandling";
 import React, {
   useCallback,
   useEffect,
@@ -1125,7 +1126,7 @@ const AdminTransactionsPage =
                 "Unable to load transactions",
 
               description:
-                error?.message ||
+                getSafeErrorMessage(error) ||
                 "Something went wrong while loading transactions.",
 
               variant:

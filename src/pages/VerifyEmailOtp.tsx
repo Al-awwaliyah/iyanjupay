@@ -1,3 +1,4 @@
+import { getSafeErrorMessage } from "@/lib/errorHandling";
 import React, { useEffect, useState } from "react";
 import {
   useLocation,
@@ -216,7 +217,7 @@ const VerifyEmailOtp = () => {
         title:
           "Verification failed",
         description:
-          error?.message ||
+          getSafeErrorMessage(error) ||
           "The verification code is incorrect or expired.",
         variant:
           "destructive",
@@ -273,7 +274,7 @@ const VerifyEmailOtp = () => {
           title:
             "Unable to resend code",
           description:
-            error?.message ||
+            getSafeErrorMessage(error) ||
             "Please try again.",
           variant:
             "destructive",

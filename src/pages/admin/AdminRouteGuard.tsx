@@ -91,37 +91,9 @@ notes:
 }
 
 function getErrorMessage(
-error: unknown,
+  _error: unknown,
 ): string {
-if (!error) {
-return "Unable to verify administrator access.";
-}
-
-if (typeof error === "string") {
-return error;
-}
-
-if (typeof error === "object") {
-const value = error as {
-message?: string;
-error_description?: string;
-details?: string;
-hint?: string;
-};
-
-
-return (
-  value.message ??
-  value.error_description ??
-  value.details ??
-  value.hint ??
-  "Unable to verify administrator access."
-);
-
-
-}
-
-return "Unable to verify administrator access.";
+  return "Unable to verify administrator access.";
 }
 
 const AdminRouteGuard: React.FC<AdminRouteGuardProps> = ({

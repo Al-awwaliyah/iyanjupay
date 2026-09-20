@@ -1,3 +1,4 @@
+import { getSafeErrorMessage } from "@/lib/errorHandling";
 import React, {
   useEffect,
   useState,
@@ -392,7 +393,7 @@ const ResetPaymentPin =
             );
 
             throw new Error(
-              error.message ||
+              getSafeErrorMessage(error) ||
                 "Unable to reset Payment PIN."
             );
           }
@@ -408,7 +409,7 @@ const ResetPaymentPin =
           ) {
 
             throw new Error(
-              data?.message ||
+              getSafeErrorMessage(data) ||
                 "Unable to reset Payment PIN."
             );
           }
@@ -479,7 +480,7 @@ const ResetPaymentPin =
             title:
               "Payment PIN reset failed",
             description:
-              error?.message ||
+              getSafeErrorMessage(error) ||
               "Unable to reset your Payment PIN.",
             variant:
               "destructive",

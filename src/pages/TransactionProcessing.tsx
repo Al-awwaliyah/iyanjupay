@@ -1,3 +1,4 @@
+import { getSafeErrorMessage } from "@/lib/errorHandling";
 import React, {
   useCallback,
   useEffect,
@@ -380,7 +381,7 @@ const TransactionProcessingPage = ({
       fallback: string,
     ): Promise<string> => {
       let message =
-        error?.message ||
+        getSafeErrorMessage(error) ||
         fallback;
 
       try {
@@ -831,8 +832,8 @@ const TransactionProcessingPage = ({
             !response.data?.status
           ) {
             throw new Error(
-              response.error ||
-                response.message ||
+              getSafeErrorMessage(response) ||
+                getSafeErrorMessage(response) ||
                 `${transactionName} failed.`,
             );
           }
@@ -975,7 +976,7 @@ const TransactionProcessingPage = ({
           setStatus("failed");
 
           const message =
-            error?.message ||
+            getSafeErrorMessage(error) ||
             `Unable to complete this ${transactionName.toLowerCase()}.`;
 
           setErrorMessage(

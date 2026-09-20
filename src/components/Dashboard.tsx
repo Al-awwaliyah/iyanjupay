@@ -1,3 +1,4 @@
+import { getSafeErrorMessage } from "@/lib/errorHandling";
 import React, {
   useCallback,
   useEffect,
@@ -498,7 +499,7 @@ const Dashboard = () => {
 
           if (
             payload?.provider_response
-              ?.data?.message
+              ?.getSafeErrorMessage(data)
           ) {
             return String(
               payload.provider_response
@@ -514,12 +515,12 @@ const Dashboard = () => {
       }
 
       if (
-        error?.message &&
-        error.message !==
+        getSafeErrorMessage(error) &&
+        getSafeErrorMessage(error) !==
           "Edge Function returned a non-2xx status code"
       ) {
         return String(
-          error.message
+          getSafeErrorMessage(error)
         );
       }
 
@@ -1149,8 +1150,8 @@ const Dashboard = () => {
         data.success !== true
       ) {
         throw new Error(
-          data?.error ||
-            data?.message ||
+          getSafeErrorMessage(data) ||
+            getSafeErrorMessage(data) ||
             data?.provider_message ||
             "Service payment failed."
         );
@@ -1189,7 +1190,7 @@ const Dashboard = () => {
           ? "Payment Processing"
           : "Payment Successful",
         description:
-          data?.message ||
+          getSafeErrorMessage(data) ||
           (isPending
             ? `${selectedService.title} payment is being processed.`
             : `${selectedService.title} payment was completed successfully.`),
@@ -1203,7 +1204,7 @@ const Dashboard = () => {
       );
 
       throw new Error(
-        error?.message ||
+        getSafeErrorMessage(error) ||
           "Unable to complete this service payment."
       );
     }
@@ -1383,8 +1384,8 @@ const Dashboard = () => {
         data.success !== true
       ) {
         throw new Error(
-          data?.error ||
-            data?.message ||
+          getSafeErrorMessage(data) ||
+            getSafeErrorMessage(data) ||
             "Bank transfer failed."
         );
       }
@@ -1397,7 +1398,7 @@ const Dashboard = () => {
         title:
           "Transfer Processing",
         description:
-          data?.message ||
+          getSafeErrorMessage(data) ||
           `₦${amount.toLocaleString()} sent to ${details.recipient}.`,
       });
     } catch (error: any) {
@@ -1410,7 +1411,7 @@ const Dashboard = () => {
         title:
           "Transfer Failed",
         description:
-          error?.message ||
+          getSafeErrorMessage(error) ||
           "Unable to complete the bank transfer.",
         variant:
           "destructive",

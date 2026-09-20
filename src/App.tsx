@@ -56,6 +56,9 @@ import ResetPassword from "./pages/ResetPassword";
 import NotFound from "./pages/NotFound";
 import ThemeProvider from "@/components/theme/ThemeProvider";
 import AppLockGuard from "@/components/security/AppLockGuard";
+import { Capacitor } from "@capacitor/core";
+import { initializePushNotifications } from "@/lib/pushNotifications";
+import { supabase } from "@/integrations/supabase/client";
 
 const queryClient = new QueryClient();
 
@@ -79,10 +82,32 @@ const App = () => {
   const [showSplash, setShowSplash] = useState(true);
 
   useEffect(() => {
-    // The HTML boot splash is only a zero-JS first-paint bridge.
-    // Once React has mounted, AppSplash owns the visible splash so
-    // the user never sees a separate logo/blank screen first.
-    const bootSplash = document.getElementById("iyanjupay-boot-splash");
+    const bootSplash =
+      document.getElementById("iyanjupay-boot-splash");
+
+    // On native builds the OS/Capacitor splash is the only startup
+    // splash. Remove the HTML bridge before hiding the native splash
+    // so the user never sees a logo-first -> splash-second sequence.
+    if (Capacitor.isNativePlatform()) {
+      bootSplash?.remove();
+
+      void (async () => {
+        try {
+          const { SplashScreen } =
+            await import("@capacitor/splash-screen");
+          await SplashScreen.hide({
+            fadeOutDuration: 0,
+          });
+        } catch (error) {
+          console.error("Native splash hide failed:", error);
+        }
+      })();
+
+      setShowSplash(false);
+      return;
+    }
+
+    // PWA/browser keeps the branded React splash.
     bootSplash?.remove();
 
     const timer = window.setTimeout(() => {
@@ -94,13 +119,31 @@ const App = () => {
     };
   }, []);
 
+  useEffect(() => {
+    // Re-sync an already-enabled push subscription after every
+    // application restart without asking for permission again.
+    void initializePushNotifications();
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session) {
+        void initializePushNotifications();
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, []);
+
   /*
    * ============================================================
    * APP SPLASH SCREEN
    * ============================================================
    */
 
-  if (showSplash) {
+  if (showSplash && !Capacitor.isNativePlatform()) {
     return <AppSplash />;
   }
 

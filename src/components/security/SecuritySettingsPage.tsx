@@ -1,3 +1,4 @@
+import { getSafeErrorMessage } from "@/lib/errorHandling";
 import {
   useCallback,
   useEffect,
@@ -378,7 +379,7 @@ export default function SecuritySettingsPage({
         title:
           "Biometric setup failed",
         description:
-          error?.message ??
+          getSafeErrorMessage(error) ??
           "The biometric setup was cancelled or unavailable.",
         variant: "destructive",
       });
@@ -464,7 +465,7 @@ export default function SecuritySettingsPage({
           title:
             "Push setup failed",
           description:
-            error?.message ??
+            getSafeErrorMessage(error) ??
             "Please check notification permissions and try again.",
           variant: "destructive",
         });
@@ -502,7 +503,7 @@ export default function SecuritySettingsPage({
           title:
             "Unable to disable push",
           description:
-            error?.message ??
+            getSafeErrorMessage(error) ??
             "Please try again.",
           variant: "destructive",
         });

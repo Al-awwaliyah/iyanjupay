@@ -1,3 +1,4 @@
+import { getSafeErrorMessage } from "@/lib/errorHandling";
 import React, { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, } from "@/components/ui/card";
@@ -55,7 +56,7 @@ const CardsPage = ({ onBack }: CardsPageProps) => {
 
       if (error) {
         let message =
-          error.message ?? "Card request failed";
+          getSafeErrorMessage(error) ?? "Card request failed";
 
         const context = (error as any)?.context;
 
@@ -67,9 +68,9 @@ const CardsPage = ({ onBack }: CardsPageProps) => {
             const body = await context.json();
 
             if (body?.error) {
-              message = body.error;
+              message = getSafeErrorMessage(body);
             } else if (body?.message) {
-              message = body.message;
+              message = getSafeErrorMessage(body);
             }
           } catch {
             // Keep original error message.
@@ -118,7 +119,7 @@ const CardsPage = ({ onBack }: CardsPageProps) => {
       toast({
         title: "Unable to load cards",
         description:
-          error?.message ??
+          getSafeErrorMessage(error) ??
           "Failed to load your virtual cards.",
         variant: "destructive",
       });
@@ -183,7 +184,7 @@ const CardsPage = ({ onBack }: CardsPageProps) => {
       toast({
         title: "Card issuing failed",
         description:
-          error?.message ??
+          getSafeErrorMessage(error) ??
           "Unable to issue your virtual card.",
         variant: "destructive",
       });
@@ -251,7 +252,7 @@ const CardsPage = ({ onBack }: CardsPageProps) => {
       toast({
         title: "Funding failed",
         description:
-          error?.message ??
+          getSafeErrorMessage(error) ??
           "Unable to fund this card.",
         variant: "destructive",
       });
@@ -309,7 +310,7 @@ const CardsPage = ({ onBack }: CardsPageProps) => {
       toast({
         title: `Unable to ${action} card`,
         description:
-          error?.message ??
+          getSafeErrorMessage(error) ??
           "The card operation failed.",
         variant: "destructive",
       });

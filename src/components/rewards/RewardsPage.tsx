@@ -1,3 +1,4 @@
+import { getSafeErrorMessage } from "@/lib/errorHandling";
 import React, {
   useCallback,
   useEffect,
@@ -114,7 +115,7 @@ const RewardsPage = ({
           title:
             "Unable to load referral code",
           description:
-            error.message,
+            getSafeErrorMessage(error),
           variant:
             "destructive",
         });
@@ -273,7 +274,7 @@ const RewardsPage = ({
           title:
             "Unable to load rewards",
           description:
-            error?.message ??
+            getSafeErrorMessage(error) ??
             "Please try again.",
           variant:
             "destructive",

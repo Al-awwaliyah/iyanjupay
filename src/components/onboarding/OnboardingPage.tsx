@@ -1,3 +1,4 @@
+import { getSafeErrorMessage } from "@/lib/errorHandling";
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
@@ -158,7 +159,7 @@ const OnboardingPage = () => {
         toast({
           title: "Unable to load your profile",
           description:
-            error?.message ||
+            getSafeErrorMessage(error) ||
             "Please try again.",
           variant: "destructive",
         });
@@ -286,7 +287,7 @@ const OnboardingPage = () => {
       toast({
         title: "Unable to save profile",
         description:
-          error?.message ||
+          getSafeErrorMessage(error) ||
           "Please try again.",
         variant: "destructive",
       });

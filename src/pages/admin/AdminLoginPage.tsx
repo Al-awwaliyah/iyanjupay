@@ -1,3 +1,4 @@
+import { getSafeErrorMessage } from "@/lib/errorHandling";
 import React, {
   FormEvent,
   useEffect,
@@ -82,8 +83,8 @@ function extractError(error: unknown): string {
   }
 
   if (error instanceof Error) {
-    if (error.message?.trim()) {
-      return error.message.trim();
+    if (getSafeErrorMessage(error)?.trim()) {
+      return getSafeErrorMessage(error).trim();
     }
 
     return "Unable to sign in.";
@@ -675,8 +676,8 @@ const AdminLoginPage: React.FC = () => {
 
       if (response.success !== true) {
         throw new Error(
-          response.error ??
-            response.message ??
+          getSafeErrorMessage(response) ??
+            getSafeErrorMessage(response) ??
             "Invalid administrator credentials.",
         );
       }

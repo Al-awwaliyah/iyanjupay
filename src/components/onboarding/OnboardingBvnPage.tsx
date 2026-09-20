@@ -1,3 +1,4 @@
+import { getSafeErrorMessage } from "@/lib/errorHandling";
 import React, {
   useCallback,
   useEffect,
@@ -70,7 +71,7 @@ const OnboardingBvnPage = () => {
 
       if (error) {
         let message =
-          error.message ||
+          getSafeErrorMessage(error) ||
           "BVN request failed.";
 
         const context =
@@ -86,7 +87,7 @@ const OnboardingBvnPage = () => {
               await context.json();
 
             if (body?.error) {
-              message = body.error;
+              message = getSafeErrorMessage(body);
             }
           } catch {
             // Keep original error.
@@ -223,7 +224,7 @@ const OnboardingBvnPage = () => {
             "Unable to load verification status",
 
           description:
-            error?.message ||
+            getSafeErrorMessage(error) ||
             "Please try again.",
 
           variant:
@@ -427,7 +428,7 @@ const OnboardingBvnPage = () => {
             "Verification failed",
 
           description:
-            error?.message ||
+            getSafeErrorMessage(error) ||
             "Unable to verify your BVN.",
 
           variant:

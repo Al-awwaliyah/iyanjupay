@@ -1,3 +1,4 @@
+import { getSafeErrorMessage } from "@/lib/errorHandling";
 import React, {
   useCallback,
   useEffect,
@@ -643,7 +644,7 @@ function AuditLogsPage() {
               "Unable to load audit logs",
 
             description:
-              error?.message ||
+              getSafeErrorMessage(error) ||
               "Something went wrong while loading audit logs.",
 
             variant:
@@ -781,7 +782,7 @@ function AuditLogsPage() {
               "Unable to load audit log",
 
             description:
-              error?.message ||
+              getSafeErrorMessage(error) ||
               "The audit log could not be loaded.",
 
             variant:

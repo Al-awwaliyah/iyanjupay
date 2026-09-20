@@ -1,3 +1,4 @@
+import { getSafeErrorMessage } from "@/lib/errorHandling";
 import React, {
   useCallback,
   useEffect,
@@ -209,7 +210,7 @@ const SupportChat = ({
         toast({
           title: "Support unavailable",
           description:
-            error?.message ||
+            getSafeErrorMessage(error) ||
             "Unable to load support chat.",
           variant: "destructive",
         });
@@ -399,7 +400,7 @@ const SupportChat = ({
           title:
             "Unable to start chat",
           description:
-            error?.message ||
+            getSafeErrorMessage(error) ||
             "Please try again.",
           variant: "destructive",
         });
@@ -536,7 +537,7 @@ const SupportChat = ({
         toast({
           title: "Message failed",
           description:
-            error?.message ||
+            getSafeErrorMessage(error) ||
             "Unable to send your message.",
           variant: "destructive",
         });

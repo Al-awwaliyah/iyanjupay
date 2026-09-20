@@ -1,3 +1,4 @@
+import { getSafeErrorMessage } from "@/lib/errorHandling";
 import React, {
   useCallback,
   useEffect,
@@ -27,6 +28,10 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useCustomerAppSettings } from "@/hooks/useCustomerAppSettings";
+import {
+  authenticateWithBiometric,
+  isBiometricEnabled,
+} from "@/lib/biometricAuth";
 
 interface ServicePaymentProps {
   service: { title: string; type: string } | null;
@@ -1240,7 +1245,7 @@ function ServiceTransactionProcessing({
       setStatus(nextStatus);
     } catch (error: any) {
       setMessage(
-        error?.message ||
+        getSafeErrorMessage(error) ||
           "We could not complete this transaction."
       );
 
@@ -1819,7 +1824,7 @@ export default function ServicePayment({
 
       if (!data || data.success !== true) {
         throw new Error(
-          data?.error ||
+          getSafeErrorMessage(data) ||
             "Service request failed."
         );
       }
@@ -1919,7 +1924,7 @@ export default function ServicePayment({
         }
       } catch (e: any) {
         const message =
-          e?.message ||
+          getSafeErrorMessage(e) ||
           "Unable to load service options.";
 
         setError(message);
@@ -2011,7 +2016,7 @@ export default function ServicePayment({
           }
         } catch (e: any) {
           const message =
-            e?.message ||
+            getSafeErrorMessage(e) ||
             "Unable to load packages.";
 
           setError(message);
@@ -2150,7 +2155,7 @@ export default function ServicePayment({
         setVerifiedName("");
 
         const message =
-          e?.message ||
+          getSafeErrorMessage(e) ||
           "Unable to verify the number.";
 
         setError(message);
@@ -2583,18 +2588,54 @@ export default function ServicePayment({
     };
   };
 
-  const startPurchase = () => {
-    const validationError =
-      validateBeforePin();
+  const startPurchase = async () => {
+    const validationError = validateBeforePin();
 
     if (validationError) {
       toast({
-        title:
-          "Check your details",
-        description:
-          validationError,
+        title: "Check your details",
+        description: validationError,
         variant: "destructive",
       });
+      return;
+    }
+
+    // When biometric authorization is enabled, it replaces the
+    // manual Payment PIN prompt for this transaction.
+    if (isBiometricEnabled()) {
+      setVerifyingPin(true);
+      setError("");
+
+      try {
+        await authenticateWithBiometric(
+          "Authorize IyanjuPay payment",
+        );
+
+        const idempotencyKey = createIdempotencyKey();
+        const details = {
+          ...buildDetails(),
+          idempotency_key: idempotencyKey,
+          idempotencyKey,
+          service_title: serviceTitle,
+        };
+
+        setProcessingSession({
+          amount: customerPayAmount,
+          details,
+          idempotencyKey,
+        });
+      } catch (error) {
+        console.error("Biometric payment authorization failed:", error);
+        const message = "Biometric verification failed. Please try again.";
+        setError(message);
+        toast({
+          title: "Payment authorization",
+          description: message,
+          variant: "destructive",
+        });
+      } finally {
+        setVerifyingPin(false);
+      }
 
       return;
     }
@@ -2604,84 +2645,64 @@ export default function ServicePayment({
     setShowPin(true);
   };
 
-  const confirmPurchase =
-    async () => {
-      if (!/^\d{4}$/.test(paymentPin)) {
-        toast({
-          title: "Invalid PIN",
-          description:
-            "Enter your 4-digit payment PIN.",
-          variant: "destructive",
+  const confirmPurchase = async () => {
+    if (!/^\d{4}$/.test(paymentPin)) {
+      toast({
+        title: "Invalid PIN",
+        description: "Enter your 4-digit payment PIN.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setVerifyingPin(true);
+    setError("");
+
+    try {
+      const { data, error: pinError } =
+        await supabase.rpc("verify_payment_pin", {
+          _pin: paymentPin,
         });
 
-        return;
+      if (pinError) {
+        console.error("Payment PIN verification error:", pinError);
+        throw new Error("Unable to verify payment PIN.");
       }
 
-      setVerifyingPin(true);
-      setError("");
-
-      try {
-        const {
-          data,
-          error: pinError,
-        } =
-          await supabase.rpc(
-            "verify_payment_pin",
-            {
-              _pin: paymentPin,
-            }
-          );
-
-        if (pinError) {
-          throw new Error(
-            "Unable to verify payment PIN."
-          );
-        }
-
-        if (!data?.success) {
-          throw new Error(
-            data?.message ||
-              "Invalid payment PIN."
-          );
-        }
-
-        const idempotencyKey =
-          createIdempotencyKey();
-
-        const details = {
-          ...buildDetails(),
-          idempotency_key:
-            idempotencyKey,
-          idempotencyKey,
-          service_title:
-            serviceTitle,
-        };
-
-        setShowPin(false);
-        setPaymentPin("");
-
-        setProcessingSession({
-          amount: customerPayAmount,
-          details,
-          idempotencyKey,
-        });
-      } catch (e: any) {
-        const message =
-          e?.message ||
-          "Unable to complete this payment.";
-
-        setError(message);
-
-        toast({
-          title:
-            "Payment failed",
-          description: message,
-          variant: "destructive",
-        });
-      } finally {
-        setVerifyingPin(false);
+      if (!data?.success) {
+        throw new Error("Invalid payment PIN.");
       }
-    };
+
+      const idempotencyKey = createIdempotencyKey();
+
+      const details = {
+        ...buildDetails(),
+        idempotency_key: idempotencyKey,
+        idempotencyKey,
+        service_title: serviceTitle,
+      };
+
+      setShowPin(false);
+      setPaymentPin("");
+
+      setProcessingSession({
+        amount: customerPayAmount,
+        details,
+        idempotencyKey,
+      });
+    } catch (error) {
+      console.error("Payment authorization failed:", error);
+      const message = "Unable to authorize this payment. Please try again.";
+      setError(message);
+      toast({
+        title: "Payment authorization",
+        description: message,
+        variant: "destructive",
+      });
+    } finally {
+      setVerifyingPin(false);
+    }
+  };
 
   const renderBillerCard = (
     biller: Biller
@@ -2985,45 +3006,41 @@ export default function ServicePayment({
                 </h2>
 
                 <p className="iyanjupay-payment-pin-description mt-1 text-sm">
-                  Enter your 4-digit payment PIN to
-                  continue.
+                  {isBiometricEnabled()
+                    ? "Use your enabled biometric to authorize this payment."
+                    : "Enter your 4-digit payment PIN to continue."}
                 </p>
 
                 <div className="mt-6">
-                  <Input
-                    autoFocus
-                    inputMode="numeric"
-                    maxLength={4}
-                    type="password"
-                    value={paymentPin}
-                    onChange={(e) =>
-                      setPaymentPin(
-                        e.target.value
-                          .replace(
-                            /\D/g,
-                            ""
-                          )
-                          .slice(
-                            0,
-                            4
-                          )
-                      )
-                    }
-                    onKeyDown={(e) => {
-                      if (
-                        e.key ===
-                        "Enter"
-                      ) {
-                        void confirmPurchase();
+                  {isBiometricEnabled() ? (
+                    <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-center text-sm text-blue-800">
+                      Use your enabled biometric to authorize this payment.
+                    </div>
+                  ) : (
+                    <Input
+                      autoFocus
+                      inputMode="numeric"
+                      maxLength={4}
+                      type="password"
+                      value={paymentPin}
+                      onChange={(e) =>
+                        setPaymentPin(
+                          e.target.value
+                            .replace(/\D/g, "")
+                            .slice(0, 4)
+                        )
                       }
-                    }}
-                    placeholder="••••"
-                    className="iyanjupay-payment-pin-input h-14 text-center text-2xl tracking-[0.5em]"
-                    disabled={
-                      verifyingPin
-                    }
-                    aria-label="Payment PIN"
-                  />
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          void confirmPurchase();
+                        }
+                      }}
+                      placeholder="••••"
+                      className="iyanjupay-payment-pin-input h-14 text-center text-2xl tracking-[0.5em]"
+                      disabled={verifyingPin}
+                      aria-label="Payment PIN"
+                    />
+                  )}
                 </div>
 
                 {error && (
@@ -3040,14 +3057,16 @@ export default function ServicePayment({
                     }
                     disabled={
                       verifyingPin ||
-                      paymentPin.length !==
-                        4
+                      (!isBiometricEnabled() &&
+                        paymentPin.length !== 4)
                     }
                   >
                     {verifyingPin ? (
                       <>
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Verifying PIN...
+                        {isBiometricEnabled()
+                          ? "Verifying biometrics..."
+                          : "Verifying PIN..."}
                       </>
                     ) : (
                       "Confirm Payment"

@@ -1,3 +1,4 @@
+import { getSafeErrorMessage } from "@/lib/errorHandling";
 import React, {
   useEffect,
   useState,
@@ -226,7 +227,7 @@ const VerifyPaymentPinResetOtp =
             );
 
             throw new Error(
-              error.message ||
+              getSafeErrorMessage(error) ||
                 "Unable to verify recovery code."
             );
           }
@@ -238,7 +239,7 @@ const VerifyPaymentPinResetOtp =
           ) {
 
             throw new Error(
-              data?.message ||
+              getSafeErrorMessage(data) ||
                 "Payment PIN recovery verification failed."
             );
           }
@@ -305,7 +306,7 @@ const VerifyPaymentPinResetOtp =
             title:
               "Verification failed",
             description:
-              error?.message ||
+              getSafeErrorMessage(error) ||
               "Unable to verify the recovery code.",
             variant:
               "destructive",

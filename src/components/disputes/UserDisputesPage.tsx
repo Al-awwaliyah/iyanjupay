@@ -1,3 +1,4 @@
+import { getSafeErrorMessage } from "@/lib/errorHandling";
 import React, { useCallback,  useEffect, useMemo, useState, } from "react";
 
 import {  AlertCircle, ArrowLeft, CheckCircle2, Clock3, Eye, FileText, Loader2, Plus, RefreshCw, Search, X, XCircle, } from "lucide-react";
@@ -287,7 +288,7 @@ const UserDisputesPage = ({
             title:
               "Unable to load disputes",
             description:
-              error?.message ||
+              getSafeErrorMessage(error) ||
               "Something went wrong while loading your disputes.",
             variant: "destructive",
           });
@@ -387,7 +388,7 @@ const UserDisputesPage = ({
             title:
               "Unable to load transactions",
             description:
-              error?.message ||
+              getSafeErrorMessage(error) ||
               "Unable to load your transactions.",
             variant: "destructive",
           });
@@ -480,7 +481,7 @@ const UserDisputesPage = ({
           title:
             "Unable to submit dispute",
           description:
-            error?.message ||
+            getSafeErrorMessage(error) ||
             "Something went wrong while submitting your dispute.",
           variant: "destructive",
         });

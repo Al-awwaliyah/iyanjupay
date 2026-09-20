@@ -1,3 +1,4 @@
+import { getSafeErrorMessage } from "@/lib/errorHandling";
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
@@ -272,7 +273,7 @@ const PaymentPinPage = ({
 
         if (error) {
           throw new Error(
-            error.message
+            getSafeErrorMessage(error)
           );
         }
 
@@ -282,7 +283,7 @@ const PaymentPinPage = ({
           data.success !== true
         ) {
           throw new Error(
-            data?.message ||
+            getSafeErrorMessage(data) ||
               "Unable to change Payment PIN."
           );
         }
@@ -313,7 +314,7 @@ const PaymentPinPage = ({
           title:
             "Unable to change PIN",
           description:
-            error?.message ||
+            getSafeErrorMessage(error) ||
             "Something went wrong. Please try again.",
           variant:
             "destructive",
@@ -424,7 +425,7 @@ const PaymentPinPage = ({
         ) {
 
           throw new Error(
-            data?.message ||
+            getSafeErrorMessage(data) ||
               "Unable to start Payment PIN recovery."
           );
         }
@@ -482,7 +483,7 @@ const PaymentPinPage = ({
           title:
             "Unable to start PIN reset",
           description:
-            error?.message ||
+            getSafeErrorMessage(error) ||
             "Something went wrong. Please try again.",
           variant:
             "destructive",

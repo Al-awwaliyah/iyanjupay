@@ -11,6 +11,10 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { supabase } from "@/integrations/supabase/client";
+import {
+  authenticateWithBiometric,
+  isBiometricEnabled,
+} from "@/lib/biometricAuth";
 
 interface PaymentPinModalProps {
   open: boolean;
@@ -69,6 +73,33 @@ const PaymentPinModal: React.FC<PaymentPinModalProps> = ({
    * Verify the Payment PIN.
    */
   const handleVerify = async () => {
+    if (isBiometricEnabled()) {
+      setLoading(true);
+      setError("");
+
+      try {
+        await authenticateWithBiometric(
+          "Authorize IyanjuPay transaction",
+        );
+
+        setPin("");
+        setLockedUntil(null);
+        onVerified();
+      } catch (error) {
+        console.error(
+          "Biometric transaction authorization failed:",
+          error,
+        );
+        setError(
+          "Biometric verification failed. Please try again.",
+        );
+      } finally {
+        setLoading(false);
+      }
+
+      return;
+    }
+
     if (pin.length !== 4) {
       setError("Enter your 4-digit Payment PIN.");
       return;
@@ -93,8 +124,7 @@ const PaymentPinModal: React.FC<PaymentPinModalProps> = ({
         );
 
         setError(
-          rpcError.message ||
-            "Unable to verify Payment PIN. Please try again."
+          "Unable to verify Payment PIN. Please try again.",
         );
 
         return;
@@ -105,10 +135,7 @@ const PaymentPinModal: React.FC<PaymentPinModalProps> = ({
           setLockedUntil(data.locked_until);
         }
 
-        setError(
-          data?.message ||
-            "Invalid Payment PIN."
-        );
+        setError("Invalid Payment PIN.");
 
         return;
       }
@@ -186,11 +213,18 @@ const PaymentPinModal: React.FC<PaymentPinModalProps> = ({
             </DialogTitle>
 
             <DialogDescription className="payment-pin-dialog-description">
-              {description}
+              {isBiometricEnabled()
+                ? "Use your enabled biometric to authorize this transaction."
+                : description}
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4">
+            {isBiometricEnabled() ? (
+              <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-center text-sm text-blue-800">
+                Biometric authentication is enabled. Use your fingerprint or Face ID to authorize this transaction.
+              </div>
+            ) : (
             <div className="space-y-2">
               <Input
                 ref={inputRef}
@@ -207,6 +241,7 @@ const PaymentPinModal: React.FC<PaymentPinModalProps> = ({
                 aria-label="Payment PIN"
               />
             </div>
+            )}
 
             {error && (
               <div
@@ -240,12 +275,14 @@ const PaymentPinModal: React.FC<PaymentPinModalProps> = ({
                 onClick={handleVerify}
                 disabled={
                   loading ||
-                  pin.length !== 4
+                  (!isBiometricEnabled() && pin.length !== 4)
                 }
               >
                 {loading
                   ? "Verifying..."
-                  : "Verify PIN"}
+                  : isBiometricEnabled()
+                    ? "Authorize with biometrics"
+                    : "Verify PIN"}
               </Button>
             </div>
           </div>

@@ -1,3 +1,4 @@
+import { getSafeErrorMessage } from "@/lib/errorHandling";
 import React, { useEffect, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -62,7 +63,7 @@ const FundWalletModal = ({
 
       if (!data?.success) {
         throw new Error(
-          data?.error ||
+          getSafeErrorMessage(data) ||
             "Unable to check for payments",
         );
       }
@@ -122,7 +123,7 @@ const FundWalletModal = ({
         }
 
         throw new Error(
-          data?.error ||
+          getSafeErrorMessage(data) ||
             "Unable to get your dedicated bank account",
         );
       }
@@ -139,7 +140,7 @@ const FundWalletModal = ({
       toast({
         title: "Unable to load account",
         description:
-          error?.message ||
+          getSafeErrorMessage(error) ||
           "We couldn't retrieve your dedicated bank account.",
         variant: "destructive",
       });

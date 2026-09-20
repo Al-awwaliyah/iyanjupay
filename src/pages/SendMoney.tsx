@@ -1,3 +1,4 @@
+import { getSafeErrorMessage } from "@/lib/errorHandling";
 import React, {
   ReactNode,
   useCallback,
@@ -328,7 +329,7 @@ const SendMoneyPage = ({
           title:
             "Unable to check Payment PIN",
           description:
-            error.message ||
+            getSafeErrorMessage(error) ||
             "Please try again.",
           variant: "destructive",
         });
@@ -356,7 +357,7 @@ const SendMoneyPage = ({
         title:
           "Unable to check Payment PIN",
         description:
-          error?.message ||
+          getSafeErrorMessage(error) ||
           "Please try again.",
         variant: "destructive",
       });
@@ -479,7 +480,7 @@ const SendMoneyPage = ({
           !Array.isArray(data?.banks)
         ) {
           throw new Error(
-            data?.error ||
+            getSafeErrorMessage(data) ||
               "Unable to load banks."
           );
         }
@@ -531,7 +532,7 @@ const SendMoneyPage = ({
           description:
             !isOnline
               ? "Please check your internet connection."
-              : error?.message ||
+              : getSafeErrorMessage(error) ||
                 "Please try again later.",
           variant:
             "destructive",
@@ -632,7 +633,7 @@ const SendMoneyPage = ({
 
           if (error) {
             let message =
-              error.message ||
+              getSafeErrorMessage(error) ||
               "Unable to verify bank account.";
 
             try {
@@ -665,7 +666,7 @@ const SendMoneyPage = ({
             !data?.account
           ) {
             throw new Error(
-              data?.error ||
+              getSafeErrorMessage(data) ||
                 "Bank account could not be verified."
             );
           }
@@ -715,7 +716,7 @@ const SendMoneyPage = ({
             description:
               !navigator.onLine
                 ? "Your internet connection was lost. Please reconnect and try again."
-                : error?.message ||
+                : getSafeErrorMessage(error) ||
                   "We could not verify this bank account.",
 
             variant:
@@ -832,7 +833,7 @@ const SendMoneyPage = ({
 
           if (error) {
             let message =
-              error.message ||
+              getSafeErrorMessage(error) ||
               "Unable to verify recipient.";
 
             try {
@@ -865,8 +866,8 @@ const SendMoneyPage = ({
             !data?.recipient
           ) {
             throw new Error(
-              data?.error ||
-                data?.message ||
+              getSafeErrorMessage(data) ||
+                getSafeErrorMessage(data) ||
                 "IyanjuPay Wallet ID could not be verified."
             );
           }
@@ -922,7 +923,7 @@ const SendMoneyPage = ({
             description:
               !navigator.onLine
                 ? "Your internet connection was lost. Please reconnect and try again."
-                : error?.message ||
+                : getSafeErrorMessage(error) ||
                   "We could not find this IyanjuPay Wallet ID.",
 
             variant:
@@ -1052,7 +1053,7 @@ const SendMoneyPage = ({
         );
 
         setCreatePinError(
-          error.message ||
+          getSafeErrorMessage(error) ||
             "Unable to create Payment PIN."
         );
 
@@ -1105,7 +1106,7 @@ const SendMoneyPage = ({
       setCreatePinError(
         !navigator.onLine
           ? "Your internet connection was lost. Please reconnect and try again."
-          : error?.message ||
+          : getSafeErrorMessage(error) ||
               "Something went wrong while creating your Payment PIN."
       );
     } finally {

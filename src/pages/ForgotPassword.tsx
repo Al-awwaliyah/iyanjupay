@@ -1,3 +1,4 @@
+import { getSafeErrorMessage } from "@/lib/errorHandling";
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -67,7 +68,7 @@ const ForgotPassword = () => {
       toast({
         title: "Unable to send code",
         description:
-          error.message ||
+          getSafeErrorMessage(error) ||
           "Please check the email address and try again.",
         variant: "destructive",
       });

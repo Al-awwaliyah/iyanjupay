@@ -1,6 +1,7 @@
 import webpush from "npm:web-push@3.6.7";
 import { GoogleAuth } from "npm:google-auth-library@9.15.1";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.112.3";
+import { importPKCS8, SignJWT } from "npm:jose@6.0.10";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -86,7 +87,7 @@ async function sendAndroidPush(
           android: {
             priority: "high",
             notification: {
-              channel_id: "iyanjupay_default",
+              channel_id: "iyanjupay-default",
               sound: "default",
             },
           },
@@ -131,6 +132,95 @@ async function sendAndroidPush(
   }
 
   return responseBody;
+}
+
+
+type ApnsError = Error & {
+  statusCode?: number;
+  apnsReason?: string | null;
+};
+
+async function createApnsJwt(
+  key: string,
+  keyId: string,
+  teamId: string,
+) {
+  const normalizedKey = key.replace(/\\n/g, "\n");
+  const privateKey = await importPKCS8(normalizedKey, "ES256");
+
+  return await new SignJWT({})
+    .setProtectedHeader({
+      alg: "ES256",
+      kid: keyId,
+    })
+    .setIssuer(teamId)
+    .setIssuedAt()
+    .setExpirationTime("55m")
+    .sign(privateKey);
+}
+
+async function sendIosPush(
+  key: string,
+  keyId: string,
+  teamId: string,
+  bundleId: string,
+  production: boolean,
+  deviceToken: string,
+  title: string,
+  message: string,
+  url: string,
+  notificationId: string | null,
+) {
+  const jwt = await createApnsJwt(key, keyId, teamId);
+  const host = production
+    ? "https://api.push.apple.com"
+    : "https://api.sandbox.push.apple.com";
+
+  const response = await fetch(
+    `${host}/3/device/${encodeURIComponent(deviceToken)}`,
+    {
+      method: "POST",
+      headers: {
+        authorization: `bearer ${jwt}`,
+        "apns-topic": bundleId,
+        "apns-push-type": "alert",
+        "apns-priority": "10",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        aps: {
+          alert: {
+            title,
+            body: message,
+          },
+          sound: "default",
+        },
+        url,
+        notificationId: notificationId ?? "",
+      }),
+    },
+  );
+
+  const responseText = await response.text();
+
+  if (!response.ok) {
+    let parsed: any = null;
+    try {
+      parsed = responseText ? JSON.parse(responseText) : null;
+    } catch {
+      parsed = null;
+    }
+
+    const error = new Error(
+      `APNs request failed (${response.status})`,
+    ) as ApnsError;
+
+    error.statusCode = response.status;
+    error.apnsReason = parsed?.reason ?? null;
+    throw error;
+  }
+
+  return true;
 }
 
 Deno.serve(async (req) => {
@@ -304,6 +394,23 @@ Deno.serve(async (req) => {
 
   /*
    * ------------------------------------------------------------
+   * Apple Push Notification service configuration
+   * ------------------------------------------------------------
+   */
+
+  const apnsKey = Deno.env.get("APNS_PRIVATE_KEY");
+  const apnsKeyId = Deno.env.get("APNS_KEY_ID");
+  const apnsTeamId = Deno.env.get("APNS_TEAM_ID");
+  const apnsBundleId =
+    Deno.env.get("APNS_BUNDLE_ID") ?? "com.iyanjupay.app";
+  const apnsProduction =
+    (Deno.env.get("APNS_PRODUCTION") ?? "true").toLowerCase() === "true";
+
+  const apnsConfigured =
+    !!apnsKey && !!apnsKeyId && !!apnsTeamId && !!apnsBundleId;
+
+  /*
+   * ------------------------------------------------------------
    * Get Web + Android subscriptions
    * ------------------------------------------------------------
    */
@@ -436,6 +543,75 @@ Deno.serve(async (req) => {
         ) {
           staleIds.push(subscription.id);
         }
+      }
+    }
+  }
+
+  /*
+   * ------------------------------------------------------------
+   * iOS APNs
+   * ------------------------------------------------------------
+   */
+
+  const iosSubscriptions =
+    subscriptions?.filter(
+      (subscription) =>
+        subscription.platform === "ios" &&
+        !!subscription.device_token,
+    ) ?? [];
+
+  if (iosSubscriptions.length > 0 && !apnsConfigured) {
+    console.error(
+      "iOS push subscriptions exist, but APNs credentials are not configured.",
+    );
+  }
+
+  if (apnsConfigured) {
+    for (const subscription of iosSubscriptions) {
+      if (!subscription.device_token) continue;
+
+      attempted += 1;
+
+      try {
+        await sendIosPush(
+          apnsKey!,
+          apnsKeyId!,
+          apnsTeamId!,
+          apnsBundleId,
+          apnsProduction,
+          subscription.device_token,
+          title,
+          message,
+          url,
+          notificationId,
+        );
+
+        delivered += 1;
+      } catch (error) {
+        const statusCode =
+          (error as ApnsError)?.statusCode;
+        const reason =
+          (error as ApnsError)?.apnsReason;
+
+        if (
+          statusCode === 400 &&
+          (
+            reason === "BadDeviceToken" ||
+            reason === "DeviceTokenNotForTopic"
+          )
+        ) {
+          staleIds.push(subscription.id);
+        }
+
+        if (statusCode === 410) {
+          staleIds.push(subscription.id);
+        }
+
+        console.error(
+          "APNs delivery failed:",
+          statusCode,
+          reason,
+        );
       }
     }
   }

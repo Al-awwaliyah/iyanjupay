@@ -350,3 +350,20 @@ export async function signInWithWebBiometric(): Promise<void> {
     );
   }
 }
+
+/**
+ * Authorize a transaction using the user's enabled biometric.
+ * If biometrics are not enabled, callers should continue with the
+ * normal Payment PIN flow.
+ *
+ * The PIN itself is never stored or recovered from the device.
+ */
+export async function authorizeTransactionWithBiometric(): Promise<boolean> {
+  if (!isBiometricEnabled()) return false;
+
+  await authenticateWithBiometric(
+    "Authorize IyanjuPay transaction",
+  );
+
+  return true;
+}

@@ -1,3 +1,4 @@
+import { getSafeErrorMessage } from "@/lib/errorHandling";
 import React, {
   useCallback,
   useEffect,
@@ -642,7 +643,7 @@ const AdminSupportPage = () => {
         toast({
           title: "Access denied",
           description:
-            error?.message ||
+            getSafeErrorMessage(error) ||
             "Unable to verify your administrator access.",
           variant: "destructive",
         });
@@ -858,7 +859,7 @@ const AdminSupportPage = () => {
             title:
               "Unable to load support inbox",
             description:
-              error?.message ||
+              getSafeErrorMessage(error) ||
               "Please try again.",
             variant: "destructive",
           });
@@ -1031,7 +1032,7 @@ const AdminSupportPage = () => {
             title:
               "Unable to load messages",
             description:
-              error?.message ||
+              getSafeErrorMessage(error) ||
               "Please try again.",
             variant: "destructive",
           });
@@ -1651,7 +1652,7 @@ const AdminSupportPage = () => {
         toast({
           title: "Update failed",
           description:
-            error?.message ||
+            getSafeErrorMessage(error) ||
             "Unable to update conversation.",
           variant: "destructive",
         });
@@ -1771,7 +1772,7 @@ const AdminSupportPage = () => {
         title:
           "Message failed",
         description:
-          error?.message ||
+          getSafeErrorMessage(error) ||
           "Unable to send your reply.",
         variant: "destructive",
       });

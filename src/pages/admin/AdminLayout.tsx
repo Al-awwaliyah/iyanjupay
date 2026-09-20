@@ -1,3 +1,4 @@
+import { getSafeErrorMessage } from "@/lib/errorHandling";
 import React, {
   ReactNode,
   useCallback,
@@ -98,7 +99,7 @@ function getErrorMessage(
   }
 
   if (error instanceof Error) {
-    return error.message.trim() || fallback;
+    return getSafeErrorMessage(error).trim() || fallback;
   }
 
   if (typeof error === "object") {

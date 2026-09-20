@@ -311,7 +311,7 @@ function extractTechnicalErrorMessage(
   }
 
   if (error instanceof Error) {
-    return error.message || "";
+    return error.message.trim() || "";
   }
 
   if (

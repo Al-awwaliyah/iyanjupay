@@ -130,7 +130,7 @@ const SAFE_ERROR_MESSAGES = {
  * Converts any backend/runtime error into a safe user-facing
  * message.
  *
- * Do NOT return error.message, error.details, error.hint,
+ * Do NOT return getSafeErrorMessage(error), error.details, error.hint,
  * PostgreSQL error codes, SQL statements, function names,
  * Supabase internals, or Edge Function responses here.
  */

@@ -47,36 +47,10 @@ display_name?: string | null;
 must_change_password?: boolean;
 };
 
-function extractError(error: unknown): string {
-if (!error) {
-return "An unexpected error occurred.";
-}
-
-if (typeof error === "string") {
-return error;
-}
-
-if (typeof error === "object") {
-const value = error as {
-message?: string;
-error_description?: string;
-details?: string;
-hint?: string;
-};
-
-
-return (
-  value.message ??
-  value.error_description ??
-  value.details ??
-  value.hint ??
-  "An unexpected error occurred."
-);
-
-
-}
-
-return "An unexpected error occurred.";
+function extractError(
+  _error: unknown,
+): string {
+  return "An unexpected error occurred.";
 }
 
 function getRoleLabel(

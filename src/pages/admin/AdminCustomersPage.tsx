@@ -1,3 +1,4 @@
+import { getSafeErrorMessage } from "@/lib/errorHandling";
 import React, {
   useCallback,
   useEffect,
@@ -378,7 +379,7 @@ const AdminCustomersPage =
               title:
                 "Customers unavailable",
               description:
-                error?.message ||
+                getSafeErrorMessage(error) ||
                 "Unable to load customers.",
               variant:
                 "destructive",
@@ -436,7 +437,7 @@ const AdminCustomersPage =
             );
 
             const message =
-              error?.message ||
+              getSafeErrorMessage(error) ||
               "Unable to load customer details.";
 
             setDetailsError(

@@ -1,3 +1,4 @@
+import { getSafeErrorMessage } from "@/lib/errorHandling";
 import React, {
   useCallback,
   useEffect,
@@ -990,7 +991,7 @@ function NotificationsPage() {
               "Unable to load notifications",
 
             description:
-              error?.message ||
+              getSafeErrorMessage(error) ||
               "Something went wrong while loading notifications.",
 
             variant:
@@ -1134,7 +1135,7 @@ function NotificationsPage() {
               "Unable to load notification",
 
             description:
-              error?.message ||
+              getSafeErrorMessage(error) ||
               "The notification could not be loaded.",
 
             variant:
@@ -1221,7 +1222,7 @@ function NotificationsPage() {
               "Retry failed",
 
             description:
-              error?.message ||
+              getSafeErrorMessage(error) ||
               "The notification could not be queued for retry.",
 
             variant:
@@ -1464,7 +1465,7 @@ function NotificationsPage() {
               "Broadcast failed",
 
             description:
-              error?.message ||
+              getSafeErrorMessage(error) ||
               "The broadcast could not be created.",
 
             variant:

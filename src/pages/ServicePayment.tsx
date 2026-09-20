@@ -634,8 +634,19 @@ function providerLogo(
   }
 
   if (network === "9mobile") {
-    // Exact 9mobile brand mark, rather than the generic website favicon.
-    return "https://seeklogo.com/images/9/9mobile-logo-2E5E0C0F4D-seeklogo.com.png";
+    // Self-contained 9mobile mark. This avoids hotlink/CORS/CDN failures
+    // that can make the remote logo disappear inside the PWA.
+    return (
+      "data:image/svg+xml;charset=UTF-8," +
+      encodeURIComponent(`
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 64">
+          <rect width="160" height="64" rx="12" fill="#ffffff"/>
+          <circle cx="31" cy="32" r="21" fill="#d6df00"/>
+          <path d="M22 20c8-4 17 1 17 9 0 6-4 9-10 11l-7 3v-7l7-3c3-1 4-2 4-4 0-3-4-4-7-2l-4 2z" fill="#087f3f"/>
+          <text x="57" y="40" font-family="Arial,Helvetica,sans-serif" font-size="25" font-weight="700" fill="#087f3f">mobile</text>
+        </svg>
+      `)
+    );
   }
 
   const value = `${name} ${code}`

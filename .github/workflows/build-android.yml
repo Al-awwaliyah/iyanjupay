@@ -42,12 +42,45 @@ jobs:
       - name: Install dependencies
         run: bun install
 
+      # ------------------------------------------------------------
+      # Verify Capacitor native dependencies
+      # ------------------------------------------------------------
+      - name: Verify biometric and push dependencies
+        shell: bash
+        run: |
+          echo "Checking Capacitor native dependencies..."
+
+          if ! bun pm ls @capacitor/push-notifications >/dev/null 2>&1; then
+            echo "ERROR: @capacitor/push-notifications is not installed."
+            exit 1
+          fi
+
+          if ! bun pm ls @capacitor-community/biometric >/dev/null 2>&1; then
+            echo "ERROR: @capacitor-community/biometric is not installed."
+            exit 1
+          fi
+
+          echo "Capacitor push notifications:"
+          bun pm ls @capacitor/push-notifications
+
+          echo "Capacitor biometric:"
+          bun pm ls @capacitor-community/biometric
+
+      # ------------------------------------------------------------
+      # Build web application
+      # ------------------------------------------------------------
       - name: Build web app
         run: bun run build
 
+      # ------------------------------------------------------------
+      # Generate Android project
+      # ------------------------------------------------------------
       - name: Generate Android project
         run: bunx cap add android
 
+      # ------------------------------------------------------------
+      # Configure Firebase
+      # ------------------------------------------------------------
       - name: Configure Firebase for Android
         shell: bash
         run: |
@@ -58,6 +91,9 @@ jobs:
             exit 1
           fi
 
+      # ------------------------------------------------------------
+      # Configure Firebase Gradle integration
+      # ------------------------------------------------------------
       - name: Configure Firebase Gradle integration
         shell: bash
         working-directory: android
@@ -126,6 +162,9 @@ jobs:
           app_gradle.write_text(app_text)
           PY
 
+      # ------------------------------------------------------------
+      # Generate native app icons / splash screen
+      # ------------------------------------------------------------
       - name: Generate native IyanjuPay icon
         run: |
           bunx @capacitor/assets@3.0.5 generate \
@@ -136,9 +175,15 @@ jobs:
             --splashBackgroundColor '#f7f8fc' \
             --splashBackgroundColorDark '#061329'
 
+      # ------------------------------------------------------------
+      # Sync Capacitor plugins into Android
+      # ------------------------------------------------------------
       - name: Sync Capacitor
         run: bunx cap sync android
 
+      # ------------------------------------------------------------
+      # Verify Firebase configuration
+      # ------------------------------------------------------------
       - name: Verify Firebase configuration
         shell: bash
         run: |
@@ -154,6 +199,44 @@ jobs:
 
           echo "Firebase Android configuration verified for com.iyanjupay.app"
 
+      # ------------------------------------------------------------
+      # Verify native push integration
+      # ------------------------------------------------------------
+      - name: Verify Firebase Messaging integration
+        shell: bash
+        run: |
+          if ! grep -q "com.google.firebase:firebase-messaging" android/app/build.gradle; then
+            echo "ERROR: Firebase Messaging dependency is missing."
+            exit 1
+          fi
+
+          if ! grep -q "com.google.gms.google-services" android/app/build.gradle; then
+            echo "ERROR: Google Services Gradle plugin is missing."
+            exit 1
+          fi
+
+          echo "Firebase Messaging integration verified."
+
+      # ------------------------------------------------------------
+      # Verify Capacitor native plugins
+      # ------------------------------------------------------------
+      - name: Verify Capacitor native plugins
+        shell: bash
+        run: |
+          if [ ! -d android/capacitor-cordova-android-plugins ]; then
+            echo "ERROR: Capacitor native plugin integration directory is missing."
+            exit 1
+          fi
+
+          if ! grep -Rqi "push" android/capacitor-cordova-android-plugins 2>/dev/null; then
+            echo "WARNING: Push plugin files were not detected in the generated plugin directory."
+          fi
+
+          echo "Capacitor native plugin integration checked."
+
+      # ------------------------------------------------------------
+      # Decode Android signing keystore
+      # ------------------------------------------------------------
       - name: Decode Android signing keystore
         shell: bash
         run: |
@@ -164,6 +247,9 @@ jobs:
             exit 1
           fi
 
+      # ------------------------------------------------------------
+      # Create signing properties
+      # ------------------------------------------------------------
       - name: Create Android signing properties
         shell: bash
         run: |
@@ -174,6 +260,9 @@ jobs:
           keyPassword=${{ secrets.ANDROID_KEY_PASSWORD }}
           EOF
 
+      # ------------------------------------------------------------
+      # Configure release signing
+      # ------------------------------------------------------------
       - name: Configure release signing
         shell: bash
         working-directory: android
@@ -230,19 +319,31 @@ jobs:
           gradle_file.write_text(text)
           PY
 
+      # ------------------------------------------------------------
+      # Build signed release APK
+      # ------------------------------------------------------------
       - name: Build signed release APK
         working-directory: android
         run: ./gradlew assembleRelease
 
+      # ------------------------------------------------------------
+      # Verify APK signature
+      # ------------------------------------------------------------
       - name: Verify APK signature
         working-directory: android
         run: |
           $ANDROID_HOME/build-tools/$(ls $ANDROID_HOME/build-tools | sort -V | tail -1)/apksigner verify --verbose app/build/outputs/apk/release/app-release.apk
 
+      # ------------------------------------------------------------
+      # Rename APK
+      # ------------------------------------------------------------
       - name: Rename release APK
         run: |
           cp android/app/build/outputs/apk/release/app-release.apk android/app/build/outputs/apk/release/IyanjuPay.apk
 
+      # ------------------------------------------------------------
+      # Upload APK
+      # ------------------------------------------------------------
       - name: Upload signed release APK
         uses: actions/upload-artifact@v4
         with:

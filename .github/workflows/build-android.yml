@@ -55,16 +55,24 @@ jobs:
             exit 1
           fi
 
-          if ! bun pm ls @capacitor-community/biometric >/dev/null 2>&1; then
-            echo "ERROR: @capacitor-community/biometric is not installed."
+          if ! bun pm ls @capgo/capacitor-native-biometric >/dev/null 2>&1; then
+            echo "ERROR: @capgo/capacitor-native-biometric is not installed."
+            exit 1
+          fi
+
+          if ! bun pm ls @capacitor/local-notifications >/dev/null 2>&1; then
+            echo "ERROR: @capacitor/local-notifications is not installed."
             exit 1
           fi
 
           echo "Capacitor push notifications:"
           bun pm ls @capacitor/push-notifications
 
+          echo "Capacitor local notifications:"
+          bun pm ls @capacitor/local-notifications
+
           echo "Capacitor biometric:"
-          bun pm ls @capacitor-community/biometric
+          bun pm ls @capgo/capacitor-native-biometric
 
       # ------------------------------------------------------------
       # Build web application
@@ -180,6 +188,35 @@ jobs:
       # ------------------------------------------------------------
       - name: Sync Capacitor
         run: bunx cap sync android
+
+      - name: Configure Android push permissions
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          manifest = Path("android/app/src/main/AndroidManifest.xml")
+          text = manifest.read_text() if manifest.exists() else ""
+
+          permission = '<uses-permission android:name="android.permission.POST_NOTIFICATIONS" />'
+          if permission not in text:
+              text = text.replace(
+                  "<manifest",
+                  "<manifest",
+                  1,
+              )
+              insert_at = text.find(">")
+              if insert_at >= 0:
+                  text = text[:insert_at + 1] + "\n    " + permission + text[insert_at + 1:]
+
+          biometric = '<uses-permission android:name="android.permission.USE_BIOMETRIC" />'
+          if biometric not in text:
+              insert_at = text.find(">")
+              text = text[:insert_at + 1] + "\n    " + biometric + text[insert_at + 1:]
+
+          manifest.write_text(text)
+          PY
+
 
       # ------------------------------------------------------------
       # Verify Firebase configuration

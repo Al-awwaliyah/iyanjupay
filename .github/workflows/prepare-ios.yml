@@ -12,6 +12,7 @@ permissions:
 jobs:
   prepare-ios:
     runs-on: macos-latest
+
     env:
       VITE_SUPABASE_PROJECT_ID: ${{ secrets.VITE_SUPABASE_PROJECT_ID }}
       VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
@@ -38,15 +39,133 @@ jobs:
       - name: Build web app
         run: bun run build
 
+      # ------------------------------------------------------------
+      # Generate iOS project
+      # ------------------------------------------------------------
       - name: Generate iOS project
         run: bunx cap add ios
 
-      - name: Generate native IyanjuPay icon
-        run: bunx @capacitor/assets@3.0.5 generate --ios --assetPath resources --iconBackgroundColor '#ffffff' --iconBackgroundColorDark '#061329' --splashBackgroundColor '#f7f8fc' --splashBackgroundColorDark '#061329'
+      # ------------------------------------------------------------
+      # Configure iOS deployment target
+      # ------------------------------------------------------------
+      - name: Configure iOS deployment target
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
 
+          deployment_target = "15.0"
+
+          podfile = Path("ios/App/Podfile")
+
+          if not podfile.exists():
+              raise SystemExit("ERROR: ios/App/Podfile was not created.")
+
+          text = podfile.read_text()
+
+          if re.search(r"^\s*platform\s*:ios", text, re.MULTILINE):
+              text = re.sub(
+                  r"^\s*platform\s*:ios.*$",
+                  f"platform :ios, '{deployment_target}'",
+                  text,
+                  count=1,
+                  flags=re.MULTILINE,
+              )
+          else:
+              text = f"platform :ios, '{deployment_target}'\n\n" + text
+
+          podfile.write_text(text)
+
+          print(f"Podfile iOS deployment target: {deployment_target}")
+          PY
+
+      # ------------------------------------------------------------
+      # Configure Xcode project deployment target
+      # ------------------------------------------------------------
+      - name: Configure Xcode deployment target
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          deployment_target = "15.0"
+
+          project_files = list(Path("ios/App").glob("**/*.pbxproj"))
+
+          if not project_files:
+              raise SystemExit("ERROR: Xcode project file was not found.")
+
+          for project_file in project_files:
+              text = project_file.read_text()
+
+              text = re.sub(
+                  r'IPHONEOS_DEPLOYMENT_TARGET = [^;]+;',
+                  f'IPHONEOS_DEPLOYMENT_TARGET = {deployment_target};',
+                  text,
+              )
+
+              project_file.write_text(text)
+
+          print(f"Xcode iOS deployment target: {deployment_target}")
+          PY
+
+      # ------------------------------------------------------------
+      # Install iOS native dependencies again using updated target
+      # ------------------------------------------------------------
+      - name: Install CocoaPods dependencies
+        working-directory: ios/App
+        run: pod install --repo-update
+
+      # ------------------------------------------------------------
+      # Generate native IyanjuPay icons
+      # ------------------------------------------------------------
+      - name: Generate native IyanjuPay icon
+        run: |
+          bunx @capacitor/assets@3.0.5 generate \
+            --ios \
+            --assetPath resources \
+            --iconBackgroundColor '#ffffff' \
+            --iconBackgroundColorDark '#061329' \
+            --splashBackgroundColor '#f7f8fc' \
+            --splashBackgroundColorDark '#061329'
+
+      # ------------------------------------------------------------
+      # Sync Capacitor
+      # ------------------------------------------------------------
       - name: Sync Capacitor
         run: bunx cap sync ios
 
+      # ------------------------------------------------------------
+      # Verify biometric plugin
+      # ------------------------------------------------------------
+      - name: Verify biometric plugin
+        shell: bash
+        run: |
+          if grep -Rqi "CapgoCapacitorNativeBiometric" ios/App/Pods 2>/dev/null; then
+            echo "Capgo native biometric plugin detected."
+          else
+            echo "ERROR: Capgo native biometric plugin was not installed."
+            exit 1
+          fi
+
+      # ------------------------------------------------------------
+      # Verify deployment target
+      # ------------------------------------------------------------
+      - name: Verify iOS deployment target
+        shell: bash
+        run: |
+          if grep -R "IPHONEOS_DEPLOYMENT_TARGET = 15.0" ios/App/*.xcodeproj/project.pbxproj; then
+            echo "iOS deployment target verified: 15.0"
+          else
+            echo "ERROR: iOS deployment target 15.0 was not found."
+            exit 1
+          fi
+
+      # ------------------------------------------------------------
+      # Upload iOS project
+      # ------------------------------------------------------------
       - name: Upload iOS project
         uses: actions/upload-artifact@v4
         with:

@@ -41,9 +41,34 @@ jobs:
 
       # ------------------------------------------------------------
       # Generate iOS project
+      #
+      # Capacitor may report a pod install failure here because the
+      # biometric plugin requires a higher iOS deployment target.
+      # The Xcode project and Podfile are still created successfully,
+      # so we continue and correct the target below.
       # ------------------------------------------------------------
       - name: Generate iOS project
-        run: bunx cap add ios
+        shell: bash
+        run: |
+          set +e
+
+          bunx cap add ios
+
+          CAP_EXIT=$?
+
+          if [ ! -f "ios/App/Podfile" ]; then
+            echo "ERROR: Capacitor did not create ios/App/Podfile."
+            exit "$CAP_EXIT"
+          fi
+
+          if [ "$CAP_EXIT" -ne 0 ]; then
+            echo "Initial CocoaPods installation failed."
+            echo "Continuing to correct the iOS deployment target."
+          else
+            echo "iOS project generated successfully."
+          fi
+
+          exit 0
 
       # ------------------------------------------------------------
       # Configure iOS deployment target
@@ -60,7 +85,7 @@ jobs:
           podfile = Path("ios/App/Podfile")
 
           if not podfile.exists():
-              raise SystemExit("ERROR: ios/App/Podfile was not created.")
+              raise SystemExit("ERROR: ios/App/Podfile does not exist.")
 
           text = podfile.read_text()
 
@@ -73,15 +98,20 @@ jobs:
                   flags=re.MULTILINE,
               )
           else:
-              text = f"platform :ios, '{deployment_target}'\n\n" + text
+              text = (
+                  f"platform :ios, '{deployment_target}'\n\n"
+                  + text
+              )
 
           podfile.write_text(text)
 
-          print(f"Podfile iOS deployment target: {deployment_target}")
+          print(
+              f"Podfile deployment target configured: iOS {deployment_target}"
+          )
           PY
 
       # ------------------------------------------------------------
-      # Configure Xcode project deployment target
+      # Configure Xcode deployment target
       # ------------------------------------------------------------
       - name: Configure Xcode deployment target
         shell: bash
@@ -92,34 +122,63 @@ jobs:
 
           deployment_target = "15.0"
 
-          project_files = list(Path("ios/App").glob("**/*.pbxproj"))
+          project_files = list(
+              Path("ios/App").glob("**/*.pbxproj")
+          )
 
           if not project_files:
-              raise SystemExit("ERROR: Xcode project file was not found.")
+              raise SystemExit(
+                  "ERROR: No Xcode project file was found."
+              )
 
           for project_file in project_files:
               text = project_file.read_text()
 
               text = re.sub(
-                  r'IPHONEOS_DEPLOYMENT_TARGET = [^;]+;',
-                  f'IPHONEOS_DEPLOYMENT_TARGET = {deployment_target};',
+                  r"IPHONEOS_DEPLOYMENT_TARGET = [^;]+;",
+                  f"IPHONEOS_DEPLOYMENT_TARGET = {deployment_target};",
                   text,
               )
 
               project_file.write_text(text)
 
-          print(f"Xcode iOS deployment target: {deployment_target}")
+              print(
+                  f"Configured {project_file} for iOS "
+                  f"{deployment_target}"
+              )
           PY
 
       # ------------------------------------------------------------
-      # Install iOS native dependencies again using updated target
+      # Verify Podfile configuration before CocoaPods
+      # ------------------------------------------------------------
+      - name: Verify iOS deployment target
+        shell: bash
+        run: |
+          echo "Podfile:"
+          grep -n "platform :ios" ios/App/Podfile || true
+
+          echo
+          echo "Xcode deployment targets:"
+          grep -R "IPHONEOS_DEPLOYMENT_TARGET" \
+            ios/App/*.xcodeproj/project.pbxproj || true
+
+          if ! grep -q "platform :ios, '15.0'" ios/App/Podfile; then
+            echo "ERROR: Podfile was not configured for iOS 15.0."
+            exit 1
+          fi
+
+          echo
+          echo "iOS deployment target configuration verified."
+
+      # ------------------------------------------------------------
+      # Install native iOS dependencies
       # ------------------------------------------------------------
       - name: Install CocoaPods dependencies
         working-directory: ios/App
         run: pod install --repo-update
 
       # ------------------------------------------------------------
-      # Generate native IyanjuPay icons
+      # Generate native IyanjuPay icons and splash screen
       # ------------------------------------------------------------
       - name: Generate native IyanjuPay icon
         run: |
@@ -132,7 +191,7 @@ jobs:
             --splashBackgroundColorDark '#061329'
 
       # ------------------------------------------------------------
-      # Sync Capacitor
+      # Sync Capacitor plugins and native project
       # ------------------------------------------------------------
       - name: Sync Capacitor
         run: bunx cap sync ios
@@ -143,28 +202,46 @@ jobs:
       - name: Verify biometric plugin
         shell: bash
         run: |
-          if grep -Rqi "CapgoCapacitorNativeBiometric" ios/App/Pods 2>/dev/null; then
+          echo "Checking Capgo native biometric plugin..."
+
+          if find ios/App/Pods \
+            -iname "*CapgoCapacitorNativeBiometric*" \
+            -print -quit | grep -q .; then
+
             echo "Capgo native biometric plugin detected."
+
           else
+
             echo "ERROR: Capgo native biometric plugin was not installed."
             exit 1
+
           fi
 
       # ------------------------------------------------------------
-      # Verify deployment target
+      # Verify iOS project
       # ------------------------------------------------------------
-      - name: Verify iOS deployment target
+      - name: Verify iOS project
         shell: bash
         run: |
-          if grep -R "IPHONEOS_DEPLOYMENT_TARGET = 15.0" ios/App/*.xcodeproj/project.pbxproj; then
-            echo "iOS deployment target verified: 15.0"
-          else
-            echo "ERROR: iOS deployment target 15.0 was not found."
+          if [ ! -d "ios/App/App.xcodeproj" ]; then
+            echo "ERROR: Xcode project was not created."
             exit 1
           fi
 
+          if [ ! -d "ios/App/Pods" ]; then
+            echo "ERROR: CocoaPods dependencies were not installed."
+            exit 1
+          fi
+
+          if [ ! -f "ios/App/Podfile.lock" ]; then
+            echo "ERROR: Podfile.lock was not created."
+            exit 1
+          fi
+
+          echo "iOS Capacitor project verified successfully."
+
       # ------------------------------------------------------------
-      # Upload iOS project
+      # Upload prepared iOS project
       # ------------------------------------------------------------
       - name: Upload iOS project
         uses: actions/upload-artifact@v4

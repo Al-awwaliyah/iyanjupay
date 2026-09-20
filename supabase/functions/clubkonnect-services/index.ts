@@ -1502,8 +1502,40 @@ async function cableTypes() {
   ];
 }
 
+function normalizeCableProviderCode(value: unknown): string {
+  return s(value)
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
+}
+
+function cableProviderAlias(value: unknown): string {
+  const raw = normalizeCableProviderCode(value);
+  if (raw.includes("dstv") || raw.includes("digitaltelevision")) return "dstv";
+  if (raw.includes("gotv") || raw.includes("gotvafrica")) return "gotv";
+  if (raw.includes("startimes") || raw.includes("startime")) return "startimes";
+  return raw;
+}
+
+function cableItemProviderCode(item: JsonObject): string {
+  const values = [
+    pick(item, "CableTV", "cableTv", "cable_tv", "CableTVID", "CableTVCode"),
+    pick(item, "biller_code", "billerCode"),
+    pick(item, "provider_code", "providerCode", "provider"),
+    pick(item, "CableTVName", "cableTvName", "cable_tv_name"),
+    pick(item, "provider_name", "providerName"),
+  ];
+
+  for (const value of values) {
+    const alias = cableProviderAlias(value);
+    if (alias) return alias;
+  }
+
+  return "";
+}
+
 async function cablePackages(
-  cableTv: string
+  cableTv: string,
+  cableName = "",
 ): Promise<CatalogItem[]> {
   const response =
     await clubKonnectRequest(
@@ -1526,30 +1558,12 @@ async function cablePackages(
   walkObjects(
     response.body,
     (item) => {
-      const itemCable =
-        safeDisplayName(
-          first(
-            pick(
-              item,
-              "CableTV",
-              "cableTv",
-              "cable_tv",
-              "CableTVID",
-              "CableTVCode"
-            ),
-            pick(
-              item,
-              "biller_code",
-              "billerCode"
-            )
-          )
-        );
+      const requestedProvider = cableProviderAlias(cableName || cableTv);
+      const itemProvider = cableItemProviderCode(item);
 
-      if (
-        itemCable &&
-        itemCable.toLowerCase() !==
-          cableTv.toLowerCase()
-      ) {
+      // The upstream package endpoint has returned mixed provider catalogues
+      // in some responses. Never leak a tagged package into another provider.
+      if (itemProvider && itemProvider !== requestedProvider) {
         return;
       }
 
@@ -3171,7 +3185,8 @@ function requestedExamType(
 async function findSelectedItem(
   service: ServiceType,
   biller: string,
-  itemCode: string
+  itemCode: string,
+  providerName = "",
 ): Promise<
   CatalogItem | undefined
 > {
@@ -3230,7 +3245,8 @@ async function findSelectedItem(
     case "cable":
       return (
         await cablePackages(
-          biller
+          biller,
+          providerName,
         )
       ).find(
         (item) =>
@@ -3882,17 +3898,18 @@ const handler = async (
           });
         }
 
-        const items =
-          await cablePackages(
-            code
-          );
-
         const selectedType =
           types.find(
             (item) =>
               item.code
                 .toLowerCase() ===
               code.toLowerCase()
+          );
+
+        const items =
+          await cablePackages(
+            code,
+            selectedType?.name ?? "",
           );
 
         const provider =
@@ -5135,9 +5152,19 @@ const handler = async (
           );
         }
 
+        const providerName = s(
+          first(
+            body.provider_name,
+            body.providerName,
+            details.provider_name,
+            details.providerName
+          )
+        );
+
         const items =
           await cablePackages(
-            biller
+            biller,
+            providerName,
           );
 
         return json({
@@ -5349,7 +5376,8 @@ const handler = async (
         await findSelectedItem(
           service,
           biller,
-          itemCode
+          itemCode,
+          s(first(body.provider_name, body.providerName, details.provider_name, details.providerName)),
         );
 
       if (!selected) {
@@ -5939,7 +5967,8 @@ const handler = async (
             biller ||
               network ||
               service,
-            itemCode
+            itemCode,
+            s(first(body.provider_name, body.providerName, details.provider_name, details.providerName)),
           );
 
         if (!selected) {

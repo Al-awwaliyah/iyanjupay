@@ -5,98 +5,140 @@ const AppSplash = () => {
     <div
       className="
         fixed inset-0 z-[99999]
-        flex min-h-screen
+        flex min-h-[100dvh]
         items-center justify-center
         overflow-hidden
-        bg-[#071A3D]
+        bg-[#061633]
       "
     >
-      {/* Primary atmospheric gradient */}
+      {/* ============================================================
+          ATMOSPHERIC BACKGROUND
+      ============================================================ */}
+
+      {/* Emerald light source */}
       <div
         className="
           pointer-events-none
-          absolute inset-0
-          bg-[radial-gradient(circle_at_50%_38%,rgba(22,163,74,0.28),transparent_42%)]
+          absolute left-1/2 top-[38%]
+          h-[26rem] w-[26rem]
+          -translate-x-1/2
+          -translate-y-1/2
+          rounded-full
+          bg-emerald-500/[0.13]
+          blur-[110px]
+          animate-[splashGlow_4s_ease-in-out_infinite]
         "
       />
 
-      {/* Secondary blue glow */}
+      {/* Blue light source */}
       <div
         className="
           pointer-events-none
           absolute -right-32 -top-32
-          h-[28rem] w-[28rem]
+          h-[30rem] w-[30rem]
           rounded-full
-          bg-blue-500/10
-          blur-3xl
+          bg-blue-500/[0.10]
+          blur-[120px]
         "
       />
 
-      {/* Green glow */}
+      {/* Lower green light */}
       <div
         className="
           pointer-events-none
           absolute -bottom-40 -left-40
           h-[30rem] w-[30rem]
           rounded-full
-          bg-green-500/10
-          blur-3xl
+          bg-emerald-400/[0.08]
+          blur-[120px]
         "
       />
 
-      {/* Subtle center glow */}
+      {/* ============================================================
+          SUBTLE FINTECH GRID
+      ============================================================ */}
+
       <div
         className="
           pointer-events-none
-          absolute left-1/2 top-1/2
-          h-72 w-72
-          -translate-x-1/2
-          -translate-y-1/2
-          rounded-full
-          bg-emerald-400/5
-          blur-3xl
+          absolute inset-0
+          opacity-[0.035]
+          [background-image:linear-gradient(rgba(255,255,255,1)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,1)_1px,transparent_1px)]
+          [background-size:48px_48px]
         "
       />
 
-      {/* Main splash content */}
+      {/* Soft vignette */}
       <div
         className="
+          pointer-events-none
+          absolute inset-0
+          bg-[radial-gradient(circle_at_center,transparent_25%,rgba(2,8,23,0.42)_100%)]
+        "
+      />
+
+      {/* ============================================================
+          BRAND
+      ============================================================ */}
+
+      <main
+        className="
           relative z-10
-          flex w-full max-w-md
-          flex-col items-center
-          px-8 text-center
+          flex w-full
+          flex-col
+          items-center
+          justify-center
+          px-8
+          text-center
         "
       >
-        {/* Brand logo */}
+        {/* Logo */}
         <div
           className="
-            mb-8
+            relative
             flex items-center justify-center
-            animate-[splashLogo_900ms_ease-out]
+            animate-[splashLogo_900ms_cubic-bezier(0.22,1,0.36,1)]
           "
         >
+          {/* Logo aura */}
+          <div
+            className="
+              pointer-events-none
+              absolute
+              h-36 w-36
+              rounded-full
+              bg-emerald-400/[0.12]
+              blur-2xl
+              animate-[splashAura_3.5s_ease-in-out_infinite]
+            "
+          />
+
+          {/* Logo */}
           <img
             src="/icon-180.png"
             alt="IyanjuPay"
             className="
-              h-28 w-28
-              rounded-[30px]
+              relative
+              h-[108px] w-[108px]
               object-contain
-              drop-shadow-[0_20px_45px_rgba(0,0,0,0.30)]
+              drop-shadow-[0_24px_50px_rgba(0,0,0,0.38)]
+              select-none
             "
             draggable={false}
           />
         </div>
 
-        {/* App name */}
+        {/* Brand name */}
         <h1
           className="
-            text-[2.65rem]
+            mt-8
+            text-[2.7rem]
             font-extrabold
-            tracking-[-0.04em]
+            leading-none
+            tracking-[-0.055em]
             text-white
+            animate-[splashName_950ms_120ms_cubic-bezier(0.22,1,0.36,1)_both]
             sm:text-5xl
-            animate-[splashText_900ms_ease-out]
           "
         >
           IyanjuPay
@@ -105,37 +147,57 @@ const AppSplash = () => {
         {/* Tagline */}
         <p
           className="
-            mt-3
-            text-sm
+            mt-4
+            text-[0.82rem]
             font-medium
-            tracking-wide
-            text-white/70
-            sm:text-base
-            animate-[splashText_1100ms_ease-out]
+            tracking-[0.16em]
+            text-white/65
+            animate-[splashTagline_1000ms_260ms_cubic-bezier(0.22,1,0.36,1)_both]
+            sm:text-sm
           "
         >
-          Simple. Secure. Seamless.
+          SIMPLE. SECURE. SEAMLESS.
         </p>
-      </div>
+      </main>
 
-      {/* Minimal brand accent */}
+      {/* ============================================================
+          BOTTOM BRAND ACCENT
+      ============================================================ */}
+
       <div
         className="
           pointer-events-none
           absolute bottom-10 left-1/2
-          h-1 w-10
-          -translate-x-1/2
-          rounded-full
-          bg-emerald-400/70
-          animate-[splashAccent_1200ms_ease-out]
+          flex -translate-x-1/2
+          flex-col items-center
+          gap-3
         "
-      />
+      >
+        <div
+          className="
+            h-[3px] w-9
+            rounded-full
+            bg-emerald-400/80
+            shadow-[0_0_18px_rgba(52,211,153,0.35)]
+            animate-[splashAccent_1100ms_450ms_ease-out_both]
+          "
+        />
+      </div>
+
+      {/* ============================================================
+          ANIMATION
+      ============================================================ */}
 
       <style>{`
         @keyframes splashLogo {
           0% {
             opacity: 0;
-            transform: scale(0.88) translateY(8px);
+            transform: scale(0.78) translateY(18px);
+          }
+
+          65% {
+            opacity: 1;
+            transform: scale(1.035) translateY(-2px);
           }
 
           100% {
@@ -144,10 +206,22 @@ const AppSplash = () => {
           }
         }
 
-        @keyframes splashText {
+        @keyframes splashName {
           0% {
             opacity: 0;
-            transform: translateY(10px);
+            transform: translateY(16px);
+          }
+
+          100% {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+
+        @keyframes splashTagline {
+          0% {
+            opacity: 0;
+            transform: translateY(12px);
           }
 
           100% {
@@ -159,12 +233,38 @@ const AppSplash = () => {
         @keyframes splashAccent {
           0% {
             opacity: 0;
-            transform: translateX(-50%) scaleX(0);
+            transform: scaleX(0);
           }
 
           100% {
-            opacity: 0.7;
-            transform: translateX(-50%) scaleX(1);
+            opacity: 1;
+            transform: scaleX(1);
+          }
+        }
+
+        @keyframes splashGlow {
+          0%,
+          100% {
+            opacity: 0.65;
+            transform: translate(-50%, -50%) scale(0.95);
+          }
+
+          50% {
+            opacity: 1;
+            transform: translate(-50%, -50%) scale(1.08);
+          }
+        }
+
+        @keyframes splashAura {
+          0%,
+          100% {
+            opacity: 0.55;
+            transform: scale(0.92);
+          }
+
+          50% {
+            opacity: 0.9;
+            transform: scale(1.08);
           }
         }
 
@@ -173,6 +273,7 @@ const AppSplash = () => {
           *::before,
           *::after {
             animation-duration: 1ms !important;
+            animation-delay: 0ms !important;
             animation-iteration-count: 1 !important;
           }
         }

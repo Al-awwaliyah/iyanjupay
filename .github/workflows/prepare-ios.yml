@@ -197,6 +197,76 @@ jobs:
         run: bunx cap sync ios
 
       # ------------------------------------------------------------
+      # Configure native push + Face ID capabilities
+      # ------------------------------------------------------------
+      - name: Configure iOS push and biometric capabilities
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          app_dir = Path("ios/App/App")
+          info = app_dir / "Info.plist"
+          if info.exists():
+              text = info.read_text()
+              key = "<key>NSFaceIDUsageDescription</key>"
+              if key not in text:
+                  text = text.replace(
+                      "</dict>",
+                      "    <key>NSFaceIDUsageDescription</key>\n"
+                      "    <string>Use Face ID to securely authorize IyanjuPay transactions and unlock the app.</string>\n"
+                      "</dict>",
+                      1,
+                  )
+              info.write_text(text)
+
+          project_files = list(Path("ios/App").glob("**/*.pbxproj"))
+          for project in project_files:
+              text = project.read_text()
+
+              # Tell Xcode to sign the APNs entitlement file.
+              if "CODE_SIGN_ENTITLEMENTS = App/App.entitlements;" not in text:
+                  text = text.replace(
+                      "buildSettings = {",
+                      "buildSettings = {\n\t\t\t\tCODE_SIGN_ENTITLEMENTS = App/App.entitlements;",
+                      1,
+                  )
+
+              project.write_text(text)
+          PY
+
+          mkdir -p ios/App/App
+          cat > ios/App/App/App.entitlements <<'EOF'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>aps-environment</key>
+              <string>development</string>
+          </dict>
+          </plist>
+          EOF
+
+
+      # ------------------------------------------------------------
+      # Verify native notification plugins
+      # ------------------------------------------------------------
+      - name: Verify native notification plugins
+        shell: bash
+        run: |
+          if ! find ios/App/Pods -iname "*CapacitorPushNotifications*" -print -quit | grep -q .; then
+            echo "ERROR: Capacitor Push Notifications plugin was not installed."
+            exit 1
+          fi
+
+          if ! find ios/App/Pods -iname "*CapacitorLocalNotifications*" -print -quit | grep -q .; then
+            echo "ERROR: Capacitor Local Notifications plugin was not installed."
+            exit 1
+          fi
+
+          echo "Native notification plugins detected."
+
+      # ------------------------------------------------------------
       # Verify biometric plugin
       # ------------------------------------------------------------
       - name: Verify biometric plugin

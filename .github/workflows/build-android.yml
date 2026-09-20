@@ -20,25 +20,40 @@ jobs:
       VITE_VAPID_PUBLIC_KEY: ${{ secrets.VITE_VAPID_PUBLIC_KEY }}
 
     steps:
+      # ------------------------------------------------------------
+      # Checkout
+      # ------------------------------------------------------------
       - name: Checkout
         uses: actions/checkout@v4
 
+      # ------------------------------------------------------------
+      # Node.js
+      # ------------------------------------------------------------
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
 
+      # ------------------------------------------------------------
+      # Java
+      # ------------------------------------------------------------
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '21'
 
+      # ------------------------------------------------------------
+      # Bun
+      # ------------------------------------------------------------
       - name: Install Bun
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: '1.3.14'
 
+      # ------------------------------------------------------------
+      # Install dependencies
+      # ------------------------------------------------------------
       - name: Install dependencies
         run: bun install
 
@@ -48,6 +63,8 @@ jobs:
       - name: Verify biometric and push dependencies
         shell: bash
         run: |
+          set -e
+
           echo "Checking Capacitor native dependencies..."
 
           if ! bun pm ls @capacitor/push-notifications >/dev/null 2>&1; then
@@ -65,12 +82,15 @@ jobs:
             exit 1
           fi
 
+          echo ""
           echo "Capacitor push notifications:"
           bun pm ls @capacitor/push-notifications
 
+          echo ""
           echo "Capacitor local notifications:"
           bun pm ls @capacitor/local-notifications
 
+          echo ""
           echo "Capacitor biometric:"
           bun pm ls @capgo/capacitor-native-biometric
 
@@ -92,12 +112,25 @@ jobs:
       - name: Configure Firebase for Android
         shell: bash
         run: |
-          echo "${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}" | base64 --decode > android/app/google-services.json
+          set -e
+
+          if [ -z "${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}" ]; then
+            echo "ERROR: GOOGLE_SERVICES_JSON_BASE64 GitHub secret is missing."
+            exit 1
+          fi
+
+          mkdir -p android/app
+
+          echo "${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}" \
+            | base64 --decode \
+            > android/app/google-services.json
 
           if [ ! -s android/app/google-services.json ]; then
             echo "ERROR: google-services.json was not created."
             exit 1
           fi
+
+          echo "google-services.json created successfully."
 
       # ------------------------------------------------------------
       # Configure Firebase Gradle integration
@@ -115,14 +148,20 @@ jobs:
           root_text = root_gradle.read_text()
           app_text = app_gradle.read_text()
 
-          plugin_dependency = "classpath 'com.google.gms:google-services:4.5.0'"
+          # --------------------------------------------------------
+          # Google Services Gradle plugin
+          # --------------------------------------------------------
+          plugin_dependency = (
+              "classpath 'com.google.gms:google-services:4.5.0'"
+          )
 
           if "com.google.gms:google-services" not in root_text:
               if "dependencies {" in root_text:
                   root_text = root_text.replace(
                       "dependencies {",
-                      "dependencies {\n        " + plugin_dependency,
-                      1
+                      "dependencies {\n        "
+                      + plugin_dependency,
+                      1,
                   )
               else:
                   root_text += """
@@ -141,6 +180,9 @@ jobs:
 
           root_gradle.write_text(root_text)
 
+          # --------------------------------------------------------
+          # Apply Google Services plugin
+          # --------------------------------------------------------
           if "com.google.gms.google-services" not in app_text:
               app_text += """
 
@@ -148,26 +190,43 @@ jobs:
           apply plugin: 'com.google.gms.google-services'
           """
 
-          firebase_bom = "implementation platform('com.google.firebase:firebase-bom:34.19.0')"
-          firebase_messaging = "implementation 'com.google.firebase:firebase-messaging'"
+          # --------------------------------------------------------
+          # Firebase BOM
+          # --------------------------------------------------------
+          firebase_bom = (
+              "implementation "
+              "platform('com.google.firebase:firebase-bom:34.19.0')"
+          )
 
           if "firebase-bom" not in app_text:
               if "dependencies {" in app_text:
                   app_text = app_text.replace(
                       "dependencies {",
-                      "dependencies {\n    " + firebase_bom,
-                      1
+                      "dependencies {\n    "
+                      + firebase_bom,
+                      1,
                   )
+
+          # --------------------------------------------------------
+          # Firebase Messaging
+          # --------------------------------------------------------
+          firebase_messaging = (
+              "implementation "
+              "'com.google.firebase:firebase-messaging'"
+          )
 
           if "firebase-messaging" not in app_text:
               if "dependencies {" in app_text:
                   app_text = app_text.replace(
                       "dependencies {",
-                      "dependencies {\n    " + firebase_messaging,
-                      1
+                      "dependencies {\n    "
+                      + firebase_messaging,
+                      1,
                   )
 
           app_gradle.write_text(app_text)
+
+          print("Firebase Gradle integration configured.")
           PY
 
       # ------------------------------------------------------------
@@ -189,34 +248,102 @@ jobs:
       - name: Sync Capacitor
         run: bunx cap sync android
 
-      - name: Configure Android push permissions
+      # ------------------------------------------------------------
+      # Configure Android permissions
+      #
+      # IMPORTANT:
+      # Do NOT use text.find(">") because the first ">" may belong
+      # to the XML declaration:
+      #
+      # <?xml version="1.0" encoding="utf-8"?>
+      #
+      # Permissions must be inserted INSIDE <manifest>.
+      # ------------------------------------------------------------
+      - name: Configure Android permissions
         shell: bash
         run: |
+          set -e
+
           python3 - <<'PY'
           from pathlib import Path
+          import re
+          import xml.etree.ElementTree as ET
 
-          manifest = Path("android/app/src/main/AndroidManifest.xml")
-          text = manifest.read_text() if manifest.exists() else ""
+          manifest_path = Path(
+              "android/app/src/main/AndroidManifest.xml"
+          )
 
-          permission = '<uses-permission android:name="android.permission.POST_NOTIFICATIONS" />'
-          if permission not in text:
-              text = text.replace(
-                  "<manifest",
-                  "<manifest",
-                  1,
+          if not manifest_path.exists():
+              raise SystemExit(
+                  "ERROR: AndroidManifest.xml does not exist."
               )
-              insert_at = text.find(">")
-              if insert_at >= 0:
-                  text = text[:insert_at + 1] + "\n    " + permission + text[insert_at + 1:]
 
-          biometric = '<uses-permission android:name="android.permission.USE_BIOMETRIC" />'
-          if biometric not in text:
-              insert_at = text.find(">")
-              text = text[:insert_at + 1] + "\n    " + biometric + text[insert_at + 1:]
+          text = manifest_path.read_text(
+              encoding="utf-8"
+          )
 
-          manifest.write_text(text)
+          # --------------------------------------------------------
+          # Find the actual <manifest ...> opening element.
+          #
+          # This deliberately skips the XML declaration.
+          # --------------------------------------------------------
+          match = re.search(
+              r"<manifest\b[^>]*>",
+              text,
+              flags=re.IGNORECASE | re.DOTALL,
+          )
+
+          if not match:
+              raise SystemExit(
+                  "ERROR: Could not find the <manifest> root element."
+              )
+
+          manifest_open_end = match.end()
+
+          permissions = [
+              '<uses-permission android:name="android.permission.POST_NOTIFICATIONS" />',
+              '<uses-permission android:name="android.permission.USE_BIOMETRIC" />',
+              '<uses-permission android:name="android.permission.VIBRATE" />',
+          ]
+
+          for permission in permissions:
+              if permission not in text:
+                  text = (
+                      text[:manifest_open_end]
+                      + "\n    "
+                      + permission
+                      + text[manifest_open_end:]
+                  )
+
+                  # Keep insertion point correct after inserting text.
+                  manifest_open_end += len(permission) + 5
+
+          manifest_path.write_text(
+              text,
+              encoding="utf-8",
+          )
+
+          print("Android permissions configured.")
+
+          # --------------------------------------------------------
+          # Validate XML BEFORE Gradle.
+          #
+          # This catches exactly the kind of malformed-manifest
+          # problem that previously stopped assembleRelease.
+          # --------------------------------------------------------
+          try:
+              ET.parse(manifest_path)
+          except ET.ParseError as error:
+              print("")
+              print("ERROR: AndroidManifest.xml is invalid XML.")
+              print(error)
+              print("")
+              print("Current manifest:")
+              print(manifest_path.read_text(encoding="utf-8"))
+              raise SystemExit(1)
+
+          print("AndroidManifest.xml XML validation passed.")
           PY
-
 
       # ------------------------------------------------------------
       # Verify Firebase configuration
@@ -224,17 +351,23 @@ jobs:
       - name: Verify Firebase configuration
         shell: bash
         run: |
+          set -e
+
           if [ ! -f android/app/google-services.json ]; then
             echo "ERROR: android/app/google-services.json is missing."
             exit 1
           fi
 
-          if ! grep -q '"package_name"[[:space:]]*:[[:space:]]*"com.iyanjupay.app"' android/app/google-services.json; then
+          if ! grep -q \
+            '"package_name"[[:space:]]*:[[:space:]]*"com.iyanjupay.app"' \
+            android/app/google-services.json; then
+
             echo "ERROR: google-services.json does not contain package_name com.iyanjupay.app"
             exit 1
           fi
 
-          echo "Firebase Android configuration verified for com.iyanjupay.app"
+          echo "Firebase Android configuration verified."
+          echo "Package: com.iyanjupay.app"
 
       # ------------------------------------------------------------
       # Verify native push integration
@@ -242,12 +375,20 @@ jobs:
       - name: Verify Firebase Messaging integration
         shell: bash
         run: |
-          if ! grep -q "com.google.firebase:firebase-messaging" android/app/build.gradle; then
+          set -e
+
+          if ! grep -q \
+            "com.google.firebase:firebase-messaging" \
+            android/app/build.gradle; then
+
             echo "ERROR: Firebase Messaging dependency is missing."
             exit 1
           fi
 
-          if ! grep -q "com.google.gms.google-services" android/app/build.gradle; then
+          if ! grep -q \
+            "com.google.gms.google-services" \
+            android/app/build.gradle; then
+
             echo "ERROR: Google Services Gradle plugin is missing."
             exit 1
           fi
@@ -260,16 +401,62 @@ jobs:
       - name: Verify Capacitor native plugins
         shell: bash
         run: |
+          set -e
+
           if [ ! -d android/capacitor-cordova-android-plugins ]; then
             echo "ERROR: Capacitor native plugin integration directory is missing."
             exit 1
           fi
 
-          if ! grep -Rqi "push" android/capacitor-cordova-android-plugins 2>/dev/null; then
-            echo "WARNING: Push plugin files were not detected in the generated plugin directory."
-          fi
+          echo "Capacitor native plugin integration directory exists."
 
-          echo "Capacitor native plugin integration checked."
+          echo ""
+          echo "Checking generated Android project..."
+
+          find android -maxdepth 3 \
+            \( -iname "*push*" -o -iname "*notification*" -o -iname "*biometric*" \) \
+            -print \
+            | head -100 || true
+
+          echo ""
+          echo "Native plugin integration checked."
+
+      # ------------------------------------------------------------
+      # Validate Android manifest one more time before release build
+      # ------------------------------------------------------------
+      - name: Validate Android manifest
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+
+          manifest = Path(
+              "android/app/src/main/AndroidManifest.xml"
+          )
+
+          print("Validating:", manifest)
+
+          ET.parse(manifest)
+
+          text = manifest.read_text(
+              encoding="utf-8"
+          )
+
+          required = [
+              "android.permission.POST_NOTIFICATIONS",
+              "android.permission.USE_BIOMETRIC",
+          ]
+
+          for permission in required:
+              if permission not in text:
+                  raise SystemExit(
+                      f"ERROR: Missing required permission: {permission}"
+                  )
+
+          print("AndroidManifest.xml is valid.")
+          print("Required Android permissions are present.")
+          PY
 
       # ------------------------------------------------------------
       # Decode Android signing keystore
@@ -277,12 +464,23 @@ jobs:
       - name: Decode Android signing keystore
         shell: bash
         run: |
-          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > android/app/iyanjupay-release-key.jks
+          set -e
+
+          if [ -z "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" ]; then
+            echo "ERROR: ANDROID_KEYSTORE_BASE64 secret is missing."
+            exit 1
+          fi
+
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" \
+            | base64 --decode \
+            > android/app/iyanjupay-release-key.jks
 
           if [ ! -s android/app/iyanjupay-release-key.jks ]; then
             echo "ERROR: Android signing keystore was not created."
             exit 1
           fi
+
+          echo "Android signing keystore created."
 
       # ------------------------------------------------------------
       # Create signing properties
@@ -290,12 +488,16 @@ jobs:
       - name: Create Android signing properties
         shell: bash
         run: |
+          set -e
+
           cat > android/keystore.properties <<EOF
           storeFile=iyanjupay-release-key.jks
           storePassword=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}
           keyPassword=${{ secrets.ANDROID_KEY_PASSWORD }}
           EOF
+
+          echo "Android signing properties created."
 
       # ------------------------------------------------------------
       # Configure release signing
@@ -310,6 +512,9 @@ jobs:
           gradle_file = Path("app/build.gradle")
           text = gradle_file.read_text()
 
+          # --------------------------------------------------------
+          # Signing properties
+          # --------------------------------------------------------
           if "keystore.properties" not in text:
               signing_properties = """
           def keystorePropertiesFile = rootProject.file("keystore.properties")
@@ -323,6 +528,10 @@ jobs:
 
               text = signing_properties + text
 
+          # --------------------------------------------------------
+          # Signing configuration
+          # --------------------------------------------------------
+          if "signingConfigs" not in text:
               text = text.replace(
                   "android {",
                   """android {
@@ -335,33 +544,79 @@ jobs:
                   }
               }
           """,
-                  1
+                  1,
               )
 
+          # --------------------------------------------------------
+          # Attach release signing configuration
+          # --------------------------------------------------------
           if "signingConfig signingConfigs.release" not in text:
               release_index = text.find("buildTypes {")
 
-              if release_index != -1:
-                  release_open = text.find("release {", release_index)
+              if release_index == -1:
+                  raise SystemExit(
+                      "ERROR: buildTypes block not found."
+                  )
 
-                  if release_open != -1:
-                      insert_position = release_open + len("release {")
+              release_open = text.find(
+                  "release {",
+                  release_index,
+              )
 
-                      text = (
-                          text[:insert_position]
-                          + "\n            signingConfig signingConfigs.release"
-                          + text[insert_position:]
-                      )
+              if release_open == -1:
+                  raise SystemExit(
+                      "ERROR: release build type not found."
+                  )
+
+              insert_position = (
+                  release_open
+                  + len("release {")
+              )
+
+              text = (
+                  text[:insert_position]
+                  + "\n            signingConfig signingConfigs.release"
+                  + text[insert_position:]
+              )
 
           gradle_file.write_text(text)
+
+          print("Release signing configured.")
           PY
+
+      # ------------------------------------------------------------
+      # Final Gradle configuration check
+      # ------------------------------------------------------------
+      - name: Check Gradle configuration
+        working-directory: android
+        run: |
+          ./gradlew tasks --no-daemon
 
       # ------------------------------------------------------------
       # Build signed release APK
       # ------------------------------------------------------------
       - name: Build signed release APK
         working-directory: android
-        run: ./gradlew assembleRelease
+        run: |
+          ./gradlew assembleRelease --stacktrace
+
+      # ------------------------------------------------------------
+      # Verify APK exists
+      # ------------------------------------------------------------
+      - name: Verify release APK exists
+        shell: bash
+        run: |
+          set -e
+
+          APK="android/app/build/outputs/apk/release/app-release.apk"
+
+          if [ ! -f "$APK" ]; then
+            echo "ERROR: Release APK was not generated."
+            exit 1
+          fi
+
+          echo "Release APK generated successfully:"
+          ls -lh "$APK"
 
       # ------------------------------------------------------------
       # Verify APK signature
@@ -369,14 +624,42 @@ jobs:
       - name: Verify APK signature
         working-directory: android
         run: |
-          $ANDROID_HOME/build-tools/$(ls $ANDROID_HOME/build-tools | sort -V | tail -1)/apksigner verify --verbose app/build/outputs/apk/release/app-release.apk
+          set -e
+
+          BUILD_TOOLS="$ANDROID_HOME/build-tools"
+
+          LATEST_BUILD_TOOLS=$(
+            ls "$BUILD_TOOLS" \
+              | sort -V \
+              | tail -1
+          )
+
+          APKSIGNER="$BUILD_TOOLS/$LATEST_BUILD_TOOLS/apksigner"
+
+          if [ ! -x "$APKSIGNER" ]; then
+            echo "ERROR: apksigner was not found."
+            exit 1
+          fi
+
+          "$APKSIGNER" verify \
+            --verbose \
+            app/build/outputs/apk/release/app-release.apk
+
+          echo "APK signature verified successfully."
 
       # ------------------------------------------------------------
       # Rename APK
       # ------------------------------------------------------------
       - name: Rename release APK
         run: |
-          cp android/app/build/outputs/apk/release/app-release.apk android/app/build/outputs/apk/release/IyanjuPay.apk
+          set -e
+
+          cp \
+            android/app/build/outputs/apk/release/app-release.apk \
+            android/app/build/outputs/apk/release/IyanjuPay.apk
+
+          ls -lh \
+            android/app/build/outputs/apk/release/IyanjuPay.apk
 
       # ------------------------------------------------------------
       # Upload APK

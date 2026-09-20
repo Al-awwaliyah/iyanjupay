@@ -1,4 +1,3 @@
-```yaml
 name: Build IyanjuPay Android APK
 
 on:
@@ -688,4 +687,3 @@ jobs:
           name: IyanjuPay-Android-release
           path: android/app/build/outputs/apk/release/IyanjuPay.apk
           if-no-files-found: error
-```

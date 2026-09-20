@@ -1,16 +1,17 @@
-# IyanjuPay Push Notifications Setup
+# IyanjuPay push notifications setup
 
-IyanjuPay supports three delivery paths:
+The code includes:
 
-- Web Push for supported browsers/PWA.
-- Firebase Cloud Messaging (FCM) for Android native apps.
-- Apple Push Notification service (APNs) for iOS native apps.
+- in-app notifications through the existing `notifications` table;
+- Supabase Realtime notification updates;
+- Web Push subscription storage;
+- a service worker that displays background push notifications;
+- a Supabase Edge Function for Web Push and Android FCM delivery;
+- Capacitor native push registration for Android/iOS.
 
-The same `user_push_subscriptions` table stores all device subscriptions.
+## 1. Generate VAPID keys
 
-## 1. Web Push
-
-Generate VAPID keys:
+Use a secure machine/CI environment:
 
 ```bash
 npx web-push generate-vapid-keys
@@ -20,7 +21,7 @@ Set these Supabase Edge Function secrets:
 
 - `VAPID_PUBLIC_KEY`
 - `VAPID_PRIVATE_KEY`
-- `VAPID_SUBJECT`
+- `VAPID_SUBJECT` (for example `mailto:admin@yourdomain.com`)
 - `PUSH_WEBHOOK_SECRET`
 
 Set the browser build variable:
@@ -29,59 +30,43 @@ Set the browser build variable:
 VITE_VAPID_PUBLIC_KEY=your_public_key
 ```
 
-Never expose `VAPID_PRIVATE_KEY`, `PUSH_WEBHOOK_SECRET`, or a Supabase service-role key in Vite environment variables.
+Never put `VAPID_PRIVATE_KEY`, `PUSH_WEBHOOK_SECRET`, or a Supabase service-role key in a Vite environment variable.
 
-## 2. Android native push (FCM)
+## 2. Configure Firebase Cloud Messaging for Android
 
-Create a Firebase project/app for the package:
+The Android app uses Firebase Cloud Messaging (FCM) for background and closed-app notifications. The Firebase client file (`google-services.json`) is not sufficient for server-side FCM delivery because it does not contain the service-account private key.
 
-`com.iyanjupay.app`
+Create a Firebase service account with permission to send Firebase Cloud Messaging messages, then save the complete service-account JSON as a base64-encoded Supabase Edge Function secret:
 
-Download `google-services.json` and provide it to the Android build as the GitHub Actions secret:
+```bash
+supabase secrets set FIREBASE_SERVICE_ACCOUNT_JSON_BASE64="$(base64 -w 0 firebase-service-account.json)" --project-ref <project-ref>
+```
 
-`GOOGLE_SERVICES_JSON_BASE64`
+If your shell/CLI does not accept `/dev/stdin`, set the secret from your CI/deployment system instead. Never put the service-account JSON or private key in `VITE_*` variables or the browser bundle.
 
-The workflow decodes that secret into `android/app/google-services.json`, enables the Google Services Gradle plugin, and Capacitor Push Notifications registers the FCM device token.
-
-For server-side delivery, create a Firebase service account with permission to send FCM messages. Base64-encode its JSON and store it as:
-
-`FIREBASE_SERVICE_ACCOUNT_JSON`
-
-The `send-push-notification` Edge Function uses FCM HTTP v1 and removes stale/unregistered device tokens.
-
-## 3. iOS native push (APNs)
-
-In Apple Developer, create an APNs authentication key for the Apple Developer Team that owns `com.iyanjupay.app`.
-
-Configure these Supabase Edge Function secrets:
-
-- `APNS_KEY_ID`
-- `APNS_TEAM_ID`
-- `APNS_PRIVATE_KEY` (the `.p8` contents)
-- `APNS_BUNDLE_ID` = `com.iyanjupay.app`
-- `APNS_PRODUCTION` = `true` for App Store/TestFlight production-style builds
-
-The iOS project must have the Push Notifications capability and a provisioning profile that permits it. The workflow creates the `aps-environment` entitlement; the Apple signing configuration must include the capability.
-
-The `send-push-notification` Edge Function sends APNs alert notifications and removes unregistered/bad device tokens.
-
-## 4. Supabase database and webhook
+## 3. Apply the migration
 
 Apply:
 
 `supabase/migrations/20260918070000_iyanjupay_security_notifications.sql`
 
-Deploy:
+The migration creates a sanitized `customer_app_settings` projection. `admin_settings` remains the authoritative administrative table. Only explicitly customer-safe keys are projected, and the projection is realtime-enabled.
+
+## 4. Deploy the push function
 
 ```bash
 supabase functions deploy send-push-notification
 ```
 
+The function intentionally does not require a user JWT because it is designed for a trusted database/webhook invocation. Protect the webhook with `PUSH_WEBHOOK_SECRET`.
+
+## 5. Configure the notification webhook
+
 Configure a Supabase Database Webhook for `public.notifications` INSERT events pointing to:
 
 `/functions/v1/send-push-notification`
 
-Send at least:
+Send a JSON body containing at least:
 
 ```json
 {
@@ -93,46 +78,46 @@ and include:
 
 `x-push-webhook-secret: <PUSH_WEBHOOK_SECRET>`
 
-The same function now routes delivery by subscription platform: Web Push, FCM, or APNs. Android foreground notifications use the Capacitor Local Notifications plugin so alerts remain visible while the app is open; background/closed delivery is handled by FCM. iOS uses APNs alert pushes for foreground/background/closed delivery.
+This keeps the existing notification creation flow intact. The webhook only adds push delivery; it does not replace in-app notifications.
 
-## 5. Native app behavior
+## 6. Capacitor native push
 
-When the user enables Push Notifications in **Security & Notifications**:
+Install/sync the native plugin and platform projects:
 
-1. Android/iOS permission is requested.
-2. Android creates the `iyanjupay-default` notification channel.
-3. The native device token is registered.
-4. The token is stored in `user_push_subscriptions` against the signed-in user.
-5. Tapping a push notification opens its supplied `url` when one is present.
+```bash
+npm install
+npx cap add android
+npx cap add ios
+npx cap sync
+```
 
-## 6. Verification checklist
+Configure Firebase Cloud Messaging for Android and APNs for iOS according to the Capacitor Push Notifications plugin requirements. Native device tokens are stored in `user_push_subscriptions`.
 
-### Android
+## 7. Passkeys / biometrics
 
-- Install a release/debug build on a physical Android device.
-- Grant notification permission.
-- Enable Push Notifications in IyanjuPay.
-- Verify an `android` subscription with a `device_token` exists.
-- Create a test notification.
-- Confirm delivery with the app in foreground, background, and closed.
-- Tap the notification and verify the target URL opens.
+Supabase Passkeys are currently an experimental/beta feature. Enable Authentication → Passkeys in the Supabase Dashboard and configure a stable WebAuthn relying-party ID/origin for the production domain.
 
-### iOS
+The client opts in with `experimental.passkey: true` and exposes:
 
-- Install on a real iPhone/iPad; APNs is not equivalent to a simulator test.
-- Grant notification permission.
-- Enable Push Notifications.
-- Verify an `ios` subscription with a `device_token` exists.
-- Test foreground, background, and closed-app delivery.
+- passwordless passkey sign-in;
+- passkey registration from Security & Notifications;
+- passkey deletion;
+- App Lock unlock through passkey authentication.
 
-### Web
+Use HTTPS in production. Changing the WebAuthn relying-party ID invalidates existing credentials, so choose it carefully.
 
-- Grant browser notification permission.
-- Enable Push Notifications.
-- Verify a `web` subscription exists.
-- Test with the PWA/browser tab closed or the browser tab not active.
-- For an installed PWA on supported mobile browsers, test after the PWA has been completely closed.
+## 8. Test checklist
 
-## Security
-
-Push tokens are device identifiers and are stored per authenticated user. The server-side FCM/APNs credentials must never be shipped in the frontend bundle.
+1. Sign in normally.
+2. Open **Me → Security & Notifications**.
+3. Register a passkey.
+4. Enable App Lock and use **Lock IyanjuPay now**.
+5. Unlock with the device biometric/passkey prompt.
+6. Enable web push and grant browser permission.
+7. Create an admin broadcast; it should appear immediately in the user's notification center.
+8. Mark a notification read; refresh and verify it stays read.
+9. Change a customer-facing admin setting; verify the user dashboard updates without a full page reload.
+10. Test an Android transaction notification with the app open, backgrounded, and fully closed.
+11. Test an admin announcement with the Android app fully closed.
+12. Test PWA Web Push with the browser tab/window closed.
+13. Confirm `notifications.delivery_status` changes to `delivered` after at least one push target accepts the message.

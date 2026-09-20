@@ -1939,195 +1939,267 @@ function airtimePinValue(
   );
 }
 
+function collectAirtimePinEntries(
+  value: unknown,
+  inheritedNetwork = "",
+  inheritedDenomination = 0,
+  inheritedDiscount = 0,
+  depth = 0,
+  seen = new WeakSet<object>(),
+): Array<{
+  network: string;
+  denomination: number;
+  discount: number;
+  providerPrice: number;
+  raw: JsonObject;
+}> {
+  if (depth > 20 || value === null || value === undefined) {
+    return [];
+  }
+
+  if (Array.isArray(value)) {
+    const output: Array<{
+      network: string;
+      denomination: number;
+      discount: number;
+      providerPrice: number;
+      raw: JsonObject;
+    }> = [];
+
+    for (const child of value) {
+      output.push(
+        ...collectAirtimePinEntries(
+          child,
+          inheritedNetwork,
+          inheritedDenomination,
+          inheritedDiscount,
+          depth + 1,
+          seen,
+        ),
+      );
+    }
+
+    return output;
+  }
+
+  if (typeof value !== "object") {
+    return [];
+  }
+
+  const object = obj(value);
+
+  if (seen.has(object)) {
+    return [];
+  }
+
+  seen.add(object);
+
+  const network =
+    networkCode(
+      first(
+        pick(
+          object,
+          "MOBILENETWORK",
+          "MOBILE_NETWORK",
+          "MobileNetwork",
+          "network_code",
+          "networkCode",
+          "NetworkCode",
+          "Network",
+          "network",
+          "NetworkName",
+          "network_name",
+        ),
+        inheritedNetwork,
+      ),
+    );
+
+  const denomination = n(
+    first(
+      pick(
+        object,
+        "Value",
+        "value",
+        "VALUE",
+        "Denomination",
+        "denomination",
+        "DENOMINATION",
+        "Amount",
+        "amount",
+      ),
+      inheritedDenomination,
+    ),
+  );
+
+  const discount = n(
+    first(
+      pick(
+        object,
+        "Discount",
+        "discount",
+        "discount_percent",
+        "discountPercentage",
+        "DiscountPercentage",
+      ),
+      inheritedDiscount,
+    ),
+  );
+
+  const explicitCost = n(
+    first(
+      pick(
+        object,
+        "provider_amount",
+        "providerAmount",
+        "cost",
+        "Cost",
+        "provider_price",
+        "providerPrice",
+        "selling_price",
+        "sellingPrice",
+        "price",
+        "Price",
+        "amount_payable",
+        "AmountPayable",
+      ),
+    ),
+  );
+
+  const output: Array<{
+    network: string;
+    denomination: number;
+    discount: number;
+    providerPrice: number;
+    raw: JsonObject;
+  }> = [];
+
+  if (
+    network &&
+    NETWORKS[network] &&
+    denomination > 0
+  ) {
+    output.push({
+      network,
+      denomination,
+      discount,
+      providerPrice: explicitCost,
+      raw: object,
+    });
+  }
+
+  for (const [key, child] of Object.entries(object)) {
+    if (
+      child === null ||
+      child === undefined
+    ) {
+      continue;
+    }
+
+    const keyNetwork =
+      networkCode(key) || network;
+
+    const numericKey =
+      n(key);
+
+    const childDenomination =
+      numericKey >= 50 && numericKey <= 100000
+        ? numericKey
+        : denomination;
+
+    const childDiscount =
+      discount > 0
+        ? discount
+        : inheritedDiscount;
+
+    output.push(
+      ...collectAirtimePinEntries(
+        child,
+        keyNetwork,
+        childDenomination,
+        childDiscount,
+        depth + 1,
+        seen,
+      ),
+    );
+  }
+
+  return output;
+}
+
 async function airtimePinCatalog(
-  network?: string
+  network?: string,
 ): Promise<CatalogItem[]> {
   const response =
     await clubKonnectRequest(
-      "APIEPINDiscountV2.asp"
+      "APIEPINDiscountV2.asp",
     );
 
   if (!response.ok) {
     throw new Error(
-      "Airtime E-PIN catalogue unavailable."
+      "Airtime E-PIN catalogue unavailable.",
     );
   }
 
-  const result:
-    CatalogItem[] = [];
+  const entries =
+    collectAirtimePinEntries(
+      response.body,
+    );
 
-  walkObjects(
-    response.body,
-    (item) => {
-      const currentNetwork =
-        networkCode(
-          first(
-            pick(
-              item,
-              "MOBILENETWORK",
-              "MOBILE_NETWORK",
-              "MobileNetwork",
-              "network_code",
-              "networkCode",
-              "NetworkCode"
-            ),
-            pick(
-              item,
-              "Network",
-              "network",
-              "NetworkName",
-              "network_name",
-              "MOBILE_NETWORK",
-              "mobile_network"
-            )
-          )
-        );
+  const result: CatalogItem[] = [];
 
-      const denomination =
-        n(
-          first(
-            pick(
-              item,
-              "Value",
-              "value",
-              "VALUE",
-              "Denomination",
-              "denomination",
-              "DENOMINATION"
-            ),
-            pick(
-              item,
-              "Amount",
-              "amount"
-            )
-          )
-        );
+  for (const entry of entries) {
+    const providerPrice =
+      entry.providerPrice > 0
+        ? entry.providerPrice
+        : roundMoney(
+            entry.denomination *
+              Math.max(
+                0,
+                1 - entry.discount / 100,
+              ),
+          );
 
-      const discount =
-        n(
-          first(
-            pick(
-              item,
-              "Discount",
-              "discount",
-              "discount_percent",
-              "discountPercentage"
-            ),
-            0
-          )
-        );
-
-      const explicitCost =
-        n(
-          first(
-            pick(
-              item,
-              "provider_amount",
-              "providerAmount",
-              "cost",
-              "Cost"
-            ),
-            pick(
-              item,
-              "price",
-              "Price",
-              "amount_payable",
-              "AmountPayable"
-            )
-          )
-        );
-
-      const providerPrice =
-        explicitCost > 0
-          ? explicitCost
-          : denomination > 0
-            ? roundMoney(
-                denomination *
-                  Math.max(
-                    0,
-                    1 -
-                      discount /
-                        100
-                  )
-              )
-            : 0;
-
-      if (
-        NETWORKS[
-          currentNetwork
-        ] &&
-        denomination > 0 &&
-        providerPrice > 0
-      ) {
-        /*
-         * IMPORTANT:
-         *
-         * This is deliberately exposed as a
-         * PACKAGE/EPIN item rather than an
-         * amount-based service.
-         */
-        result.push({
-          id:
-            `${currentNetwork}-${denomination}`,
-          code:
-            `${currentNetwork}-${denomination}`,
-          name:
-            `${NETWORKS[currentNetwork]} ₦${denomination.toLocaleString()} E-PIN`,
-          packageCode:
-            `${currentNetwork}-${denomination}`,
-          packageName:
-            `${NETWORKS[currentNetwork]} ₦${denomination.toLocaleString()} E-PIN`,
-          value:
-            denomination,
-          price:
-            sellingPrice(
-              "airtime-card",
-              providerPrice
-            ),
-          providerPrice,
-          networkCode:
-            currentNetwork,
-          service:
-            "airtime-card",
-          raw:
-            item,
-        });
-      }
+    if (
+      !NETWORKS[entry.network] ||
+      entry.denomination <= 0 ||
+      providerPrice <= 0
+    ) {
+      continue;
     }
-  );
 
-  const unique =
-    new Map<
-      string,
-      CatalogItem
-    >();
+    result.push({
+      id: `${entry.network}-${entry.denomination}`,
+      code: `${entry.network}-${entry.denomination}`,
+      name: `${NETWORKS[entry.network]} ₦${entry.denomination.toLocaleString()} E-PIN`,
+      packageCode: `${entry.network}-${entry.denomination}`,
+      packageName: `${NETWORKS[entry.network]} ₦${entry.denomination.toLocaleString()} E-PIN`,
+      value: entry.denomination,
+      price: sellingPrice(
+        "airtime-card",
+        providerPrice,
+      ),
+      providerPrice,
+      networkCode: entry.network,
+      service: "airtime-card",
+      raw: entry.raw,
+    });
+  }
 
-  for (
-    const item of result
-  ) {
+  const unique = new Map<string, CatalogItem>();
+
+  for (const item of result) {
     unique.set(
       `${item.networkCode}:${item.value}`,
-      item
+      item,
     );
   }
 
-  const output =
-    [
-      ...unique.values(),
-    ];
+  const output = [...unique.values()];
 
-  if (
-    network
-  ) {
-    const wanted =
-      networkCode(
-        network
-      );
-
+  if (network) {
+    const wanted = networkCode(network);
     return output.filter(
-      (item) =>
-        item.networkCode ===
-        wanted
+      (item) => item.networkCode === wanted,
     );
   }
 

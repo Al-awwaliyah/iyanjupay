@@ -64,7 +64,7 @@ jobs:
         shell: bash
         run: |
           cat > android/keystore.properties <<EOF
-          storeFile=app/iyanjupay-release-key.jks
+          storeFile=iyanjupay-release-key.jks
           storePassword=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}
           keyPassword=${{ secrets.ANDROID_KEY_PASSWORD }}

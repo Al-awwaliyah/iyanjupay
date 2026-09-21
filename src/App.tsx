@@ -7,10 +7,7 @@ import {
   QueryClientProvider,
 } from "@tanstack/react-query";
 
-import React, {
-  useEffect,
-  useState,
-} from "react";
+import React, { useEffect, useState } from "react";
 
 import {
   BrowserRouter,
@@ -55,21 +52,25 @@ import VerifyPaymentPinResetOtp from "@/pages/VerifyPaymentPinResetOtp";
 import ResetPaymentPin from "@/pages/ResetPaymentPin";
 import ResetPassword from "./pages/ResetPassword";
 import NotFound from "./pages/NotFound";
+
 import ThemeProvider from "@/components/theme/ThemeProvider";
 import AppLockGuard from "@/components/security/AppLockGuard";
+
 import { restorePushRegistration } from "@/lib/pushNotifications";
 import { supabase } from "@/integrations/supabase/client";
 
 const queryClient = new QueryClient();
 
-/**
- * User Dashboard only owns the IyanjuPay ThemeProvider.
- * Admin routes intentionally render outside the provider so the
- * admin portal has no dependency on the user dashboard theme state.
- */
-const ThemeGate = ({ children }: { children: React.ReactNode }) => {
+const ThemeGate = ({
+  children,
+}: {
+  children: React.ReactNode;
+}) => {
   const location = useLocation();
-  const isAdminRoute = location.pathname === "/admin" || location.pathname.startsWith("/admin/");
+
+  const isAdminRoute =
+    location.pathname === "/admin" ||
+    location.pathname.startsWith("/admin/");
 
   if (isAdminRoute) {
     return <>{children}</>;
@@ -79,332 +80,434 @@ const ThemeGate = ({ children }: { children: React.ReactNode }) => {
 };
 
 const App = () => {
-  const [showSplash, setShowSplash] =
-    useState(true);
+  const [showSplash, setShowSplash] = useState(true);
 
+  /*
+   * ------------------------------------------------------------
+   * APP SPLASH
+   *
+   * IMPORTANT:
+   * This timer is completely independent from Supabase,
+   * push notifications, service workers, Capacitor, etc.
+   *
+   * Nothing in startup is allowed to keep the application
+   * on this screen.
+   * ------------------------------------------------------------
+   */
   useEffect(() => {
     const timer = window.setTimeout(() => {
       setShowSplash(false);
-    }, 3_000);
+    }, 3000);
 
     return () => {
       window.clearTimeout(timer);
     };
   }, []);
 
+  /*
+   * ------------------------------------------------------------
+   * AUTH + PUSH RESTORATION
+   *
+   * Push restoration is deliberately fire-and-forget.
+   *
+   * A failed/slow push registration MUST NEVER prevent:
+   * - React from rendering
+   * - routing
+   * - login
+   * - dashboard
+   * - PWA startup
+   * ------------------------------------------------------------
+   */
   useEffect(() => {
     let mounted = true;
 
+    const restorePushSafely = () => {
+      /*
+       * Give React/browser startup priority.
+       *
+       * We deliberately do not await this call.
+       */
+      window.setTimeout(() => {
+        if (!mounted) return;
+
+        void Promise.race([
+          restorePushRegistration(),
+
+          new Promise<void>((resolve) => {
+            window.setTimeout(resolve, 5000);
+          }),
+        ]).catch((error) => {
+          /*
+           * Push errors are background-only.
+           * Never show raw backend/native errors to the user.
+           */
+          console.warn(
+            "IyanjuPay push registration skipped:",
+            error instanceof Error
+              ? error.message
+              : "unknown error",
+          );
+        });
+      }, 0);
+    };
+
     const restore = async () => {
-      const { data } = await supabase.auth.getSession();
-      if (!mounted || !data.session) return;
       try {
-        await restorePushRegistration();
-      } catch (error) {
-        console.warn("Unable to restore push registration:", error);
+        const {
+          data: { session },
+          error,
+        } = await supabase.auth.getSession();
+
+        if (error) {
+          console.warn(
+            "IyanjuPay session initialization skipped.",
+          );
+
+          return;
+        }
+
+        if (!mounted || !session) {
+          return;
+        }
+
+        restorePushSafely();
+      } catch {
+        /*
+         * Authentication startup failure must never block
+         * the application UI.
+         */
+        console.warn(
+          "IyanjuPay authentication initialization skipped.",
+        );
       }
     };
 
     void restore();
 
-    const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
-      if (!mounted || !session || event === "SIGNED_OUT") return;
-      window.setTimeout(() => {
-        void restorePushRegistration().catch((error) => {
-          console.warn("Unable to refresh push registration:", error);
-        });
-      }, 0);
-    });
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(
+      (event, session) => {
+        if (
+          !mounted ||
+          !session ||
+          event === "SIGNED_OUT"
+        ) {
+          return;
+        }
+
+        /*
+         * Never execute push restoration directly inside
+         * the Supabase auth callback.
+         */
+        restorePushSafely();
+      },
+    );
 
     return () => {
       mounted = false;
-      authListener.subscription.unsubscribe();
+      subscription.unsubscribe();
     };
   }, []);
 
   /*
-   * ============================================================
-   * APP SPLASH SCREEN
-   * ============================================================
+   * ------------------------------------------------------------
+   * SPLASH
+   * ------------------------------------------------------------
    */
-
   if (showSplash) {
     return <AppSplash />;
   }
 
   /*
-   * ============================================================
-   * MAIN APPLICATION
-   * ============================================================
+   * ------------------------------------------------------------
+   * APPLICATION
+   * ------------------------------------------------------------
    */
-
   return (
-    <QueryClientProvider
-      client={queryClient}
-    >
+    <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <Toaster />
-
         <Sonner />
 
         <BrowserRouter>
           <ThemeGate>
-          <Routes>
+            <Routes>
+              {/* =================================================
+                  PUBLIC / AUTH
+              ================================================= */}
 
-            {/* ==================================================
-                MAIN APPLICATION
-            ================================================== */}
+              <Route
+                path="/"
+                element={<Index />}
+              />
 
-            <Route
-              path="/"
-              element={<Index />}
-            />
+              <Route
+                path="/signup"
+                element={<Index />}
+              />
 
-            {/* ==================================================
-                SIGNUP
-            ==================================================
+              <Route
+                path="/forgot-password"
+                element={<ForgotPassword />}
+              />
 
-            */}
+              <Route
+                path="/reset-password"
+                element={<ResetPassword />}
+              />
 
-            <Route
-              path="/signup"
-              element={<Index />}
-            />
+              <Route
+                path="/verify-email-otp"
+                element={<VerifyEmailOtp />}
+              />
 
-            <Route
-              path="/payment-pin"
-              element={<PaymentPinPage />}
-            />
-            
-            
-            
-            <Route
-              path="/dashboard"
-              element={<AppLockGuard><Dashboard /></AppLockGuard>}
-            />
+              <Route
+                path="/verify-recovery-otp"
+                element={<VerifyRecoveryOtp />}
+              />
 
-            <Route
-              path="/notifications"
-              element={<AppLockGuard><UserNotificationsPage /></AppLockGuard>}
-            />
+              {/* =================================================
+                  ONBOARDING
+              ================================================= */}
 
-            <Route
-              path="/notifications/:id"
-              element={<AppLockGuard><NotificationDetailsPage /></AppLockGuard>}
-            />
+              <Route
+                path="/onboarding"
+                element={<OnboardingPage />}
+              />
 
-            {/* ==================================================
-                EMAIL VERIFICATION
-            ================================================== */}
+              <Route
+                path="/onboarding/bvn"
+                element={<OnboardingBvnPage />}
+              />
 
-            <Route
-              path="/verify-email-otp"
-              element={<VerifyEmailOtp />}
-            />
+              <Route
+                path="/payment-pin"
+                element={<PaymentPinPage />}
+              />
 
-            {/* ==================================================
-                PROFILE ONBOARDING
-            ==================================================
+              <Route
+                path="/verify-payment-pin-reset"
+                element={<VerifyPaymentPinResetOtp />}
+              />
 
-                New users are sent here after successful
-                email verification when their profile is
-                incomplete.
+              <Route
+                path="/reset-payment-pin"
+                element={<ResetPaymentPin />}
+              />
 
-               
-            */}
+              {/* =================================================
+                  CUSTOMER
+              ================================================= */}
 
-            <Route
-              path="/onboarding"
-              element={<OnboardingPage />}
-            />
+              <Route
+                path="/dashboard"
+                element={
+                  <AppLockGuard>
+                    <Dashboard />
+                  </AppLockGuard>
+                }
+              />
 
-            <Route
-              path="/onboarding/bvn"
-              element={<OnboardingBvnPage />}
-            />
-            {/* ==================================================
-                PASSWORD RECOVERY
-            ================================================== */}
+              <Route
+                path="/send-money"
+                element={
+                  <AppLockGuard>
+                    <SendMoney />
+                  </AppLockGuard>
+                }
+              />
 
-            <Route
-              path="/forgot-password"
-              element={<ForgotPassword />}
-            />
+              <Route
+                path="/service-payment"
+                element={
+                  <AppLockGuard>
+                    <ServicePayment />
+                  </AppLockGuard>
+                }
+              />
 
-            <Route
-              path="/verify-recovery-otp"
-              element={
-                <VerifyRecoveryOtp />
-              }
-            />
-            <Route
-              path="/verify-payment-pin-reset"
-              element={<VerifyPaymentPinResetOtp />}
-            />
+              <Route
+                path="/transaction-processing"
+                element={
+                  <AppLockGuard>
+                    <TransactionProcessing />
+                  </AppLockGuard>
+                }
+              />
 
-            <Route
-              path="/transaction-processing"
-              element={<TransactionProcessing />}
-            />
+              <Route
+                path="/reward"
+                element={
+                  <AppLockGuard>
+                    <RewardsPage />
+                  </AppLockGuard>
+                }
+              />
 
-            <Route
-              path="/send-money"
-              element={<SendMoney />}
-            />
+              <Route
+                path="/notifications"
+                element={
+                  <AppLockGuard>
+                    <UserNotificationsPage />
+                  </AppLockGuard>
+                }
+              />
 
-            <Route
-              path="/reward"
-              element={<RewardsPage />}
-            />
-            
-            <Route
-              path="/reset-payment-pin"
-              element={<ResetPaymentPin />}
-            />
+              <Route
+                path="/notifications/:id"
+                element={
+                  <AppLockGuard>
+                    <NotificationDetailsPage />
+                  </AppLockGuard>
+                }
+              />
 
-            <Route
-              path="/service-payment"
-              element={<ServicePayment />}
-            />
+              <Route
+                path="/disputes"
+                element={
+                  <AppLockGuard>
+                    <UserDisputesPage />
+                  </AppLockGuard>
+                }
+              />
 
-            <Route
-              path="/admin/dashboard"
-              element={
-                <AdminRouteGuard>
-                  <AdminDashboardPage />
-                </AdminRouteGuard>
-              }
-            />
+              {/* =================================================
+                  ADMIN
+              ================================================= */}
 
-            <Route
-              path="/admin/customers"
-              element={
-                <AdminRouteGuard>
-                  <AdminCustomersPage />
-                </AdminRouteGuard>
-              }
-            />
+              <Route
+                path="/admin/login"
+                element={<AdminLoginPage />}
+              />
 
-            <Route
-              path="/admin/support"
-              element={
-                <AdminRouteGuard>
-                  <AdminSupportPage />
-                </AdminRouteGuard>
-              }
-            />
+              <Route
+                path="/admin/change-password"
+                element={<AdminChangePasswordPage />}
+              />
 
-            <Route
-              path="/admin/disputes"
-              element={
-                <AdminRouteGuard>
-                  <AdminDisputesPage />
-                </AdminRouteGuard>
-              }
-            />
+              <Route
+                path="/admin"
+                element={
+                  <AdminRouteGuard>
+                    <AdminDashboardPage />
+                  </AdminRouteGuard>
+                }
+              />
 
-            <Route
-              path="/admin/transactions"
-              element={
-                <AdminRouteGuard>
-                  <AdminTransactionsPage />
-                </AdminRouteGuard>
-              }
-            />
+              <Route
+                path="/admin/dashboard"
+                element={
+                  <AdminRouteGuard>
+                    <AdminDashboardPage />
+                  </AdminRouteGuard>
+                }
+              />
 
-            <Route
-              path="/admin/reconciliation"
-              element={
-                <AdminRouteGuard>
-                  <ReconciliationPage />
-                </AdminRouteGuard>
-              }
-            />
+              <Route
+                path="/admin/support"
+                element={
+                  <AdminRouteGuard>
+                    <AdminSupportPage />
+                  </AdminRouteGuard>
+                }
+              />
 
-            <Route
-              path="/admin/analytics"
-              element={
-                <AdminRouteGuard>
-                  <AnalyticsPage />
-                </AdminRouteGuard>
-              }
-            />
+              <Route
+                path="/admin/customers"
+                element={
+                  <AdminRouteGuard>
+                    <AdminCustomersPage />
+                  </AdminRouteGuard>
+                }
+              />
 
-            <Route
-              path="/admin/notifications"
-              element={
-                <AdminRouteGuard>
-                  <NotificationsPage />
-                </AdminRouteGuard>
-              }
-            />
+              <Route
+                path="/admin/transactions"
+                element={
+                  <AdminRouteGuard>
+                    <AdminTransactionsPage />
+                  </AdminRouteGuard>
+                }
+              />
 
-            <Route
-              path="/admin/audit-logs"
-              element={
-                <AdminRouteGuard>
-                  <AuditLogsPage />
-                </AdminRouteGuard>
-              }
-            />
+              <Route
+                path="/admin/disputes"
+                element={
+                  <AdminRouteGuard>
+                    <AdminDisputesPage />
+                  </AdminRouteGuard>
+                }
+              />
 
-            <Route
-              path="/admin/management"
-              element={
-                <AdminRouteGuard>
-                  <AdminManagementPage />
-                </AdminRouteGuard>
-              }
-            />
-            <Route
-              path="/admin/settings"
-              element={
-                <AdminRouteGuard>
-                  <AdminSettingsPage />
-                </AdminRouteGuard>
-              }
-            />
+              <Route
+                path="/admin/reconciliation"
+                element={
+                  <AdminRouteGuard>
+                    <ReconciliationPage />
+                  </AdminRouteGuard>
+                }
+              />
 
-            <Route
-              path="/admin/login"
-              element={<AdminLoginPage />}
-            />
+              <Route
+                path="/admin/analytics"
+                element={
+                  <AdminRouteGuard>
+                    <AnalyticsPage />
+                  </AdminRouteGuard>
+                }
+              />
 
-            <Route
-              path="/admin/change-password"
-              element={<AdminChangePasswordPage />}
-            />
-            
-            <Route
-              path="/disputes"
-              element={<UserDisputesPage />}
-            />
-              
-            <Route
-              path="/reset-password"
-              element={<ResetPassword />}
-            />
+              <Route
+                path="/admin/notifications"
+                element={
+                  <AdminRouteGuard>
+                    <NotificationsPage />
+                  </AdminRouteGuard>
+                }
+              />
 
-            {/* ==================================================
-                404
-            ================================================== */}
+              <Route
+                path="/admin/audit-logs"
+                element={
+                  <AdminRouteGuard>
+                    <AuditLogsPage />
+                  </AdminRouteGuard>
+                }
+              />
 
-            <Route
-              path="*"
-              element={<NotFound />}
-            />
+              <Route
+                path="/admin/management"
+                element={
+                  <AdminRouteGuard>
+                    <AdminManagementPage />
+                  </AdminRouteGuard>
+                }
+              />
 
-          </Routes>
+              <Route
+                path="/admin/settings"
+                element={
+                  <AdminRouteGuard>
+                    <AdminSettingsPage />
+                  </AdminRouteGuard>
+                }
+              />
+
+              {/* =================================================
+                  FALLBACK
+              ================================================= */}
+
+              <Route
+                path="*"
+                element={<NotFound />}
+              />
+            </Routes>
           </ThemeGate>
 
-          {/* ==================================================
-              PWA INSTALL PROMPT
-          ================================================== */}
-
           <PWAInstallPrompt />
-
-          </BrowserRouter>
-        </TooltipProvider>
+        </BrowserRouter>
+      </TooltipProvider>
     </QueryClientProvider>
   );
 };

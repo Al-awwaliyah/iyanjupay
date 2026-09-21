@@ -105,6 +105,21 @@ const App = () => {
   }, []);
 
   /*
+   * The HTML document contains a zero-JS boot splash so there is no
+   * white flash before React starts. Remove that static layer as soon
+   * as React has mounted. If it is left in the DOM it sits above the
+   * entire application with a z-index of 2147483647 and makes the web
+   * app appear permanently stuck on the splash screen.
+   */
+  useEffect(() => {
+    const bootSplash = document.getElementById("iyanjupay-boot-splash");
+
+    if (bootSplash) {
+      bootSplash.remove();
+    }
+  }, []);
+
+  /*
    * ------------------------------------------------------------
    * AUTH + PUSH RESTORATION
    *

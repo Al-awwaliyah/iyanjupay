@@ -53,10 +53,7 @@ jobs:
             peyflex-services \
             --project-ref "$SUPABASE_PROJECT_ID" || true
 
-      - name: Deploy Supabase Edge Functions
-        run: |
-          set -euo pipefail
-
+     
           supabase functions deploy \
             --use-api \
             --project-ref "$SUPABASE_PROJECT_ID"

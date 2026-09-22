@@ -75,12 +75,17 @@ type NotificationChannel =
   | "push"
   | "webhook";
 
-type DeliveryStatus =
+type InAppStatus =
+  | "pending"
+  | "delivered";
+
+type PushStatus =
   | "pending"
   | "processing"
   | "delivered"
   | "failed"
-  | "retrying";
+  | "retrying"
+  | "skipped";
 
 type TransactionStatus =
   | "pending"
@@ -114,38 +119,58 @@ type NotificationRow = {
 
   channel: NotificationChannel | string;
 
-  delivery_status:
-    | DeliveryStatus
-    | string;
+  /*
+   * NEW STAGE 4 LIFECYCLE FIELDS
+   */
+  in_app_status: InAppStatus | string;
 
-  delivery_attempts: number;
+  in_app_delivered_at: string | null;
 
-  last_attempt_at: string | null;
+  push_status: PushStatus | string;
 
-  delivered_at: string | null;
+  push_attempts: number;
 
-  failed_at: string | null;
+  push_last_attempt_at: string | null;
 
-  last_error: string | null;
+  push_delivered_at: string | null;
 
-  next_retry_at: string | null;
+  push_failed_at: string | null;
+
+  push_last_error: string | null;
+
+  push_next_retry_at: string | null;
 
   broadcast_id: string | null;
 
-  metadata:
-    | NotificationMetadata
-    | null;
+  metadata: NotificationMetadata | null;
 
   created_at: string;
 
-  /*
-   * The SQL RPC may return this directly when available.
-   * The frontend also attempts to derive it from metadata.
-   */
   transaction_status?:
     | TransactionStatus
     | string
     | null;
+
+  /*
+   * LEGACY COMPATIBILITY FIELDS.
+   *
+   * These remain in the database during the migration,
+   * but Stage 4 does not use them as the notification
+   * delivery lifecycle.
+   */
+  delivery_status?: string | null;
+
+  delivery_attempts?: number | null;
+
+  last_attempt_at?: string | null;
+
+  delivered_at?: string | null;
+
+  failed_at?: string | null;
+
+  last_error?: string | null;
+
+  next_retry_at?: string | null;
 };
 
 type NotificationSummary = {
@@ -155,7 +180,27 @@ type NotificationSummary = {
 
   read: number;
 
-  delivery: {
+  in_app: {
+    pending: number;
+    delivered: number;
+  };
+
+  push: {
+    pending: number;
+    processing: number;
+    delivered: number;
+    failed: number;
+    retrying: number;
+    skipped: number;
+  };
+
+  /*
+   * Legacy compatibility summary returned by the
+   * Stage 5-compatible RPC.
+   *
+   * Not used as the source of truth by this UI.
+   */
+  delivery?: {
     pending: number;
     processing: number;
     delivered: number;
@@ -198,11 +243,25 @@ type BroadcastForm = {
 };
 
 
+// ============================================================
+// DEFAULTS
+// ============================================================
+
 function getDefaultAnnouncementExpiry(): string {
-  const date = new Date(Date.now() + 24 * 60 * 60 * 1000);
-  const pad = (value: number) => String(value).padStart(2, "0");
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  const date = new Date(
+    Date.now() + 24 * 60 * 60 * 1000,
+  );
+
+  const pad = (value: number) =>
+    String(value).padStart(2, "0");
+
+  return `${date.getFullYear()}-${pad(
+    date.getMonth() + 1,
+  )}-${pad(date.getDate())}T${pad(
+    date.getHours(),
+  )}:${pad(date.getMinutes())}`;
 }
+
 
 // ============================================================
 // CONSTANTS
@@ -309,37 +368,31 @@ function normalizeStatus(
 
 
 // ============================================================
-// TRANSACTION STATUS RESOLUTION
+// SANITIZED FRONTEND ERRORS
 // ============================================================
 
-/*
- * IMPORTANT:
- *
- * Notification delivery status and transaction status are
- * completely different things.
- *
- * delivery_status:
- *   pending / processing / delivered / failed / retrying
- *
- * transaction_status:
- *   pending / processing / successful / failed / etc.
- *
- * A notification can therefore be:
- *
- *   Transaction: successful
- *   Notification: delivered
- *
- * or:
- *
- *   Transaction: successful
- *   Notification: pending
- *
- * The old frontend was using `notification.type` as if it
- * represented the current transaction status.
- *
- * This resolver looks for the actual transaction status in
- * the RPC response or metadata.
- */
+function getSafeErrorMessage(
+  error: unknown,
+  fallback: string,
+): string {
+  /*
+   * Do not expose raw Supabase/Postgres/Edge Function
+   * errors to the admin UI.
+   *
+   * The complete error is still logged locally for
+   * development/diagnostics.
+   */
+  if (!error) {
+    return fallback;
+  }
+
+  return fallback;
+}
+
+
+// ============================================================
+// TRANSACTION STATUS
+// ============================================================
 
 function getTransactionStatus(
   notification: NotificationRow,
@@ -387,13 +440,6 @@ function getTransactionStatus(
     }
   }
 
-  /*
-   * Some notification implementations put the transaction
-   * state directly into the notification type.
-   *
-   * This is only a fallback. It is NOT used when a real
-   * transaction_status is supplied.
-   */
   const type =
     normalizeStatus(
       notification.type,
@@ -555,7 +601,7 @@ function transactionStatusBadgeClass(
 
 
 // ============================================================
-// DELIVERY HELPERS
+// CHANNEL
 // ============================================================
 
 function getChannelIcon(
@@ -583,7 +629,47 @@ function getChannelIcon(
 }
 
 
-function deliveryBadgeClass(
+// ============================================================
+// IN-APP STATUS
+// ============================================================
+
+function inAppStatusBadgeClass(
+  status: string,
+) {
+  switch (
+    normalizeStatus(status)
+  ) {
+    case "delivered":
+      return "border-emerald-200 bg-emerald-100 text-emerald-700";
+
+    case "pending":
+    default:
+      return "border-slate-200 bg-slate-100 text-slate-700";
+  }
+}
+
+
+function inAppStatusLabel(
+  status: string,
+) {
+  switch (
+    normalizeStatus(status)
+  ) {
+    case "delivered":
+      return "Delivered";
+
+    case "pending":
+    default:
+      return "Pending";
+  }
+}
+
+
+// ============================================================
+// PUSH STATUS
+// ============================================================
+
+function pushStatusBadgeClass(
   status: string,
 ) {
   switch (
@@ -601,12 +687,47 @@ function deliveryBadgeClass(
     case "retrying":
       return "border-amber-200 bg-amber-100 text-amber-700";
 
+    case "skipped":
+      return "border-purple-200 bg-purple-100 text-purple-700";
+
     case "pending":
     default:
       return "border-slate-200 bg-slate-100 text-slate-700";
   }
 }
 
+
+function pushStatusLabel(
+  status: string,
+) {
+  switch (
+    normalizeStatus(status)
+  ) {
+    case "delivered":
+      return "Delivered";
+
+    case "failed":
+      return "Failed";
+
+    case "processing":
+      return "Processing";
+
+    case "retrying":
+      return "Retrying";
+
+    case "skipped":
+      return "Skipped";
+
+    case "pending":
+    default:
+      return "Pending";
+  }
+}
+
+
+// ============================================================
+// INITIAL SUMMARY
+// ============================================================
 
 function getInitialSummary(): NotificationSummary {
   return {
@@ -616,12 +737,18 @@ function getInitialSummary(): NotificationSummary {
 
     read: 0,
 
-    delivery: {
+    in_app: {
+      pending: 0,
+      delivered: 0,
+    },
+
+    push: {
       pending: 0,
       processing: 0,
       delivered: 0,
       failed: 0,
       retrying: 0,
+      skipped: 0,
     },
   };
 }
@@ -687,9 +814,15 @@ function NotificationsPage() {
   const [channelFilter, setChannelFilter] =
     useState("all");
 
+  /*
+   * This is now a PUSH status filter.
+   *
+   * The RPC parameter remains p_delivery_status for
+   * backwards compatibility with the Stage 2 SQL function.
+   */
   const [
-    deliveryStatusFilter,
-    setDeliveryStatusFilter,
+    pushStatusFilter,
+    setPushStatusFilter,
   ] = useState("all");
 
   const [readFilter, setReadFilter] =
@@ -734,7 +867,8 @@ function NotificationsPage() {
       message: "",
       amount: "",
       announcement: true,
-      expiresAt: getDefaultAnnouncementExpiry(),
+      expiresAt:
+        getDefaultAnnouncementExpiry(),
     });
 
 
@@ -750,9 +884,7 @@ function NotificationsPage() {
 
       setChannelFilter("all");
 
-      setDeliveryStatusFilter(
-        "all",
-      );
+      setPushStatusFilter("all");
 
       setReadFilter("all");
 
@@ -808,6 +940,9 @@ function NotificationsPage() {
           return;
         }
 
+        const initial =
+          getInitialSummary();
+
         setSummary({
           total: Number(
             result.total || 0,
@@ -821,32 +956,56 @@ function NotificationsPage() {
             result.read || 0,
           ),
 
-          delivery: {
+          in_app: {
             pending: Number(
-              result.delivery
-                ?.pending || 0,
-            ),
-
-            processing: Number(
-              result.delivery
-                ?.processing || 0,
+              result.in_app?.pending ??
+                initial.in_app.pending,
             ),
 
             delivered: Number(
-              result.delivery
-                ?.delivered || 0,
+              result.in_app?.delivered ??
+                initial.in_app.delivered,
+            ),
+          },
+
+          push: {
+            pending: Number(
+              result.push?.pending ??
+                initial.push.pending,
+            ),
+
+            processing: Number(
+              result.push?.processing ??
+                initial.push.processing,
+            ),
+
+            delivered: Number(
+              result.push?.delivered ??
+                initial.push.delivered,
             ),
 
             failed: Number(
-              result.delivery
-                ?.failed || 0,
+              result.push?.failed ??
+                initial.push.failed,
             ),
 
             retrying: Number(
-              result.delivery
-                ?.retrying || 0,
+              result.push?.retrying ??
+                initial.push.retrying,
+            ),
+
+            skipped: Number(
+              result.push?.skipped ??
+                initial.push.skipped,
             ),
           },
+
+          /*
+           * Keep compatibility data available if the RPC
+           * still returns it.
+           */
+          delivery:
+            result.delivery,
 
           period:
             result.period,
@@ -898,11 +1057,18 @@ function NotificationsPage() {
                   ? null
                   : channelFilter,
 
+              /*
+               * IMPORTANT:
+               *
+               * Stage 5-compatible SQL still exposes
+               * p_delivery_status, but it maps internally
+               * to push_status.
+               */
               p_delivery_status:
-                deliveryStatusFilter ===
+                pushStatusFilter ===
                 "all"
                   ? null
-                  : deliveryStatusFilter,
+                  : pushStatusFilter,
 
               p_is_read:
                 readFilter === "all"
@@ -949,18 +1115,24 @@ function NotificationsPage() {
               ? result.items
               : [];
 
-          /*
-           * Normalize every returned row.
-           *
-           * This deliberately DOES NOT change delivery_status.
-           * Delivery belongs to the notification itself.
-           *
-           * Transaction status is kept separate.
-           */
           const normalizedItems =
             items.map(
               (item) => ({
                 ...item,
+
+                in_app_status:
+                  item.in_app_status ||
+                  "pending",
+
+                push_status:
+                  item.push_status ||
+                  "pending",
+
+                push_attempts:
+                  Number(
+                    item.push_attempts ||
+                      0,
+                  ),
 
                 transaction_status:
                   item.transaction_status ||
@@ -979,7 +1151,7 @@ function NotificationsPage() {
               result?.total || 0,
             ),
           );
-        } catch (error: any) {
+        } catch (error: unknown) {
           console.error(
             "Notifications fetch failed:",
             error,
@@ -990,8 +1162,10 @@ function NotificationsPage() {
               "Unable to load notifications",
 
             description:
-              error?.message ||
-              "Something went wrong while loading notifications.",
+              getSafeErrorMessage(
+                error,
+                "Something went wrong while loading notifications.",
+              ),
 
             variant:
               "destructive",
@@ -1010,7 +1184,7 @@ function NotificationsPage() {
         search,
         typeFilter,
         channelFilter,
-        deliveryStatusFilter,
+        pushStatusFilter,
         readFilter,
         startDate,
         endDate,
@@ -1117,13 +1291,27 @@ function NotificationsPage() {
           setSelectedNotification({
             ...notification,
 
+            in_app_status:
+              notification.in_app_status ||
+              "pending",
+
+            push_status:
+              notification.push_status ||
+              "pending",
+
+            push_attempts:
+              Number(
+                notification.push_attempts ||
+                  0,
+              ),
+
             transaction_status:
               notification.transaction_status ||
               getTransactionStatus(
                 notification,
               ),
           });
-        } catch (error: any) {
+        } catch (error: unknown) {
           console.error(
             "Notification detail failed:",
             error,
@@ -1134,8 +1322,10 @@ function NotificationsPage() {
               "Unable to load notification",
 
             description:
-              error?.message ||
-              "The notification could not be loaded.",
+              getSafeErrorMessage(
+                error,
+                "The notification could not be loaded.",
+              ),
 
             variant:
               "destructive",
@@ -1176,12 +1366,15 @@ function NotificationsPage() {
             throw error;
           }
 
+          const retryQueuedAt =
+            new Date().toISOString();
+
           toast({
             title:
-              "Notification queued",
+              "Push retry queued",
 
             description:
-              "The notification has been moved to retrying.",
+              "The notification has been placed into the push retry state.",
           });
 
           setSelectedNotification(
@@ -1197,20 +1390,20 @@ function NotificationsPage() {
               return {
                 ...current,
 
-                delivery_status:
+                push_status:
                   "retrying",
 
-                next_retry_at:
-                  new Date().toISOString(),
+                push_next_retry_at:
+                  retryQueuedAt,
 
-                last_error:
+                push_last_error:
                   null,
               };
             },
           );
 
           await refreshAll(true);
-        } catch (error: any) {
+        } catch (error: unknown) {
           console.error(
             "Notification retry failed:",
             error,
@@ -1218,11 +1411,13 @@ function NotificationsPage() {
 
           toast({
             title:
-              "Retry failed",
+              "Unable to queue retry",
 
             description:
-              error?.message ||
-              "The notification could not be queued for retry.",
+              getSafeErrorMessage(
+                error,
+                "The notification could not be queued for retry.",
+              ),
 
             variant:
               "destructive",
@@ -1268,7 +1463,8 @@ function NotificationsPage() {
         message: "",
         amount: "",
         announcement: true,
-        expiresAt: getDefaultAnnouncementExpiry(),
+        expiresAt:
+          getDefaultAnnouncementExpiry(),
       });
     }, []);
 
@@ -1330,27 +1526,58 @@ function NotificationsPage() {
           return;
         }
 
-        let expiresAt: string | null = null;
-        if (broadcastForm.announcement) {
-          if (!broadcastForm.expiresAt) {
+        let expiresAt:
+          | string
+          | null = null;
+
+        if (
+          broadcastForm.announcement
+        ) {
+          if (
+            !broadcastForm.expiresAt
+          ) {
             toast({
-              title: "Announcement expiry required",
-              description: "Choose when the announcement should disappear from customer dashboards.",
-              variant: "destructive",
+              title:
+                "Announcement expiry required",
+
+              description:
+                "Choose when the announcement should disappear from customer dashboards.",
+
+              variant:
+                "destructive",
             });
+
             return;
           }
 
-          const expiryDate = new Date(broadcastForm.expiresAt);
-          if (!Number.isFinite(expiryDate.getTime()) || expiryDate.getTime() <= Date.now()) {
+          const expiryDate =
+            new Date(
+              broadcastForm.expiresAt,
+            );
+
+          if (
+            !Number.isFinite(
+              expiryDate.getTime(),
+            ) ||
+            expiryDate.getTime() <=
+              Date.now()
+          ) {
             toast({
-              title: "Invalid announcement expiry",
-              description: "Choose a future date and time.",
-              variant: "destructive",
+              title:
+                "Invalid announcement expiry",
+
+              description:
+                "Choose a future date and time.",
+
+              variant:
+                "destructive",
             });
+
             return;
           }
-          expiresAt = expiryDate.toISOString();
+
+          expiresAt =
+            expiryDate.toISOString();
         }
 
         let amount:
@@ -1407,8 +1634,18 @@ function NotificationsPage() {
 
               p_metadata: {
                 source: "admin",
-                kind: broadcastForm.announcement ? "announcement" : "notification",
-                ...(expiresAt ? { expires_at: expiresAt } : {}),
+
+                kind:
+                  broadcastForm.announcement
+                    ? "announcement"
+                    : "notification",
+
+                ...(expiresAt
+                  ? {
+                      expires_at:
+                        expiresAt,
+                    }
+                  : {}),
               },
             },
           );
@@ -1453,7 +1690,7 @@ function NotificationsPage() {
           setPage(1);
 
           await refreshAll(true);
-        } catch (error: any) {
+        } catch (error: unknown) {
           console.error(
             "Notification broadcast failed:",
             error,
@@ -1464,8 +1701,10 @@ function NotificationsPage() {
               "Broadcast failed",
 
             description:
-              error?.message ||
-              "The broadcast could not be created.",
+              getSafeErrorMessage(
+                error,
+                "The broadcast could not be created.",
+              ),
 
             variant:
               "destructive",
@@ -1550,7 +1789,7 @@ function NotificationsPage() {
               "all" ||
             channelFilter !==
               "all" ||
-            deliveryStatusFilter !==
+            pushStatusFilter !==
               "all" ||
             readFilter !==
               "all" ||
@@ -1561,7 +1800,7 @@ function NotificationsPage() {
         search,
         typeFilter,
         channelFilter,
-        deliveryStatusFilter,
+        pushStatusFilter,
         readFilter,
         startDate,
         endDate,
@@ -1690,7 +1929,7 @@ function NotificationsPage() {
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground">
-                Delivered
+                Push Delivered
               </CardTitle>
             </CardHeader>
 
@@ -1698,7 +1937,7 @@ function NotificationsPage() {
               <div className="flex items-center justify-between">
 
                 <div className="text-2xl font-bold text-emerald-600">
-                  {summary.delivery.delivered.toLocaleString()}
+                  {summary.push.delivered.toLocaleString()}
                 </div>
 
                 <Check className="h-5 w-5 text-emerald-600" />
@@ -1711,7 +1950,7 @@ function NotificationsPage() {
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground">
-                Failed
+                Push Failed
               </CardTitle>
             </CardHeader>
 
@@ -1719,7 +1958,7 @@ function NotificationsPage() {
               <div className="flex items-center justify-between">
 
                 <div className="text-2xl font-bold text-red-600">
-                  {summary.delivery.failed.toLocaleString()}
+                  {summary.push.failed.toLocaleString()}
                 </div>
 
                 <AlertCircle className="h-5 w-5 text-red-600" />
@@ -1733,77 +1972,136 @@ function NotificationsPage() {
 
         {/* DELIVERY OVERVIEW */}
 
-        <Card>
+        <div className="grid gap-4 lg:grid-cols-2">
 
-          <CardHeader>
-            <CardTitle className="text-base">
-              Delivery Overview
-            </CardTitle>
-          </CardHeader>
+          {/* IN-APP */}
 
-          <CardContent>
+          <Card>
 
-            <div className="grid grid-cols-2 gap-4 md:grid-cols-5">
+            <CardHeader>
+              <CardTitle className="text-base">
+                In-App Delivery
+              </CardTitle>
+            </CardHeader>
 
-              <div className="rounded-lg border p-4">
-                <div className="text-xs text-muted-foreground">
-                  Pending
+            <CardContent>
+
+              <div className="grid grid-cols-2 gap-4">
+
+                <div className="rounded-lg border p-4">
+                  <div className="text-xs text-muted-foreground">
+                    Pending
+                  </div>
+
+                  <div className="mt-1 text-xl font-semibold">
+                    {summary.in_app.pending.toLocaleString()}
+                  </div>
                 </div>
 
-                <div className="mt-1 text-xl font-semibold">
-                  {summary.delivery.pending.toLocaleString()}
+
+                <div className="rounded-lg border p-4">
+                  <div className="text-xs text-muted-foreground">
+                    Delivered
+                  </div>
+
+                  <div className="mt-1 text-xl font-semibold text-emerald-600">
+                    {summary.in_app.delivered.toLocaleString()}
+                  </div>
                 </div>
+
               </div>
 
+            </CardContent>
 
-              <div className="rounded-lg border p-4">
-                <div className="text-xs text-muted-foreground">
-                  Processing
+          </Card>
+
+
+          {/* PUSH */}
+
+          <Card>
+
+            <CardHeader>
+              <CardTitle className="text-base">
+                Push Delivery
+              </CardTitle>
+            </CardHeader>
+
+            <CardContent>
+
+              <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
+
+                <div className="rounded-lg border p-4">
+                  <div className="text-xs text-muted-foreground">
+                    Pending
+                  </div>
+
+                  <div className="mt-1 text-xl font-semibold">
+                    {summary.push.pending.toLocaleString()}
+                  </div>
                 </div>
 
-                <div className="mt-1 text-xl font-semibold">
-                  {summary.delivery.processing.toLocaleString()}
+
+                <div className="rounded-lg border p-4">
+                  <div className="text-xs text-muted-foreground">
+                    Processing
+                  </div>
+
+                  <div className="mt-1 text-xl font-semibold">
+                    {summary.push.processing.toLocaleString()}
+                  </div>
                 </div>
+
+
+                <div className="rounded-lg border p-4">
+                  <div className="text-xs text-muted-foreground">
+                    Delivered
+                  </div>
+
+                  <div className="mt-1 text-xl font-semibold text-emerald-600">
+                    {summary.push.delivered.toLocaleString()}
+                  </div>
+                </div>
+
+
+                <div className="rounded-lg border p-4">
+                  <div className="text-xs text-muted-foreground">
+                    Retrying
+                  </div>
+
+                  <div className="mt-1 text-xl font-semibold text-amber-600">
+                    {summary.push.retrying.toLocaleString()}
+                  </div>
+                </div>
+
+
+                <div className="rounded-lg border p-4">
+                  <div className="text-xs text-muted-foreground">
+                    Failed
+                  </div>
+
+                  <div className="mt-1 text-xl font-semibold text-red-600">
+                    {summary.push.failed.toLocaleString()}
+                  </div>
+                </div>
+
+
+                <div className="rounded-lg border p-4">
+                  <div className="text-xs text-muted-foreground">
+                    Skipped
+                  </div>
+
+                  <div className="mt-1 text-xl font-semibold text-purple-600">
+                    {summary.push.skipped.toLocaleString()}
+                  </div>
+                </div>
+
               </div>
 
+            </CardContent>
 
-              <div className="rounded-lg border p-4">
-                <div className="text-xs text-muted-foreground">
-                  Delivered
-                </div>
+          </Card>
 
-                <div className="mt-1 text-xl font-semibold text-emerald-600">
-                  {summary.delivery.delivered.toLocaleString()}
-                </div>
-              </div>
-
-
-              <div className="rounded-lg border p-4">
-                <div className="text-xs text-muted-foreground">
-                  Retrying
-                </div>
-
-                <div className="mt-1 text-xl font-semibold text-amber-600">
-                  {summary.delivery.retrying.toLocaleString()}
-                </div>
-              </div>
-
-
-              <div className="rounded-lg border p-4">
-                <div className="text-xs text-muted-foreground">
-                  Failed
-                </div>
-
-                <div className="mt-1 text-xl font-semibold text-red-600">
-                  {summary.delivery.failed.toLocaleString()}
-                </div>
-              </div>
-
-            </div>
-
-          </CardContent>
-
-        </Card>
+        </div>
 
 
         {/* FILTERS */}
@@ -1998,17 +2296,17 @@ function NotificationsPage() {
               <div className="space-y-2">
 
                 <Label>
-                  Delivery status
+                  Push status
                 </Label>
 
                 <Select
                   value={
-                    deliveryStatusFilter
+                    pushStatusFilter
                   }
                   onValueChange={(
                     value,
                   ) => {
-                    setDeliveryStatusFilter(
+                    setPushStatusFilter(
                       value,
                     );
 
@@ -2017,13 +2315,13 @@ function NotificationsPage() {
                 >
 
                   <SelectTrigger>
-                    <SelectValue placeholder="All statuses" />
+                    <SelectValue placeholder="All push statuses" />
                   </SelectTrigger>
 
                   <SelectContent>
 
                     <SelectItem value="all">
-                      All statuses
+                      All push statuses
                     </SelectItem>
 
                     <SelectItem value="pending">
@@ -2044,6 +2342,10 @@ function NotificationsPage() {
 
                     <SelectItem value="failed">
                       Failed
+                    </SelectItem>
+
+                    <SelectItem value="skipped">
+                      Skipped
                     </SelectItem>
 
                   </SelectContent>
@@ -2243,7 +2545,7 @@ function NotificationsPage() {
             ) : (
               <div className="overflow-x-auto">
 
-                <table className="w-full min-w-[1250px] text-sm">
+                <table className="w-full min-w-[1450px] text-sm">
 
                   <thead className="border-y bg-muted/50">
 
@@ -2266,7 +2568,11 @@ function NotificationsPage() {
                       </th>
 
                       <th className="px-4 py-3 text-left font-medium">
-                        Delivery
+                        In-App
+                      </th>
+
+                      <th className="px-4 py-3 text-left font-medium">
+                        Push
                       </th>
 
                       <th className="px-4 py-3 text-right font-medium">
@@ -2312,7 +2618,7 @@ function NotificationsPage() {
 
                             {/* NOTIFICATION */}
 
-                            <td className="max-w-[360px] px-4 py-4">
+                            <td className="max-w-[330px] px-4 py-4">
 
                               <div className="flex items-start gap-3">
 
@@ -2410,18 +2716,36 @@ function NotificationsPage() {
                             </td>
 
 
-                            {/* DELIVERY */}
+                            {/* IN-APP */}
 
                             <td className="px-4 py-4">
 
                               <Badge
                                 variant="outline"
-                                className={deliveryBadgeClass(
-                                  notification.delivery_status,
+                                className={inAppStatusBadgeClass(
+                                  notification.in_app_status,
                                 )}
                               >
-                                {titleCase(
-                                  notification.delivery_status,
+                                {inAppStatusLabel(
+                                  notification.in_app_status,
+                                )}
+                              </Badge>
+
+                            </td>
+
+
+                            {/* PUSH */}
+
+                            <td className="px-4 py-4">
+
+                              <Badge
+                                variant="outline"
+                                className={pushStatusBadgeClass(
+                                  notification.push_status,
+                                )}
+                              >
+                                {pushStatusLabel(
+                                  notification.push_status,
                                 )}
                               </Badge>
 
@@ -2709,21 +3033,95 @@ function NotificationsPage() {
                   <div className="rounded-lg border p-4">
 
                     <div className="text-xs text-muted-foreground">
-                      Delivery
+                      Read Status
                     </div>
 
-                    <div className="mt-2">
+                    <div className="mt-1 font-medium">
+                      {selectedNotification.is_read
+                        ? "Read"
+                        : "Unread"}
+                    </div>
 
-                      <Badge
-                        variant="outline"
-                        className={deliveryBadgeClass(
-                          selectedNotification.delivery_status,
+                  </div>
+
+                </div>
+
+
+                {/* DELIVERY STATUS */}
+
+                <div className="space-y-3">
+
+                  <h3 className="font-semibold">
+                    Notification Delivery
+                  </h3>
+
+                  <div className="grid gap-4 sm:grid-cols-2">
+
+                    {/* IN-APP */}
+
+                    <div className="rounded-lg border p-4">
+
+                      <div className="text-xs text-muted-foreground">
+                        In-App Status
+                      </div>
+
+                      <div className="mt-2">
+                        <Badge
+                          variant="outline"
+                          className={inAppStatusBadgeClass(
+                            selectedNotification.in_app_status,
+                          )}
+                        >
+                          {inAppStatusLabel(
+                            selectedNotification.in_app_status,
+                          )}
+                        </Badge>
+                      </div>
+
+                      <div className="mt-3 text-xs text-muted-foreground">
+                        Delivered
+                      </div>
+
+                      <div className="mt-1 text-sm font-medium">
+                        {formatDate(
+                          selectedNotification.in_app_delivered_at,
                         )}
-                      >
-                        {titleCase(
-                          selectedNotification.delivery_status,
+                      </div>
+
+                    </div>
+
+
+                    {/* PUSH */}
+
+                    <div className="rounded-lg border p-4">
+
+                      <div className="text-xs text-muted-foreground">
+                        Push Status
+                      </div>
+
+                      <div className="mt-2">
+                        <Badge
+                          variant="outline"
+                          className={pushStatusBadgeClass(
+                            selectedNotification.push_status,
+                          )}
+                        >
+                          {pushStatusLabel(
+                            selectedNotification.push_status,
+                          )}
+                        </Badge>
+                      </div>
+
+                      <div className="mt-3 text-xs text-muted-foreground">
+                        Attempts
+                      </div>
+
+                      <div className="mt-1 text-sm font-semibold">
+                        {Number(
+                          selectedNotification.push_attempts ||
+                            0,
                         )}
-                      </Badge>
+                      </div>
 
                     </div>
 
@@ -2845,12 +3243,12 @@ function NotificationsPage() {
                 </div>
 
 
-                {/* DELIVERY DETAILS */}
+                {/* PUSH DELIVERY DETAILS */}
 
                 <div className="space-y-3">
 
                   <h3 className="font-semibold">
-                    Delivery Details
+                    Push Delivery Details
                   </h3>
 
                   <div className="grid gap-3 sm:grid-cols-2">
@@ -2858,28 +3256,13 @@ function NotificationsPage() {
                     <div className="rounded-lg border p-4">
 
                       <div className="text-xs text-muted-foreground">
-                        Delivery attempts
+                        Attempts
                       </div>
 
                       <div className="mt-1 text-lg font-semibold">
                         {Number(
-                          selectedNotification.delivery_attempts ||
+                          selectedNotification.push_attempts ||
                             0,
-                        )}
-                      </div>
-
-                    </div>
-
-
-                    <div className="rounded-lg border p-4">
-
-                      <div className="text-xs text-muted-foreground">
-                        Created
-                      </div>
-
-                      <div className="mt-1 text-sm font-medium">
-                        {formatDate(
-                          selectedNotification.created_at,
                         )}
                       </div>
 
@@ -2894,7 +3277,7 @@ function NotificationsPage() {
 
                       <div className="mt-1 text-sm font-medium">
                         {formatDate(
-                          selectedNotification.last_attempt_at,
+                          selectedNotification.push_last_attempt_at,
                         )}
                       </div>
 
@@ -2909,7 +3292,7 @@ function NotificationsPage() {
 
                       <div className="mt-1 text-sm font-medium">
                         {formatDate(
-                          selectedNotification.delivered_at,
+                          selectedNotification.push_delivered_at,
                         )}
                       </div>
 
@@ -2924,7 +3307,7 @@ function NotificationsPage() {
 
                       <div className="mt-1 text-sm font-medium">
                         {formatDate(
-                          selectedNotification.failed_at,
+                          selectedNotification.push_failed_at,
                         )}
                       </div>
 
@@ -2939,7 +3322,7 @@ function NotificationsPage() {
 
                       <div className="mt-1 text-sm font-medium">
                         {formatDate(
-                          selectedNotification.next_retry_at,
+                          selectedNotification.push_next_retry_at,
                         )}
                       </div>
 
@@ -2950,9 +3333,9 @@ function NotificationsPage() {
                 </div>
 
 
-                {/* LAST ERROR */}
+                {/* PUSH ERROR */}
 
-                {selectedNotification.last_error && (
+                {selectedNotification.push_last_error && (
                   <div className="rounded-lg border border-red-200 bg-red-50 p-4">
 
                     <div className="flex gap-3">
@@ -2962,12 +3345,12 @@ function NotificationsPage() {
                       <div>
 
                         <div className="font-medium text-red-700">
-                          Last delivery error
+                          Last push delivery error
                         </div>
 
-                        <p className="mt-1 whitespace-pre-wrap text-sm text-red-700/90">
+                        <p className="mt-1 whitespace-pre-wrap break-words text-sm text-red-700/90">
                           {
-                            selectedNotification.last_error
+                            selectedNotification.push_last_error
                           }
                         </p>
 
@@ -3003,9 +3386,9 @@ function NotificationsPage() {
                 {/* RETRY */}
 
                 {(
-                  selectedNotification.delivery_status ===
+                  selectedNotification.push_status ===
                     "failed" ||
-                  selectedNotification.delivery_status ===
+                  selectedNotification.push_status ===
                     "retrying"
                 ) && (
                   <div className="flex justify-end border-t pt-4">
@@ -3027,7 +3410,7 @@ function NotificationsPage() {
                         <RotateCcw className="mr-2 h-4 w-4" />
                       )}
 
-                      Queue Retry
+                      Queue Push Retry
 
                     </Button>
 
@@ -3101,176 +3484,227 @@ function NotificationsPage() {
 
               <div className="space-y-5">
 
-              <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
 
-                This action creates a notification record
-                for every user in{" "}
+                  This action creates a notification record
+                  for every user in{" "}
 
-                <code className="font-mono">
-                  auth.users
-                </code>
+                  <code className="font-mono">
+                    auth.users
+                  </code>
 
-                . Make sure the message is intended for all
-                customers before sending.
+                  . Make sure the message is intended for all
+                  customers before sending.
 
-              </div>
-
-
-              <div className="space-y-2">
-
-                <Label htmlFor="broadcast-type">
-                  Type
-                </Label>
-
-                <Input
-                  id="broadcast-type"
-                  value={
-                    broadcastForm.type
-                  }
-                  onChange={(
-                    event,
-                  ) =>
-                    updateBroadcast(
-                      "type",
-                      event.target
-                        .value,
-                    )
-                  }
-                  placeholder="system"
-                  disabled={
-                    broadcasting
-                  }
-                />
-
-              </div>
-
-
-              <div className="space-y-2">
-
-                <Label htmlFor="broadcast-title">
-                  Title
-                </Label>
-
-                <Input
-                  id="broadcast-title"
-                  value={
-                    broadcastForm.title
-                  }
-                  onChange={(
-                    event,
-                  ) =>
-                    updateBroadcast(
-                      "title",
-                      event.target
-                        .value,
-                    )
-                  }
-                  placeholder="Important announcement"
-                  disabled={
-                    broadcasting
-                  }
-                />
-
-              </div>
-
-
-              <div className="space-y-2">
-
-                <Label htmlFor="broadcast-message">
-                  Message
-                </Label>
-
-                <Textarea
-                  id="broadcast-message"
-                  value={
-                    broadcastForm.message
-                  }
-                  onChange={(
-                    event,
-                  ) =>
-                    updateBroadcast(
-                      "message",
-                      event.target
-                        .value,
-                    )
-                  }
-                  placeholder="Enter the notification message..."
-                  className="min-h-[130px]"
-                  disabled={
-                    broadcasting
-                  }
-                />
-
-              </div>
-
-
-              <label className="flex items-start gap-3 rounded-xl border p-3">
-                <input
-                  type="checkbox"
-                  checked={broadcastForm.announcement}
-                  onChange={(event) => updateBroadcast("announcement", event.target.checked)}
-                  disabled={broadcasting}
-                  className="mt-1 h-4 w-4"
-                />
-                <span>
-                  <span className="block text-sm font-semibold">Mark as customer announcement</span>
-                  <span className="block text-xs text-muted-foreground">Shows an announcement icon in the customer notification center.</span>
-                </span>
-              </label>
-
-              {broadcastForm.announcement && (
-                <div className="space-y-2 rounded-xl border border-purple-200 bg-purple-50/60 p-3">
-                  <Label htmlFor="broadcast-expires-at">Show announcement until</Label>
-                  <Input
-                    id="broadcast-expires-at"
-                    type="datetime-local"
-                    value={broadcastForm.expiresAt}
-                    min={new Date().toISOString().slice(0, 16)}
-                    onChange={(event) => updateBroadcast("expiresAt", event.target.value)}
-                    disabled={broadcasting}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    After this time, the announcement automatically disappears from the customer dashboard. It remains in Notification Center/history.
-                  </p>
                 </div>
-              )}
 
-              <div className="space-y-2">
 
-                <Label htmlFor="broadcast-amount">
+                <div className="space-y-2">
 
-                  Amount{" "}
+                  <Label htmlFor="broadcast-type">
+                    Type
+                  </Label>
 
-                  <span className="text-muted-foreground">
-                    (optional)
+                  <Input
+                    id="broadcast-type"
+                    value={
+                      broadcastForm.type
+                    }
+                    onChange={(
+                      event,
+                    ) =>
+                      updateBroadcast(
+                        "type",
+                        event.target
+                          .value,
+                      )
+                    }
+                    placeholder="system"
+                    disabled={
+                      broadcasting
+                    }
+                  />
+
+                </div>
+
+
+                <div className="space-y-2">
+
+                  <Label htmlFor="broadcast-title">
+                    Title
+                  </Label>
+
+                  <Input
+                    id="broadcast-title"
+                    value={
+                      broadcastForm.title
+                    }
+                    onChange={(
+                      event,
+                    ) =>
+                      updateBroadcast(
+                        "title",
+                        event.target
+                          .value,
+                      )
+                    }
+                    placeholder="Important announcement"
+                    disabled={
+                      broadcasting
+                    }
+                  />
+
+                </div>
+
+
+                <div className="space-y-2">
+
+                  <Label htmlFor="broadcast-message">
+                    Message
+                  </Label>
+
+                  <Textarea
+                    id="broadcast-message"
+                    value={
+                      broadcastForm.message
+                    }
+                    onChange={(
+                      event,
+                    ) =>
+                      updateBroadcast(
+                        "message",
+                        event.target
+                          .value,
+                      )
+                    }
+                    placeholder="Enter the notification message..."
+                    className="min-h-[130px]"
+                    disabled={
+                      broadcasting
+                    }
+                  />
+
+                </div>
+
+
+                <label className="flex items-start gap-3 rounded-xl border p-3">
+
+                  <input
+                    type="checkbox"
+                    checked={
+                      broadcastForm.announcement
+                    }
+                    onChange={(
+                      event,
+                    ) =>
+                      updateBroadcast(
+                        "announcement",
+                        event.target
+                          .checked,
+                      )
+                    }
+                    disabled={
+                      broadcasting
+                    }
+                    className="mt-1 h-4 w-4"
+                  />
+
+                  <span>
+                    <span className="block text-sm font-semibold">
+                      Mark as customer announcement
+                    </span>
+
+                    <span className="block text-xs text-muted-foreground">
+                      Shows an announcement icon in the
+                      customer notification center.
+                    </span>
                   </span>
 
-                </Label>
+                </label>
 
-                <Input
-                  id="broadcast-amount"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={
-                    broadcastForm.amount
-                  }
-                  onChange={(
-                    event,
-                  ) =>
-                    updateBroadcast(
-                      "amount",
-                      event.target
-                        .value,
-                    )
-                  }
-                  placeholder="0.00"
-                  disabled={
-                    broadcasting
-                  }
-                />
 
-              </div>
+                {broadcastForm.announcement && (
+                  <div className="space-y-2 rounded-xl border border-purple-200 bg-purple-50/60 p-3">
+
+                    <Label htmlFor="broadcast-expires-at">
+                      Show announcement until
+                    </Label>
+
+                    <Input
+                      id="broadcast-expires-at"
+                      type="datetime-local"
+                      value={
+                        broadcastForm.expiresAt
+                      }
+                      min={
+                        new Date()
+                          .toISOString()
+                          .slice(
+                            0,
+                            16,
+                          )
+                      }
+                      onChange={(
+                        event,
+                      ) =>
+                        updateBroadcast(
+                          "expiresAt",
+                          event.target
+                            .value,
+                        )
+                      }
+                      disabled={
+                        broadcasting
+                      }
+                    />
+
+                    <p className="text-xs text-muted-foreground">
+                      After this time, the announcement
+                      automatically disappears from the customer
+                      dashboard. It remains in Notification
+                      Center/history.
+                    </p>
+
+                  </div>
+                )}
+
+
+                <div className="space-y-2">
+
+                  <Label htmlFor="broadcast-amount">
+
+                    Amount{" "}
+
+                    <span className="text-muted-foreground">
+                      (optional)
+                    </span>
+
+                  </Label>
+
+                  <Input
+                    id="broadcast-amount"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={
+                      broadcastForm.amount
+                    }
+                    onChange={(
+                      event,
+                    ) =>
+                      updateBroadcast(
+                        "amount",
+                        event.target
+                          .value,
+                      )
+                    }
+                    placeholder="0.00"
+                    disabled={
+                      broadcasting
+                    }
+                  />
+
+                </div>
 
               </div>
 

@@ -47,9 +47,11 @@ type Biller = Record<string, any>;
 type Item = Record<string, any>;
 
 type DataTab =
+  | "HOT_DEALS"
   | "DAILY"
   | "WEEKLY"
   | "MONTHLY"
+  | "YEARLY"
   | "OTHER";
 
 const SERVICE_ALIASES: Record<string, string> = {
@@ -97,9 +99,11 @@ const BILL_AMOUNTS = [
 ];
 
 const DATA_TABS: DataTab[] = [
+  "HOT_DEALS",
   "DAILY",
   "WEEKLY",
   "MONTHLY",
+  "YEARLY",
   "OTHER",
 ];
 
@@ -532,34 +536,21 @@ function getDataPlanDuration(item: Item): string {
 }
 
 function planGroup(item: Item): DataTab {
-  // Customer-facing data groups are based only on validity, never on
-  // commercial/provider labels such as SME, Awoof, Gifting or Hot Deals.
+  const planType = [item.plan_type, item.planType, item.type].map(clean).join(" ").toLowerCase();
   const label = [
-    item.display_name,
-    item.displayName,
-    item.name,
-    item.description,
-    item.validity,
-    item.period,
-    item.validity_period,
-    item.validityPeriod,
+    item.display_name, item.displayName, item.name, item.description,
+    item.validity, item.period, item.validity_period, item.validityPeriod,
   ].map(clean).join(" ").toLowerCase();
 
+  // SME is an internal commercial classification and belongs in Hot Deals.
+  // It is never displayed to the customer.
+  if (/\bsme\b/.test(planType) || /\bsme\b/.test(label) && item.is_hot_deal) return "HOT_DEALS";
+
   const days = durationDays(item);
-
-  // Daily = 1–3 days.
-  if (days >= 1 && days <= 3) return "DAILY";
-  if (/\b(?:1|2|3)\s*days?\b/.test(label)) return "DAILY";
-  if (/\bdaily\b/.test(label)) return "DAILY";
-
-  // Weekly = 7, 14, 21 days or explicitly weekly.
-  if (days >= 7 && days < 28) return "WEEKLY";
-  if (/\b(?:weekly|7\s*days?|14\s*days?|21\s*days?)\b/.test(label)) return "WEEKLY";
-
-  // Monthly = 28 days or more, or explicitly monthly/30 days.
-  if (days >= 28) return "MONTHLY";
-  if (/\b(?:monthly|30\s*days?|month|months)\b/.test(label)) return "MONTHLY";
-
+  if (days === 1 || /\b1\s*day\b|\bdaily\b/.test(label)) return "DAILY";
+  if (days === 7 || /\bweekly\b|\b7\s*days?\b/.test(label)) return "WEEKLY";
+  if (days === 30 || /\bmonthly\b|\b30\s*days?\b/.test(label)) return "MONTHLY";
+  if (days === 365 || /\b1\s*year\b|\b365\s*days?\b|\byearly\b/.test(label)) return "YEARLY";
   return "OTHER";
 }
 
@@ -1595,7 +1586,7 @@ export default function ServicePayment({
   const serviceTitle =
     displayServiceTitle(service);
 
-  const serviceFunction = "clubkonnect-services";
+  const serviceFunction = "bilalsadasub-services";
 
   const isAirtime =
     serviceType === "airtime";
@@ -1614,7 +1605,7 @@ export default function ServicePayment({
 
   const backendServiceType = useCallback(
     (billerCode = "", biller?: Biller) => {
-      if (serviceType === "internet") return "smile";
+      if (serviceType === "internet") return billerCode ? clean(billerCode).toLowerCase() : "internet";
 
       if (serviceType === "education") {
         const provider = clean(
@@ -2259,21 +2250,11 @@ export default function ServicePayment({
     setError("");
   };
 
-  const variableMarkupPercent = num(
-    selectedBiller?.markup_percent ??
-      selectedBiller?.markupPercentage ??
-      selectedBiller?.percentage ??
-      0
-  );
-
   const customerPayAmount =
     isEpin && num(amount) > 0
       ? num(amount) * quantity
       : isAmountOnly && num(amount) > 0
-        ? roundUpTo50(
-            num(amount) *
-              (1 + variableMarkupPercent / 100)
-          )
+        ? Math.ceil((num(amount) * 1.05 - Number.EPSILON) / 10) * 10
         : num(amount);
 
   const providerVariableAmount =
@@ -3244,7 +3225,7 @@ export default function ServicePayment({
                             : "bg-gray-100 text-gray-600 hover:bg-gray-200"
                         }`}
                       >
-                        {tab === "OTHER" ? "Others" : tab.charAt(0) + tab.slice(1).toLowerCase()}
+                        {tab === "HOT_DEALS" ? "Hot Deals" : tab === "OTHER" ? "Other" : tab.charAt(0) + tab.slice(1).toLowerCase()}
                       </button>
                     ))}
                   </div>

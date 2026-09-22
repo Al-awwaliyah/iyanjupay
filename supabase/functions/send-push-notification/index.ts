@@ -58,6 +58,12 @@ type ApnsError = Error & {
   apnsReason?: string | null;
 };
 
+type WebPushError = Error & {
+  statusCode?: number;
+  body?: unknown;
+  headers?: Record<string, string>;
+};
+
 async function sendAndroidPush(
   serviceAccount: FirebaseServiceAccount,
   deviceToken: string,
@@ -548,10 +554,6 @@ Deno.serve(async (req) => {
      * ----------------------------------------------------------
      * In-app delivery is independent from push delivery.
      * ----------------------------------------------------------
-     *
-     * The notification already exists in the database.
-     * Therefore it is considered delivered to the in-app
-     * notification center independently of push success.
      */
 
     const inAppDeliveredAt =
@@ -590,10 +592,7 @@ Deno.serve(async (req) => {
     }
 
     /*
-     * Mark the push attempt as processing.
-     *
-     * push_attempts represents a notification-level push
-     * delivery attempt, not the number of individual devices.
+     * Mark push as processing.
      */
 
     const currentPushAttempts =
@@ -617,7 +616,9 @@ Deno.serve(async (req) => {
   }
 
   /*
+   * ------------------------------------------------------------
    * A user is required for push delivery.
+   * ------------------------------------------------------------
    */
 
   if (!userId) {
@@ -743,111 +744,26 @@ Deno.serve(async (req) => {
     }
   }
 
-/*
- * ------------------------------------------------------------
- * Web Push configuration
- * ------------------------------------------------------------
- */
+  /*
+   * ------------------------------------------------------------
+   * Web Push configuration
+   * ------------------------------------------------------------
+   */
 
-const vapidPublicKey =
-  Deno.env.get("VAPID_PUBLIC_KEY")?.trim();
+  const vapidPublicKey =
+    Deno.env.get("VAPID_PUBLIC_KEY")?.trim();
 
-const vapidPrivateKey =
-  Deno.env.get("VAPID_PRIVATE_KEY")?.trim();
+  const vapidPrivateKey =
+    Deno.env.get("VAPID_PRIVATE_KEY")?.trim();
 
-const vapidSubject =
-  Deno.env.get("VAPID_SUBJECT")?.trim() ??
-  "mailto:lawalaremu53@gmail.com";
+  const vapidSubject =
+    Deno.env.get("VAPID_SUBJECT")?.trim() ??
+    "mailto:lawalaremu53@gmail.com";
 
-const webPushConfigured =
-  !!vapidPublicKey &&
-  !!vapidPrivateKey;
+  const webPushConfigured =
+    !!vapidPublicKey &&
+    !!vapidPrivateKey;
 
-/*
- * Safe VAPID diagnostics.
- *
- * IMPORTANT:
- * Never log the actual public/private key values.
- * We only log their presence and decoded lengths.
- */
-
-if (webPushConfigured) {
-  try {
-    const decodeBase64Url = (
-      value: string,
-    ): Uint8Array => {
-      const normalized =
-        value
-          .replace(/-/g, "+")
-          .replace(/_/g, "/");
-
-      const padding =
-        "=".repeat(
-          (4 - (normalized.length % 4)) % 4,
-        );
-
-      const binary =
-        atob(normalized + padding);
-
-      return Uint8Array.from(
-        binary,
-        (character) =>
-          character.charCodeAt(0),
-      );
-    };
-
-    const decodedPublicKey =
-      decodeBase64Url(vapidPublicKey!);
-
-    const decodedPrivateKey =
-      decodeBase64Url(vapidPrivateKey!);
-
-    console.log(
-      "VAPID configuration diagnostics:",
-      {
-        publicKeyPresent:
-          !!vapidPublicKey,
-
-        privateKeyPresent:
-          !!vapidPrivateKey,
-
-        subjectPresent:
-          !!vapidSubject,
-
-        subjectIsMailto:
-          vapidSubject.startsWith(
-            "mailto:",
-          ),
-
-        publicKeyDecodedLength:
-          decodedPublicKey.length,
-
-        privateKeyDecodedLength:
-          decodedPrivateKey.length,
-
-        publicKeyLooksValid:
-          decodedPublicKey.length === 65 &&
-          decodedPublicKey[0] === 4,
-
-        privateKeyLooksValid:
-          decodedPrivateKey.length === 32,
-      },
-    );
-
-    webpush.setVapidDetails(
-      vapidSubject,
-      vapidPublicKey!,
-      vapidPrivateKey!,
-    );
-  } catch (error) {
-    console.error(
-      "VAPID configuration validation failed:",
-      error instanceof Error
-        ? error.message
-        : "Unknown VAPID configuration error",
-    );
-  }
-}
   /*
    * ------------------------------------------------------------
    * Apple Push Notification Service
@@ -952,6 +868,220 @@ if (webPushConfigured) {
     ) ?? [];
 
   /*
+   * Configure Web Push only after subscriptions have
+   * been loaded, so we can safely perform diagnostics
+   * against an actual subscription.
+   */
+
+  if (webPushConfigured) {
+    try {
+      /*
+       * Validate VAPID key encoding without logging
+       * the actual key material.
+       */
+
+      const decodeBase64Url = (
+        value: string,
+      ): Uint8Array => {
+        const normalized =
+          value
+            .replace(/-/g, "+")
+            .replace(/_/g, "/");
+
+        const padding =
+          "=".repeat(
+            (4 - (normalized.length % 4)) % 4,
+          );
+
+        const binary =
+          atob(normalized + padding);
+
+        return Uint8Array.from(
+          binary,
+          (character) =>
+            character.charCodeAt(0),
+        );
+      };
+
+      const decodedPublicKey =
+        decodeBase64Url(
+          vapidPublicKey!,
+        );
+
+      const decodedPrivateKey =
+        decodeBase64Url(
+          vapidPrivateKey!,
+        );
+
+      console.log(
+        "VAPID configuration diagnostics:",
+        {
+          publicKeyPresent:
+            true,
+
+          privateKeyPresent:
+            true,
+
+          subjectPresent:
+            !!vapidSubject,
+
+          subjectIsMailto:
+            vapidSubject.startsWith(
+              "mailto:",
+            ),
+
+          publicKeyDecodedLength:
+            decodedPublicKey.length,
+
+          privateKeyDecodedLength:
+            decodedPrivateKey.length,
+
+          publicKeyLooksValid:
+            decodedPublicKey.length === 65 &&
+            decodedPublicKey[0] === 4,
+
+          privateKeyLooksValid:
+            decodedPrivateKey.length === 32,
+
+          webSubscriptionsFound:
+            webSubscriptions.length,
+        },
+      );
+
+      webpush.setVapidDetails(
+        vapidSubject,
+        vapidPublicKey!,
+        vapidPrivateKey!,
+      );
+    } catch (error) {
+      console.error(
+        "VAPID configuration validation failed:",
+        error instanceof Error
+          ? error.message
+          : "Unknown VAPID configuration error",
+      );
+    }
+  } else {
+    console.error(
+      "Web Push is not configured: VAPID_PUBLIC_KEY or VAPID_PRIVATE_KEY is missing.",
+    );
+  }
+
+  /*
+   * ------------------------------------------------------------
+   * Web Push request-generation diagnostic
+   * ------------------------------------------------------------
+   *
+   * This does NOT send a notification.
+   *
+   * It asks web-push to construct the exact authenticated
+   * request that will be used for a real delivery.
+   *
+   * No private key, subscription keys, JWT, or authorization
+   * header is logged.
+   */
+
+  if (
+    webPushConfigured &&
+    webSubscriptions.length > 0
+  ) {
+    try {
+      const diagnosticSubscription = {
+        endpoint:
+          webSubscriptions[0].endpoint,
+        keys: {
+          p256dh:
+            webSubscriptions[0].p256dh,
+          auth:
+            webSubscriptions[0].auth,
+        },
+      };
+
+      const requestDetails =
+        webpush.generateRequestDetails(
+          diagnosticSubscription,
+          JSON.stringify({
+            title:
+              "IyanjuPay VAPID diagnostic",
+            body:
+              "Diagnostic request only",
+          }),
+        );
+
+      const requestHeaders =
+        requestDetails.headers ?? {};
+
+      const authorizationHeader =
+        requestHeaders.Authorization ??
+        requestHeaders.authorization ??
+        "";
+
+      const cryptoKeyHeader =
+        requestHeaders["Crypto-Key"] ??
+        requestHeaders["crypto-key"] ??
+        "";
+
+      console.log(
+        "VAPID request generation diagnostics:",
+        {
+          requestGenerated:
+            true,
+
+          endpointHost:
+            new URL(
+              diagnosticSubscription.endpoint,
+            ).hostname,
+
+          method:
+            requestDetails.method,
+
+          authorizationGenerated:
+            typeof authorizationHeader ===
+            "string" &&
+            authorizationHeader.length > 0,
+
+          cryptoKeyGenerated:
+            typeof cryptoKeyHeader ===
+            "string" &&
+            cryptoKeyHeader.length > 0,
+
+          authorizationLength:
+            typeof authorizationHeader ===
+            "string"
+              ? authorizationHeader.length
+              : 0,
+
+          cryptoKeyLength:
+            typeof cryptoKeyHeader ===
+            "string"
+              ? cryptoKeyHeader.length
+              : 0,
+        },
+      );
+    } catch (error) {
+      console.error(
+        "VAPID request generation failed:",
+        error instanceof Error
+          ? error.message
+          : "Unknown VAPID request-generation error",
+      );
+    }
+  } else {
+    console.log(
+      "VAPID request generation diagnostics:",
+      {
+        requestGenerated:
+          false,
+
+        reason:
+          !webPushConfigured
+            ? "web_push_not_configured"
+            : "no_web_subscription_available",
+      },
+    );
+  }
+
+  /*
    * Web subscriptions exist but Web Push credentials
    * are not configured.
    */
@@ -964,7 +1094,16 @@ if (webPushConfigured) {
       webSubscriptions.length;
   }
 
-  if (webPushConfigured) {
+  /*
+   * ------------------------------------------------------------
+   * Send Web Push
+   * ------------------------------------------------------------
+   */
+
+  if (
+    webPushConfigured &&
+    webSubscriptions.length > 0
+  ) {
     const notificationPayload =
       JSON.stringify({
         title,
@@ -985,9 +1124,11 @@ if (webPushConfigured) {
           {
             endpoint:
               subscription.endpoint,
+
             keys: {
               p256dh:
                 subscription.p256dh,
+
               auth:
                 subscription.auth,
             },
@@ -997,48 +1138,61 @@ if (webPushConfigured) {
 
         delivered += 1;
       } catch (error) {
-  failedAttempts += 1;
+        failedAttempts += 1;
 
-  const pushError = error as {
-    statusCode?: number;
-    body?: unknown;
-  };
+        const pushError =
+          error as WebPushError;
 
-  const statusCode = pushError.statusCode;
+        const statusCode =
+          pushError.statusCode;
 
-  if (
-    statusCode === 404 ||
-    statusCode === 410
-  ) {
-    staleIds.push(
-      subscription.id,
-    );
-  }
+        if (
+          statusCode === 404 ||
+          statusCode === 410
+        ) {
+          staleIds.push(
+            subscription.id,
+          );
+        }
 
-  // Diagnostic logging only.
-  // Never log the VAPID private key or subscription credentials.
-  let providerReason = "";
+        /*
+         * Provider response is safe to log because we
+         * intentionally exclude authorization headers,
+         * private keys, and subscription credentials.
+         */
 
-  if (typeof pushError.body === "string") {
-    providerReason = pushError.body.slice(0, 500);
-  } else if (pushError.body !== undefined) {
-    try {
-      providerReason = JSON.stringify(
-        pushError.body,
-      ).slice(0, 500);
-    } catch {
-      providerReason = "";
-    }
-  }
+        let providerReason = "";
 
-  console.error(
-    "Web Push delivery failed:",
-    {
-      statusCode,
-      providerReason,
-    },
-  );
-}
+        if (
+          typeof pushError.body ===
+          "string"
+        ) {
+          providerReason =
+            pushError.body.slice(
+              0,
+              500,
+            );
+        } else if (
+          pushError.body !== undefined
+        ) {
+          try {
+            providerReason =
+              JSON.stringify(
+                pushError.body,
+              ).slice(0, 500);
+          } catch {
+            providerReason = "";
+          }
+        }
+
+        console.error(
+          "Web Push delivery failed:",
+          {
+            statusCode,
+            providerReason,
+          },
+        );
+      }
     }
   }
 
@@ -1060,13 +1214,6 @@ if (webPushConfigured) {
     androidSubscriptions.length > 0 &&
     !firebaseServiceAccount
   ) {
-    /*
-     * Do not return immediately.
-     *
-     * We still need to evaluate other available
-     * push destinations and finalize push_status.
-     */
-
     failedAttempts +=
       androidSubscriptions.length;
 
@@ -1120,10 +1267,6 @@ if (webPushConfigured) {
             }
           )?.statusCode;
 
-        /*
-         * Remove invalid/unregistered tokens.
-         */
-
         if (
           fcmErrorCode ===
             "UNREGISTERED" ||
@@ -1161,14 +1304,6 @@ if (webPushConfigured) {
     iosSubscriptions.length > 0 &&
     !apnsConfigured
   ) {
-    /*
-     * APNs subscriptions exist but credentials
-     * are unavailable.
-     *
-     * Treat these as failed push destinations,
-     * without affecting in-app delivery.
-     */
-
     failedAttempts +=
       iosSubscriptions.length;
 
@@ -1273,22 +1408,6 @@ if (webPushConfigured) {
    * ------------------------------------------------------------
    * Determine final PUSH status
    * ------------------------------------------------------------
-   *
-   * Important:
-   *
-   * In-app delivery is completely independent.
-   *
-   * push_status:
-   *
-   * delivered
-   *   At least one destination succeeded.
-   *
-   * failed
-   *   At least one destination was available/attempted,
-   *   but none succeeded.
-   *
-   * skipped
-   *   No push destination was available, or push was disabled.
    */
 
   const availableSubscriptions =
@@ -1308,15 +1427,18 @@ if (webPushConfigured) {
     | null = null;
 
   if (delivered > 0) {
-    finalPushStatus = "delivered";
+    finalPushStatus =
+      "delivered";
   } else if (
     availableSubscriptions === 0
   ) {
-    finalPushStatus = "skipped";
+    finalPushStatus =
+      "skipped";
 
     pushLastError = null;
   } else {
-    finalPushStatus = "failed";
+    finalPushStatus =
+      "failed";
 
     pushLastError =
       failedAttempts > 0
@@ -1348,13 +1470,14 @@ if (webPushConfigured) {
         pushLastError,
 
       push_failed_at:
-        finalPushStatus === "failed"
+        finalPushStatus ===
+        "failed"
           ? now
           : null,
 
       push_delivered_at:
         finalPushStatus ===
-          "delivered"
+        "delivered"
           ? now
           : null,
 
@@ -1364,8 +1487,13 @@ if (webPushConfigured) {
 
     await admin
       .from("notifications")
-      .update(pushUpdate)
-      .eq("id", notificationId);
+      .update(
+        pushUpdate,
+      )
+      .eq(
+        "id",
+        notificationId,
+      );
   }
 
   /*

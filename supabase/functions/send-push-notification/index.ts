@@ -1,7 +1,14 @@
 import webpush from "npm:web-push@3.6.7";
 import { GoogleAuth } from "npm:google-auth-library@9.15.1";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.112.3";
-import { importPKCS8, SignJWT } from "npm:jose@6.0.10";
+import {
+  importPKCS8,
+  SignJWT,
+} from "npm:jose@6.0.10";
+import {
+  createPrivateKey,
+  createPublicKey,
+} from "node:crypto";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -18,6 +25,192 @@ function json(body: unknown, status = 200) {
       "Content-Type": "application/json",
     },
   });
+}
+
+/**
+ * Decodes a Base64URL string into bytes.
+ *
+ * Used for VAPID key diagnostics only.
+ */
+function decodeBase64Url(
+  value: string,
+): Uint8Array {
+  const padding = "=".repeat(
+    (4 - (value.length % 4)) % 4,
+  );
+
+  const base64 = (value + padding)
+    .replace(/-/g, "+")
+    .replace(/_/g, "/");
+
+  const binary =
+    atob(base64);
+
+  return Uint8Array.from(
+    binary,
+    (character) =>
+      character.charCodeAt(0),
+  );
+}
+
+/**
+ * Verifies that the configured VAPID private key
+ * mathematically corresponds to the configured
+ * VAPID public key.
+ *
+ * IMPORTANT:
+ * No private-key material is ever logged.
+ */
+function verifyVapidKeyPair(
+  vapidPublicKey: string | undefined,
+  vapidPrivateKey: string | undefined,
+): boolean {
+  if (
+    !vapidPublicKey ||
+    !vapidPrivateKey
+  ) {
+    return false;
+  }
+
+  try {
+    const privateKeyBytes =
+      decodeBase64Url(
+        vapidPrivateKey,
+      );
+
+    const configuredPublicKeyBytes =
+      decodeBase64Url(
+        vapidPublicKey,
+      );
+
+    if (
+      privateKeyBytes.length !== 32 ||
+      configuredPublicKeyBytes.length !== 65
+    ) {
+      return false;
+    }
+
+    /*
+     * Build a SEC1 EC private-key structure
+     * around the raw 32-byte P-256 private key.
+     *
+     * Structure:
+     *
+     * SEQUENCE
+     *   INTEGER 1
+     *   OCTET STRING <32-byte private key>
+     *   [0]
+     *     OID prime256v1
+     */
+    const sec1Prefix = new Uint8Array([
+      0x30,
+      0x31,
+      0x02,
+      0x01,
+      0x01,
+      0x04,
+      0x20,
+    ]);
+
+    const sec1Parameters = new Uint8Array([
+      0xa0,
+      0x0a,
+      0x06,
+      0x08,
+      0x2a,
+      0x86,
+      0x48,
+      0xce,
+      0x3d,
+      0x03,
+      0x01,
+      0x07,
+    ]);
+
+    const sec1Der = new Uint8Array(
+      sec1Prefix.length +
+        privateKeyBytes.length +
+        sec1Parameters.length,
+    );
+
+    sec1Der.set(
+      sec1Prefix,
+      0,
+    );
+
+    sec1Der.set(
+      privateKeyBytes,
+      sec1Prefix.length,
+    );
+
+    sec1Der.set(
+      sec1Parameters,
+      sec1Prefix.length +
+        privateKeyBytes.length,
+    );
+
+    const privateKeyObject =
+      createPrivateKey({
+        key: sec1Der,
+        format: "der",
+        type: "sec1",
+      });
+
+    const derivedPublicKeyObject =
+      createPublicKey(
+        privateKeyObject,
+      );
+
+    const derivedPublicKeyDer =
+      derivedPublicKeyObject.export({
+        format: "der",
+        type: "spki",
+      });
+
+    /*
+     * For a P-256 SPKI public key, the final
+     * 65 bytes contain:
+     *
+     * 04 || X || Y
+     *
+     * which is the raw uncompressed VAPID
+     * public key format.
+     */
+    const derivedPublicKeyBytes =
+      new Uint8Array(
+        derivedPublicKeyDer,
+      ).slice(-65);
+
+    if (
+      derivedPublicKeyBytes.length !== 65
+    ) {
+      return false;
+    }
+
+    for (
+      let index = 0;
+      index < 65;
+      index += 1
+    ) {
+      if (
+        derivedPublicKeyBytes[index] !==
+        configuredPublicKeyBytes[index]
+      ) {
+        return false;
+      }
+    }
+
+    return true;
+  } catch (error) {
+    console.error(
+      "VAPID key-pair verification failed:",
+      error instanceof Error
+        ? error.message
+        : "Unknown error",
+    );
+
+    return false;
+  }
 }
 
 type NotificationRecord = {
@@ -58,12 +251,6 @@ type ApnsError = Error & {
   apnsReason?: string | null;
 };
 
-type WebPushError = Error & {
-  statusCode?: number;
-  body?: unknown;
-  headers?: Record<string, string>;
-};
-
 async function sendAndroidPush(
   serviceAccount: FirebaseServiceAccount,
   deviceToken: string,
@@ -76,15 +263,21 @@ async function sendAndroidPush(
 ) {
   const auth = new GoogleAuth({
     credentials: {
-      client_email: serviceAccount.client_email,
-      private_key: serviceAccount.private_key,
+      client_email:
+        serviceAccount.client_email,
+      private_key:
+        serviceAccount.private_key,
     },
-    scopes: ["https://www.googleapis.com/auth/firebase.messaging"],
+    scopes: [
+      "https://www.googleapis.com/auth/firebase.messaging",
+    ],
   });
 
-  const client = await auth.getClient();
+  const client =
+    await auth.getClient();
 
-  const accessTokenResult = await client.getAccessToken();
+  const accessTokenResult =
+    await client.getAccessToken();
 
   const accessToken =
     typeof accessTokenResult === "string"
@@ -92,50 +285,60 @@ async function sendAndroidPush(
       : accessTokenResult?.token;
 
   if (!accessToken) {
-    throw new Error("Unable to obtain Firebase OAuth access token");
+    throw new Error(
+      "Unable to obtain Firebase OAuth access token",
+    );
   }
 
-  const response = await fetch(
-    `https://fcm.googleapis.com/v1/projects/${encodeURIComponent(
-      serviceAccount.project_id,
-    )}/messages:send`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        message: {
-          token: deviceToken,
+  const response =
+    await fetch(
+      `https://fcm.googleapis.com/v1/projects/${encodeURIComponent(
+        serviceAccount.project_id,
+      )}/messages:send`,
+      {
+        method: "POST",
+        headers: {
+          Authorization:
+            `Bearer ${accessToken}`,
+          "Content-Type":
+            "application/json",
+        },
+        body: JSON.stringify({
+          message: {
+            token: deviceToken,
 
-          notification: {
-            title,
-            body: message,
-          },
-
-          data: {
-            title,
-            body: message,
-            url,
-            notificationId: notificationId ?? "",
-            type: type ?? "",
-            transactionId: transactionId ?? "",
-          },
-
-          android: {
-            priority: "high",
             notification: {
-              channel_id: "iyanjupay-default",
-              sound: "default",
+              title,
+              body: message,
+            },
+
+            data: {
+              title,
+              body: message,
+              url,
+              notificationId:
+                notificationId ?? "",
+              type:
+                type ?? "",
+              transactionId:
+                transactionId ?? "",
+            },
+
+            android: {
+              priority: "high",
+              notification: {
+                channel_id:
+                  "iyanjupay-default",
+                sound: "default",
+              },
             },
           },
-        },
-      }),
-    },
-  );
+        }),
+      },
+    );
 
-  const responseText = await response.text();
+  const responseText =
+    await response.text();
 
   let responseBody: any = null;
 
@@ -157,17 +360,22 @@ async function sendAndroidPush(
       responseBody?.error?.status ??
       null;
 
-    const error = new Error(
-      `FCM request failed (${response.status}): ${
-        responseBody?.error?.message ?? responseText
-      }`,
-    ) as Error & {
-      statusCode?: number;
-      fcmErrorCode?: string | null;
-    };
+    const error =
+      new Error(
+        `FCM request failed (${response.status}): ${
+          responseBody?.error?.message ??
+          responseText
+        }`,
+      ) as Error & {
+        statusCode?: number;
+        fcmErrorCode?: string | null;
+      };
 
-    error.statusCode = response.status;
-    error.fcmErrorCode = errorCode;
+    error.statusCode =
+      response.status;
+
+    error.fcmErrorCode =
+      errorCode;
 
     throw error;
   }
@@ -180,12 +388,14 @@ async function createApnsJwt(
   keyId: string,
   teamId: string,
 ) {
-  const normalizedKey = key.replace(/\\n/g, "\n");
+  const normalizedKey =
+    key.replace(/\\n/g, "\n");
 
-  const privateKey = await importPKCS8(
-    normalizedKey,
-    "ES256",
-  );
+  const privateKey =
+    await importPKCS8(
+      normalizedKey,
+      "ES256",
+    );
 
   return await new SignJWT({})
     .setProtectedHeader({
@@ -212,47 +422,61 @@ async function sendIosPush(
   type: string | null,
   transactionId: string | null,
 ) {
-  const jwt = await createApnsJwt(
-    key,
-    keyId,
-    teamId,
-  );
+  const jwt =
+    await createApnsJwt(
+      key,
+      keyId,
+      teamId,
+    );
 
-  const host = production
-    ? "https://api.push.apple.com"
-    : "https://api.sandbox.push.apple.com";
+  const host =
+    production
+      ? "https://api.push.apple.com"
+      : "https://api.sandbox.push.apple.com";
 
-  const response = await fetch(
-    `${host}/3/device/${encodeURIComponent(deviceToken)}`,
-    {
-      method: "POST",
+  const response =
+    await fetch(
+      `${host}/3/device/${encodeURIComponent(
+        deviceToken,
+      )}`,
+      {
+        method: "POST",
 
-      headers: {
-        authorization: `bearer ${jwt}`,
-        "apns-topic": bundleId,
-        "apns-push-type": "alert",
-        "apns-priority": "10",
-        "content-type": "application/json",
-      },
-
-      body: JSON.stringify({
-        aps: {
-          alert: {
-            title,
-            body: message,
-          },
-          sound: "default",
+        headers: {
+          authorization:
+            `bearer ${jwt}`,
+          "apns-topic":
+            bundleId,
+          "apns-push-type":
+            "alert",
+          "apns-priority":
+            "10",
+          "content-type":
+            "application/json",
         },
 
-        url,
-        notificationId: notificationId ?? "",
-        type: type ?? "",
-        transactionId: transactionId ?? "",
-      }),
-    },
-  );
+        body: JSON.stringify({
+          aps: {
+            alert: {
+              title,
+              body: message,
+            },
+            sound: "default",
+          },
 
-  const responseText = await response.text();
+          url,
+          notificationId:
+            notificationId ?? "",
+          type:
+            type ?? "",
+          transactionId:
+            transactionId ?? "",
+        }),
+      },
+    );
+
+  const responseText =
+    await response.text();
 
   if (!response.ok) {
     let parsed: any = null;
@@ -265,12 +489,16 @@ async function sendIosPush(
       parsed = null;
     }
 
-    const error = new Error(
-      `APNs request failed (${response.status})`,
-    ) as ApnsError;
+    const error =
+      new Error(
+        `APNs request failed (${response.status})`,
+      ) as ApnsError;
 
-    error.statusCode = response.status;
-    error.apnsReason = parsed?.reason ?? null;
+    error.statusCode =
+      response.status;
+
+    error.apnsReason =
+      parsed?.reason ?? null;
 
     throw error;
   }
@@ -287,7 +515,10 @@ Deno.serve(async (req) => {
 
   if (req.method !== "POST") {
     return json(
-      { error: "Method not allowed" },
+      {
+        error:
+          "Method not allowed",
+      },
       405,
     );
   }
@@ -299,28 +530,43 @@ Deno.serve(async (req) => {
    */
 
   const webhookSecret =
-    Deno.env.get("PUSH_WEBHOOK_SECRET");
+    Deno.env.get(
+      "PUSH_WEBHOOK_SECRET",
+    );
 
   const suppliedSecret =
-    req.headers.get("x-push-webhook-secret");
+    req.headers.get(
+      "x-push-webhook-secret",
+    );
 
   const authHeader =
-    req.headers.get("authorization") ?? "";
+    req.headers.get(
+      "authorization",
+    ) ?? "";
 
   const serviceRoleKey =
-    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    Deno.env.get(
+      "SUPABASE_SERVICE_ROLE_KEY",
+    );
 
   const isServiceRole =
     !!serviceRoleKey &&
-    authHeader === `Bearer ${serviceRoleKey}`;
+    authHeader ===
+      `Bearer ${serviceRoleKey}`;
 
   if (
     !isServiceRole &&
-    (!webhookSecret ||
-      suppliedSecret !== webhookSecret)
+    (
+      !webhookSecret ||
+      suppliedSecret !==
+        webhookSecret
+    )
   ) {
     return json(
-      { error: "Unauthorized" },
+      {
+        error:
+          "Unauthorized",
+      },
       401,
     );
   }
@@ -332,16 +578,22 @@ Deno.serve(async (req) => {
    */
 
   const payload =
-    (await req.json().catch(() => null)) as
+    (await req.json().catch(
+      () => null,
+    )) as
       | PushPayload
       | null;
 
   if (
     !payload ||
-    typeof payload !== "object"
+    typeof payload !==
+      "object"
   ) {
     return json(
-      { error: "Invalid JSON body" },
+      {
+        error:
+          "Invalid JSON body",
+      },
       400,
     );
   }
@@ -364,21 +616,25 @@ Deno.serve(async (req) => {
   ) {
     if (
       payload.table &&
-      payload.table !== "notifications"
+      payload.table !==
+        "notifications"
     ) {
       return json({
         success: true,
-        skipped: "unsupported_table",
+        skipped:
+          "unsupported_table",
       });
     }
 
     if (
       payload.schema &&
-      payload.schema !== "public"
+      payload.schema !==
+        "public"
     ) {
       return json({
         success: true,
-        skipped: "unsupported_schema",
+        skipped:
+          "unsupported_schema",
       });
     }
   }
@@ -393,7 +649,8 @@ Deno.serve(async (req) => {
     payload.record ?? null;
 
   const directNotificationId =
-    typeof payload.notification_id === "string"
+    typeof payload.notification_id ===
+      "string"
       ? payload.notification_id
       : null;
 
@@ -407,7 +664,9 @@ Deno.serve(async (req) => {
     webhookNotificationId;
 
   const supabaseUrl =
-    Deno.env.get("SUPABASE_URL");
+    Deno.env.get(
+      "SUPABASE_URL",
+    );
 
   if (
     !supabaseUrl ||
@@ -422,16 +681,19 @@ Deno.serve(async (req) => {
     );
   }
 
-  const admin = createClient(
-    supabaseUrl,
-    serviceRoleKey,
-    {
-      auth: {
-        persistSession: false,
-        autoRefreshToken: false,
+  const admin =
+    createClient(
+      supabaseUrl,
+      serviceRoleKey,
+      {
+        auth: {
+          persistSession:
+            false,
+          autoRefreshToken:
+            false,
+        },
       },
-    },
-  );
+    );
 
   /*
    * ------------------------------------------------------------
@@ -450,7 +712,8 @@ Deno.serve(async (req) => {
     "You have a new notification.";
 
   let url =
-    typeof record?.metadata?.url === "string"
+    typeof record?.metadata?.url ===
+      "string"
       ? record.metadata.url
       : payload.url ??
         (
@@ -469,12 +732,14 @@ Deno.serve(async (req) => {
     "in_app";
 
   let notificationType =
-    typeof record?.type === "string"
+    typeof record?.type ===
+      "string"
       ? record.type
       : null;
 
   let transactionId =
-    typeof record?.transaction_id === "string"
+    typeof record?.transaction_id ===
+      "string"
       ? record.transaction_id
       : null;
 
@@ -485,7 +750,10 @@ Deno.serve(async (req) => {
    */
 
   if (notificationId) {
-    const { data, error } = await admin
+    const {
+      data,
+      error,
+    } = await admin
       .from("notifications")
       .select(
         [
@@ -503,7 +771,10 @@ Deno.serve(async (req) => {
           "push_attempts",
         ].join(","),
       )
-      .eq("id", notificationId)
+      .eq(
+        "id",
+        notificationId,
+      )
       .maybeSingle();
 
     if (error) {
@@ -524,29 +795,37 @@ Deno.serve(async (req) => {
     if (!data) {
       return json(
         {
-          error: "Notification not found",
+          error:
+            "Notification not found",
         },
         404,
       );
     }
 
-    userId = data.user_id;
+    userId =
+      data.user_id;
 
     notificationChannel =
-      data.channel ?? "in_app";
+      data.channel ??
+      "in_app";
 
-    title = data.title;
-    message = data.message;
+    title =
+      data.title;
+
+    message =
+      data.message;
 
     notificationType =
-      data.type ?? notificationType;
+      data.type ??
+      notificationType;
 
     transactionId =
       data.transaction_id ??
       transactionId;
 
     url =
-      typeof data.metadata?.url === "string"
+      typeof data.metadata?.url ===
+        "string"
         ? data.metadata.url
         : `/notifications/${data.id}`;
 
@@ -557,19 +836,24 @@ Deno.serve(async (req) => {
      */
 
     const inAppDeliveredAt =
-      typeof data.in_app_delivered_at === "string"
+      typeof data.in_app_delivered_at ===
+        "string"
         ? data.in_app_delivered_at
         : new Date().toISOString();
 
     await admin
       .from("notifications")
       .update({
-        in_app_status: "delivered",
+        in_app_status:
+          "delivered",
         in_app_delivered_at:
           data.in_app_delivered_at ??
           inAppDeliveredAt,
       })
-      .eq("id", notificationId);
+      .eq(
+        "id",
+        notificationId,
+      );
 
     /*
      * These channels are not push channels.
@@ -580,45 +864,59 @@ Deno.serve(async (req) => {
         "email",
         "sms",
         "webhook",
-      ].includes(notificationChannel)
+      ].includes(
+        notificationChannel,
+      )
     ) {
       return json({
         success: true,
         skipped:
           `channel_${notificationChannel}`,
-        in_app_status: "delivered",
-        push_status: "skipped",
+        in_app_status:
+          "delivered",
+        push_status:
+          "skipped",
       });
     }
 
     /*
-     * Mark push as processing.
+     * Mark the push attempt as processing.
      */
 
     const currentPushAttempts =
-      Number(data.push_attempts ?? 0);
+      Number(
+        data.push_attempts ??
+          0,
+      );
 
     const nextPushAttempt =
-      currentPushAttempts + 1;
+      currentPushAttempts +
+      1;
 
     await admin
       .from("notifications")
       .update({
-        push_status: "processing",
-        push_attempts: nextPushAttempt,
+        push_status:
+          "processing",
+        push_attempts:
+          nextPushAttempt,
         push_last_attempt_at:
           new Date().toISOString(),
-        push_last_error: null,
-        push_failed_at: null,
-        push_next_retry_at: null,
+        push_last_error:
+          null,
+        push_failed_at:
+          null,
+        push_next_retry_at:
+          null,
       })
-      .eq("id", notificationId);
+      .eq(
+        "id",
+        notificationId,
+      );
   }
 
   /*
-   * ------------------------------------------------------------
    * A user is required for push delivery.
-   * ------------------------------------------------------------
    */
 
   if (!userId) {
@@ -626,14 +924,19 @@ Deno.serve(async (req) => {
       await admin
         .from("notifications")
         .update({
-          push_status: "failed",
+          push_status:
+            "failed",
           push_failed_at:
             new Date().toISOString(),
           push_last_error:
             "Notification does not have a user.",
-          push_next_retry_at: null,
+          push_next_retry_at:
+            null,
         })
-        .eq("id", notificationId);
+        .eq(
+          "id",
+          notificationId,
+        );
     }
 
     return json(
@@ -651,22 +954,29 @@ Deno.serve(async (req) => {
    * ------------------------------------------------------------
    */
 
-  const { data: pushSetting } =
-    await admin
-      .from("customer_app_settings")
-      .select("value")
-      .eq(
-        "setting_key",
-        "customerPushNotifications",
-      )
-      .maybeSingle();
+  const {
+    data: pushSetting,
+  } = await admin
+    .from(
+      "customer_app_settings",
+    )
+    .select("value")
+    .eq(
+      "setting_key",
+      "customerPushNotifications",
+    )
+    .maybeSingle();
 
   const pushSettingDisabled =
-    pushSetting?.value === false ||
-    pushSetting?.value === "false" ||
+    pushSetting?.value ===
+      false ||
+    pushSetting?.value ===
+      "false" ||
     (
-      typeof pushSetting?.value === "object" &&
-      pushSetting?.value !== null &&
+      typeof pushSetting?.value ===
+        "object" &&
+      pushSetting?.value !==
+        null &&
       (
         pushSetting.value as Record<
           string,
@@ -680,21 +990,31 @@ Deno.serve(async (req) => {
       await admin
         .from("notifications")
         .update({
-          push_status: "skipped",
-          push_failed_at: null,
-          push_delivered_at: null,
-          push_last_error: null,
-          push_next_retry_at: null,
+          push_status:
+            "skipped",
+          push_failed_at:
+            null,
+          push_delivered_at:
+            null,
+          push_last_error:
+            null,
+          push_next_retry_at:
+            null,
         })
-        .eq("id", notificationId);
+        .eq(
+          "id",
+          notificationId,
+        );
     }
 
     return json({
       success: true,
       skipped:
         "customer_push_notifications_disabled",
-      in_app_status: "delivered",
-      push_status: "skipped",
+      in_app_status:
+        "delivered",
+      push_status:
+        "skipped",
     });
   }
 
@@ -751,13 +1071,19 @@ Deno.serve(async (req) => {
    */
 
   const vapidPublicKey =
-    Deno.env.get("VAPID_PUBLIC_KEY")?.trim();
+    Deno.env.get(
+      "VAPID_PUBLIC_KEY",
+    )?.trim();
 
   const vapidPrivateKey =
-    Deno.env.get("VAPID_PRIVATE_KEY")?.trim();
+    Deno.env.get(
+      "VAPID_PRIVATE_KEY",
+    )?.trim();
 
   const vapidSubject =
-    Deno.env.get("VAPID_SUBJECT")?.trim() ??
+    Deno.env.get(
+      "VAPID_SUBJECT",
+    )?.trim() ??
     "mailto:lawalaremu53@gmail.com";
 
   const webPushConfigured =
@@ -766,28 +1092,124 @@ Deno.serve(async (req) => {
 
   /*
    * ------------------------------------------------------------
+   * VAPID configuration diagnostics
+   * ------------------------------------------------------------
+   */
+
+  let decodedPublicKeyLength =
+    0;
+
+  let decodedPrivateKeyLength =
+    0;
+
+  let publicKeyLooksValid =
+    false;
+
+  let privateKeyLooksValid =
+    false;
+
+  let vapidKeysMatch =
+    false;
+
+  if (
+    vapidPublicKey
+  ) {
+    try {
+      const decodedPublicKey =
+        decodeBase64Url(
+          vapidPublicKey,
+        );
+
+      decodedPublicKeyLength =
+        decodedPublicKey.length;
+
+      publicKeyLooksValid =
+        decodedPublicKey.length ===
+          65 &&
+        decodedPublicKey[0] ===
+          4;
+    } catch {
+      decodedPublicKeyLength =
+        0;
+      publicKeyLooksValid =
+        false;
+    }
+  }
+
+  if (
+    vapidPrivateKey
+  ) {
+    try {
+      const decodedPrivateKey =
+        decodeBase64Url(
+          vapidPrivateKey,
+        );
+
+      decodedPrivateKeyLength =
+        decodedPrivateKey.length;
+
+      privateKeyLooksValid =
+        decodedPrivateKey.length ===
+        32;
+    } catch {
+      decodedPrivateKeyLength =
+        0;
+      privateKeyLooksValid =
+        false;
+    }
+  }
+
+  if (
+    webPushConfigured
+  ) {
+    vapidKeysMatch =
+      verifyVapidKeyPair(
+        vapidPublicKey,
+        vapidPrivateKey,
+      );
+
+    webpush.setVapidDetails(
+      vapidSubject,
+      vapidPublicKey!,
+      vapidPrivateKey!,
+    );
+  }
+
+  /*
+   * ------------------------------------------------------------
    * Apple Push Notification Service
    * ------------------------------------------------------------
    */
 
   const apnsKey =
-    Deno.env.get("APNS_PRIVATE_KEY");
+    Deno.env.get(
+      "APNS_PRIVATE_KEY",
+    );
 
   const apnsKeyId =
-    Deno.env.get("APNS_KEY_ID");
+    Deno.env.get(
+      "APNS_KEY_ID",
+    );
 
   const apnsTeamId =
-    Deno.env.get("APNS_TEAM_ID");
+    Deno.env.get(
+      "APNS_TEAM_ID",
+    );
 
   const apnsBundleId =
-    Deno.env.get("APNS_BUNDLE_ID") ??
+    Deno.env.get(
+      "APNS_BUNDLE_ID",
+    ) ??
     "com.iyanjupay.app";
 
   const apnsProduction =
     (
-      Deno.env.get("APNS_PRODUCTION") ??
+      Deno.env.get(
+        "APNS_PRODUCTION",
+      ) ??
       "true"
-    ).toLowerCase() === "true";
+    ).toLowerCase() ===
+    "true";
 
   const apnsConfigured =
     !!apnsKey &&
@@ -805,11 +1227,16 @@ Deno.serve(async (req) => {
     data: subscriptions,
     error: subscriptionError,
   } = await admin
-    .from("user_push_subscriptions")
+    .from(
+      "user_push_subscriptions",
+    )
     .select(
       "id,platform,endpoint,p256dh,auth,device_token",
     )
-    .eq("user_id", userId);
+    .eq(
+      "user_id",
+      userId,
+    );
 
   if (subscriptionError) {
     console.error(
@@ -821,14 +1248,19 @@ Deno.serve(async (req) => {
       await admin
         .from("notifications")
         .update({
-          push_status: "failed",
+          push_status:
+            "failed",
           push_failed_at:
             new Date().toISOString(),
           push_last_error:
             "Unable to load push subscriptions.",
-          push_next_retry_at: null,
+          push_next_retry_at:
+            null,
         })
-        .eq("id", notificationId);
+        .eq(
+          "id",
+          notificationId,
+        );
     }
 
     return json(
@@ -850,7 +1282,8 @@ Deno.serve(async (req) => {
   let attempted = 0;
   let failedAttempts = 0;
 
-  const staleIds: string[] = [];
+  const staleIds: string[] =
+    [];
 
   /*
    * ------------------------------------------------------------
@@ -861,141 +1294,73 @@ Deno.serve(async (req) => {
   const webSubscriptions =
     subscriptions?.filter(
       (subscription) =>
-        subscription.platform === "web" &&
+        subscription.platform ===
+          "web" &&
         subscription.endpoint &&
         subscription.p256dh &&
         subscription.auth,
     ) ?? [];
 
   /*
-   * Configure Web Push only after subscriptions have
-   * been loaded, so we can safely perform diagnostics
-   * against an actual subscription.
+   * VAPID diagnostics.
+   *
+   * This deliberately exposes only safe metadata.
    */
 
-  if (webPushConfigured) {
-    try {
-      /*
-       * Validate VAPID key encoding without logging
-       * the actual key material.
-       */
-
-      const decodeBase64Url = (
-        value: string,
-      ): Uint8Array => {
-        const normalized =
-          value
-            .replace(/-/g, "+")
-            .replace(/_/g, "/");
-
-        const padding =
-          "=".repeat(
-            (4 - (normalized.length % 4)) % 4,
-          );
-
-        const binary =
-          atob(normalized + padding);
-
-        return Uint8Array.from(
-          binary,
-          (character) =>
-            character.charCodeAt(0),
-        );
-      };
-
-      const decodedPublicKey =
-        decodeBase64Url(
-          vapidPublicKey!,
-        );
-
-      const decodedPrivateKey =
-        decodeBase64Url(
-          vapidPrivateKey!,
-        );
-
-      console.log(
-        "VAPID configuration diagnostics:",
-        {
-          publicKeyPresent:
-            true,
-
-          privateKeyPresent:
-            true,
-
-          subjectPresent:
-            !!vapidSubject,
-
-          subjectIsMailto:
-            vapidSubject.startsWith(
-              "mailto:",
-            ),
-
-          publicKeyDecodedLength:
-            decodedPublicKey.length,
-
-          privateKeyDecodedLength:
-            decodedPrivateKey.length,
-
-          publicKeyLooksValid:
-            decodedPublicKey.length === 65 &&
-            decodedPublicKey[0] === 4,
-
-          privateKeyLooksValid:
-            decodedPrivateKey.length === 32,
-
-          webSubscriptionsFound:
-            webSubscriptions.length,
-        },
-      );
-
-      webpush.setVapidDetails(
-        vapidSubject,
-        vapidPublicKey!,
-        vapidPrivateKey!,
-      );
-    } catch (error) {
-      console.error(
-        "VAPID configuration validation failed:",
-        error instanceof Error
-          ? error.message
-          : "Unknown VAPID configuration error",
-      );
-    }
-  } else {
-    console.error(
-      "Web Push is not configured: VAPID_PUBLIC_KEY or VAPID_PRIVATE_KEY is missing.",
-    );
-  }
+  console.log(
+    "VAPID configuration diagnostics:",
+    {
+      publicKeyPresent:
+        !!vapidPublicKey,
+      privateKeyPresent:
+        !!vapidPrivateKey,
+      subjectPresent:
+        !!vapidSubject,
+      subjectIsMailto:
+        vapidSubject.startsWith(
+          "mailto:",
+        ),
+      publicKeyDecodedLength:
+        decodedPublicKeyLength,
+      privateKeyDecodedLength:
+        decodedPrivateKeyLength,
+      publicKeyLooksValid,
+      privateKeyLooksValid,
+      vapidKeysMatch,
+      webSubscriptionsFound:
+        webSubscriptions.length,
+    },
+  );
 
   /*
    * ------------------------------------------------------------
    * Web Push request-generation diagnostic
    * ------------------------------------------------------------
    *
-   * This does NOT send a notification.
-   *
-   * It asks web-push to construct the exact authenticated
-   * request that will be used for a real delivery.
-   *
-   * No private key, subscription keys, JWT, or authorization
-   * header is logged.
+   * This verifies that web-push can construct the VAPID
+   * authorization request without logging credentials.
    */
 
   if (
     webPushConfigured &&
-    webSubscriptions.length > 0
+    webSubscriptions.length >
+      0
   ) {
     try {
-      const diagnosticSubscription = {
-        endpoint:
-          webSubscriptions[0].endpoint,
-        keys: {
-          p256dh:
-            webSubscriptions[0].p256dh,
-          auth:
-            webSubscriptions[0].auth,
-        },
-      };
+      const diagnosticSubscription =
+        {
+          endpoint:
+            webSubscriptions[0]
+              .endpoint,
+          keys: {
+            p256dh:
+              webSubscriptions[0]
+                .p256dh,
+            auth:
+              webSubscriptions[0]
+                .auth,
+          },
+        };
 
       const requestDetails =
         webpush.generateRequestDetails(
@@ -1009,7 +1374,8 @@ Deno.serve(async (req) => {
         );
 
       const requestHeaders =
-        requestDetails.headers ?? {};
+        requestDetails.headers ??
+        {};
 
       const authorizationHeader =
         requestHeaders.Authorization ??
@@ -1017,8 +1383,12 @@ Deno.serve(async (req) => {
         "";
 
       const cryptoKeyHeader =
-        requestHeaders["Crypto-Key"] ??
-        requestHeaders["crypto-key"] ??
+        requestHeaders[
+          "Crypto-Key"
+        ] ??
+        requestHeaders[
+          "crypto-key"
+        ] ??
         "";
 
       console.log(
@@ -1026,59 +1396,42 @@ Deno.serve(async (req) => {
         {
           requestGenerated:
             true,
-
           endpointHost:
             new URL(
               diagnosticSubscription.endpoint,
             ).hostname,
-
           method:
             requestDetails.method,
-
           authorizationGenerated:
             typeof authorizationHeader ===
-            "string" &&
-            authorizationHeader.length > 0,
-
+              "string" &&
+            authorizationHeader.length >
+              0,
           cryptoKeyGenerated:
             typeof cryptoKeyHeader ===
-            "string" &&
-            cryptoKeyHeader.length > 0,
-
+              "string" &&
+            cryptoKeyHeader.length >
+              0,
           authorizationLength:
             typeof authorizationHeader ===
-            "string"
+              "string"
               ? authorizationHeader.length
               : 0,
-
           cryptoKeyLength:
             typeof cryptoKeyHeader ===
-            "string"
+              "string"
               ? cryptoKeyHeader.length
               : 0,
         },
       );
     } catch (error) {
       console.error(
-        "VAPID request generation failed:",
+        "VAPID request generation diagnostic failed:",
         error instanceof Error
           ? error.message
-          : "Unknown VAPID request-generation error",
+          : "Unknown error",
       );
     }
-  } else {
-    console.log(
-      "VAPID request generation diagnostics:",
-      {
-        requestGenerated:
-          false,
-
-        reason:
-          !webPushConfigured
-            ? "web_push_not_configured"
-            : "no_web_subscription_available",
-      },
-    );
   }
 
   /*
@@ -1087,22 +1440,16 @@ Deno.serve(async (req) => {
    */
 
   if (
-    webSubscriptions.length > 0 &&
+    webSubscriptions.length >
+      0 &&
     !webPushConfigured
   ) {
     failedAttempts +=
       webSubscriptions.length;
   }
 
-  /*
-   * ------------------------------------------------------------
-   * Send Web Push
-   * ------------------------------------------------------------
-   */
-
   if (
-    webPushConfigured &&
-    webSubscriptions.length > 0
+    webPushConfigured
   ) {
     const notificationPayload =
       JSON.stringify({
@@ -1115,7 +1462,8 @@ Deno.serve(async (req) => {
       });
 
     for (
-      const subscription of webSubscriptions
+      const subscription of
+        webSubscriptions
     ) {
       attempted += 1;
 
@@ -1124,11 +1472,9 @@ Deno.serve(async (req) => {
           {
             endpoint:
               subscription.endpoint,
-
             keys: {
               p256dh:
                 subscription.p256dh,
-
               auth:
                 subscription.auth,
             },
@@ -1138,17 +1484,23 @@ Deno.serve(async (req) => {
 
         delivered += 1;
       } catch (error) {
-        failedAttempts += 1;
+        failedAttempts +=
+          1;
 
         const pushError =
-          error as WebPushError;
+          error as {
+            statusCode?: number;
+            body?: unknown;
+          };
 
         const statusCode =
           pushError.statusCode;
 
         if (
-          statusCode === 404 ||
-          statusCode === 410
+          statusCode ===
+            404 ||
+          statusCode ===
+            410
         ) {
           staleIds.push(
             subscription.id,
@@ -1156,12 +1508,17 @@ Deno.serve(async (req) => {
         }
 
         /*
-         * Provider response is safe to log because we
-         * intentionally exclude authorization headers,
-         * private keys, and subscription credentials.
+         * Diagnostic logging only.
+         *
+         * Never log:
+         * - VAPID private key
+         * - p256dh
+         * - auth
+         * - full JWT
          */
 
-        let providerReason = "";
+        let providerReason =
+          "";
 
         if (
           typeof pushError.body ===
@@ -1173,15 +1530,20 @@ Deno.serve(async (req) => {
               500,
             );
         } else if (
-          pushError.body !== undefined
+          pushError.body !==
+          undefined
         ) {
           try {
             providerReason =
               JSON.stringify(
                 pushError.body,
-              ).slice(0, 500);
+              ).slice(
+                0,
+                500,
+              );
           } catch {
-            providerReason = "";
+            providerReason =
+              "";
           }
         }
 
@@ -1211,7 +1573,8 @@ Deno.serve(async (req) => {
     ) ?? [];
 
   if (
-    androidSubscriptions.length > 0 &&
+    androidSubscriptions.length >
+      0 &&
     !firebaseServiceAccount
   ) {
     failedAttempts +=
@@ -1222,7 +1585,9 @@ Deno.serve(async (req) => {
     );
   }
 
-  if (firebaseServiceAccount) {
+  if (
+    firebaseServiceAccount
+  ) {
     for (
       const subscription of
         androidSubscriptions
@@ -1249,7 +1614,8 @@ Deno.serve(async (req) => {
 
         delivered += 1;
       } catch (error) {
-        failedAttempts += 1;
+        failedAttempts +=
+          1;
 
         const fcmErrorCode =
           (
@@ -1270,7 +1636,8 @@ Deno.serve(async (req) => {
         if (
           fcmErrorCode ===
             "UNREGISTERED" ||
-          statusCode === 404
+          statusCode ===
+            404
         ) {
           staleIds.push(
             subscription.id,
@@ -1301,7 +1668,8 @@ Deno.serve(async (req) => {
     ) ?? [];
 
   if (
-    iosSubscriptions.length > 0 &&
+    iosSubscriptions.length >
+      0 &&
     !apnsConfigured
   ) {
     failedAttempts +=
@@ -1343,7 +1711,8 @@ Deno.serve(async (req) => {
 
         delivered += 1;
       } catch (error) {
-        failedAttempts += 1;
+        failedAttempts +=
+          1;
 
         const statusCode =
           (
@@ -1356,7 +1725,8 @@ Deno.serve(async (req) => {
           )?.apnsReason;
 
         if (
-          statusCode === 400 &&
+          statusCode ===
+            400 &&
           (
             reason ===
               "BadDeviceToken" ||
@@ -1370,7 +1740,8 @@ Deno.serve(async (req) => {
         }
 
         if (
-          statusCode === 410
+          statusCode ===
+            410
         ) {
           staleIds.push(
             subscription.id,
@@ -1392,14 +1763,21 @@ Deno.serve(async (req) => {
    * ------------------------------------------------------------
    */
 
-  if (staleIds.length > 0) {
+  if (
+    staleIds.length >
+    0
+  ) {
     await admin
-      .from("user_push_subscriptions")
+      .from(
+        "user_push_subscriptions",
+      )
       .delete()
       .in(
         "id",
         [
-          ...new Set(staleIds),
+          ...new Set(
+            staleIds,
+          ),
         ],
       );
   }
@@ -1411,11 +1789,9 @@ Deno.serve(async (req) => {
    */
 
   const availableSubscriptions =
-    (
-      webSubscriptions.length +
-      androidSubscriptions.length +
-      iosSubscriptions.length
-    );
+    webSubscriptions.length +
+    androidSubscriptions.length +
+    iosSubscriptions.length;
 
   let finalPushStatus:
     | "delivered"
@@ -1426,22 +1802,28 @@ Deno.serve(async (req) => {
     | string
     | null = null;
 
-  if (delivered > 0) {
+  if (
+    delivered >
+    0
+  ) {
     finalPushStatus =
       "delivered";
   } else if (
-    availableSubscriptions === 0
+    availableSubscriptions ===
+    0
   ) {
     finalPushStatus =
       "skipped";
 
-    pushLastError = null;
+    pushLastError =
+      null;
   } else {
     finalPushStatus =
       "failed";
 
     pushLastError =
-      failedAttempts > 0
+      failedAttempts >
+      0
         ? "Push delivery failed for all available subscriptions."
         : "No push destination could be delivered.";
   }
@@ -1456,10 +1838,11 @@ Deno.serve(async (req) => {
     const now =
       new Date().toISOString();
 
-    const pushUpdate: Record<
-      string,
-      unknown
-    > = {
+    const pushUpdate:
+      Record<
+        string,
+        unknown
+      > = {
       push_status:
         finalPushStatus,
 
@@ -1533,7 +1916,9 @@ Deno.serve(async (req) => {
 
     stale_removed:
       [
-        ...new Set(staleIds),
+        ...new Set(
+          staleIds,
+        ),
       ].length,
   });
 });

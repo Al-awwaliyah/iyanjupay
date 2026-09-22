@@ -1,0 +1,23 @@
+IyanjuPay Bilalsadasub affected files
+
+1. supabase/functions/_shared/bilalsadasub.ts
+   - Keeps https://bilalsadasub.com as the server-side base URL.
+   - Removes hardcoded network ID/name mapping.
+
+2. supabase/functions/bilalsadasub-services/index.ts
+   - Separates `billers` from `catalog` for Airtime/Data.
+   - `billers` now fetches the live Bilalsadasub network catalogue.
+   - Data catalogue requires the selected live network name and fetches GIFTING/SME/COOPERATE GIFTING dynamically.
+   - Purchase uses the live network code returned by Bilalsadasub instead of a hardcoded network map.
+   - Removes hardcoded Data Card/Recharge Card plan arrays; the supplied Bilalsadasub documentation does not expose a live catalogue endpoint for those plans, so fabricated IDs/prices are not used.
+   - Provider transport timeouts stay pending for webhook/reconciliation instead of being immediately refunded on an ambiguous provider response.
+
+3. src/pages/ServicePayment.tsx
+   - Removes offline/hardcoded mobile-network and electricity fallback catalogues.
+   - Sends the live network name/code through to the backend.
+   - Removes the Recharge Card "coming soon" early return.
+
+4. supabase/config.toml
+   - Sets bilalsadasub-webhook verify_jwt=false so Bilalsadasub can call the webhook without a Supabase JWT.
+
+Do not add BILALSADASUB_API_TOKEN to the frontend, Vercel environment exposed as VITE_*, GitHub source, or localStorage. Keep it as a Supabase Edge Function secret.

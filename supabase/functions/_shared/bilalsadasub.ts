@@ -56,20 +56,6 @@ export function safeProviderMessage(error: unknown): string {
   return "Unable to complete the service request right now.";
 }
 
-export function networkId(value: unknown): number | null {
-  const v = String(value ?? "").trim().toLowerCase();
-  if (["1", "01", "mtn"].includes(v)) return 1;
-  if (["2", "02", "airtel"].includes(v)) return 2;
-  if (["3", "03", "glo"].includes(v)) return 3;
-  if (["4", "04", "9mobile", "9 mobile", "t2", "etisalat"].includes(v)) return 4;
-  if (["5", "05", "vitel"].includes(v)) return 5;
-  return null;
-}
-
-export function networkName(id: number): string {
-  return ({1: "MTN", 2: "Airtel", 3: "Glo", 4: "9mobile", 5: "VITEL"} as Record<number,string>)[id] ?? String(id);
-}
-
 export function sellingPrice(providerPrice: number, markup = 0.05): number {
   const cost = Math.max(0, Number(providerPrice) || 0);
   if (!cost) return 0;
@@ -108,11 +94,6 @@ export function dataTab(planType: string, period: string): string {
 export function providerFailed(body: any): boolean {
   const s = String(body?.status ?? body?.Status ?? "").toLowerCase();
   return ["failed", "failure", "declined", "error", "rejected", "cancelled", "canceled"].includes(s);
-}
-
-export function providerDefinitivelyFailed(error: unknown): boolean {
-  const status = Number((error as any)?.status ?? 0);
-  return [400, 401, 402, 429].includes(status);
 }
 
 export function providerSuccessful(body: any): boolean {

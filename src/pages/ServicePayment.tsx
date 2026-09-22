@@ -59,8 +59,8 @@ const SERVICE_ALIASES: Record<string, string> = {
   airtime_card: "airtime-card",
   data_epin: "data-card",
   data_card: "data-card",
-  recharge: "recharge-card",
-  recharge_card: "recharge-card",
+  recharge: "airtime-card",
+  recharge_card: "airtime-card",
 };
 
 const SERVICE_TITLES: Record<string, string> = {
@@ -671,56 +671,6 @@ function providerLogo(
   return null;
 }
 
-const OFFLINE_BILLERS: Record<string, Biller[]> = {
-  airtime: [
-    { biller_code: "01", name: "MTN" },
-    { biller_code: "02", name: "Glo" },
-    { biller_code: "03", name: "9mobile" },
-    { biller_code: "04", name: "Airtel" },
-  ],
-
-  data: [
-    { biller_code: "01", name: "MTN" },
-    { biller_code: "02", name: "Glo" },
-    { biller_code: "03", name: "9mobile" },
-    { biller_code: "04", name: "Airtel" },
-  ],
-
-  "airtime-card": [
-    { biller_code: "01", name: "MTN" },
-    { biller_code: "02", name: "Glo" },
-    { biller_code: "03", name: "9mobile" },
-    { biller_code: "04", name: "Airtel" },
-  ],
-
-  "data-card": [
-    { biller_code: "01", name: "MTN" },
-    { biller_code: "02", name: "Glo" },
-    { biller_code: "03", name: "9mobile" },
-    { biller_code: "04", name: "Airtel" },
-  ],
-
-  cable: [
-    { biller_code: "dstv", name: "DStv" },
-    { biller_code: "gotv", name: "GOtv" },
-    { biller_code: "startimes", name: "Startimes" },
-      ],
-
-  electricity: [
-    { biller_code: "01", name: "Abuja Electric" },
-    { biller_code: "02", name: "Benin Electric" },
-    { biller_code: "03", name: "Enugu Electric" },
-    { biller_code: "04", name: "Eko Electric" },
-    { biller_code: "05", name: "Ibadan Electric" },
-    { biller_code: "06", name: "Ikeja Electric" },
-    { biller_code: "07", name: "Jos Electric" },
-    { biller_code: "08", name: "Kaduna Electric" },
-    { biller_code: "09", name: "Kano Electric" },
-    { biller_code: "10", name: "Port Harcourt Electric" },
-    { biller_code: "11", name: "Yola Electric" },
-  ],
-};
-
 function normaliseDiscoText(value: unknown): string {
   return clean(value)
     .toLowerCase()
@@ -811,17 +761,7 @@ function filterElectricityDiscos(live: Biller[]): Biller[] {
     });
   }
 
-  // Only use the old list when the provider returned no usable electricity billers.
-  if (!result.length) {
-    for (const biller of OFFLINE_BILLERS.electricity ?? []) {
-      const code = getCode(biller);
-      const name = getName(biller);
-      const key = normaliseDiscoText(name) || code.toLowerCase();
-      if (!key || seen.has(key)) continue;
-      seen.add(key);
-      result.push({ ...biller, display_name: name });
-    }
-  }
+
 
   return result;
 }
@@ -865,34 +805,20 @@ function canonicalInternetProvider(biller: Biller): string {
 }
 
 function filterNetworkProviders(service: string, live: Biller[]): Biller[] {
-  const allowed = service === "data" || service === "airtime"
-    ? new Set(["MTN", "Airtel", "Glo", "9mobile"])
-    : null;
-
   const result: Biller[] = [];
   const seen = new Set<string>();
 
   for (const biller of live) {
     if (isPlaceholderBiller(biller)) continue;
-
     const code = getCode(biller);
     const rawName = getName(biller);
-    const name = allowed
-      ? canonicalNetworkName(rawName, code)
-      : canonicalInternetProvider(biller);
-
-    if (!name || (allowed && !allowed.has(name))) continue;
-
-    const key = name.toLowerCase();
+    const name = service === "internet" ? canonicalInternetProvider(biller) : (canonicalNetworkName(rawName, code) || rawName);
+    if (!name || !code) continue;
+    const key = code.toLowerCase();
     if (seen.has(key)) continue;
     seen.add(key);
-
-    result.push({
-      ...biller,
-      display_name: name,
-    });
+    result.push({ ...biller, display_name: name });
   }
-
   return result;
 }
 
@@ -912,14 +838,6 @@ function mergeBillers(
     const filtered = filterNetworkProviders(service, cleaned);
     if (filtered.length) return filtered;
 
-    // Keep the four mobile networks available if the catalogue response is
-    // temporarily missing names; their stable codes are used internally only.
-    if (service === "data" || service === "airtime") {
-      return (OFFLINE_BILLERS[service] ?? []).map((b) => ({
-        ...b,
-        display_name: b.name,
-      }));
-    }
   }
 
   const result: Biller[] = [];
@@ -1011,7 +929,6 @@ function mergeBillers(
   };
 
   cleaned.forEach(add);
-  (OFFLINE_BILLERS[service] ?? []).forEach(add);
 
   return result;
 }
@@ -1632,22 +1549,15 @@ export default function ServicePayment({
 
   const isEpin =
     serviceType === "airtime-card" ||
-    serviceType === "data-card" ||
-    serviceType === "recharge-card";
+    serviceType === "data-card";
 
   const isAirtimeCard =
-    serviceType === "airtime-card" ||
-    serviceType === "recharge-card";
-
-  const isRechargeCard =
-    serviceType === "recharge-card";
-
-  const epinMaxQuantity =
-    serviceType === "data-card" ? 50 : 100;
+    serviceType === "airtime-card";
 
   const isPhoneService =
     isAirtime ||
     isData ||
+    isEpin ||
     serviceType === "education";
 
   const isAmountOnly =
@@ -1832,7 +1742,7 @@ export default function ServicePayment({
   const loadBillers =
     useCallback(async () => {
       if (!serviceType) return;
-        setLoadingBillers(true);
+      setLoadingBillers(true);
       setError("");
 
       try {
@@ -1892,14 +1802,6 @@ export default function ServicePayment({
           );
         }
 
-        if (isAirtimeCard) {
-          const order = ["01", "04", "03", "02"];
-          merged = [...merged].sort(
-            (a, b) =>
-              order.indexOf(getCode(a)) -
-              order.indexOf(getCode(b)),
-          );
-        }
 
         setBillers(merged);
 
@@ -1933,7 +1835,6 @@ export default function ServicePayment({
       isAmountOnly,
       serviceType,
       isAirtimeCard,
-      isRechargeCard,
       toast,
     ]);
 
@@ -1964,6 +1865,14 @@ export default function ServicePayment({
             action: "catalog",
             service: backendServiceType(billerCode, billerForCode),
             biller_code: billerCode,
+            ...(isData || isAirtime
+              ? {
+                  network_name:
+                    billerForCode?.network_name ??
+                    billerForCode?.networkName ??
+                    getName(billerForCode),
+                }
+              : {}),
             ...(isCable
               ? { provider_name: getName(billerForCode) }
               : {}),
@@ -2372,7 +2281,7 @@ export default function ServicePayment({
       return "Please select a package.";
     }
 
-    if (isEpin && (!Number.isInteger(quantity) || quantity < 1 || quantity > epinMaxQuantity)) {
+    if (isEpin && (!Number.isInteger(quantity) || quantity < 1 || quantity > 100)) {
       return "Quantity must be between 1 and 100.";
     }
 
@@ -2520,6 +2429,14 @@ export default function ServicePayment({
       network:
         isAirtime || isData
           ? selectedBiller?.network_name ?? selectedBiller?.name ?? selectedBillerCode
+          : "",
+      network_name:
+        isAirtime || isData
+          ? selectedBiller?.network_name ?? selectedBiller?.name ?? selectedBillerCode
+          : "",
+      network_code:
+        isAirtime || isData
+          ? selectedBiller?.network_code ?? selectedBiller?.network_id ?? selectedBillerCode
           : "",
       mobile_number:
         isAirtime || isData
@@ -3258,38 +3175,48 @@ export default function ServicePayment({
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                         Loading recharge card values...
                       </div>
-                    ) : items.length ? (
-                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                        {items.map((item) => {
-                          const itemCode = getItemCode(item);
-                          if (!itemCode) return null;
-                          const selected = selectedItemCode === itemCode;
-                          return (
-                            <button
-                              key={itemCode}
-                              type="button"
-                              disabled={!!processingSession || verifyingPin}
-                              onClick={() => {
-                                setSelectedItemCode(itemCode);
-                                setAmount(String(getItemPrice(item)));
-                                setQuantity(1);
-                                setCustomAmount(false);
-                                setError("");
-                              }}
-                              className={`rounded-xl border px-3 py-3 text-left transition ${
-                                selected
-                                  ? "border-[#6D28D9] bg-violet-50 text-[#4C1D95] ring-2 ring-violet-100"
-                                  : "border-gray-200 bg-white text-gray-800 hover:border-violet-300"
-                              }`}
-                            >
-                              <div className="font-bold">{getName(item)}</div>
-                              <div className="mt-1 text-xs text-gray-500">Selling price: {naira(getItemPrice(item))}</div>
-                            </button>
-                          );
-                        })}
-                      </div>
                     ) : (
-                      <div className="rounded-xl bg-gray-50 p-4 text-center text-xs text-gray-500">No recharge card plans available.</div>
+                      <div className="grid grid-cols-3 gap-2">
+                        {Array.from(
+                          new Map(
+                            items
+                              .map((item) => [
+                                num(item.value ?? item.denomination),
+                                item,
+                              ] as const)
+                              .filter(([value, item]) => value > 0 && !!getItemCode(item))
+                          ).entries()
+                        )
+                          .sort(([a], [b]) => a - b)
+                          .map(([value, item]) => {
+                            const itemCode = getItemCode(item);
+                            const selected =
+                              selectedItemCode === itemCode &&
+                              amount === String(getItemPrice(item));
+
+                            return (
+                              <button
+                                key={itemCode}
+                                type="button"
+                                disabled={!!processingSession || verifyingPin}
+                                onClick={() => {
+                                  setSelectedItemCode(itemCode);
+                                  setAmount(String(getItemPrice(item)));
+                                  setQuantity(1);
+                                  setCustomAmount(false);
+                                  setError("");
+                                }}
+                                className={`rounded-xl border px-3 py-3 text-sm font-extrabold transition ${
+                                  selected
+                                    ? "border-[#6D28D9] bg-violet-50 text-[#4C1D95] ring-2 ring-violet-100"
+                                    : "border-gray-200 bg-white text-gray-800 hover:border-violet-300"
+                                }`}
+                              >
+                                ₦{value.toLocaleString("en-NG")}
+                              </button>
+                            );
+                          })}
+                      </div>
                     )}
                   </section>
 
@@ -3299,7 +3226,7 @@ export default function ServicePayment({
                       id="airtime-pin-quantity"
                       type="number"
                       min={1}
-                      max={epinMaxQuantity}
+                      max={100}
                       step={1}
                       inputMode="numeric"
                       value={quantity}
@@ -3310,7 +3237,7 @@ export default function ServicePayment({
                       className="mt-2 h-10 rounded-xl text-sm"
                       disabled={!!processingSession || verifyingPin}
                     />
-                    <p className="mt-1.5 text-[10px] text-gray-500">Allowed range: 1 to {epinMaxQuantity}</p>
+                    <p className="mt-1.5 text-[10px] text-gray-500">Allowed range: 1 to 100</p>
                   </section>
                 </>
               )}

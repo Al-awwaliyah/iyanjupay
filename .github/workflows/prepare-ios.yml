@@ -215,11 +215,11 @@ jobs:
           APP_PATH=$(find ios/App/build_output -name "App.app" -type d | head -n 1)
 
           if [ -z "$APP_PATH" ]; then
-            echo "❌ ERROR: App.app directory was not resolved in build_output!"
+            echo " ERROR: App.app directory was not resolved in build_output!"
             exit 1
           fi
 
-          echo "✅ Isolated App.app execution block at: $APP_PATH"
+          echo " Isolated App.app execution block at: $APP_PATH"
           cp -R "$APP_PATH" ./App.app
           zip -r iyanjupay-simulator.zip App.app
 

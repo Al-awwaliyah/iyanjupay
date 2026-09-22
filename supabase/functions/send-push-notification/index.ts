@@ -743,34 +743,111 @@ Deno.serve(async (req) => {
     }
   }
 
-  /*
-   * ------------------------------------------------------------
-   * Web Push configuration
-   * ------------------------------------------------------------
-   */
+/*
+ * ------------------------------------------------------------
+ * Web Push configuration
+ * ------------------------------------------------------------
+ */
 
-  const vapidPublicKey =
-    Deno.env.get("VAPID_PUBLIC_KEY");
+const vapidPublicKey =
+  Deno.env.get("VAPID_PUBLIC_KEY")?.trim();
 
-  const vapidPrivateKey =
-    Deno.env.get("VAPID_PRIVATE_KEY");
+const vapidPrivateKey =
+  Deno.env.get("VAPID_PRIVATE_KEY")?.trim();
 
-  const vapidSubject =
-    Deno.env.get("VAPID_SUBJECT") ??
-    "mailto:admin@iyanjupay.com";
+const vapidSubject =
+  Deno.env.get("VAPID_SUBJECT")?.trim() ??
+  "mailto:lawalaremu53@gmail.com";
 
-  const webPushConfigured =
-    !!vapidPublicKey &&
-    !!vapidPrivateKey;
+const webPushConfigured =
+  !!vapidPublicKey &&
+  !!vapidPrivateKey;
 
-  if (webPushConfigured) {
+/*
+ * Safe VAPID diagnostics.
+ *
+ * IMPORTANT:
+ * Never log the actual public/private key values.
+ * We only log their presence and decoded lengths.
+ */
+
+if (webPushConfigured) {
+  try {
+    const decodeBase64Url = (
+      value: string,
+    ): Uint8Array => {
+      const normalized =
+        value
+          .replace(/-/g, "+")
+          .replace(/_/g, "/");
+
+      const padding =
+        "=".repeat(
+          (4 - (normalized.length % 4)) % 4,
+        );
+
+      const binary =
+        atob(normalized + padding);
+
+      return Uint8Array.from(
+        binary,
+        (character) =>
+          character.charCodeAt(0),
+      );
+    };
+
+    const decodedPublicKey =
+      decodeBase64Url(vapidPublicKey!);
+
+    const decodedPrivateKey =
+      decodeBase64Url(vapidPrivateKey!);
+
+    console.log(
+      "VAPID configuration diagnostics:",
+      {
+        publicKeyPresent:
+          !!vapidPublicKey,
+
+        privateKeyPresent:
+          !!vapidPrivateKey,
+
+        subjectPresent:
+          !!vapidSubject,
+
+        subjectIsMailto:
+          vapidSubject.startsWith(
+            "mailto:",
+          ),
+
+        publicKeyDecodedLength:
+          decodedPublicKey.length,
+
+        privateKeyDecodedLength:
+          decodedPrivateKey.length,
+
+        publicKeyLooksValid:
+          decodedPublicKey.length === 65 &&
+          decodedPublicKey[0] === 4,
+
+        privateKeyLooksValid:
+          decodedPrivateKey.length === 32,
+      },
+    );
+
     webpush.setVapidDetails(
       vapidSubject,
       vapidPublicKey!,
       vapidPrivateKey!,
     );
+  } catch (error) {
+    console.error(
+      "VAPID configuration validation failed:",
+      error instanceof Error
+        ? error.message
+        : "Unknown VAPID configuration error",
+    );
   }
-
+}
   /*
    * ------------------------------------------------------------
    * Apple Push Notification Service

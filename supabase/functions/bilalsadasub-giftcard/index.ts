@@ -38,32 +38,20 @@ Deno.serve(async req=>{
       const isRange=Boolean(plan.is_range);const min=n(plan.local_min),max=n(plan.local_max);if((isRange&&(amount<min||amount>max))||(!isRange&&amount!==max))throw new Error("Invalid gift card amount.");
       const rate=n(plan.selling_rate);const providerAmount=amount*rate;const selling=sellingPrice(providerAmount);
       const ref=`IP_GIFT_${crypto.randomUUID().replaceAll("-","")}`;
-      const metadata={provider:"bilalsadasub",service:"gift_card_purchase",plan_id:planId,provider_amount:providerAmount,request_id:ref};
-      const {data:debit,error:debitError}=await admin.rpc("debit_wallet",{_user_id:user.id,_amount:selling,_description:"Gift card purchase",_idempotency_key:ref,_reference:ref,_category:"gift_card",_metadata:metadata});if(debitError)throw new Error("Unable to process the payment from your wallet.");
-      await admin.from("transactions").update({status:"pending",provider:"bilalsadasub",provider_reference:ref,transaction_type:"gift_card_purchase",metadata}).eq("user_id",user.id).eq("reference_number",ref);
-      let raw:any;
-      try{raw=await postJson<any>("/api/giftcard/buy",{plan_id:planId,amount,token:bilalToken(),...(body.provider_pin?{pin:s(body.provider_pin)}:{})});}
-      catch(error){
-        const providerStatus=Number((error as any)?.status ?? 0);
-        if([400,401,402,429].includes(providerStatus)){
-          const refund=await admin.rpc("refund_wallet",{_user_id:user.id,_amount:selling,_description:"Gift card purchase reversal",_idempotency_key:`REFUND_${ref}`,_reference:`REFUND_${ref}`,_metadata:{...metadata,reason:"provider_rejected_request"}});
-          await admin.from("transactions").update({status:"failed",metadata:{...metadata,refunded:!refund.error}}).eq("user_id",user.id).eq("reference_number",ref);
-          throw new Error("Gift card purchase could not be completed. Your wallet has been refunded.");
-        }
-        await admin.from("transactions").update({status:"pending",metadata:{...metadata,reconciliation_required:true}}).eq("user_id",user.id).eq("reference_number",ref);
-        return json({success:true,status:"pending",reference:ref,message:"Your gift card purchase was received and is still being processed.",reconciliation_required:true});
-      }
+      const {error:debitError}=await admin.rpc("debit_wallet",{_user_id:user.id,_amount:selling,_description:"Gift card purchase",_idempotency_key:ref,_reference:ref,_category:"gift_card",_metadata:{provider:"bilalsadasub",plan_id:planId,provider_amount:providerAmount}});if(debitError)throw new Error("Unable to process the payment from your wallet.");
+      await admin.from("transactions").update({status:"pending",provider:"bilalsadasub",provider_reference:ref,metadata:{provider:"bilalsadasub",service:"gift_card_purchase",plan_id:planId,provider_amount:providerAmount,reconciliation_required:true}}).eq("user_id",user.id).eq("reference_number",ref);
+      let raw:any;try{raw=await postJson<any>("/api/giftcard/buy",{plan_id:planId,amount,token:bilalToken()});}catch(error){console.error("Bilalsadasub gift card purchase transport failure",{ref,error});return json({success:true,status:"pending",reference:ref,message:"Your payment is being verified. Please wait while we confirm the provider result."});}
       const status=s(raw?.status).toLowerCase();
       if(["failed","failure","declined","error","rejected","cancelled","canceled"].includes(status)){
-        const refund=await admin.rpc("refund_wallet",{_user_id:user.id,_amount:selling,_description:"Gift card purchase reversal",_idempotency_key:`REFUND_${ref}`,_reference:`REFUND_${ref}`,_metadata:{...metadata,reason:"provider_failure"}});
-        await admin.from("transactions").update({status:"failed",provider:"bilalsadasub",provider_reference:s(raw?.transid)||ref,metadata:{...metadata,provider_status:status,refunded:!refund.error}}).eq("user_id",user.id).eq("reference_number",ref);
-        throw new Error("Gift card purchase failed. Your wallet has been refunded.");
+        await admin.rpc("refund_wallet",{_user_id:user.id,_amount:selling,_description:"Gift card purchase reversal",_idempotency_key:`REFUND_${ref}`,_reference:`REFUND_${ref}`,_metadata:{provider:"bilalsadasub",original_reference:ref}});
+        await admin.from("transactions").update({status:"failed",metadata:{provider:"bilalsadasub",service:"gift_card_purchase",plan_id:planId,provider_amount:providerAmount,refunded:true}}).eq("user_id",user.id).eq("reference_number",ref);
+        throw new Error("Gift card purchase failed.");
       }
       if(!["success","successful","completed","paid"].includes(status)){
-        await admin.from("transactions").update({status:"pending",provider:"bilalsadasub",provider_reference:s(raw?.transid)||ref,metadata:{...metadata,reconciliation_required:true,provider_status:status||null}}).eq("user_id",user.id).eq("reference_number",ref);
-        return json({success:true,status:"pending",reference:ref,provider_reference:raw?.transid??null,message:"Your gift card purchase was received and is still being processed.",reconciliation_required:true});
+        await admin.from("transactions").update({status:"pending",metadata:{provider:"bilalsadasub",service:"gift_card_purchase",plan_id:planId,provider_amount:providerAmount,provider_response:{status:raw?.status??null,transid:raw?.transid??null},reconciliation_required:true}}).eq("user_id",user.id).eq("reference_number",ref);
+        return json({success:true,status:"pending",reference:ref,message:"Your payment is being verified. Please wait while we confirm the provider result."});
       }
-      await admin.from("transactions").update({status:"success",provider:"bilalsadasub",provider_reference:s(raw?.transid)||ref,metadata:{...metadata,provider_amount:providerAmount}}).eq("user_id",user.id).eq("reference_number",ref);
+      await admin.from("transactions").update({status:"success",provider:"bilalsadasub",provider_reference:s(raw?.transid),metadata:{provider:"bilalsadasub",service:"gift_card_purchase",plan_id:planId,provider_amount:providerAmount}}).eq("user_id",user.id).eq("reference_number",ref);
       return json({success:true,status:"success",reference:ref,provider_reference:raw?.transid??null,voucher_pin:raw?.pin??raw?.voucher_pin??null,selling_price:selling});
     }
 
@@ -81,10 +69,5 @@ Deno.serve(async req=>{
       const raw=await getJson<any>("/api/giftcard-exchange/history");const history=Array.isArray(raw)?raw:(raw?.data??raw?.history??[]);await creditPaidExchanges(admin,user.id,history);return json({success:true,history});
     }
     throw new Error("Unsupported gift card action.");
-  }catch(error){
-    console.error("Bilalsadasub gift card error",{action,user_id:user.id,error});
-    const status=Number((error as any)?.status ?? 0);
-    const message=[401,402,429].includes(status) ? "Gift card service is temporarily unavailable." : (error instanceof Error ? error.message : "Unable to complete gift card request.");
-    return json({success:false,error:message},400);
-  }
+  }catch(error){console.error("Bilalsadasub gift card error",{action,user_id:user.id,error});return json({success:false,error:"Unable to complete the gift card request right now."},400)}
 });

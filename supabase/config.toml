@@ -36,4 +36,3 @@ verify_jwt = false
 
 [functions.bilalsadasub-webhook]
 verify_jwt = false
-

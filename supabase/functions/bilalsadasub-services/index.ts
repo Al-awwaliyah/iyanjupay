@@ -6,6 +6,7 @@ import {
   postJson,
   providerFailed,
   providerSuccessful,
+  safeProviderMessage,
   sellingPrice,
   bilalToken,
 } from "../_shared/bilalsadasub.ts";
@@ -14,7 +15,6 @@ type Obj = Record<string, any>;
 const s = (v: unknown) => String(v ?? "").trim();
 const n = (v: unknown) => Number.isFinite(Number(v)) ? Number(v) : 0;
 const first = (...v: unknown[]) => v.find(x => x !== undefined && x !== null && s(x) !== "");
-
 
 function reference() { return `IP_BILAL_${crypto.randomUUID().replaceAll("-", "")}`; }
 function requestId(ref: string) { return ref; }
@@ -35,6 +35,57 @@ async function refund(admin: any, userId: string, amount: number, ref: string, m
   });
 }
 
+async function providerNetworks() {
+  const raw = await getJson<any>("/api/v1/plans/networks");
+  const rows = Array.isArray(raw) ? raw : (raw?.data ?? raw?.networks ?? []);
+  return rows
+    .map((x: any) => {
+      const providerId = first(x.id, x.network_id, x.code, x.network_code, x.value);
+      const name = s(first(x.name, x.network, x.network_name, x.label));
+      if (providerId === undefined || providerId === null || !name) return null;
+      return {
+        code: String(providerId),
+        id: String(providerId),
+        value: String(providerId),
+        name,
+        label: name,
+        network_code: String(providerId),
+        networkCode: String(providerId),
+        network_name: name,
+        networkName: name,
+        raw: x,
+      };
+    })
+    .filter(Boolean);
+}
+
+async function resolveNetworkId(value: unknown): Promise<number|null> {
+  const requested=s(value).toLowerCase();
+  if(!requested) return null;
+  const rows=await providerNetworks();
+  const found=rows.find((x:any)=>{
+    const id=s(x.id).toLowerCase();
+    const name=s(x.name).toLowerCase();
+    return requested===id || requested===name;
+  });
+  const id=n(found?.id);
+  return id>0?id:null;
+}
+
+function selectedNetwork(body: Obj): { id: string; name: string } {
+  const selected = body.biller ?? body.network_biller ?? body.selected_biller ?? body.item ?? {};
+  const id = s(first(
+    body.network_code, body.networkCode, body.network_id, body.networkId,
+    selected.network_code, selected.networkCode, selected.network_id, selected.networkId,
+    body.biller_code, body.billerCode
+  ));
+  const name = s(first(
+    body.network_name, body.networkName, body.network,
+    selected.network_name, selected.networkName, selected.network, selected.name
+  ));
+  return { id, name };
+}
+
 function publicDataPlan(x: any, network: string) {
   const period = normalizePeriod(first(x.period, x.validity, x.duration, x.validity_days));
   const planType = s(first(x.plan_type, x.planType, x.type));
@@ -44,6 +95,7 @@ function publicDataPlan(x: any, network: string) {
     name: s(first(x.name, x.plan_name, x.plan, x.description)),
     label: s(first(x.name, x.plan_name, x.plan, x.description)),
     network_name: network,
+    networkCode: network,
     providerPrice,
     price: sellingPrice(providerPrice),
     period,
@@ -56,32 +108,21 @@ function publicDataPlan(x: any, network: string) {
 }
 
 async function catalog(service: string, body: Obj) {
-  if (service === "airtime") {
-    const raw = await getJson<any>("/api/v1/plans/networks");
-    const rows = Array.isArray(raw) ? raw : (raw?.data ?? raw?.networks ?? []);
-    const billers = rows.map((x:any) => ({
-      code: String(first(x.id, x.network_id, x.code, x.network_code, x.name, x.network)),
-      id: String(first(x.id, x.network_id, x.code, x.network_code, x.name, x.network)),
-      name: s(first(x.name, x.network, x.network_name, x.title)),
-      label: s(first(x.name, x.network, x.network_name, x.title)),
-      network_code: first(x.id, x.network_id, x.code, x.network_code),
-      network_name: s(first(x.name, x.network, x.network_name, x.title)),
-      raw: x,
-    })).filter((x:any) => x.name && x.code);
-    return { success: true, service, billers, items: [], amount_based: true };
-  }
-  if (service === "data") {
-    const networkName = s(first(body.network_name, body.networkName, body.network_label, body.network));
-    if (!networkName) throw new Error("Please select a network.");
+  if (service === "airtime" || service === "data") {
+    const billers = await providerNetworks();
+    if (service === "airtime") return { success: true, service, billers, items: [], amount_based: true };
+
+    const { id, name } = selectedNetwork(body);
+    if (!id || !name) throw new Error("Please select a network.");
     const [giftingRaw, smeRaw, cooperateRaw] = await Promise.all([
-      getJson<any>(`/api/v1/plans/data?network=${encodeURIComponent(networkName)}&plan_type=GIFTING`),
-      getJson<any>(`/api/v1/plans/data?network=${encodeURIComponent(networkName)}&plan_type=SME`).catch(() => null),
-      getJson<any>(`/api/v1/plans/data?network=${encodeURIComponent(networkName)}&plan_type=COOPERATE%20GIFTING`).catch(() => null),
+      getJson<any>(`/api/v1/plans/data?network=${encodeURIComponent(name)}&plan_type=GIFTING`),
+      getJson<any>(`/api/v1/plans/data?network=${encodeURIComponent(name)}&plan_type=SME`),
+      getJson<any>(`/api/v1/plans/data?network=${encodeURIComponent(name)}&plan_type=COOPERATE%20GIFTING`).catch(() => null),
     ]);
     const rows = [giftingRaw, smeRaw, cooperateRaw].flatMap((raw:any) => Array.isArray(raw) ? raw : (raw?.data ?? raw?.plans ?? []));
     const seen = new Set<string>();
-    const items = rows.map((x:any)=>publicDataPlan(x,networkName)).filter((x:any)=>{ if(!x.id || seen.has(x.id)) return false; seen.add(x.id); return true; });
-    return { success:true, service, billers:[{code: networkName, id: networkName, name: networkName, label: networkName, network_name: networkName}], items, plans:items, packages:items };
+    const items = rows.map((x:any)=>publicDataPlan(x,name)).filter((x:any)=>{ if(seen.has(x.id)) return false; seen.add(x.id); return true; });
+    return { success:true, service, billers:[{code:id,id,name,label:name}], items, plans:items, packages:items };
   }
   if (service === "cable") {
     const code = s(first(body.biller_code, body.cable_tv, body.cable));
@@ -120,31 +161,9 @@ async function catalog(service: string, body: Obj) {
     return {success:true,service,billers:[{code:type,id:type,name:type === "alpha" ? "Alpha" : "Smile",label:type === "alpha" ? "Alpha" : "Smile"}],items,plans:items,packages:items};
   }
   if (service === "airtime-card" || service === "data-card" || service === "recharge-card") {
-    throw new Error("This card catalogue is not exposed by the supplied Bilalsadasub API documentation.");
+    throw new Error("This card service has no documented dynamic catalogue endpoint in the supplied provider API specification.");
   }
   throw new Error("This service is not available through Bilalsadasub.");
-}
-
-async function billers(service: string) {
-  if (service === "airtime" || service === "data") {
-    const raw = await getJson<any>("/api/v1/plans/networks");
-    const rows = Array.isArray(raw) ? raw : (raw?.data ?? raw?.networks ?? []);
-    const result = rows.map((x:any) => {
-      const code = first(x.id, x.network_id, x.code, x.network_code);
-      const name = s(first(x.name, x.network, x.network_name, x.title));
-      return {
-        code: String(first(code, name)),
-        id: String(first(code, name)),
-        name,
-        label: name,
-        network_code: code ?? name,
-        network_name: name,
-        raw: x,
-      };
-    }).filter((x:any) => x.name && x.code);
-    return { success:true, service, billers:result, networks:result, items:[] };
-  }
-  return catalog(service, {});
 }
 
 async function verify(service:string, body:Obj) {
@@ -177,12 +196,13 @@ async function verify(service:string, body:Obj) {
   throw new Error("Verification is not required for this service.");
 }
 
-async function providerPlanPrice(service:string, details:Obj, selectedId:number, networkNameValue:string | null): Promise<number> {
+async function providerPlanPrice(service:string, details:Obj, selectedId:number, network:number|null): Promise<number> {
   if (service === "data") {
+    const networkNameValue = s(first(details.network_name, details.networkName, details.network, details.biller?.network_name, details.biller?.networkName, details.biller?.name));
     if (!networkNameValue) throw new Error("Network is required.");
     const [a,b,c] = await Promise.all([
       getJson<any>(`/api/v1/plans/data?network=${encodeURIComponent(networkNameValue)}&plan_type=GIFTING`),
-      getJson<any>(`/api/v1/plans/data?network=${encodeURIComponent(networkNameValue)}&plan_type=SME`).catch(()=>null),
+      getJson<any>(`/api/v1/plans/data?network=${encodeURIComponent(networkNameValue)}&plan_type=SME`),
       getJson<any>(`/api/v1/plans/data?network=${encodeURIComponent(networkNameValue)}&plan_type=COOPERATE%20GIFTING`).catch(()=>null),
     ]);
     const rows=[a,b,c].flatMap((raw:any)=>Array.isArray(raw)?raw:(raw?.data??raw?.plans??[]));
@@ -190,9 +210,9 @@ async function providerPlanPrice(service:string, details:Obj, selectedId:number,
     return n(first(found?.amount,found?.price,found?.charge_amount,found?.cost));
   }
   if (service === "cable") {
-    const cable=n(first(details.biller_code,details.cable_tv,details.cable));
-    const names:Record<number,string>={1:"GOTV",2:"DSTV",3:"STARTIME"};
-    const raw=await getJson<any>(`/api/v1/plans/cable?cable=${encodeURIComponent(names[cable]??String(cable))}`);
+    const cable=s(first(details.provider_name,details.providerName,details.biller?.name,details.cable_name,details.cable_tv,details.cable));
+    if (!cable) throw new Error("Cable provider is required.");
+    const raw=await getJson<any>(`/api/v1/plans/cable?cable=${encodeURIComponent(cable)}`);
     const rows=Array.isArray(raw)?raw:(raw?.data??raw?.plans??[]);
     const found=rows.find((x:any)=>n(first(x.id,x.plan_id,x.code))===selectedId);
     return n(first(found?.amount,found?.price,found?.charge_amount,found?.cost));
@@ -219,8 +239,8 @@ async function purchase(admin:any,user:any,body:Obj) {
   const ref=s(body.idempotency_key ?? body.idempotencyKey) || reference();
   const customer=s(first(details.customer,details.phone,details.mobile_number,details.phone_no,details.account_id));
   const selected=details.item ?? {};
-  const network = Number(first(details.network_code, details.biller_code, selected.network_id, selected.network_code));
-  const networkNameValue = s(first(details.network_name, details.networkName, selected.network_name, selected.networkName, details.network_label, selected.name));
+  const networkValue=s(first(details.network_code,details.networkCode,details.network_id,details.networkId,details.biller?.network_code,details.biller?.networkCode,details.biller_code,details.network));
+  const network=await resolveNetworkId(networkValue);
   let providerAmount=0;
   let sellingAmount=n(body.amount ?? details.amount ?? details.selling_amount);
   let providerBody:Obj;
@@ -237,7 +257,7 @@ async function purchase(admin:any,user:any,body:Obj) {
   } else if (service === "data") {
     if (!network || !customer) throw new Error("Network, phone number and data plan are required.");
     const planId=n(first(details.item_code,details.plan_code,selected.id,selected.code));
-    providerAmount=await providerPlanPrice("data",details,planId,networkNameValue);
+    providerAmount=await providerPlanPrice("data",details,planId,network);
     if (!planId || !providerAmount) throw new Error("The selected data plan is unavailable.");
     providerPath="/api/data";
     providerBody={network,phone:customer,data_plan:planId,bypass:false,"request-id":requestId(ref)};
@@ -283,7 +303,7 @@ async function purchase(admin:any,user:any,body:Obj) {
     if (details.provider_pin) providerBody.pin=s(details.provider_pin);
     if (type === "smile" && details.account_type) providerBody.account_type=s(details.account_type);
   } else if (service === "data-card" || service === "airtime-card" || service === "recharge-card") {
-    throw new Error("This card service cannot be purchased until Bilalsadasub exposes its live plan catalogue.");
+    throw new Error("This card service has no documented dynamic catalogue endpoint in the supplied provider API specification.");
   } else throw new Error("This service is not available through Bilalsadasub.");
 
   // Never trust a customer-supplied selling amount. Recalculate it server-side.
@@ -312,17 +332,25 @@ async function purchase(admin:any,user:any,body:Obj) {
     provider=await postJson<any>(providerPath,providerBody);
   } catch (error) {
     console.error("Bilalsadasub purchase transport failure",{service,ref,error});
-    await updateTransaction(admin,user.id,ref,{status:"pending",metadata:{...metadata,provider_unreachable:true}});
-    throw new Error("Your request is being processed. Please check your transaction history shortly.");
+    await updateTransaction(admin,user.id,ref,{
+      status:"pending",
+      metadata:{...metadata,reconciliation_required:true,pending_reason:"provider_transport_failure",pending_since:new Date().toISOString()}
+    });
+    return {success:true,status:"pending",reference:ref,transaction_reference:ref,transaction_id:txId,message:"Your payment is being verified. Please wait while we confirm the provider result."};
   }
 
   const failed=providerFailed(provider);
   const success=providerSuccessful(provider);
   const safe={status:provider?.status ?? null,message:provider?.message ?? null,transid:provider?.transid ?? null,request_id:provider?.["request-id"] ?? provider?.request_id ?? null};
-  if (failed || !success) {
+  if (failed) {
     const refundResult=await refund(admin,user.id,sellingAmount,ref,{...metadata,provider_response:safe});
     await updateTransaction(admin,user.id,ref,{status:"failed",provider:"bilalsadasub",provider_reference:provider?.transid ?? ref,metadata:{...metadata,provider_response:safe,refunded:!refundResult.error}});
-    throw new Error("Purchase failed. Your wallet has been refunded.");
+    throw new Error("Purchase failed.");
+  }
+
+  if (!success) {
+    await updateTransaction(admin,user.id,ref,{status:"pending",provider:"bilalsadasub",provider_reference:provider?.transid ?? ref,metadata:{...metadata,provider_response:safe,reconciliation_required:true,pending_reason:"provider_status_uncertain"}});
+    return {success:true,status:"pending",reference:ref,transaction_reference:ref,transaction_id:txId,message:"Your payment is being verified. Please wait while we confirm the provider result."};
   }
 
   await updateTransaction(admin,user.id,ref,{status:"success",provider:"bilalsadasub",provider_reference:provider?.transid ?? ref,metadata:{...metadata,provider_response:safe,provider_amount:providerAmount}});
@@ -339,13 +367,20 @@ Deno.serve(async (req) => {
   try { body=await req.json(); } catch { return json({success:false,error:"Invalid request body."},400); }
   const action=s(body.action).toLowerCase();
   try {
-    if (action === "billers") return json(await billers(s(body.service).toLowerCase()));
+    if (action === "billers") {
+      const service = s(body.service).toLowerCase();
+      if (service === "airtime" || service === "data") {
+        const billers = await providerNetworks();
+        return json({success:true,service,billers,items:[],amount_based:service === "airtime"});
+      }
+      return json(await catalog(service,body));
+    }
     if (action === "catalog" || action === "get_catalog") return json(await catalog(s(body.service).toLowerCase(),body));
     if (action === "verify_customer" || action === "verify") return json(await verify(s(body.service).toLowerCase(),body));
     if (action === "purchase") return json(await purchase(admin,user,body));
     return json({success:false,error:"Unsupported service request."},400);
   } catch (error) {
     console.error("Bilalsadasub service error",{action,service:body.service,user_id:user.id,error});
-    return json({success:false,error:error instanceof Error && !String(error.message).startsWith("Bilalsadasub") ? error.message : publicError()},400);
+    return json({success:false,error:publicError()},400);
   }
 });

@@ -761,8 +761,6 @@ function filterElectricityDiscos(live: Biller[]): Biller[] {
     });
   }
 
-
-
   return result;
 }
 function isPlaceholderBiller(
@@ -807,129 +805,34 @@ function canonicalInternetProvider(biller: Biller): string {
 function filterNetworkProviders(service: string, live: Biller[]): Biller[] {
   const result: Biller[] = [];
   const seen = new Set<string>();
-
   for (const biller of live) {
     if (isPlaceholderBiller(biller)) continue;
     const code = getCode(biller);
-    const rawName = getName(biller);
-    const name = service === "internet" ? canonicalInternetProvider(biller) : (canonicalNetworkName(rawName, code) || rawName);
-    if (!name || !code) continue;
-    const key = code.toLowerCase();
-    if (seen.has(key)) continue;
+    const name = clean(getName(biller) || biller.display_name || code);
+    const key = (code || name).toLowerCase();
+    if (!key || seen.has(key)) continue;
     seen.add(key);
     result.push({ ...biller, display_name: name });
   }
   return result;
 }
 
-function mergeBillers(
-  service: string,
-  live: Biller[]
-): Biller[] {
-  const cleaned = live.filter(
-    (b) => !isPlaceholderBiller(b)
-  );
-
-  if (service === "electricity") {
-    return filterElectricityDiscos(cleaned);
-  }
-
+function mergeBillers(service: string, live: Biller[]): Biller[] {
+  const cleaned = live.filter((b) => !isPlaceholderBiller(b));
+  if (service === "electricity") return filterElectricityDiscos(cleaned);
   if (service === "data" || service === "airtime" || service === "internet") {
-    const filtered = filterNetworkProviders(service, cleaned);
-    if (filtered.length) return filtered;
-
+    return filterNetworkProviders(service, cleaned);
   }
-
   const result: Biller[] = [];
   const seen = new Set<string>();
-
-  const canonicalName = (
-    biller: Biller
-  ): string => {
-    const raw =
-      `${getName(biller)} ${getCode(
-        biller
-      )}`.toLowerCase();
-
-    if (
-      raw.includes("mtn") ||
-      /\b01\b/.test(raw)
-    ) {
-      return "mtn";
-    }
-
-    if (
-      raw.includes("glo") ||
-      /\b02\b/.test(raw)
-    ) {
-      return "glo";
-    }
-
-    if (
-      raw.includes("9mobile") ||
-      raw.includes("etisalat") ||
-      /\b03\b/.test(raw)
-    ) {
-      return "9mobile";
-    }
-
-    if (
-      raw.includes("airtel") ||
-      /\b04\b/.test(raw)
-    ) {
-      return "airtel";
-    }
-
-    if (raw.includes("dstv")) return "dstv";
-    if (raw.includes("gotv")) return "gotv";
-
-    if (
-      raw.includes("startime") ||
-      raw.includes("startimes")
-    ) {
-      return "startimes";
-    }
-
-
-    return "";
-  };
-
-  const add = (biller: Biller) => {
+  for (const biller of cleaned) {
     const code = getCode(biller);
-    const name = getName(biller);
-    const canonical = canonicalName(biller);
-
-    const isNetworkService =
-      service === "airtime" ||
-      service === "data" ||
-      service === "airtime-card" ||
-      service === "data-card";
-
-    const displayName = isNetworkService
-      ? canonicalNetworkName(name, code)
-      : canonical === "dstv"
-        ? "DStv"
-        : canonical === "gotv"
-          ? "GOtv"
-          : canonical === "startimes"
-            ? "Startimes"
-            : name;
-
-    const key = isNetworkService
-      ? displayName.toLowerCase() || code.toLowerCase()
-      : canonical || code.toLowerCase() || name.toLowerCase();
-
-    if (!key || seen.has(key)) return;
-
+    const name = clean(getName(biller) || biller.display_name || code);
+    const key = (code || name).toLowerCase();
+    if (!key || seen.has(key)) continue;
     seen.add(key);
-    result.push({
-      ...biller,
-      display_name: displayName || name || code,
-    });
-  };
-
-  cleaned.forEach(add);
-
+    result.push({ ...biller, display_name: name });
+  }
   return result;
 }
 
@@ -1554,6 +1457,9 @@ export default function ServicePayment({
   const isAirtimeCard =
     serviceType === "airtime-card";
 
+  const isRechargeCard =
+    serviceType === "recharge-card";
+
   const isPhoneService =
     isAirtime ||
     isData ||
@@ -1802,7 +1708,6 @@ export default function ServicePayment({
           );
         }
 
-
         setBillers(merged);
 
         if (
@@ -1835,6 +1740,7 @@ export default function ServicePayment({
       isAmountOnly,
       serviceType,
       isAirtimeCard,
+      isRechargeCard,
       toast,
     ]);
 
@@ -1865,14 +1771,6 @@ export default function ServicePayment({
             action: "catalog",
             service: backendServiceType(billerCode, billerForCode),
             biller_code: billerCode,
-            ...(isData || isAirtime
-              ? {
-                  network_name:
-                    billerForCode?.network_name ??
-                    billerForCode?.networkName ??
-                    getName(billerForCode),
-                }
-              : {}),
             ...(isCable
               ? { provider_name: getName(billerForCode) }
               : {}),
@@ -2429,14 +2327,6 @@ export default function ServicePayment({
       network:
         isAirtime || isData
           ? selectedBiller?.network_name ?? selectedBiller?.name ?? selectedBillerCode
-          : "",
-      network_name:
-        isAirtime || isData
-          ? selectedBiller?.network_name ?? selectedBiller?.name ?? selectedBillerCode
-          : "",
-      network_code:
-        isAirtime || isData
-          ? selectedBiller?.network_code ?? selectedBiller?.network_id ?? selectedBillerCode
           : "",
       mobile_number:
         isAirtime || isData

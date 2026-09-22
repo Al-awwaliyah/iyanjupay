@@ -920,29 +920,48 @@ Deno.serve(async (req) => {
 
         delivered += 1;
       } catch (error) {
-        failedAttempts += 1;
+  failedAttempts += 1;
 
-        const statusCode =
-          (
-            error as {
-              statusCode?: number;
-            }
-          )?.statusCode;
+  const pushError = error as {
+    statusCode?: number;
+    body?: unknown;
+  };
 
-        if (
-          statusCode === 404 ||
-          statusCode === 410
-        ) {
-          staleIds.push(
-            subscription.id,
-          );
-        }
+  const statusCode = pushError.statusCode;
 
-        console.error(
-          "Web Push delivery failed:",
-          statusCode,
-        );
-      }
+  if (
+    statusCode === 404 ||
+    statusCode === 410
+  ) {
+    staleIds.push(
+      subscription.id,
+    );
+  }
+
+  // Diagnostic logging only.
+  // Never log the VAPID private key or subscription credentials.
+  let providerReason = "";
+
+  if (typeof pushError.body === "string") {
+    providerReason = pushError.body.slice(0, 500);
+  } else if (pushError.body !== undefined) {
+    try {
+      providerReason = JSON.stringify(
+        pushError.body,
+      ).slice(0, 500);
+    } catch {
+      providerReason = "";
+    }
+  }
+
+  console.error(
+    "Web Push delivery failed:",
+    {
+      statusCode,
+      providerReason,
+    },
+  );
+}
     }
   }
 

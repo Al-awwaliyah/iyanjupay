@@ -5,6 +5,10 @@ const db = supabase as any;
 
 const NATIVE_PUSH_TOKEN_KEY = "iyanjupay-native-push-token";
 const PUSH_ENABLED_KEY = "iyanjupay-push-enabled";
+const WEB_PUSH_VAPID_KEY_MARKER =
+  "iyanjupay-web-push-vapid-key";
+const WEB_PUSH_MIGRATION_KEY =
+  "iyanjupay-web-push-vapid-migration-v1";
 const ANDROID_CHANNEL_ID = "iyanjupay-default";
 
 let nativeRegistrationInProgress = false;
@@ -27,6 +31,22 @@ function urlBase64ToUint8Array(
       char.charCodeAt(0),
     ),
   );
+}
+
+/**
+ * Returns the current frontend VAPID public key.
+ *
+ * This value is public and is safe to use in the browser.
+ */
+function getWebPushVapidPublicKey():
+  | string
+  | null {
+  const key =
+    import.meta.env.VITE_VAPID_PUBLIC_KEY as
+      | string
+      | undefined;
+
+  return key?.trim() || null;
 }
 
 /**
@@ -86,6 +106,53 @@ function removeStoredNativeToken(): void {
   }
 }
 
+function getStoredWebPushVapidKey():
+  | string
+  | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  return window.localStorage.getItem(
+    WEB_PUSH_VAPID_KEY_MARKER,
+  );
+}
+
+function storeWebPushVapidKey(
+  key: string,
+): void {
+  if (
+    typeof window !== "undefined" &&
+    key
+  ) {
+    window.localStorage.setItem(
+      WEB_PUSH_VAPID_KEY_MARKER,
+      key,
+    );
+  }
+}
+
+function getWebPushMigrationVersion():
+  | string
+  | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  return window.localStorage.getItem(
+    WEB_PUSH_MIGRATION_KEY,
+  );
+}
+
+function markWebPushMigrationComplete(): void {
+  if (typeof window !== "undefined") {
+    window.localStorage.setItem(
+      WEB_PUSH_MIGRATION_KEY,
+      "v1",
+    );
+  }
+}
+
 /**
  * Returns whether browser Web Push is available.
  */
@@ -99,10 +166,117 @@ export function isWebPushSupported(): boolean {
 }
 
 /**
+ * Removes a Web Push subscription from Supabase.
+ *
+ * This is intentionally endpoint-based because endpoint is
+ * the unique identifier used by the existing schema.
+ */
+async function removeWebSubscriptionFromDatabase(
+  endpoint: string,
+): Promise<void> {
+  if (!endpoint) {
+    return;
+  }
+
+  try {
+    await db
+      .from("user_push_subscriptions")
+      .delete()
+      .eq("endpoint", endpoint);
+  } catch (error) {
+    console.warn(
+      "Unable to remove old Web Push subscription.",
+      error,
+    );
+  }
+}
+
+/**
+ * Creates a fresh browser Web Push subscription using
+ * the current frontend VAPID public key.
+ */
+async function createFreshWebPushSubscription(
+  registration: ServiceWorkerRegistration,
+  vapidKey: string,
+): Promise<PushSubscription | null> {
+  try {
+    return await registration.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey:
+        urlBase64ToUint8Array(vapidKey),
+    });
+  } catch (error) {
+    console.warn(
+      "Unable to create a fresh Web Push subscription.",
+      error,
+    );
+
+    return null;
+  }
+}
+
+/**
+ * Replaces an existing browser subscription.
+ *
+ * This is used when:
+ * - the VAPID public key changed;
+ * - the subscription was created before the
+ *   current Web Push configuration;
+ * - an existing subscription must be migrated.
+ */
+async function replaceWebPushSubscription(
+  registration: ServiceWorkerRegistration,
+  currentVapidKey: string,
+  existingSubscription?: PushSubscription | null,
+): Promise<PushSubscription | null> {
+  let oldEndpoint: string | null = null;
+
+  try {
+    const subscription =
+      existingSubscription ??
+      (await registration.pushManager.getSubscription());
+
+    if (subscription) {
+      oldEndpoint =
+        subscription.endpoint;
+
+      try {
+        await subscription.unsubscribe();
+      } catch (error) {
+        console.warn(
+          "Unable to unsubscribe old Web Push subscription.",
+          error,
+        );
+      }
+    }
+  } catch (error) {
+    console.warn(
+      "Unable to inspect old Web Push subscription.",
+      error,
+    );
+  }
+
+  if (oldEndpoint) {
+    await removeWebSubscriptionFromDatabase(
+      oldEndpoint,
+    );
+  }
+
+  return createFreshWebPushSubscription(
+    registration,
+    currentVapidKey,
+  );
+}
+
+/**
  * Synchronizes an existing browser Web Push subscription
  * with Supabase.
  *
  * This function never requests permission.
+ *
+ * IMPORTANT:
+ * It also performs the one-time migration of existing
+ * subscriptions created before the current VAPID key.
  */
 async function upsertWebSubscription(): Promise<boolean> {
   try {
@@ -110,20 +284,14 @@ async function upsertWebSubscription(): Promise<boolean> {
       return false;
     }
 
-    const registration =
-      await navigator.serviceWorker.ready;
+    const vapidKey =
+      getWebPushVapidPublicKey();
 
-    const subscription =
-      await registration.pushManager.getSubscription();
+    if (!vapidKey) {
+      console.warn(
+        "VITE_VAPID_PUBLIC_KEY is not configured.",
+      );
 
-    if (!subscription) {
-      return false;
-    }
-
-    const json =
-      subscription.toJSON();
-
-    if (!json.endpoint) {
       return false;
     }
 
@@ -132,6 +300,62 @@ async function upsertWebSubscription(): Promise<boolean> {
         .data.user;
 
     if (!user) {
+      return false;
+    }
+
+    const registration =
+      await navigator.serviceWorker.ready;
+
+    let subscription =
+      await registration.pushManager.getSubscription();
+
+    if (!subscription) {
+      return false;
+    }
+
+    /**
+     * Existing users may have a browser subscription that
+     * was created with the previous VAPID key.
+     *
+     * Since PushSubscription does not expose the original
+     * applicationServerKey, use a local migration marker.
+     *
+     * If the marker is missing, migrate the existing
+     * subscription once.
+     */
+    const storedVapidKey =
+      getStoredWebPushVapidKey();
+
+    const migrationComplete =
+      getWebPushMigrationVersion() ===
+      "v1";
+
+    if (
+      !migrationComplete ||
+      !storedVapidKey ||
+      storedVapidKey !== vapidKey
+    ) {
+      const oldSubscription =
+        subscription;
+
+      subscription =
+        await replaceWebPushSubscription(
+          registration,
+          vapidKey,
+          oldSubscription,
+        );
+
+      if (!subscription) {
+        return false;
+      }
+
+      markWebPushMigrationComplete();
+    }
+
+    const json =
+      subscription.toJSON();
+
+    if (!json.endpoint) {
       return false;
     }
 
@@ -164,6 +388,10 @@ async function upsertWebSubscription(): Promise<boolean> {
 
       return false;
     }
+
+    storeWebPushVapidKey(
+      vapidKey,
+    );
 
     return true;
   } catch (error) {
@@ -204,9 +432,7 @@ export async function requestWebPushPermission() {
     }
 
     const vapidKey =
-      import.meta.env.VITE_VAPID_PUBLIC_KEY as
-        | string
-        | undefined;
+      getWebPushVapidPublicKey();
 
     if (!vapidKey) {
       markPushEnabled(false);
@@ -215,36 +441,6 @@ export async function requestWebPushPermission() {
         enabled: false,
         reason:
           "missing_vapid_key" as const,
-      };
-    }
-
-    const registration =
-      await navigator.serviceWorker.ready;
-
-    let subscription =
-      await registration.pushManager.getSubscription();
-
-    if (!subscription) {
-      subscription =
-        await registration.pushManager.subscribe({
-          userVisibleOnly: true,
-          applicationServerKey:
-            urlBase64ToUint8Array(
-              vapidKey,
-            ),
-        });
-    }
-
-    const json =
-      subscription.toJSON();
-
-    if (!json.endpoint) {
-      markPushEnabled(false);
-
-      return {
-        enabled: false,
-        reason:
-          "registration_failed" as const,
       };
     }
 
@@ -259,6 +455,90 @@ export async function requestWebPushPermission() {
         enabled: false,
         reason:
           "not_signed_in" as const,
+      };
+    }
+
+    const registration =
+      await navigator.serviceWorker.ready;
+
+    let subscription =
+      await registration.pushManager.getSubscription();
+
+    /**
+     * Existing browser subscriptions are reused only
+     * when they have already been migrated to the
+     * current VAPID configuration.
+     */
+    const storedVapidKey =
+      getStoredWebPushVapidKey();
+
+    const migrationComplete =
+      getWebPushMigrationVersion() ===
+      "v1";
+
+    if (
+      subscription &&
+      (
+        !migrationComplete ||
+        !storedVapidKey ||
+        storedVapidKey !== vapidKey
+      )
+    ) {
+      subscription =
+        await replaceWebPushSubscription(
+          registration,
+          vapidKey,
+          subscription,
+        );
+
+      if (!subscription) {
+        markPushEnabled(false);
+
+        return {
+          enabled: false,
+          reason:
+            "registration_failed" as const,
+        };
+      }
+
+      markWebPushMigrationComplete();
+    }
+
+    /**
+     * No existing subscription.
+     *
+     * Create a new one using the current VAPID public key.
+     */
+    if (!subscription) {
+      subscription =
+        await createFreshWebPushSubscription(
+          registration,
+          vapidKey,
+        );
+
+      if (!subscription) {
+        markPushEnabled(false);
+
+        return {
+          enabled: false,
+          reason:
+            "registration_failed" as const,
+        };
+      }
+
+      markWebPushMigrationComplete();
+    }
+
+    const json =
+      subscription.toJSON();
+
+    if (!json.endpoint) {
+      markPushEnabled(false);
+
+      return {
+        enabled: false,
+        reason:
+          "registration_failed" as const,
       };
     }
 
@@ -297,6 +577,10 @@ export async function requestWebPushPermission() {
           "registration_failed" as const,
       };
     }
+
+    storeWebPushVapidKey(
+      vapidKey,
+    );
 
     markPushEnabled(true);
 
@@ -342,6 +626,16 @@ export async function syncWebPushSubscription(): Promise<boolean> {
 export async function disableWebPush(): Promise<void> {
   if (!isWebPushSupported()) {
     markPushEnabled(false);
+
+    if (typeof window !== "undefined") {
+      window.localStorage.removeItem(
+        WEB_PUSH_VAPID_KEY_MARKER,
+      );
+      window.localStorage.removeItem(
+        WEB_PUSH_MIGRATION_KEY,
+      );
+    }
+
     return;
   }
 
@@ -365,13 +659,9 @@ export async function disableWebPush(): Promise<void> {
         );
       }
 
-      await db
-        .from("user_push_subscriptions")
-        .delete()
-        .eq(
-          "endpoint",
-          endpoint,
-        );
+      await removeWebSubscriptionFromDatabase(
+        endpoint,
+      );
     }
   } catch (error) {
     console.warn(
@@ -380,6 +670,15 @@ export async function disableWebPush(): Promise<void> {
     );
   } finally {
     markPushEnabled(false);
+
+    if (typeof window !== "undefined") {
+      window.localStorage.removeItem(
+        WEB_PUSH_VAPID_KEY_MARKER,
+      );
+      window.localStorage.removeItem(
+        WEB_PUSH_MIGRATION_KEY,
+      );
+    }
   }
 }
 
@@ -727,13 +1026,6 @@ export async function registerNativePush() {
 
     /**
      * Remove previous listeners before rebuilding them.
-     *
-     * This protects against:
-     * - authentication restoration
-     * - SIGNED_IN events
-     * - application startup
-     * - repeated push restoration
-     * - development hot reload
      */
     try {
       await PushNotifications.removeAllListeners();
@@ -757,9 +1049,6 @@ export async function registerNativePush() {
      * If we already have a native token stored locally,
      * synchronize it immediately with the currently
      * authenticated user.
-     *
-     * This is especially important after authentication
-     * restoration.
      */
     const storedToken =
       getStoredNativeToken();
@@ -777,10 +1066,6 @@ export async function registerNativePush() {
 
     /**
      * FCM/APNs token registration.
-     *
-     * Push is not considered fully enabled until the
-     * received token has successfully synchronized
-     * with Supabase.
      */
     let tokenSynchronized = false;
 
@@ -913,9 +1198,6 @@ export async function registerNativePush() {
      *
      * The registration callback is responsible for setting
      * PUSH_ENABLED_KEY after successful token synchronization.
-     *
-     * If an existing stored token was already synchronized,
-     * retain the enabled state.
      */
     if (
       !tokenSynchronized &&
@@ -1173,7 +1455,6 @@ export async function restorePushRegistration(): Promise<void> {
     );
   }
 }
-
 
 export async function enablePushNotifications() {
   if (

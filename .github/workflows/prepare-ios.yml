@@ -1,4 +1,4 @@
-name: Prepare IyanjuPay iOS Project
+name: Build IyanjuPay iOS Simulator App
 
 on:
   workflow_dispatch:
@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 jobs:
-  prepare-ios:
+  build-ios-simulator:
     runs-on: macos-latest
 
     env:
@@ -20,47 +20,68 @@ jobs:
       VITE_VAPID_PUBLIC_KEY: ${{ secrets.VITE_VAPID_PUBLIC_KEY }}
 
     steps:
+      # ------------------------------------------------------------
+      # Checkout
+      # ------------------------------------------------------------
       - name: Checkout
         uses: actions/checkout@v4
 
+      # ------------------------------------------------------------
+      # Node.js
+      # ------------------------------------------------------------
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
 
+      # ------------------------------------------------------------
+      # Bun
+      # ------------------------------------------------------------
       - name: Install Bun
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: '1.3.14'
 
+      # ------------------------------------------------------------
+      # Install dependencies
+      # ------------------------------------------------------------
       - name: Install dependencies
         run: bun install
 
+      # ------------------------------------------------------------
+      # Build web application
+      # ------------------------------------------------------------
       - name: Build web app
         run: bun run build
 
       # ------------------------------------------------------------
       # Generate iOS project
-      #
-      # We decouple the initial validation checklist and ignore the 
-      # default pod install step so we can inject higher deployment 
-      # targets safely beforehand.
       # ------------------------------------------------------------
       - name: Generate iOS project
         shell: bash
         run: |
           set +e
+
           bunx cap add ios
+
           CAP_EXIT=$?
 
           if [ ! -f "ios/App/Podfile" ]; then
             echo "ERROR: Capacitor did not create ios/App/Podfile."
             exit "$CAP_EXIT"
           fi
+
+          if [ "$CAP_EXIT" -ne 0 ]; then
+            echo "Initial CocoaPods installation failed."
+            echo "Continuing with iOS project configuration."
+          else
+            echo "iOS project generated successfully."
+          fi
+
           exit 0
 
       # ------------------------------------------------------------
-      # Configure iOS deployment target inside Podfile
+      # Configure iOS deployment target
       # ------------------------------------------------------------
       - name: Configure iOS deployment target
         shell: bash
@@ -70,30 +91,43 @@ jobs:
           import re
 
           deployment_target = "15.0"
+
           podfile = Path("ios/App/Podfile")
 
           if not podfile.exists():
-              raise SystemExit("ERROR: ios/App/Podfile does not exist.")
+              raise SystemExit(
+                  "ERROR: ios/App/Podfile does not exist."
+              )
 
           text = podfile.read_text()
 
-          if re.search(r"^\s*platform\s*:ios", text, re.MULTILINE):
-              text = re.sub(
-                  r"^\s*platform\s*:ios.*$",
+          platform_line = re.compile(
+              r"^\s*platform\s*:ios.*$",
+              re.MULTILINE,
+          )
+
+          if platform_line.search(text):
+              text = platform_line.sub(
                   f"platform :ios, '{deployment_target}'",
                   text,
                   count=1,
-                  flags=re.MULTILINE,
               )
           else:
-              text = f"platform :ios, '{deployment_target}'\n\n" + text
+              text = (
+                  f"platform :ios, '{deployment_target}'\n\n"
+                  + text
+              )
 
           podfile.write_text(text)
-          print(f"Podfile deployment target configured: iOS {deployment_target}")
+
+          print(
+              f"Podfile deployment target configured: "
+              f"iOS {deployment_target}"
+          )
           PY
 
       # ------------------------------------------------------------
-      # Configure Xcode deployment target (.pbxproj)
+      # Configure Xcode deployment target
       # ------------------------------------------------------------
       - name: Configure Xcode deployment target
         shell: bash
@@ -103,31 +137,67 @@ jobs:
           import re
 
           deployment_target = "15.0"
-          project_files = list(Path("ios/App").glob("**/*.pbxproj"))
+
+          project_files = list(
+              Path("ios/App").glob("**/*.pbxproj")
+          )
 
           if not project_files:
-              raise SystemExit("ERROR: No Xcode project file was found.")
+              raise SystemExit(
+                  "ERROR: No Xcode project file was found."
+              )
 
           for project_file in project_files:
               text = project_file.read_text()
+
               text = re.sub(
                   r"IPHONEOS_DEPLOYMENT_TARGET = [^;]+;",
                   f"IPHONEOS_DEPLOYMENT_TARGET = {deployment_target};",
                   text,
               )
+
               project_file.write_text(text)
-              print(f"Configured {project_file} for iOS {deployment_target}")
+
+              print(
+                  f"Configured {project_file} for iOS "
+                  f"{deployment_target}"
+              )
           PY
 
       # ------------------------------------------------------------
-      # Install native CocoaPods dependencies with upgraded target
+      # Verify deployment target
+      # ------------------------------------------------------------
+      - name: Verify iOS deployment target
+        shell: bash
+        run: |
+          set -e
+
+          echo "Podfile:"
+          grep -n "platform :ios" ios/App/Podfile || true
+
+          echo ""
+          echo "Xcode deployment targets:"
+          grep -R "IPHONEOS_DEPLOYMENT_TARGET" \
+            ios/App/*.xcodeproj/project.pbxproj || true
+
+          if ! grep -q "platform :ios, '15.0'" ios/App/Podfile; then
+            echo "ERROR: Podfile was not configured for iOS 15.0."
+            exit 1
+          fi
+
+          echo ""
+          echo "iOS deployment target verified."
+
+      # ------------------------------------------------------------
+      # Install CocoaPods
       # ------------------------------------------------------------
       - name: Install CocoaPods dependencies
         working-directory: ios/App
-        run: pod install --repo-update
+        run: |
+          pod install --repo-update
 
       # ------------------------------------------------------------
-      # Generate native IyanjuPay icons and splash screen
+      # Generate native IyanjuPay icon / splash
       # ------------------------------------------------------------
       - name: Generate native IyanjuPay icon
         run: |
@@ -140,51 +210,59 @@ jobs:
             --splashBackgroundColorDark '#061329'
 
       # ------------------------------------------------------------
-      # Sync Capacitor native layer plugins
+      # Sync Capacitor
       # ------------------------------------------------------------
       - name: Sync Capacitor
-        run: bunx cap sync ios
+        run: |
+          bunx cap sync ios
 
       # ------------------------------------------------------------
-      # Inject Info.plist properties for Face ID & Push Notification Hooks
+      # Configure Face ID usage description
       # ------------------------------------------------------------
-      - name: Configure iOS push and biometric capabilities
+      - name: Configure Face ID
         shell: bash
         run: |
           python3 - <<'PY'
           from pathlib import Path
 
-          app_dir = Path("ios/App/App")
-          info = app_dir / "Info.plist"
-          if info.exists():
-              text = info.read_text()
-              key = "<key>NSFaceIDUsageDescription</key>"
-              if key not in text:
-                  text = text.replace(
-                      "</dict>",
-                      "    <key>NSFaceIDUsageDescription</key>\n"
-                      "    <string>Use Face ID to securely authorize IyanjuPay transactions and unlock the app.</string>\n"
-                      "</dict>",
-                      1,
-                  )
-              info.write_text(text)
+          info = Path("ios/App/App/Info.plist")
 
-          project_files = list(Path("ios/App").glob("**/*.pbxproj"))
-          for project in project_files:
-              text = project.read_text()
-              if "CODE_SIGN_ENTITLEMENTS = App/App.entitlements;" not in text:
-                  text = text.replace(
-                      "buildSettings = {",
-                      "buildSettings = {\n\t\t\t\tCODE_SIGN_ENTITLEMENTS = App/App.entitlements;",
-                      1,
-                  )
-              project.write_text(text)
+          if not info.exists():
+              raise SystemExit(
+                  "ERROR: ios/App/App/Info.plist does not exist."
+              )
+
+          text = info.read_text()
+
+          key = "<key>NSFaceIDUsageDescription</key>"
+
+          if key not in text:
+              text = text.replace(
+                  "</dict>",
+                  """    <key>NSFaceIDUsageDescription</key>
+              <string>Use Face ID to securely authorize IyanjuPay transactions and unlock the app.</string>
+          </dict>""",
+                  1,
+              )
+
+          info.write_text(text)
+
+          print("Face ID usage description configured.")
           PY
 
+      # ------------------------------------------------------------
+      # Configure APNs entitlements
+      # ------------------------------------------------------------
+      - name: Configure iOS push notification entitlement
+        shell: bash
+        run: |
+          set -e
+
           mkdir -p ios/App/App
+
           cat > ios/App/App/App.entitlements <<'EOF'
           <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://apple.com">
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
           <plist version="1.0">
           <dict>
               <key>aps-environment</key>
@@ -193,43 +271,252 @@ jobs:
           </plist>
           EOF
 
-      # ------------------------------------------------------------
-      # Compile Xcode Project for iOS Simulator Engine
-      # ------------------------------------------------------------
-      - name: Compile Xcode Simulator App Bundle
-        run: |
-          cd ios/App
-          xcodebuild -workspace App.xcworkspace \
-                     -scheme App \
-                     -sdk iphonesimulator \
-                     -configuration Debug \
-                     -derivedDataPath build_output \
-                     clean build
+          python3 - <<'PY'
+          from pathlib import Path
+
+          project_files = list(
+              Path("ios/App").glob("**/*.pbxproj")
+          )
+
+          if not project_files:
+              raise SystemExit(
+                  "ERROR: No Xcode project file found."
+              )
+
+          for project in project_files:
+              text = project.read_text()
+
+              if "CODE_SIGN_ENTITLEMENTS = App/App.entitlements;" not in text:
+                  text = text.replace(
+                      "buildSettings = {",
+                      "buildSettings = {\n\t\t\t\tCODE_SIGN_ENTITLEMENTS = App/App.entitlements;",
+                      1,
+                  )
+
+                  project.write_text(text)
+
+          print("APNs entitlement configured.")
+          PY
 
       # ------------------------------------------------------------
-      # Dynamically search, isolate, and package Simulator payload
+      # Verify native notification plugins
       # ------------------------------------------------------------
-      - name: Find and Zip Simulator Build
+      - name: Verify native notification plugins
+        shell: bash
         run: |
-          echo "Searching for target App.app payload..."
-          APP_PATH=$(find ios/App/build_output -name "App.app" -type d | head -n 1)
+          set -e
 
-          if [ -z "$APP_PATH" ]; then
-            echo " ERROR: App.app directory was not resolved in build_output!"
+          if ! find ios/App/Pods \
+            -iname "*CapacitorPushNotifications*" \
+            -print -quit \
+            | grep -q .; then
+
+            echo "ERROR: Capacitor Push Notifications plugin was not installed."
             exit 1
           fi
 
-          echo " Isolated App.app execution block at: $APP_PATH"
-          cp -R "$APP_PATH" ./App.app
-          zip -r iyanjupay-simulator.zip App.app
+          if ! find ios/App/Pods \
+            -iname "*CapacitorLocalNotifications*" \
+            -print -quit \
+            | grep -q .; then
+
+            echo "ERROR: Capacitor Local Notifications plugin was not installed."
+            exit 1
+          fi
+
+          echo "Native notification plugins detected."
 
       # ------------------------------------------------------------
-      # Export to GitHub Artifact Engine
+      # Verify biometric plugin
       # ------------------------------------------------------------
-      - name: Upload iOS Simulator Package for Appetize
+      - name: Verify biometric plugin
+        shell: bash
+        run: |
+          set -e
+
+          if find ios/App/Pods \
+            -iname "*CapgoCapacitorNativeBiometric*" \
+            -print -quit \
+            | grep -q .; then
+
+            echo "Capgo native biometric plugin detected."
+
+          else
+            echo "ERROR: Capgo native biometric plugin was not installed."
+            exit 1
+          fi
+
+      # ------------------------------------------------------------
+      # Verify iOS project
+      # ------------------------------------------------------------
+      - name: Verify iOS project
+        shell: bash
+        run: |
+          set -e
+
+          if [ ! -d "ios/App/App.xcodeproj" ]; then
+            echo "ERROR: Xcode project was not created."
+            exit 1
+          fi
+
+          if [ ! -d "ios/App/App.xcworkspace" ]; then
+            echo "ERROR: Xcode workspace was not created."
+            exit 1
+          fi
+
+          if [ ! -d "ios/App/Pods" ]; then
+            echo "ERROR: CocoaPods dependencies were not installed."
+            exit 1
+          fi
+
+          if [ ! -f "ios/App/Podfile.lock" ]; then
+            echo "ERROR: Podfile.lock was not created."
+            exit 1
+          fi
+
+          echo "iOS Capacitor project verified successfully."
+
+      # ------------------------------------------------------------
+      # Show available Xcode version
+      # ------------------------------------------------------------
+      - name: Verify Xcode environment
+        run: |
+          xcodebuild -version
+          xcode-select -p
+
+      # ------------------------------------------------------------
+      # Build iOS Simulator .app
+      #
+      # This is the critical step missing from the previous workflow.
+      # Appetize needs the resulting Simulator .app bundle.
+      # ------------------------------------------------------------
+      - name: Build iOS Simulator app
+        working-directory: ios/App
+        shell: bash
+        run: |
+          set -e
+
+          rm -rf ../../ios-simulator-build
+
+          xcodebuild \
+            -workspace App.xcworkspace \
+            -scheme App \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath ../../ios-simulator-build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            build
+
+      # ------------------------------------------------------------
+      # Locate generated .app
+      # ------------------------------------------------------------
+      - name: Locate iOS Simulator app
+        shell: bash
+        run: |
+          set -e
+
+          APP_PATH="$(
+            find ios-simulator-build/Build/Products \
+              -maxdepth 2 \
+              -type d \
+              -name "App.app" \
+              -print \
+              -quit
+          )"
+
+          if [ -z "$APP_PATH" ]; then
+            echo "ERROR: No App.app was produced."
+            echo ""
+            echo "Available build products:"
+            find ios-simulator-build/Build/Products \
+              -maxdepth 3 \
+              -print || true
+            exit 1
+          fi
+
+          echo "Simulator app found:"
+          echo "$APP_PATH"
+
+          mkdir -p output
+
+          rm -rf output/IyanjuPay.app
+
+          cp -R \
+            "$APP_PATH" \
+            output/IyanjuPay.app
+
+          echo ""
+          echo "IyanjuPay.app prepared:"
+          ls -ld output/IyanjuPay.app
+
+      # ------------------------------------------------------------
+      # Verify .app bundle
+      # ------------------------------------------------------------
+      - name: Verify iOS Simulator app bundle
+        shell: bash
+        run: |
+          set -e
+
+          APP="output/IyanjuPay.app"
+
+          if [ ! -d "$APP" ]; then
+            echo "ERROR: IyanjuPay.app directory does not exist."
+            exit 1
+          fi
+
+          if [ ! -f "$APP/Info.plist" ]; then
+            echo "ERROR: IyanjuPay.app/Info.plist is missing."
+            exit 1
+          fi
+
+          if [ ! -f "$APP/App" ]; then
+            echo "ERROR: IyanjuPay.app executable is missing."
+            exit 1
+          fi
+
+          echo "Valid iOS Simulator .app bundle found."
+
+          echo ""
+          echo "Bundle contents:"
+          ls -lah "$APP" | head -50
+
+      # ------------------------------------------------------------
+      # Create Appetize ZIP
+      # ------------------------------------------------------------
+      - name: Package iOS Simulator app for Appetize
+        shell: bash
+        run: |
+          set -e
+
+          cd output
+
+          zip -r \
+            IyanjuPay-iOS-Simulator.zip \
+            IyanjuPay.app
+
+          cd ..
+
+          echo "Appetize package created:"
+          ls -lh output/IyanjuPay-iOS-Simulator.zip
+
+      # ------------------------------------------------------------
+      # Upload raw .app
+      # ------------------------------------------------------------
+      - name: Upload iOS Simulator .app
         uses: actions/upload-artifact@v4
         with:
-          name: IyanjuPay-Appetize-Simulator-Build
-          path: iyanjupay-simulator.zip
+          name: IyanjuPay-iOS-Simulator-app
+          path: output/IyanjuPay.app
           if-no-files-found: error
-          retention-days: 5
+
+      # ------------------------------------------------------------
+      # Upload ZIP for Appetize
+      # ------------------------------------------------------------
+      - name: Upload Appetize iOS package
+        uses: actions/upload-artifact@v4
+        with:
+          name: IyanjuPay-iOS-Appetize
+          path: output/IyanjuPay-iOS-Simulator.zip
+          if-no-files-found: error

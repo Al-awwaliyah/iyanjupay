@@ -7,8 +7,14 @@ const NATIVE_PUSH_TOKEN_KEY = "iyanjupay-native-push-token";
 const PUSH_ENABLED_KEY = "iyanjupay-push-enabled";
 const ANDROID_CHANNEL_ID = "iyanjupay-default";
 
-function urlBase64ToUint8Array(base64String: string): Uint8Array {
-  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+let nativeRegistrationInProgress = false;
+
+function urlBase64ToUint8Array(
+  base64String: string,
+): Uint8Array {
+  const padding = "=".repeat(
+    (4 - (base64String.length % 4)) % 4,
+  );
 
   const base64 = (base64String + padding)
     .replace(/-/g, "+")
@@ -17,27 +23,65 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array {
   const rawData = window.atob(base64);
 
   return Uint8Array.from(
-    [...rawData].map((char) => char.charCodeAt(0)),
+    [...rawData].map((char) =>
+      char.charCodeAt(0),
+    ),
   );
 }
 
 /**
  * Returns whether the user previously enabled push notifications.
  *
- * This does not request permission.
+ * This does not request notification permission.
  */
 export function isPushEnabled(): boolean {
   return (
     typeof window !== "undefined" &&
-    window.localStorage.getItem(PUSH_ENABLED_KEY) === "true"
+    window.localStorage.getItem(
+      PUSH_ENABLED_KEY,
+    ) === "true"
   );
 }
 
-function markPushEnabled(enabled: boolean): void {
+function markPushEnabled(
+  enabled: boolean,
+): void {
   if (typeof window !== "undefined") {
     window.localStorage.setItem(
       PUSH_ENABLED_KEY,
       String(enabled),
+    );
+  }
+}
+
+function getStoredNativeToken(): string | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  return window.localStorage.getItem(
+    NATIVE_PUSH_TOKEN_KEY,
+  );
+}
+
+function storeNativeToken(
+  token: string,
+): void {
+  if (
+    typeof window !== "undefined" &&
+    token
+  ) {
+    window.localStorage.setItem(
+      NATIVE_PUSH_TOKEN_KEY,
+      token,
+    );
+  }
+}
+
+function removeStoredNativeToken(): void {
+  if (typeof window !== "undefined") {
+    window.localStorage.removeItem(
+      NATIVE_PUSH_TOKEN_KEY,
     );
   }
 }
@@ -55,12 +99,17 @@ export function isWebPushSupported(): boolean {
 }
 
 /**
- * Synchronizes an existing browser push subscription with Supabase.
+ * Synchronizes an existing browser Web Push subscription
+ * with Supabase.
  *
- * This function never requests notification permission.
+ * This function never requests permission.
  */
 async function upsertWebSubscription(): Promise<boolean> {
   try {
+    if (!isWebPushSupported()) {
+      return false;
+    }
+
     const registration =
       await navigator.serviceWorker.ready;
 
@@ -71,10 +120,16 @@ async function upsertWebSubscription(): Promise<boolean> {
       return false;
     }
 
-    const json = subscription.toJSON();
+    const json =
+      subscription.toJSON();
+
+    if (!json.endpoint) {
+      return false;
+    }
 
     const user =
-      (await supabase.auth.getUser()).data.user;
+      (await supabase.auth.getUser())
+        .data.user;
 
     if (!user) {
       return false;
@@ -88,10 +143,14 @@ async function upsertWebSubscription(): Promise<boolean> {
             user_id: user.id,
             platform: "web",
             endpoint: json.endpoint,
-            p256dh: json.keys?.p256dh ?? null,
-            auth: json.keys?.auth ?? null,
-            user_agent: navigator.userAgent,
-            last_seen_at: new Date().toISOString(),
+            p256dh:
+              json.keys?.p256dh ?? null,
+            auth:
+              json.keys?.auth ?? null,
+            user_agent:
+              navigator.userAgent,
+            last_seen_at:
+              new Date().toISOString(),
           },
           {
             onConflict: "endpoint",
@@ -136,6 +195,8 @@ export async function requestWebPushPermission() {
         : await Notification.requestPermission();
 
     if (permission !== "granted") {
+      markPushEnabled(false);
+
       return {
         enabled: false,
         reason: permission as string,
@@ -148,9 +209,12 @@ export async function requestWebPushPermission() {
         | undefined;
 
     if (!vapidKey) {
+      markPushEnabled(false);
+
       return {
         enabled: false,
-        reason: "missing_vapid_key" as const,
+        reason:
+          "missing_vapid_key" as const,
       };
     }
 
@@ -165,19 +229,36 @@ export async function requestWebPushPermission() {
         await registration.pushManager.subscribe({
           userVisibleOnly: true,
           applicationServerKey:
-            urlBase64ToUint8Array(vapidKey),
+            urlBase64ToUint8Array(
+              vapidKey,
+            ),
         });
     }
 
-    const json = subscription.toJSON();
+    const json =
+      subscription.toJSON();
 
-    const user =
-      (await supabase.auth.getUser()).data.user;
+    if (!json.endpoint) {
+      markPushEnabled(false);
 
-    if (!user) {
       return {
         enabled: false,
-        reason: "not_signed_in" as const,
+        reason:
+          "registration_failed" as const,
+      };
+    }
+
+    const user =
+      (await supabase.auth.getUser())
+        .data.user;
+
+    if (!user) {
+      markPushEnabled(false);
+
+      return {
+        enabled: false,
+        reason:
+          "not_signed_in" as const,
       };
     }
 
@@ -189,10 +270,14 @@ export async function requestWebPushPermission() {
             user_id: user.id,
             platform: "web",
             endpoint: json.endpoint,
-            p256dh: json.keys?.p256dh ?? null,
-            auth: json.keys?.auth ?? null,
-            user_agent: navigator.userAgent,
-            last_seen_at: new Date().toISOString(),
+            p256dh:
+              json.keys?.p256dh ?? null,
+            auth:
+              json.keys?.auth ?? null,
+            user_agent:
+              navigator.userAgent,
+            last_seen_at:
+              new Date().toISOString(),
           },
           {
             onConflict: "endpoint",
@@ -204,9 +289,12 @@ export async function requestWebPushPermission() {
         "Web push registration could not be synchronized.",
       );
 
+      markPushEnabled(false);
+
       return {
         enabled: false,
-        reason: "registration_failed" as const,
+        reason:
+          "registration_failed" as const,
       };
     }
 
@@ -221,6 +309,8 @@ export async function requestWebPushPermission() {
       "Web push setup failed.",
       error,
     );
+
+    markPushEnabled(false);
 
     return {
       enabled: false,
@@ -242,16 +332,7 @@ export async function syncWebPushSubscription(): Promise<boolean> {
     return false;
   }
 
-  try {
-    return await upsertWebSubscription();
-  } catch (error) {
-    console.warn(
-      "Web push subscription synchronization failed.",
-      error,
-    );
-
-    return false;
-  }
+  return upsertWebSubscription();
 }
 
 /**
@@ -272,14 +353,25 @@ export async function disableWebPush(): Promise<void> {
       await registration.pushManager.getSubscription();
 
     if (subscription) {
-      const endpoint = subscription.endpoint;
+      const endpoint =
+        subscription.endpoint;
 
-      await subscription.unsubscribe();
+      try {
+        await subscription.unsubscribe();
+      } catch (error) {
+        console.warn(
+          "Browser push unsubscribe failed.",
+          error,
+        );
+      }
 
       await db
         .from("user_push_subscriptions")
         .delete()
-        .eq("endpoint", endpoint);
+        .eq(
+          "endpoint",
+          endpoint,
+        );
     }
   } catch (error) {
     console.warn(
@@ -292,12 +384,264 @@ export async function disableWebPush(): Promise<void> {
 }
 
 /**
+ * Synchronizes an FCM/APNs native device token
+ * with Supabase.
+ *
+ * Uses the existing user_push_subscriptions schema.
+ */
+async function syncNativeToken(
+  token: string,
+): Promise<boolean> {
+  try {
+    if (!token.trim()) {
+      return false;
+    }
+
+    const user =
+      (await supabase.auth.getUser())
+        .data.user;
+
+    if (!user) {
+      return false;
+    }
+
+    const platform =
+      Capacitor.getPlatform() === "ios"
+        ? "ios"
+        : "android";
+
+    const { error } =
+      await db
+        .from("user_push_subscriptions")
+        .upsert(
+          {
+            user_id: user.id,
+            platform,
+            device_token: token,
+            user_agent:
+              typeof navigator !== "undefined"
+                ? navigator.userAgent
+                : "IyanjuPay Native",
+            last_seen_at:
+              new Date().toISOString(),
+          },
+          {
+            onConflict:
+              "device_token",
+          },
+        );
+
+    if (error) {
+      console.warn(
+        "Native push token synchronization failed.",
+      );
+
+      return false;
+    }
+
+    storeNativeToken(token);
+
+    return true;
+  } catch (error) {
+    console.warn(
+      "Unable to synchronize native push token.",
+      error,
+    );
+
+    return false;
+  }
+}
+
+/**
+ * Creates the Android notification channels.
+ */
+async function createNativeChannels(
+  PushNotifications: any,
+  LocalNotifications: any,
+): Promise<void> {
+  if (
+    Capacitor.getPlatform() !==
+    "android"
+  ) {
+    return;
+  }
+
+  try {
+    await PushNotifications.createChannel({
+      id: ANDROID_CHANNEL_ID,
+      name: "IyanjuPay Notifications",
+      description:
+        "IyanjuPay account and transaction notifications",
+      importance: 5,
+      visibility: 1,
+      sound: "default",
+      vibration: true,
+    });
+  } catch (error) {
+    console.warn(
+      "Unable to create native push notification channel.",
+      error,
+    );
+  }
+
+  try {
+    await LocalNotifications.createChannel({
+      id: ANDROID_CHANNEL_ID,
+      name: "IyanjuPay Notifications",
+      description:
+        "IyanjuPay account and transaction notifications",
+      importance: 5,
+      visibility: 1,
+      sound: "default",
+      vibration: true,
+    });
+  } catch (error) {
+    console.warn(
+      "Unable to create local notification channel.",
+      error,
+    );
+  }
+}
+
+/**
+ * Creates a stable positive numeric ID for
+ * Capacitor Local Notifications.
+ */
+function createLocalNotificationId(
+  value: string,
+): number {
+  let hash = 0;
+
+  for (
+    let index = 0;
+    index < value.length;
+    index += 1
+  ) {
+    hash =
+      (hash << 5) -
+      hash +
+      value.charCodeAt(index);
+
+    hash |= 0;
+  }
+
+  return (
+    Math.abs(hash) % 2_000_000_000
+  ) + 1;
+}
+
+/**
+ * Displays a foreground native notification.
+ *
+ * Background/closed-app notification delivery is handled
+ * by FCM/APNs.
+ */
+async function showForegroundNotification(
+  LocalNotifications: any,
+  event: any,
+): Promise<void> {
+  try {
+    const data =
+      (event?.notification?.data ??
+        {}) as Record<
+        string,
+        unknown
+      >;
+
+    const notificationId = String(
+      data.notificationId ??
+        data.notification_id ??
+        event?.notification?.id ??
+        Date.now(),
+    );
+
+    const title =
+      event?.notification?.title ??
+      data.title ??
+      "IyanjuPay";
+
+    const body =
+      event?.notification?.body ??
+      data.body ??
+      "You have a new notification.";
+
+    const url =
+      data.url
+        ? String(data.url)
+        : "/";
+
+    const id =
+      createLocalNotificationId(
+        notificationId,
+      );
+
+    await LocalNotifications.schedule({
+      notifications: [
+        {
+          id,
+          title: String(title),
+          body: String(body),
+          channelId:
+            ANDROID_CHANNEL_ID,
+          sound: "default",
+          extra: {
+            url,
+            notificationId,
+          },
+        },
+      ],
+    });
+  } catch (error) {
+    console.warn(
+      "Foreground native notification failed.",
+      error,
+    );
+  }
+}
+
+/**
+ * Safely handles a notification URL.
+ *
+ * Only internal application routes are accepted.
+ */
+function navigateFromNotification(
+  url: unknown,
+): void {
+  try {
+    if (
+      typeof window === "undefined" ||
+      !url
+    ) {
+      return;
+    }
+
+    const value = String(url);
+
+    if (
+      value.startsWith("/") &&
+      !value.startsWith("//")
+    ) {
+      window.location.assign(value);
+    }
+  } catch (error) {
+    console.warn(
+      "Unable to navigate from notification.",
+      error,
+    );
+  }
+}
+
+/**
  * Registers native Android/iOS push notifications.
  *
- * Android uses FCM through Capacitor Push Notifications.
- * Foreground notifications are mirrored through Local Notifications.
- * Background/closed-app delivery is handled by the native push
- * notification payload delivered by FCM/APNs.
+ * Android uses FCM.
+ * iOS uses APNs.
+ *
+ * Foreground:
+ *   Local Notifications
+ *
+ * Background/closed:
+ *   Native FCM/APNs handling.
  */
 export async function registerNativePush() {
   if (!Capacitor.isNativePlatform()) {
@@ -307,22 +651,45 @@ export async function registerNativePush() {
     };
   }
 
-  try {
-    const { PushNotifications } =
-      await import("@capacitor/push-notifications");
+  if (nativeRegistrationInProgress) {
+    return {
+      enabled: isPushEnabled(),
+      reason: isPushEnabled()
+        ? ("granted" as const)
+        : ("error" as const),
+    };
+  }
 
-    const { LocalNotifications } =
-      await import("@capacitor/local-notifications");
+  nativeRegistrationInProgress = true;
+
+  try {
+    const {
+      PushNotifications,
+    } = await import(
+      "@capacitor/push-notifications"
+    );
+
+    const {
+      LocalNotifications,
+    } = await import(
+      "@capacitor/local-notifications"
+    );
 
     let permission =
       await PushNotifications.checkPermissions();
 
-    if (permission.receive !== "granted") {
+    if (
+      permission.receive !==
+      "granted"
+    ) {
       permission =
         await PushNotifications.requestPermissions();
     }
 
-    if (permission.receive !== "granted") {
+    if (
+      permission.receive !==
+      "granted"
+    ) {
       markPushEnabled(false);
 
       return {
@@ -332,17 +699,17 @@ export async function registerNativePush() {
     }
 
     /**
-     * Synchronize Local Notifications permission.
-     *
-     * Local notifications are used for foreground presentation
-     * so the user still receives a visible notification while
-     * actively using the native application.
+     * Local notification permission is required
+     * for foreground presentation.
      */
     try {
       let localPermission =
         await LocalNotifications.checkPermissions();
 
-      if (localPermission.display !== "granted") {
+      if (
+        localPermission.display !==
+        "granted"
+      ) {
         localPermission =
           await LocalNotifications.requestPermissions();
       }
@@ -353,113 +720,100 @@ export async function registerNativePush() {
       );
     }
 
-    /**
-     * Android notification channels.
-     */
-    if (Capacitor.getPlatform() === "android") {
-      try {
-        await PushNotifications.createChannel({
-          id: ANDROID_CHANNEL_ID,
-          name: "IyanjuPay Notifications",
-          description:
-            "IyanjuPay account and transaction notifications",
-          importance: 5,
-          visibility: 1,
-          sound: "default",
-          vibration: true,
-        });
-      } catch (error) {
-        console.warn(
-          "Unable to create native push notification channel.",
-          error,
-        );
-      }
+    await createNativeChannels(
+      PushNotifications,
+      LocalNotifications,
+    );
 
-      try {
-        await LocalNotifications.createChannel({
-          id: ANDROID_CHANNEL_ID,
-          name: "IyanjuPay Notifications",
-          description:
-            "IyanjuPay account and transaction notifications",
-          importance: 5,
-          visibility: 1,
-          sound: "default",
-          vibration: true,
-        });
-      } catch (error) {
-        console.warn(
-          "Unable to create local notification channel.",
-          error,
+    /**
+     * Remove previous listeners before rebuilding them.
+     *
+     * This protects against:
+     * - authentication restoration
+     * - SIGNED_IN events
+     * - application startup
+     * - repeated push restoration
+     * - development hot reload
+     */
+    try {
+      await PushNotifications.removeAllListeners();
+    } catch (error) {
+      console.warn(
+        "Unable to reset native push listeners.",
+        error,
+      );
+    }
+
+    try {
+      await LocalNotifications.removeAllListeners();
+    } catch (error) {
+      console.warn(
+        "Unable to reset local notification listeners.",
+        error,
+      );
+    }
+
+    /**
+     * If we already have a native token stored locally,
+     * synchronize it immediately with the currently
+     * authenticated user.
+     *
+     * This is especially important after authentication
+     * restoration.
+     */
+    const storedToken =
+      getStoredNativeToken();
+
+    if (storedToken) {
+      const synchronized =
+        await syncNativeToken(
+          storedToken,
         );
+
+      if (synchronized) {
+        markPushEnabled(true);
       }
     }
 
     /**
-     * Prevent duplicate listeners after:
-     * - hot reload
-     * - authentication changes
-     * - push restoration
-     */
-    await PushNotifications.removeAllListeners();
-
-    /**
      * FCM/APNs token registration.
+     *
+     * Push is not considered fully enabled until the
+     * received token has successfully synchronized
+     * with Supabase.
      */
+    let tokenSynchronized = false;
+
     await PushNotifications.addListener(
       "registration",
       async (token) => {
         try {
-          const user =
-            (await supabase.auth.getUser()).data.user;
-
-          if (!user) {
+          if (
+            !token?.value
+          ) {
+            markPushEnabled(false);
             return;
           }
 
-          if (
-            typeof window !== "undefined"
-          ) {
-            window.localStorage.setItem(
-              NATIVE_PUSH_TOKEN_KEY,
+          tokenSynchronized =
+            await syncNativeToken(
               token.value,
             );
-          }
 
-          const platform =
-            Capacitor.getPlatform() === "ios"
-              ? "ios"
-              : "android";
-
-          const { error } =
-            await db
-              .from("user_push_subscriptions")
-              .upsert(
-                {
-                  user_id: user.id,
-                  platform,
-                  device_token: token.value,
-                  user_agent:
-                    typeof navigator !== "undefined"
-                      ? navigator.userAgent
-                      : "IyanjuPay Native",
-                  last_seen_at:
-                    new Date().toISOString(),
-                },
-                {
-                  onConflict: "device_token",
-                },
-              );
-
-          if (error) {
-            console.warn(
-              "Native push token synchronization failed.",
-            );
+          if (
+            tokenSynchronized
+          ) {
+            markPushEnabled(true);
+          } else {
+            markPushEnabled(false);
           }
         } catch (error) {
           console.warn(
             "Native push token registration handling failed.",
             error,
           );
+
+          markPushEnabled(false);
         }
       },
     );
@@ -474,74 +828,24 @@ export async function registerNativePush() {
           "Native push registration failed.",
           error,
         );
+
+        markPushEnabled(false);
       },
     );
 
     /**
      * Foreground push handling.
      *
-     * FCM notification payloads delivered while the app is
-     * foregrounded are handled here and displayed using a
-     * local notification.
+     * Background and closed-app notifications are handled
+     * directly by FCM/APNs.
      */
     await PushNotifications.addListener(
       "pushNotificationReceived",
       async (event) => {
-        try {
-          const data =
-            (event.notification?.data ??
-              {}) as Record<string, unknown>;
-
-          const rawNotificationId = String(
-            data.notificationId ??
-              event.notification?.id ??
-              Date.now(),
-          );
-
-          const numericId =
-            Number(
-              rawNotificationId
-                .replace(/\D/g, "")
-                .slice(-8),
-            ) || Date.now();
-
-          await LocalNotifications.schedule({
-            notifications: [
-              {
-                id: numericId,
-                title:
-                  event.notification?.title ??
-                  String(
-                    data.title ??
-                      "IyanjuPay",
-                  ),
-                body:
-                  event.notification?.body ??
-                  String(
-                    data.body ??
-                      "You have a new notification.",
-                  ),
-                channelId:
-                  ANDROID_CHANNEL_ID,
-                sound: "default",
-                extra: {
-                  url: String(
-                    data.url ?? "/",
-                  ),
-                  notificationId: String(
-                    data.notificationId ??
-                      "",
-                  ),
-                },
-              },
-            ],
-          });
-        } catch (error) {
-          console.warn(
-            "Foreground native notification failed.",
-            error,
-          );
-        }
+        await showForegroundNotification(
+          LocalNotifications,
+          event,
+        );
       },
     );
 
@@ -553,16 +857,16 @@ export async function registerNativePush() {
       (event) => {
         try {
           const data =
-            (event.notification?.data ??
-              {}) as Record<string, unknown>;
+            (event?.notification
+              ?.data ??
+              {}) as Record<
+              string,
+              unknown
+            >;
 
-          const url = data.url;
-
-          if (url) {
-            window.location.assign(
-              String(url),
-            );
-          }
+          navigateFromNotification(
+            data.url,
+          );
         } catch (error) {
           console.warn(
             "Unable to handle push notification action.",
@@ -580,14 +884,16 @@ export async function registerNativePush() {
       (event) => {
         try {
           const extra =
-            (event.notification?.extra ??
-              {}) as Record<string, unknown>;
+            (event?.notification
+              ?.extra ??
+              {}) as Record<
+              string,
+              unknown
+            >;
 
-          if (extra.url) {
-            window.location.assign(
-              String(extra.url),
-            );
-          }
+          navigateFromNotification(
+            extra.url,
+          );
         } catch (error) {
           console.warn(
             "Unable to handle local notification action.",
@@ -598,15 +904,37 @@ export async function registerNativePush() {
     );
 
     /**
-     * Start native registration.
+     * Start native FCM/APNs registration.
      */
     await PushNotifications.register();
 
-    markPushEnabled(true);
+    /**
+     * Do not automatically mark push as enabled here.
+     *
+     * The registration callback is responsible for setting
+     * PUSH_ENABLED_KEY after successful token synchronization.
+     *
+     * If an existing stored token was already synchronized,
+     * retain the enabled state.
+     */
+    if (
+      !tokenSynchronized &&
+      !storedToken
+    ) {
+      markPushEnabled(false);
+    }
 
     return {
-      enabled: true,
-      reason: "granted" as const,
+      enabled:
+        tokenSynchronized ||
+        (Boolean(storedToken) &&
+          isPushEnabled()),
+      reason:
+        tokenSynchronized ||
+        (Boolean(storedToken) &&
+          isPushEnabled())
+          ? ("granted" as const)
+          : ("registration_failed" as const),
     };
   } catch (error) {
     console.warn(
@@ -614,16 +942,20 @@ export async function registerNativePush() {
       error,
     );
 
+    markPushEnabled(false);
+
     return {
       enabled: false,
       reason: "error" as const,
     };
+  } finally {
+    nativeRegistrationInProgress = false;
   }
 }
 
 /**
- * Disables native push notifications and removes the
- * device token from Supabase.
+ * Disables native push notifications and removes
+ * the device token from Supabase.
  */
 export async function disableNativePush(): Promise<void> {
   if (!Capacitor.isNativePlatform()) {
@@ -632,39 +964,68 @@ export async function disableNativePush(): Promise<void> {
   }
 
   try {
-    const { PushNotifications } =
-      await import("@capacitor/push-notifications");
+    const {
+      PushNotifications,
+    } = await import(
+      "@capacitor/push-notifications"
+    );
 
-    const { LocalNotifications } =
-      await import("@capacitor/local-notifications");
+    const {
+      LocalNotifications,
+    } = await import(
+      "@capacitor/local-notifications"
+    );
 
     const token =
-      typeof window !== "undefined"
-        ? window.localStorage.getItem(
-            NATIVE_PUSH_TOKEN_KEY,
-          )
-        : null;
+      getStoredNativeToken();
 
     if (token) {
-      await db
-        .from("user_push_subscriptions")
-        .delete()
-        .eq("device_token", token);
-
-      if (
-        typeof window !== "undefined"
-      ) {
-        window.localStorage.removeItem(
-          NATIVE_PUSH_TOKEN_KEY,
+      try {
+        await db
+          .from(
+            "user_push_subscriptions",
+          )
+          .delete()
+          .eq(
+            "device_token",
+            token,
+          );
+      } catch (error) {
+        console.warn(
+          "Unable to remove native push subscription.",
+          error,
         );
       }
     }
 
-    await PushNotifications.unregister();
+    removeStoredNativeToken();
 
-    await PushNotifications.removeAllListeners();
+    try {
+      await PushNotifications.unregister();
+    } catch (error) {
+      console.warn(
+        "Native push unregister failed.",
+        error,
+      );
+    }
 
-    await LocalNotifications.removeAllListeners();
+    try {
+      await PushNotifications.removeAllListeners();
+    } catch (error) {
+      console.warn(
+        "Unable to remove native push listeners.",
+        error,
+      );
+    }
+
+    try {
+      await LocalNotifications.removeAllListeners();
+    } catch (error) {
+      console.warn(
+        "Unable to remove local notification listeners.",
+        error,
+      );
+    }
   } catch (error) {
     console.warn(
       "Native push disable failed.",
@@ -672,6 +1033,7 @@ export async function disableNativePush(): Promise<void> {
     );
   } finally {
     markPushEnabled(false);
+    nativeRegistrationInProgress = false;
   }
 }
 
@@ -689,20 +1051,29 @@ export async function initializePushNotifications(): Promise<void> {
 
   try {
     const user =
-      (await supabase.auth.getUser()).data.user;
+      (await supabase.auth.getUser())
+        .data.user;
 
     if (!user) {
       return;
     }
 
-    if (Capacitor.isNativePlatform()) {
-      const { PushNotifications } =
-        await import("@capacitor/push-notifications");
+    if (
+      Capacitor.isNativePlatform()
+    ) {
+      const {
+        PushNotifications,
+      } = await import(
+        "@capacitor/push-notifications"
+      );
 
       const permission =
         await PushNotifications.checkPermissions();
 
-      if (permission.receive === "granted") {
+      if (
+        permission.receive ===
+        "granted"
+      ) {
         await registerNativePush();
       }
 
@@ -711,9 +1082,17 @@ export async function initializePushNotifications(): Promise<void> {
 
     if (
       isWebPushSupported() &&
-      Notification.permission === "granted"
+      Notification.permission ===
+        "granted"
     ) {
-      await syncWebPushSubscription();
+      const synchronized =
+        await syncWebPushSubscription();
+
+      if (!synchronized) {
+        console.warn(
+          "Existing Web Push subscription could not be synchronized.",
+        );
+      }
     }
   } catch (error) {
     console.warn(
@@ -724,8 +1103,8 @@ export async function initializePushNotifications(): Promise<void> {
 }
 
 /**
- * Restores an existing push registration after authentication
- * has been restored.
+ * Restores an existing push registration after
+ * authentication has been restored.
  *
  * This function NEVER requests notification permission.
  *
@@ -733,13 +1112,14 @@ export async function initializePushNotifications(): Promise<void> {
  * - Supabase session restoration
  * - SIGNED_IN/authentication changes
  *
- * This prevents push registration from running before the
- * authenticated user's ID is available.
+ * This prevents push registration from running before
+ * the authenticated user's ID is available.
  */
 export async function restorePushRegistration(): Promise<void> {
   try {
     const user =
-      (await supabase.auth.getUser()).data.user;
+      (await supabase.auth.getUser())
+        .data.user;
 
     if (!user) {
       return;
@@ -752,14 +1132,22 @@ export async function restorePushRegistration(): Promise<void> {
     /**
      * Native Android/iOS.
      */
-    if (Capacitor.isNativePlatform()) {
-      const { PushNotifications } =
-        await import("@capacitor/push-notifications");
+    if (
+      Capacitor.isNativePlatform()
+    ) {
+      const {
+        PushNotifications,
+      } = await import(
+        "@capacitor/push-notifications"
+      );
 
       const permission =
         await PushNotifications.checkPermissions();
 
-      if (permission.receive !== "granted") {
+      if (
+        permission.receive !==
+        "granted"
+      ) {
         return;
       }
 
@@ -773,12 +1161,12 @@ export async function restorePushRegistration(): Promise<void> {
      */
     if (
       isWebPushSupported() &&
-      Notification.permission === "granted"
+      Notification.permission ===
+        "granted"
     ) {
       await syncWebPushSubscription();
     }
   } catch (error) {
-   
     console.warn(
       "Unable to restore push registration.",
       error,
@@ -788,7 +1176,9 @@ export async function restorePushRegistration(): Promise<void> {
 
 
 export async function enablePushNotifications() {
-  if (Capacitor.isNativePlatform()) {
+  if (
+    Capacitor.isNativePlatform()
+  ) {
     return registerNativePush();
   }
 

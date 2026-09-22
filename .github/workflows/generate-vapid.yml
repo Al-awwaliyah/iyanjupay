@@ -1,0 +1,30 @@
+name: Generate Fresh VAPID Keys
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Generate VAPID keys
+        run: |
+          npx --yes web-push generate-vapid-keys --json > vapid.json
+
+          echo "========================================"
+          echo "FRESH VAPID KEY PAIR GENERATED"
+          echo "========================================"
+          echo ""
+          echo "PUBLIC KEY:"
+          node -e "const x=require('./vapid.json'); console.log(x.publicKey)"
+          echo ""
+          echo "PRIVATE KEY:"
+          node -e "const x=require('./vapid.json'); console.log(x.privateKey)"
+          echo ""
+          echo "========================================"
+          echo "Copy both values immediately."
+          echo "Do NOT commit vapid.json."

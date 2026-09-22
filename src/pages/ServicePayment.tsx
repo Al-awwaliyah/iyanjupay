@@ -59,8 +59,8 @@ const SERVICE_ALIASES: Record<string, string> = {
   airtime_card: "airtime-card",
   data_epin: "data-card",
   data_card: "data-card",
-  recharge: "airtime-card",
-  recharge_card: "airtime-card",
+  recharge: "recharge-card",
+  recharge_card: "recharge-card",
 };
 
 const SERVICE_TITLES: Record<string, string> = {
@@ -1632,18 +1632,22 @@ export default function ServicePayment({
 
   const isEpin =
     serviceType === "airtime-card" ||
-    serviceType === "data-card";
+    serviceType === "data-card" ||
+    serviceType === "recharge-card";
 
   const isAirtimeCard =
-    serviceType === "airtime-card";
+    serviceType === "airtime-card" ||
+    serviceType === "recharge-card";
 
   const isRechargeCard =
     serviceType === "recharge-card";
 
+  const epinMaxQuantity =
+    serviceType === "data-card" ? 50 : 100;
+
   const isPhoneService =
     isAirtime ||
     isData ||
-    isEpin ||
     serviceType === "education";
 
   const isAmountOnly =
@@ -1828,13 +1832,7 @@ export default function ServicePayment({
   const loadBillers =
     useCallback(async () => {
       if (!serviceType) return;
-      if (isRechargeCard) {
-        setBillers([]);
-        setError("Recharge Card is coming soon.");
-        return;
-      }
-
-      setLoadingBillers(true);
+        setLoadingBillers(true);
       setError("");
 
       try {
@@ -2374,7 +2372,7 @@ export default function ServicePayment({
       return "Please select a package.";
     }
 
-    if (isEpin && (!Number.isInteger(quantity) || quantity < 1 || quantity > 100)) {
+    if (isEpin && (!Number.isInteger(quantity) || quantity < 1 || quantity > epinMaxQuantity)) {
       return "Quantity must be between 1 and 100.";
     }
 
@@ -3260,48 +3258,38 @@ export default function ServicePayment({
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                         Loading recharge card values...
                       </div>
-                    ) : (
-                      <div className="grid grid-cols-3 gap-2">
-                        {Array.from(
-                          new Map(
-                            items
-                              .map((item) => [
-                                num(item.value ?? item.denomination),
-                                item,
-                              ] as const)
-                              .filter(([value, item]) => value > 0 && !!getItemCode(item))
-                          ).entries()
-                        )
-                          .sort(([a], [b]) => a - b)
-                          .map(([value, item]) => {
-                            const itemCode = getItemCode(item);
-                            const selected =
-                              selectedItemCode === itemCode &&
-                              amount === String(getItemPrice(item));
-
-                            return (
-                              <button
-                                key={itemCode}
-                                type="button"
-                                disabled={!!processingSession || verifyingPin}
-                                onClick={() => {
-                                  setSelectedItemCode(itemCode);
-                                  setAmount(String(getItemPrice(item)));
-                                  setQuantity(1);
-                                  setCustomAmount(false);
-                                  setError("");
-                                }}
-                                className={`rounded-xl border px-3 py-3 text-sm font-extrabold transition ${
-                                  selected
-                                    ? "border-[#6D28D9] bg-violet-50 text-[#4C1D95] ring-2 ring-violet-100"
-                                    : "border-gray-200 bg-white text-gray-800 hover:border-violet-300"
-                                }`}
-                              >
-                                ₦{value.toLocaleString("en-NG")}
-                              </button>
-                            );
-                          })}
+                    ) : items.length ? (
+                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                        {items.map((item) => {
+                          const itemCode = getItemCode(item);
+                          if (!itemCode) return null;
+                          const selected = selectedItemCode === itemCode;
+                          return (
+                            <button
+                              key={itemCode}
+                              type="button"
+                              disabled={!!processingSession || verifyingPin}
+                              onClick={() => {
+                                setSelectedItemCode(itemCode);
+                                setAmount(String(getItemPrice(item)));
+                                setQuantity(1);
+                                setCustomAmount(false);
+                                setError("");
+                              }}
+                              className={`rounded-xl border px-3 py-3 text-left transition ${
+                                selected
+                                  ? "border-[#6D28D9] bg-violet-50 text-[#4C1D95] ring-2 ring-violet-100"
+                                  : "border-gray-200 bg-white text-gray-800 hover:border-violet-300"
+                              }`}
+                            >
+                              <div className="font-bold">{getName(item)}</div>
+                              <div className="mt-1 text-xs text-gray-500">Selling price: {naira(getItemPrice(item))}</div>
+                            </button>
+                          );
+                        })}
                       </div>
+                    ) : (
+                      <div className="rounded-xl bg-gray-50 p-4 text-center text-xs text-gray-500">No recharge card plans available.</div>
                     )}
                   </section>
 
@@ -3311,7 +3299,7 @@ export default function ServicePayment({
                       id="airtime-pin-quantity"
                       type="number"
                       min={1}
-                      max={100}
+                      max={epinMaxQuantity}
                       step={1}
                       inputMode="numeric"
                       value={quantity}
@@ -3322,7 +3310,7 @@ export default function ServicePayment({
                       className="mt-2 h-10 rounded-xl text-sm"
                       disabled={!!processingSession || verifyingPin}
                     />
-                    <p className="mt-1.5 text-[10px] text-gray-500">Allowed range: 1 to 100</p>
+                    <p className="mt-1.5 text-[10px] text-gray-500">Allowed range: 1 to {epinMaxQuantity}</p>
                   </section>
                 </>
               )}

@@ -8,6 +8,7 @@ import {
   postJson,
   providerFailed,
   providerSuccessful,
+  providerDefinitivelyFailed,
   safeProviderMessage,
   sellingPrice,
   bilalToken,
@@ -204,6 +205,51 @@ async function providerPlanPrice(service:string, details:Obj, selectedId:number,
   return 0;
 }
 
+
+async function esimStock(body:Obj){
+  const type=s(first(body.type,body.provider,body.biller_code)).toLowerCase();
+  if(!["smile","alpha","kirani"].includes(type)) throw new Error("Select a valid internet provider.");
+  const raw=await getJson<any>(`/api/sak/sim?type=${encodeURIComponent(type)}`);
+  return {success:true,type,stock:raw?.data??raw};
+}
+
+async function esimBuy(admin:any,user:any,body:Obj){
+  const type=s(first(body.type,body.provider,body.biller_code)).toLowerCase();
+  const quantity=Math.max(1,Math.min(100,n(body.quantity||1)));
+  if(!["smile","alpha","kirani"].includes(type)) throw new Error("Select a valid internet provider.");
+  const stock=await getJson<any>(`/api/sak/sim?type=${encodeURIComponent(type)}`);
+  const available=n(first(stock?.available_count,stock?.data?.available_count));
+  const maxPerOrder=Math.max(1,n(first(stock?.max_per_order,stock?.data?.max_per_order,100)));
+  if(available>0 && quantity>available) throw new Error("The requested eSIM quantity is not available.");
+  if(quantity>maxPerOrder) throw new Error(`Maximum quantity is ${maxPerOrder}.`);
+  const providerUnit=n(first(stock?.price,stock?.data?.price,stock?.amount,stock?.data?.amount));
+  if(providerUnit<=0) throw new Error("The selected eSIM is currently unavailable.");
+  const selling=sellingPrice(providerUnit)*quantity;
+  const ref=reference();
+  const metadata={provider:"bilalsadasub",service:"esim",type,provider_amount:providerUnit,quantity,request_id:ref};
+  const {data:debit,error:debitError}=await admin.rpc("debit_wallet",{_user_id:user.id,_amount:selling,_description:`${type} eSIM purchase`,_idempotency_key:ref,_reference:ref,_category:"bill_payment",_metadata:metadata});
+  if(debitError) throw new Error("Unable to process the payment from your wallet.");
+  const txId=debit?.id??null;
+  await updateTransaction(admin,user.id,ref,{status:"pending",provider:"bilalsadasub",provider_reference:ref,transaction_type:"esim",metadata});
+  let raw:any;
+  try{ raw=await postJson<any>("/api/sak/sim/buy",{type,quantity,token:bilalToken(),...(body.provider_pin?{pin:s(body.provider_pin)}:{})}); }
+  catch(error){
+    if(providerDefinitivelyFailed(error)){
+      const refundResult=await refund(admin,user.id,selling,ref,{...metadata,refund_reason:"provider_rejected_request"});
+      await updateTransaction(admin,user.id,ref,{status:"failed",metadata:{...metadata,refunded:!refundResult.error}});
+      throw new Error(safeProviderMessage(error));
+    }
+    await updateTransaction(admin,user.id,ref,{status:"pending",metadata:{...metadata,reconciliation_required:true,provider_transport:"uncertain"}});
+    return {success:true,status:"pending",reference:ref,transaction_id:txId,message:"Your eSIM order is still being processed.",reconciliation_required:true};
+  }
+  const failed=providerFailed(raw); const success=providerSuccessful(raw);
+  const safe={status:raw?.status??null,transid:raw?.transid??null,message:raw?.message??null};
+  if(failed){ const rr=await refund(admin,user.id,selling,ref,{...metadata,provider_response:safe}); await updateTransaction(admin,user.id,ref,{status:"failed",provider_reference:raw?.transid??ref,metadata:{...metadata,provider_response:safe,refunded:!rr.error}}); throw new Error("eSIM purchase failed. Your wallet has been refunded."); }
+  if(!success){ await updateTransaction(admin,user.id,ref,{status:"pending",provider_reference:raw?.transid??ref,metadata:{...metadata,provider_response:safe,reconciliation_required:true}}); return {success:true,status:"pending",reference:ref,transaction_id:txId,message:"Your eSIM order is still being processed.",reconciliation_required:true}; }
+  await updateTransaction(admin,user.id,ref,{status:"success",provider_reference:raw?.transid??ref,metadata:{...metadata,provider_response:safe}});
+  return {success:true,status:"success",reference:ref,transaction_id:txId,provider_reference:raw?.transid??null,msisdns:raw?.msisdns??raw?.data?.msisdns??[],message:"eSIM purchase completed successfully."};
+}
+
 async function purchase(admin:any,user:any,body:Obj) {
   const service=s(first(body.service,body.type)).toLowerCase();
   const details=body.details ?? body;
@@ -274,7 +320,8 @@ async function purchase(admin:any,user:any,body:Obj) {
     if (type === "smile" && details.account_type) providerBody.account_type=s(details.account_type);
   } else if (service === "data-card" || service === "airtime-card" || service === "recharge-card") {
     const planId=n(first(details.item_code,details.plan_code,selected.id,selected.code));
-    const quantity=Math.min(100,Math.max(1,n(details.quantity || 1)));
+    const quantityLimit = service === "data-card" ? 50 : 100;
+    const quantity=Math.min(quantityLimit,Math.max(1,n(details.quantity || 1)));
     const cardPlans = service === "data-card" ? DATA_CARD_PLANS : RECHARGE_CARD_PLANS;
     const cardPlan = cardPlans.find((x:any)=>x.id===planId);
     providerAmount=n(cardPlan?.providerPrice);
@@ -310,18 +357,30 @@ async function purchase(admin:any,user:any,body:Obj) {
     provider=await postJson<any>(providerPath,providerBody);
   } catch (error) {
     console.error("Bilalsadasub purchase transport failure",{service,ref,error});
-    await refund(admin,user.id,sellingAmount,ref,{...metadata,refund_reason:"provider_transport_failure"});
-    await updateTransaction(admin,user.id,ref,{status:"failed",metadata:{...metadata,refunded:true}});
-    throw new Error(safeProviderMessage(error));
+    if (providerDefinitivelyFailed(error)) {
+      const refundResult=await refund(admin,user.id,sellingAmount,ref,{...metadata,refund_reason:"provider_rejected_request"});
+      await updateTransaction(admin,user.id,ref,{status:"failed",metadata:{...metadata,refunded:!refundResult.error}});
+      throw new Error(safeProviderMessage(error));
+    }
+    // A timeout/5xx is ambiguous: the provider may have processed the request.
+    // Keep the wallet debit and transaction pending; webhook/reconciliation can settle it.
+    await updateTransaction(admin,user.id,ref,{status:"pending",provider:"bilalsadasub",provider_reference:ref,metadata:{...metadata,reconciliation_required:true,provider_transport:"uncertain"}});
+    return {success:true,status:"pending",reference:ref,transaction_reference:ref,transaction_id:txId,message:"Your payment was received and is still being processed.",reconciliation_required:true};
   }
 
   const failed=providerFailed(provider);
   const success=providerSuccessful(provider);
+  const providerStatus=String(provider?.status ?? provider?.Status ?? "").toLowerCase();
   const safe={status:provider?.status ?? null,message:provider?.message ?? null,transid:provider?.transid ?? null,request_id:provider?.["request-id"] ?? provider?.request_id ?? null};
-  if (failed || !success) {
+  if (failed) {
     const refundResult=await refund(admin,user.id,sellingAmount,ref,{...metadata,provider_response:safe});
     await updateTransaction(admin,user.id,ref,{status:"failed",provider:"bilalsadasub",provider_reference:provider?.transid ?? ref,metadata:{...metadata,provider_response:safe,refunded:!refundResult.error}});
     throw new Error("Purchase failed. Your wallet has been refunded.");
+  }
+
+  if (!success) {
+    await updateTransaction(admin,user.id,ref,{status:"pending",provider:"bilalsadasub",provider_reference:provider?.transid ?? ref,metadata:{...metadata,provider_response:safe,reconciliation_required:true}});
+    return {success:true,status:"pending",reference:ref,transaction_reference:ref,transaction_id:txId,message:"Your payment was received and is still being processed.",provider_reference:provider?.transid ?? null,reconciliation_required:true};
   }
 
   await updateTransaction(admin,user.id,ref,{status:"success",provider:"bilalsadasub",provider_reference:provider?.transid ?? ref,metadata:{...metadata,provider_response:safe,provider_amount:providerAmount}});
@@ -341,6 +400,8 @@ Deno.serve(async (req) => {
     if (action === "billers") return json(await catalog(s(body.service).toLowerCase(),body));
     if (action === "catalog" || action === "get_catalog") return json(await catalog(s(body.service).toLowerCase(),body));
     if (action === "verify_customer" || action === "verify") return json(await verify(s(body.service).toLowerCase(),body));
+    if (action === "esim_stock") return json(await esimStock(body));
+    if (action === "esim_buy") return json(await esimBuy(admin,user,body));
     if (action === "purchase") return json(await purchase(admin,user,body));
     return json({success:false,error:"Unsupported service request."},400);
   } catch (error) {

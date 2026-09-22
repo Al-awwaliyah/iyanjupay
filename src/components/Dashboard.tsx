@@ -42,6 +42,7 @@ import {
 import ServiceCard from "./services/ServiceCard";
 import FundWalletModal from "./modals/FundWalletModal";
 import ServicePayment from "@/pages/ServicePayment";
+import BilalsadasubExtras from "@/pages/BilalsadasubExtras";
 import QRCodeModal from "./modals/QRCodeModal";
 import WhatsAppFloat from "./WhatsAppFloat";
 import SupportChat from "./support/SupportChat";
@@ -83,7 +84,11 @@ type BillService =
   | "education"
   | "recharge-card"
   | "airtime-card"
+  | "data-card"
   | "internet"
+  | "airtime-cash"
+  | "gift-card"
+  | "esim"
   | "savings";
 
 type CurrentPage =
@@ -100,6 +105,7 @@ type CurrentPage =
   | "disputes"
   | "send-money"
   | "service-payment"
+  | "bilalsadasub-extra"
   | "security";
 
 type SelectedService = {
@@ -138,6 +144,11 @@ const SUPPORTED_BILL_SERVICES: BillService[] = [
   "education",
   "internet",
   "airtime-card",
+  "data-card",
+  "recharge-card",
+  "airtime-cash",
+  "gift-card",
+  "esim",
 ];
 
 const COMING_SOON_SERVICES: BillService[] = [
@@ -897,6 +908,47 @@ const Dashboard = () => {
       available: true,
     },
     {
+      title: "Data Card",
+      description:
+        "Generate data card PINs",
+      icon: Receipt,
+      color: "bg-cyan-500",
+      type: "data-card" as BillService,
+      available: true,
+    },
+    {
+      title: "Airtime Card",
+      description: "Generate discounted airtime recharge PINs",
+      icon: Receipt,
+      color: "bg-slate-500",
+      type: "recharge-card" as BillService,
+      available: true,
+    },
+    {
+      title: "Airtime to Cash",
+      description: "Convert eligible airtime to wallet balance",
+      icon: Banknote,
+      color: "bg-emerald-500",
+      type: "airtime-cash" as BillService,
+      available: true,
+    },
+    {
+      title: "Gift Cards",
+      description: "Buy or sell supported gift cards",
+      icon: Gift,
+      color: "bg-pink-500",
+      type: "gift-card" as BillService,
+      available: true,
+    },
+    {
+      title: "Internet eSIM",
+      description: "Buy available Smile or Alpha eSIM numbers",
+      icon: Radio,
+      color: "bg-indigo-500",
+      type: "esim" as BillService,
+      available: true,
+    },
+    {
       title: "Savings",
       description:
         "Coming soon",
@@ -971,7 +1023,9 @@ const Dashboard = () => {
     });
 
     setCurrentPage(
-      "service-payment"
+      service.type === "airtime-cash" || service.type === "gift-card" || service.type === "esim"
+        ? "bilalsadasub-extra"
+        : "service-payment"
     );
   };
 
@@ -1052,7 +1106,7 @@ const Dashboard = () => {
         error,
       } =
         await supabase.functions.invoke(
-          "clubkonnect-services",
+          "bilalsadasub-services",
           {
             body: {
               action: "purchase",
@@ -1578,6 +1632,18 @@ const Dashboard = () => {
    * SERVICE PAYMENT
    * ============================================================
    */
+
+  if (currentPage === "bilalsadasub-extra" && selectedService) {
+    return (
+      <BilalsadasubExtras
+        type={selectedService.type as "airtime-cash" | "gift-card" | "esim"}
+        onBack={() => {
+          setSelectedService(null);
+          setCurrentPage("home");
+        }}
+      />
+    );
+  }
 
   if (
     currentPage ===
@@ -2510,7 +2576,7 @@ const Dashboard = () => {
               </div>
 
               <span className="hidden rounded-full bg-purple-50 px-3 py-1 text-xs font-bold text-purple-700 sm:block">
-                8 available
+                12 available
               </span>
 
             </div>

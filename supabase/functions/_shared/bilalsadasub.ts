@@ -110,6 +110,11 @@ export function providerFailed(body: any): boolean {
   return ["failed", "failure", "declined", "error", "rejected", "cancelled", "canceled"].includes(s);
 }
 
+export function providerDefinitivelyFailed(error: unknown): boolean {
+  const status = Number((error as any)?.status ?? 0);
+  return [400, 401, 402, 429].includes(status);
+}
+
 export function providerSuccessful(body: any): boolean {
   const s = String(body?.status ?? body?.Status ?? "").toLowerCase();
   return ["success", "successful", "completed", "complete", "paid"].includes(s);

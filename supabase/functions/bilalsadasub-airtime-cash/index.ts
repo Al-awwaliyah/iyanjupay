@@ -28,15 +28,34 @@ Deno.serve(async req=>{
       return json({success:true,session_id:session.id,balance:raw?.balance??raw?.airtime_balance??null,message:raw?.message??"OTP verified successfully."});
     }
     if(action==="complete"){
+      // If provider step 3 already completed but wallet credit previously failed,
+      // retry only the ledger credit. Never call the provider again.
+      if(session.provider_transid && n(session.credited_amount)>0){
+        const ref=`CASH_CREDIT_${session.provider_transid}`;
+        const {error}=await admin.rpc("credit_wallet",{_user_id:user.id,_amount:n(session.credited_amount),_description:"Airtime to Cash credit",_idempotency_key:ref,_reference:ref,_provider:"bilalsadasub",_provider_reference:s(session.provider_transid),_metadata:{service:"airtime_cash",transid:session.provider_transid,credited:n(session.credited_amount),recovery:true}});
+        if(error)throw new Error("The conversion completed but wallet credit could not be finalized. Please try again.");
+        await admin.from("bilalsadasub_cash_sessions").update({used:true,step:3}).eq("id",session.id);
+        return json({success:true,credited:n(session.credited_amount),reference:ref,provider_reference:session.provider_transid,message:"Airtime converted successfully."});
+      }
       const amount=n(b.amount); const sharePin=s(b.share_pin); if(amount<=0||!/^\d{4}$/.test(sharePin))throw new Error("Enter a valid amount and 4-digit share PIN.");
       const raw=await postJson<any>("/api/cash",{step:3,phone:session.phone,network:session.network,amount,share_pin:sharePin,data:session.session_data,token:bilalToken(),...(b.pin?{pin:s(b.pin)}:{})});
-      const credited=n(raw?.credited); if(credited<=0)throw new Error("Airtime-to-cash conversion was not confirmed.");
-      await admin.from("bilalsadasub_cash_sessions").update({used:true,step:3}).eq("id",session.id);
-      const ref=`IP_CASH_${crypto.randomUUID().replaceAll("-","")}`;
-      const {error}=await admin.rpc("credit_wallet",{_user_id:user.id,_amount:credited,_description:"Airtime to Cash credit",_idempotency_key:ref,_reference:ref,_provider:"bilalsadasub",_provider_reference:s(raw?.transid),_metadata:{service:"airtime_cash",transid:raw?.transid??null,source_amount:amount,credited}});
-      if(error)throw new Error("The conversion completed but wallet credit could not be finalized.");
-      return json({success:true,credited,reference:ref,provider_reference:raw?.transid??null,message:"Airtime converted successfully."});
+      const credited=n(raw?.credited); const transid=s(raw?.transid); if(credited<=0 || !transid)throw new Error("Airtime-to-cash conversion was not confirmed.");
+      await admin.from("bilalsadasub_cash_sessions").update({step:3,provider_transid:transid,credited_amount:credited,completion_payload:{transid,credited,source_amount:amount}}).eq("id",session.id);
+      const ref=`CASH_CREDIT_${transid}`;
+      const {error}=await admin.rpc("credit_wallet",{_user_id:user.id,_amount:credited,_description:"Airtime to Cash credit",_idempotency_key:ref,_reference:ref,_provider:"bilalsadasub",_provider_reference:transid,_metadata:{service:"airtime_cash",transid,source_amount:amount,credited}});
+      if(error)throw new Error("The conversion completed but wallet credit could not be finalized. Please try again.");
+      await admin.from("bilalsadasub_cash_sessions").update({used:true}).eq("id",session.id);
+      return json({success:true,credited,reference:ref,provider_reference:transid,message:"Airtime converted successfully."});
     }
     throw new Error("Unsupported airtime-to-cash action.");
-  }catch(error){console.error("Bilalsadasub airtime cash error",{action,user_id:user.id,error});return json({success:false,error:error instanceof Error?error.message:"Unable to complete airtime-to-cash request."},400)}
+  }catch(error){
+    console.error("Bilalsadasub airtime cash error",{action,user_id:user.id,error});
+    const status=Number((error as any)?.status ?? 0);
+    const message=[401,402,429].includes(status)
+      ? "Airtime-to-cash service is temporarily unavailable."
+      : status >= 500 || (error as any)?.name === "AbortError"
+        ? "Your request is still being processed. Please check your transaction status before trying again."
+        : error instanceof Error ? error.message : "Unable to complete airtime-to-cash request.";
+    return json({success:false,error:message},400);
+  }
 });

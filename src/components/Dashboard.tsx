@@ -29,7 +29,6 @@ import {
   Wifi,
   Zap,
   Check,
-  Bell,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -69,12 +68,6 @@ import NotificationCenter from "@/components/notifications/NotificationCenter";
 import AnnouncementBanner from "@/components/notifications/AnnouncementBanner";
 import SecuritySettingsPage from "@/components/security/SecuritySettingsPage";
 import { useCustomerAppSettings } from "@/hooks/useCustomerAppSettings";
-
-/*
- * ============================================================
- * SERVICE TYPES
- * ============================================================
- */
 
 type BillService =
   | "airtime"
@@ -130,12 +123,6 @@ type DashboardTransaction = {
   created_at: string;
 };
 
-/*
- * ============================================================
- * SUPPORTED SERVICES
- * ============================================================
- */
-
 const SUPPORTED_BILL_SERVICES: BillService[] = [
   "airtime",
   "data",
@@ -154,12 +141,6 @@ const SUPPORTED_BILL_SERVICES: BillService[] = [
 const COMING_SOON_SERVICES: BillService[] = [
   "savings",
 ];
-
-/*
- * ============================================================
- * TRANSACTION HELPERS
- * ============================================================
- */
 
 const SUCCESS_STATUSES = new Set([
   "success",
@@ -251,16 +232,6 @@ const isMoneyOutTransaction = (
       metadata?.direction
     );
 
-  const metadataType =
-    normalizeText(
-      metadata?.type
-    );
-
-  const metadataTransactionType =
-    normalizeText(
-      metadata?.transaction_type
-    );
-
   if (
     type === "credit" ||
     type === "funding" ||
@@ -286,11 +257,7 @@ const isMoneyOutTransaction = (
 
   if (
     MONEY_OUT_TYPES.has(type) ||
-    MONEY_OUT_TYPES.has(category) ||
-    MONEY_OUT_TYPES.has(metadataType) ||
-    MONEY_OUT_TYPES.has(
-      metadataTransactionType
-    )
+    MONEY_OUT_TYPES.has(category)
   ) {
     return true;
   }
@@ -315,12 +282,6 @@ const isMoneyOutTransaction = (
   );
 };
 
-/*
- * ============================================================
- * DASHBOARD
- * ============================================================
- */
-
 const Dashboard = () => {
   const {
     user,
@@ -339,32 +300,14 @@ const Dashboard = () => {
     allowBillPayments,
   } = useCustomerAppSettings();
 
-  /*
-   * ============================================================
-   * PAGE
-   * ============================================================
-   */
-
   const [currentPage, setCurrentPage] =
     useState<CurrentPage>("home");
-
-  /*
-   * ============================================================
-   * WALLET
-   * ============================================================
-   */
 
   const {
     wallet,
     loading: walletLoading,
     refreshWallet,
   } = useWallet(user?.id);
-
-  /*
-   * ============================================================
-   * MODALS
-   * ============================================================
-   */
 
   const [fundModalOpen, setFundModalOpen] =
     useState(false);
@@ -383,17 +326,6 @@ const Dashboard = () => {
   const [showBalance, setShowBalance] =
     useState(true);
 
-  /*
-   * ============================================================
-   * DASHBOARD APPEARANCE
-   * ============================================================
-   * light = clean light appearance
-   * blue  = blue IyanjuPay appearance
-   * dark  = dark appearance
-   *
-   * Dashboard remains the single source of truth.
-   */
-
   const { theme: dashboardTheme, setTheme: setDashboardTheme } = useTheme();
 
   const [appearanceOpen, setAppearanceOpen] = useState(false);
@@ -401,13 +333,6 @@ const Dashboard = () => {
   const ActiveAppearanceIcon =
     THEME_OPTIONS.find((option) => option.value === dashboardTheme)?.icon ??
     THEME_OPTIONS[0].icon;
-
-
-  /*
-   * ============================================================
-   * STATS
-   * ============================================================
-   */
 
   const [stats, setStats] =
     useState<TransactionStats>({
@@ -418,12 +343,6 @@ const Dashboard = () => {
 
   const [statsLoading, setStatsLoading] =
     useState(true);
-
-  /*
-   * ============================================================
-   * AUTH REDIRECT
-   * ============================================================
-   */
 
   useEffect(() => {
     if (authLoading) {
@@ -437,12 +356,6 @@ const Dashboard = () => {
     authLoading,
     user,
   ]);
-
-  /*
-   * ============================================================
-   * EDGE FUNCTION ERROR
-   * ============================================================
-   */
 
   const extractFunctionError =
     async (
@@ -473,11 +386,6 @@ const Dashboard = () => {
             payload = null;
           }
 
-          console.error(
-            "Edge Function response:",
-            payload
-          );
-
           if (payload?.error) {
             return String(
               payload.error
@@ -487,34 +395,6 @@ const Dashboard = () => {
           if (payload?.message) {
             return String(
               payload.message
-            );
-          }
-
-          if (
-            payload?.provider_message
-          ) {
-            return String(
-              payload.provider_message
-            );
-          }
-
-          if (
-            payload?.provider_response
-              ?.message
-          ) {
-            return String(
-              payload.provider_response
-                .message
-            );
-          }
-
-          if (
-            payload?.provider_response
-              ?.getSafeErrorMessage(data)
-          ) {
-            return String(
-              payload.provider_response
-                .data.message
             );
           }
         }
@@ -537,12 +417,6 @@ const Dashboard = () => {
 
       return fallback;
     };
-
-  /*
-   * ============================================================
-   * DASHBOARD STATISTICS
-   * ============================================================
-   */
 
   const loadDashboardStats =
     useCallback(async () => {
@@ -627,2277 +501,1410 @@ const Dashboard = () => {
             (transaction) => {
               const createdAt =
                 new Date(
-                  transaction.created_at
-                );
+transaction.created_at
+);
 
-              return (
-                createdAt >=
-                  monthStart &&
-                createdAt < monthEnd
-              );
+return (
+  createdAt >= monthStart &&
+  createdAt < monthEnd
+);
+});
+
+const monthlySpent =
+  monthlyTransactions
+    .filter(
+      (transaction) =>
+        isSuccessfulTransaction(transaction) &&
+        isMoneyOutTransaction(transaction)
+    )
+    .reduce(
+      (
+        total,
+        transaction
+      ) => {
+        const amount =
+          Number(transaction.amount);
+
+        if (
+          !Number.isFinite(amount)
+        ) {
+          return total;
+        }
+
+        return total + amount;
+      },
+      0
+    );
+
+const successfulCount =
+  transactions.filter(
+    isSuccessfulTransaction
+  ).length;
+
+const failedCount =
+  transactions.filter(
+    isFailedTransaction
+  ).length;
+
+const terminalTransactions =
+  successfulCount +
+  failedCount;
+
+const successRate =
+  terminalTransactions === 0
+    ? 100
+    : Math.round(
+        (successfulCount /
+          terminalTransactions) *
+          100
+      );
+
+setStats({
+  monthlySpent,
+  monthlyTransactions:
+    monthlyTransactions.length,
+  successRate,
+});
+} catch (error) {
+  console.error(
+    "Dashboard statistics error:",
+    error
+  );
+
+  setStats({
+    monthlySpent: 0,
+    monthlyTransactions: 0,
+    successRate: 0,
+  });
+} finally {
+  setStatsLoading(false);
+}
+}, [user?.id]);
+
+useEffect(() => {
+  if (
+    authLoading ||
+    !user
+  ) {
+    return;
+  }
+
+  void loadDashboardStats();
+}, [
+  authLoading,
+  user,
+  loadDashboardStats,
+]);
+
+useEffect(() => {
+  if (!user?.id) {
+    return;
+  }
+
+  const channel =
+    supabase
+      .channel(
+        `dashboard-transactions-${user.id}`
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "transactions",
+          filter: `user_id=eq.${user.id}`,
+        },
+        () => {
+          void loadDashboardStats();
+        }
+      )
+      .subscribe();
+
+  return () => {
+    void supabase.removeChannel(
+      channel
+    );
+  };
+}, [
+  user?.id,
+  loadDashboardStats,
+]);
+
+useEffect(() => {
+  if (!user?.id) {
+    return;
+  }
+
+  let cancelled = false;
+
+  const bootstrapWallet =
+    async () => {
+      try {
+        const {
+          data,
+          error,
+        } =
+          await supabase.functions.invoke(
+            "wallet-bootstrap",
+            {
+              body: {},
             }
           );
 
-        const monthlySpent =
-          monthlyTransactions
-            .filter(
-              (transaction) =>
-                isSuccessfulTransaction(
-                  transaction
-                ) &&
-                isMoneyOutTransaction(
-                  transaction
-                )
-            )
-            .reduce(
-              (
-                total,
-                transaction
-              ) => {
-                const amount =
-                  Number(
-                    transaction.amount
-                  );
+        if (cancelled) {
+          return;
+        }
 
-                if (
-                  !Number.isFinite(
-                    amount
-                  )
-                ) {
-                  return total;
-                }
-
-                return (
-                  total + amount
-                );
-              },
-              0
-            );
-
-        const successfulCount =
-          transactions.filter(
-            isSuccessfulTransaction
-          ).length;
-
-        const failedCount =
-          transactions.filter(
-            isFailedTransaction
-          ).length;
-
-        const terminalTransactions =
-          successfulCount +
-          failedCount;
-
-        const successRate =
-          terminalTransactions ===
-          0
-            ? 100
-            : Math.round(
-                (successfulCount /
-                  terminalTransactions) *
-                  100
-              );
-
-        setStats({
-          monthlySpent,
-          monthlyTransactions:
-            monthlyTransactions.length,
-          successRate,
-        });
-      } catch (error) {
-        console.error(
-          "Dashboard statistics error:",
-          error
-        );
-
-        setStats({
-          monthlySpent: 0,
-          monthlyTransactions: 0,
-          successRate: 0,
-        });
-      } finally {
-        setStatsLoading(false);
-      }
-    }, [user?.id]);
-
-  useEffect(() => {
-    if (
-      authLoading ||
-      !user
-    ) {
-      return;
-    }
-
-    void loadDashboardStats();
-  }, [
-    authLoading,
-    user,
-    loadDashboardStats,
-  ]);
-
-  /*
-   * ============================================================
-   * REALTIME TRANSACTIONS
-   * ============================================================
-   */
-
-  useEffect(() => {
-    if (!user?.id) {
-      return;
-    }
-
-    const channel =
-      supabase
-        .channel(
-          `dashboard-transactions-${user.id}`
-        )
-        .on(
-          "postgres_changes",
-          {
-            event: "*",
-            schema: "public",
-            table: "transactions",
-            filter: `user_id=eq.${user.id}`,
-          },
-          () => {
-            void loadDashboardStats();
-          }
-        )
-        .subscribe();
-
-    return () => {
-      void supabase.removeChannel(
-        channel
-      );
-    };
-  }, [
-    user?.id,
-    loadDashboardStats,
-  ]);
-
-  /*
-   * ============================================================
-   * WALLET BOOTSTRAP
-   * ============================================================
-   */
-
-  useEffect(() => {
-    if (!user?.id) {
-      return;
-    }
-
-    let cancelled = false;
-
-    const bootstrapWallet =
-      async () => {
-        try {
-          const {
-            data,
-            error,
-          } =
-            await supabase.functions.invoke(
-              "wallet-bootstrap",
-              {
-                body: {},
-              }
-            );
-
-          if (cancelled) {
-            return;
-          }
-
-          if (error) {
-            console.error(
-              "Wallet bootstrap error:",
-              error
-            );
-
-            return;
-          }
-
-          console.log(
-            "Wallet bootstrap:",
-            data
-          );
-
-          await refreshWallet();
-
-          await loadDashboardStats();
-        } catch (error) {
-          if (cancelled) {
-            return;
-          }
-
+        if (error) {
           console.error(
-            "Wallet bootstrap failed:",
+            "Wallet bootstrap error:",
             error
           );
+
+          return;
         }
-      };
 
-    void bootstrapWallet();
+        await refreshWallet();
+        await loadDashboardStats();
+      } catch (error) {
+        if (cancelled) {
+          return;
+        }
 
-    return () => {
-      cancelled = true;
+        console.error(
+          "Wallet bootstrap failed:",
+          error
+        );
+      }
     };
-  }, [
-    user?.id,
-    refreshWallet,
-    loadDashboardStats,
-  ]);
 
-  /*
-   * ============================================================
-   * SERVICES
-   * ============================================================
-   */
+  void bootstrapWallet();
 
-  const services = [
-    {
-      title: "Buy Airtime",
-      description:
-        "Recharge your phone instantly",
-      icon: Smartphone,
-      color: "bg-blue-500",
-      type: "airtime" as BillService,
-      available: true,
-    },
-    {
-      title: "Buy Data",
-      description:
-        "Fast data bundles",
-      icon: Wifi,
-      color: "bg-purple-500",
-      type: "data" as BillService,
-      available: true,
-    },
-    {
-      title: "Cable TV",
-      description:
-        "DSTV, GOTV & Startimes",
-      icon: CreditCard,
-      color: "bg-red-500",
-      type: "cable" as BillService,
-      available: true,
-    },
-    {
-      title: "Electricity",
-      description:
-        "Pay your power bill",
-      icon: Zap,
-      color: "bg-yellow-500",
-      type: "electricity" as BillService,
-      available: true,
-    },
-    {
-      title: "Education",
-      description:
-        "Education services",
-      icon: GraduationCap,
-      color: "bg-orange-500",
-      type: "education" as BillService,
-      available: true,
-    },
-    {
-      title: "Airtime Recharge PIN",
-      description:
-        "Generate MTN, Glo, 9mobile & Airtel recharge PINs",
-      icon: Receipt,
-      color: "bg-slate-500",
-      type: "airtime-card" as BillService,
-      available: true,
-    },
-    {
-      title: "Data Card",
-      description:
-        "Generate data card PINs",
-      icon: Receipt,
-      color: "bg-cyan-500",
-      type: "data-card" as BillService,
-      available: true,
-    },
-    {
-      title: "Airtime Card",
-      description: "Generate discounted airtime recharge PINs",
-      icon: Receipt,
-      color: "bg-slate-500",
-      type: "recharge-card" as BillService,
-      available: true,
-    },
-    {
-      title: "Airtime to Cash",
-      description: "Convert eligible airtime to wallet balance",
-      icon: Banknote,
-      color: "bg-emerald-500",
-      type: "airtime-cash" as BillService,
-      available: true,
-    },
-    {
-      title: "Gift Cards",
-      description: "Buy or sell supported gift cards",
-      icon: Gift,
-      color: "bg-pink-500",
-      type: "gift-card" as BillService,
-      available: true,
-    },
-    {
-      title: "Internet eSIM",
-      description: "Buy available Smile or Alpha eSIM numbers",
-      icon: Radio,
-      color: "bg-indigo-500",
-      type: "esim" as BillService,
-      available: true,
-    },
-    {
-      title: "Savings",
-      description:
-        "Coming soon",
-      icon: PiggyBank,
-      color: "bg-pink-500",
-      type: "savings" as BillService,
-      available: false,
-    },
-    {
-      title: "Internet Service",
-      description:
-        "Pay internet service bills",
-      icon: Wifi,
-      color: "bg-indigo-500",
-      type: "internet" as BillService,
-      available: true,
-    },
-  ];
+  return () => {
+    cancelled = true;
+  };
+}, [
+  user?.id,
+  refreshWallet,
+  loadDashboardStats,
+]);
 
-  /*
-   * ============================================================
-   * SERVICE CLICK
-   * ============================================================
-   */
+const services = [
+  {
+    title: "Buy Airtime",
+    description:
+      "Recharge your phone instantly",
+    icon: Smartphone,
+    color: "bg-blue-500",
+    type: "airtime" as BillService,
+    available: true,
+  },
+  {
+    title: "Buy Data",
+    description:
+      "Fast data bundles",
+    icon: Wifi,
+    color: "bg-purple-500",
+    type: "data" as BillService,
+    available: true,
+  },
+  {
+    title: "Cable TV",
+    description:
+      "DSTV, GOTV and Startimes",
+    icon: CreditCard,
+    color: "bg-red-500",
+    type: "cable" as BillService,
+    available: true,
+  },
+  {
+    title: "Electricity",
+    description:
+      "Pay your power bill",
+    icon: Zap,
+    color: "bg-yellow-500",
+    type: "electricity" as BillService,
+    available: true,
+  },
+  {
+    title: "Education",
+    description:
+      "Education services",
+    icon: GraduationCap,
+    color: "bg-orange-500",
+    type: "education" as BillService,
+    available: true,
+  },
+  {
+    title: "Airtime Recharge PIN",
+    description:
+      "Generate MTN, Glo, 9mobile and Airtel recharge PINs",
+    icon: Receipt,
+    color: "bg-slate-500",
+    type: "airtime-card" as BillService,
+    available: true,
+  },
+  {
+    title: "Data Card",
+    description:
+      "Generate data card PINs",
+    icon: Receipt,
+    color: "bg-cyan-500",
+    type: "data-card" as BillService,
+    available: true,
+  },
+  {
+    title: "Airtime Card",
+    description:
+      "Generate discounted airtime recharge PINs",
+    icon: Receipt,
+    color: "bg-slate-500",
+    type: "recharge-card" as BillService,
+    available: true,
+  },
+  {
+    title: "Airtime to Cash",
+    description:
+      "Convert eligible airtime to wallet balance",
+    icon: Banknote,
+    color: "bg-emerald-500",
+    type: "airtime-cash" as BillService,
+    available: true,
+  },
+  {
+    title: "Gift Cards",
+    description:
+      "Buy or sell supported gift cards",
+    icon: Gift,
+    color: "bg-pink-500",
+    type: "gift-card" as BillService,
+    available: true,
+  },
+  {
+    title: "Internet eSIM",
+    description:
+      "Buy available Smile or Alpha eSIM numbers",
+    icon: Radio,
+    color: "bg-indigo-500",
+    type: "esim" as BillService,
+    available: true,
+  },
+  {
+    title: "Savings",
+    description:
+      "Coming soon",
+    icon: PiggyBank,
+    color: "bg-pink-500",
+    type: "savings" as BillService,
+    available: false,
+  },
+  {
+    title: "Internet Service",
+    description:
+      "Pay internet service bills",
+    icon: Wifi,
+    color: "bg-indigo-500",
+    type: "internet" as BillService,
+    available: true,
+  },
+];
 
-  const handleServiceClick = (
-    service: (typeof services)[number]
-  ) => {
-    if (!allowBillPayments) {
-      toast({
-        title: "Bill payments temporarily unavailable",
-        description: "Airtime, data and other service payments have been disabled by IyanjuPay administration.",
-      });
-      return;
-    }
-
-    if (
-      COMING_SOON_SERVICES.includes(
-        service.type
-      )
-    ) {
-      toast({
-        title: "Coming soon",
-        description:
-          `${service.title} is not yet available.`,
-      });
-
-      return;
-    }
-
-    if (
-      !service.available ||
-      !SUPPORTED_BILL_SERVICES.includes(
-        service.type
-      )
-    ) {
-      toast({
-        title:
-          "Service unavailable",
-        description:
-          `${service.title} is not currently available.`,
-        variant:
-          "destructive",
-      });
-
-      return;
-    }
-
-    setSelectedService({
-      title: service.title,
-      type: service.type,
+const handleServiceClick = (
+  service: (typeof services)[number]
+) => {
+  if (!allowBillPayments) {
+    toast({
+      title:
+        "Bill payments temporarily unavailable",
+      description:
+        "Airtime, data and other service payments have been disabled by IyanjuPay administration.",
     });
 
-    setCurrentPage(
-      service.type === "airtime-cash" || service.type === "gift-card" || service.type === "esim"
-        ? "bilalsadasub-extra"
-        : "service-payment"
+    return;
+  }
+
+  if (
+    COMING_SOON_SERVICES.includes(
+      service.type
+    )
+  ) {
+    toast({
+      title: "Coming soon",
+      description:
+        `${service.title} is not yet available.`,
+    });
+
+    return;
+  }
+
+  if (
+    !service.available ||
+    !SUPPORTED_BILL_SERVICES.includes(
+      service.type
+    )
+  ) {
+    toast({
+      title:
+        "Service unavailable",
+      description:
+        `${service.title} is not currently available.`,
+      variant:
+        "destructive",
+    });
+
+    return;
+  }
+
+  setSelectedService({
+    title: service.title,
+    type: service.type,
+  });
+
+  setCurrentPage(
+    service.type === "airtime-cash" ||
+      service.type === "gift-card" ||
+      service.type === "esim"
+      ? "bilalsadasub-extra"
+      : "service-payment"
+  );
+};
+
+const handlePurchase = async (
+  amount: number,
+  details: Record<string, any>
+): Promise<any> => {
+  if (!user) {
+    throw new Error(
+      "Authentication required. Please log in again."
     );
+  }
+
+  if (!selectedService) {
+    throw new Error(
+      "Please select a service."
+    );
+  }
+
+  const service =
+    selectedService.type;
+
+  if (
+    !SUPPORTED_BILL_SERVICES.includes(
+      service
+    )
+  ) {
+    throw new Error(
+      `${selectedService.title} is not currently available.`
+    );
+  }
+
+  if (
+    !Number.isFinite(amount) ||
+    amount <= 0
+  ) {
+    throw new Error(
+      "Please enter a valid payment amount."
+    );
+  }
+
+  const paymentDetails = {
+    ...details,
+    service,
+    amount,
+    country:
+      String(
+        details?.country ?? "NG"
+      )
+        .trim()
+        .toUpperCase() || "NG",
   };
 
-  /*
-   * ============================================================
-   * SERVICE PURCHASE
-   * ============================================================
-   *
-   * All VTU/service purchases are routed through the secure
-   * ClubKonnect Edge Function. The provider remains server-side.
-   *
-   * The frontend does NOT debit the wallet and does NOT decide
-   * whether a transaction is successful. The Edge Function owns
-   * wallet debit, provider processing, transaction recording and
-   * refund/pending handling.
-   */
+  toast({
+    title:
+      "Processing payment",
+    description:
+      `Processing ${selectedService.title.toLowerCase()}...`,
+  });
 
-  const handlePurchase = async (
-    amount: number,
-    details: Record<string, any>
-  ): Promise<any> => {
-    if (!user) {
+  try {
+    const {
+      data,
+      error,
+    } =
+      await supabase.functions.invoke(
+        "bilalsadasub-services",
+        {
+          body: {
+            action: "purchase",
+            service,
+            amount,
+            country:
+              paymentDetails.country,
+            customer:
+              paymentDetails.customer,
+            biller_code:
+              paymentDetails.biller_code,
+            network_code:
+              paymentDetails.network_code,
+            item_code:
+              paymentDetails.item_code,
+            product_code:
+              paymentDetails.product_code,
+            variation_code:
+              paymentDetails.variation_code,
+            meter_type:
+              paymentDetails.meter_type,
+            meter_number:
+              paymentDetails.meter_number,
+            meter_no:
+              paymentDetails.meter_no,
+            smartcard_no:
+              paymentDetails.smartcard_no,
+            smartcard_number:
+              paymentDetails.smartcard_number,
+            phone_no:
+              paymentDetails.phone_no,
+            phone:
+              paymentDetails.phone,
+            phoneNumber:
+              paymentDetails.phoneNumber,
+            mobile_number:
+              paymentDetails.mobile_number,
+            account_id:
+              paymentDetails.account_id,
+            data_plan:
+              paymentDetails.data_plan,
+            package:
+              paymentDetails.package,
+            package_code:
+              paymentDetails.package_code,
+            electric_company:
+              paymentDetails.electric_company,
+            cable_tv:
+              paymentDetails.cable_tv,
+            exam_type:
+              paymentDetails.exam_type,
+            value:
+              paymentDetails.value,
+            quantity:
+              Number(
+                paymentDetails.quantity ??
+                  1
+              ),
+            details:
+              paymentDetails,
+          },
+        }
+      );
+
+    if (error) {
+      const message =
+        await extractFunctionError(
+          error,
+          "Unable to process this service payment."
+        );
+
       throw new Error(
-        "Authentication required. Please log in again."
+        message
       );
     }
-
-    if (!selectedService) {
-      throw new Error(
-        "Please select a service."
-      );
-    }
-
-    const service =
-      selectedService.type;
 
     if (
-      !SUPPORTED_BILL_SERVICES.includes(
-        service
+      !data ||
+      data.success !== true
+    ) {
+      throw new Error(
+        getSafeErrorMessage(data) ||
+          data?.provider_message ||
+          "Service payment failed."
+      );
+    }
+
+    await refreshWallet();
+    await loadDashboardStats();
+
+    const normalizedStatus =
+      String(
+        data?.status ?? ""
       )
-    ) {
-      throw new Error(
-        `${selectedService.title} is not currently available.`
-      );
-    }
+        .trim()
+        .toLowerCase();
 
-    if (
-      !Number.isFinite(amount) ||
-      amount <= 0
-    ) {
-      throw new Error(
-        "Please enter a valid payment amount."
-      );
-    }
+    const isPending =
+      normalizedStatus ===
+        "pending" ||
+      normalizedStatus ===
+        "processing" ||
+      normalizedStatus ===
+        "order_received" ||
+      normalizedStatus ===
+        "order_processed" ||
+      normalizedStatus ===
+        "on_hold" ||
+      normalizedStatus === "300" ||
+      normalizedStatus === "399" ||
+      normalizedStatus === "201";
 
-    const paymentDetails = {
-      ...details,
-      service,
-      amount,
-      country:
-        String(
-          details?.country ?? "NG"
-        )
-          .trim()
-          .toUpperCase() || "NG",
-    };
+    toast({
+      title: isPending
+        ? "Payment Processing"
+        : "Payment Successful",
+      description:
+        getSafeErrorMessage(data) ||
+        (isPending
+          ? `${selectedService.title} payment is being processed.`
+          : `${selectedService.title} payment was completed successfully.`),
+    });
+
+    return data;
+  } catch (error: any) {
+    console.error(
+      "Service payment failed:",
+      error
+    );
+
+    throw new Error(
+      getSafeErrorMessage(error) ||
+        "Unable to complete this service payment."
+    );
+  }
+};
+
+const handleTransfer = async (
+  amount: number,
+  details: any
+) => {
+  if (!user) {
+    toast({
+      title:
+        "Authentication required",
+      description:
+        "Please log in again.",
+      variant:
+        "destructive",
+    });
+
+    return;
+  }
+
+  if (
+    !Number.isFinite(amount) ||
+    amount <= 0
+  ) {
+    toast({
+      title:
+        "Invalid amount",
+      description:
+        "Please enter a valid transfer amount.",
+      variant:
+        "destructive",
+    });
+
+    return;
+  }
+
+  if (
+    details?.type ===
+      "iyanjupay" ||
+    details?.transferType ===
+      "iyanjupay" ||
+    details?.recipientType ===
+      "iyanjupay"
+  ) {
+    toast({
+      title:
+        "Transfer routing error",
+      description:
+        "Please try the IyanjuPay transfer again.",
+      variant:
+        "destructive",
+    });
+
+    return;
+  }
+
+  if (
+    wallet &&
+    amount >
+      Number(wallet.balance)
+  ) {
+    toast({
+      title:
+        "Insufficient Balance",
+      description:
+        "Please fund your wallet to continue.",
+      variant:
+        "destructive",
+    });
+
+    return;
+  }
+
+  if (
+    !details?.accountNumber ||
+    !details?.bankCode ||
+    !details?.recipient
+  ) {
+    toast({
+      title:
+        "Invalid recipient",
+      description:
+        "Required recipient account parameters are missing.",
+      variant:
+        "destructive",
+    });
+
+    return;
+  }
+
+  try {
+    const idempotencyKey =
+      `transfer_${user.id}_${Date.now()}_${crypto.randomUUID()}`;
 
     toast({
       title:
-        "Processing payment",
+        "Processing transfer",
       description:
-        `Processing ${selectedService.title.toLowerCase()}...`,
+        "Please wait while we send your money.",
     });
 
-    try {
-      const {
-        data,
-        error,
-      } =
-        await supabase.functions.invoke(
-          "bilalsadasub-services",
-          {
-            body: {
-              action: "purchase",
-              service,
-              amount,
-              country:
-                paymentDetails.country,
-
-              // Generic/customer details
-              customer:
-                paymentDetails.customer,
-
-              // Catalogue selections
-              biller_code:
-                paymentDetails.biller_code,
-              network_code:
-                paymentDetails.network_code,
-              item_code:
-                paymentDetails.item_code,
-              product_code:
-                paymentDetails.product_code,
-              variation_code:
-                paymentDetails.variation_code,
-
-              // Electricity
-              meter_type:
-                paymentDetails.meter_type,
-              meter_number:
-                paymentDetails.meter_number,
-              meter_no:
-                paymentDetails.meter_no,
-
-              // Cable
-              smartcard_no:
-                paymentDetails.smartcard_no,
-              smartcard_number:
-                paymentDetails.smartcard_number,
-
-              // Phone/customer identifiers
-              phone_no:
-                paymentDetails.phone_no,
-              phone:
-                paymentDetails.phone,
-              phoneNumber:
-                paymentDetails.phoneNumber,
-              mobile_number:
-                paymentDetails.mobile_number,
-              account_id:
-                paymentDetails.account_id,
-
-              // Package/service aliases
-              data_plan:
-                paymentDetails.data_plan,
-              package:
-                paymentDetails.package,
-              package_code:
-                paymentDetails.package_code,
-              electric_company:
-                paymentDetails.electric_company,
-              cable_tv:
-                paymentDetails.cable_tv,
-              exam_type:
-                paymentDetails.exam_type,
-              value:
-                paymentDetails.value,
-
-              quantity:
-                Number(
-                  paymentDetails.quantity ??
-                    1
-                ),
-
-              // Preserve the complete normalized payload
-              // for server-side validation/processing.
-              details:
-                paymentDetails,
-            },
-          }
-        );
-
-      if (error) {
-        const message =
-          await extractFunctionError(
-            error,
-            "Unable to process this service payment."
-          );
-
-        throw new Error(
-          message
-        );
-      }
-
-      if (
-        !data ||
-        data.success !== true
-      ) {
-        throw new Error(
-          getSafeErrorMessage(data) ||
-            getSafeErrorMessage(data) ||
-            data?.provider_message ||
-            "Service payment failed."
-        );
-      }
-
-      await refreshWallet();
-      await loadDashboardStats();
-
-      const normalizedStatus =
-        String(
-          data?.status ?? ""
-        )
-          .trim()
-          .toLowerCase();
-
-      const isPending =
-        normalizedStatus ===
-          "pending" ||
-        normalizedStatus ===
-          "processing" ||
-        normalizedStatus ===
-          "order_received" ||
-        normalizedStatus ===
-          "order_processed" ||
-        normalizedStatus ===
-          "on_hold" ||
-        normalizedStatus ===
-          "300" ||
-        normalizedStatus ===
-          "399" ||
-        normalizedStatus ===
-          "201";
-
-      toast({
-        title: isPending
-          ? "Payment Processing"
-          : "Payment Successful",
-        description:
-          getSafeErrorMessage(data) ||
-          (isPending
-            ? `${selectedService.title} payment is being processed.`
-            : `${selectedService.title} payment was completed successfully.`),
-      });
-
-      return data;
-    } catch (error: any) {
-      console.error(
-        "Service payment failed:",
-        error
+    const {
+      data,
+      error,
+    } =
+      await supabase.functions.invoke(
+        "flutterwave-transfer",
+        {
+          body: {
+            amount,
+            account_number:
+              details.accountNumber,
+            account_bank:
+              details.bankCode,
+            beneficiary_name:
+              details.recipient,
+            narration:
+              details.narration ||
+              "IyanjuPay bank transfer",
+            idempotency_key:
+              idempotencyKey,
+          },
+        }
       );
+
+    if (error) {
+      const message =
+        await extractFunctionError(
+          error,
+          "Unable to process bank transfer."
+        );
 
       throw new Error(
+        message
+      );
+    }
+
+    if (
+      !data ||
+      data.success !== true
+    ) {
+      throw new Error(
+        getSafeErrorMessage(data) ||
+          "Bank transfer failed."
+      );
+    }
+
+    await refreshWallet();
+    await loadDashboardStats();
+
+    toast({
+      title:
+        "Transfer Processing",
+      description:
+        getSafeErrorMessage(data) ||
+        "Transaction completed successfully.",
+    });
+  } catch (error: any) {
+    console.error(
+      "Bank transfer failed:",
+      error
+    );
+
+    toast({
+      title:
+        "Transfer Failed",
+      description:
         getSafeErrorMessage(error) ||
-          "Unable to complete this service payment."
-      );
-    }
-  };
-
-  /*
-   * ============================================================
-   * BANK TRANSFER
-   * ============================================================
-   */
-
-  const handleTransfer = async (
-    amount: number,
-    details: any
-  ) => {
-    if (!user) {
-      toast({
-        title:
-          "Authentication required",
-        description:
-          "Please log in again.",
-        variant:
-          "destructive",
-      });
-
-      return;
-    }
-
-    if (
-      !Number.isFinite(amount) ||
-      amount <= 0
-    ) {
-      toast({
-        title:
-          "Invalid amount",
-        description:
-          "Please enter a valid transfer amount.",
-        variant:
-          "destructive",
-      });
-
-      return;
-    }
-
-    if (
-      details?.type ===
-        "iyanjupay" ||
-      details?.transferType ===
-        "iyanjupay" ||
-      details?.recipientType ===
-        "iyanjupay"
-    ) {
-      toast({
-        title:
-          "Transfer routing error",
-        description:
-          "Please try the IyanjuPay transfer again.",
-        variant:
-          "destructive",
-      });
-
-      return;
-    }
-
-    if (
-      wallet &&
-      amount >
-        Number(wallet.balance)
-    ) {
-      toast({
-        title:
-          "Insufficient Balance",
-        description:
-          "Please fund your wallet to continue.",
-        variant:
-          "destructive",
-      });
-
-      return;
-    }
-
-    if (
-      !details?.accountNumber
-    ) {
-      toast({
-        title:
-          "Invalid recipient",
-        description:
-          "Recipient bank account is missing.",
-        variant:
-          "destructive",
-      });
-
-      return;
-    }
-
-    if (!details?.bankCode) {
-      toast({
-        title:
-          "Invalid bank",
-        description:
-          "Recipient bank code is missing.",
-        variant:
-          "destructive",
-      });
-
-      return;
-    }
-
-    if (!details?.recipient) {
-      toast({
-        title:
-          "Invalid recipient",
-        description:
-          "Verified recipient name is missing.",
-        variant:
-          "destructive",
-      });
-
-      return;
-    }
-
-    try {
-      const idempotencyKey =
-        `transfer_${user.id}_${Date.now()}_${crypto.randomUUID()}`;
-
-      toast({
-        title:
-          "Processing transfer",
-        description:
-          "Please wait while we send your money.",
-      });
-
-      const {
-        data,
-        error,
-      } =
-        await supabase.functions.invoke(
-          "flutterwave-transfer",
-          {
-            body: {
-              amount,
-
-              account_number:
-                details.accountNumber,
-
-              account_bank:
-                details.bankCode,
-
-              beneficiary_name:
-                details.recipient,
-
-              narration:
-                details.narration ||
-                "IyanjuPay bank transfer",
-
-              idempotency_key:
-                idempotencyKey,
-            },
-          }
-        );
-
-      if (error) {
-        const message =
-          await extractFunctionError(
-            error,
-            "Unable to process bank transfer."
-          );
-
-        throw new Error(
-          message
-        );
-      }
-
-      if (
-        !data ||
-        data.success !== true
-      ) {
-        throw new Error(
-          getSafeErrorMessage(data) ||
-            getSafeErrorMessage(data) ||
-            "Bank transfer failed."
-        );
-      }
-
-      await refreshWallet();
-
-      await loadDashboardStats();
-
-      toast({
-        title:
-          "Transfer Processing",
-        description:
-          getSafeErrorMessage(data) ||
-          `₦${amount.toLocaleString()} sent to ${details.recipient}.`,
-      });
-    } catch (error: any) {
-      console.error(
-        "Bank transfer failed:",
-        error
-      );
-
-      toast({
-        title:
-          "Transfer Failed",
-        description:
-          getSafeErrorMessage(error) ||
-          "Unable to complete the bank transfer.",
-        variant:
-          "destructive",
-      });
-    }
-  };
-
-  /*
-   * ============================================================
-   * AUTH LOADING
-   * ============================================================
-   */
-
-  if (authLoading) {
-    return (
-      <>
-        <div className="min-h-screen flex items-center justify-center bg-slate-50">
-          <div className="text-center">
-            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-white shadow-lg">
-              <Loader2 className="h-8 w-8 animate-spin text-purple-600" />
-            </div>
-
-            <p className="mt-5 text-sm font-medium text-slate-600">
-              Preparing your IyanjuPay account...
-            </p>
-          </div>
-        </div>
-      </>
-    );
+        "Unable to complete the bank transfer.",
+      variant:
+        "destructive",
+    });
   }
+};
 
-  /*
-   * ============================================================
-   * NO USER
-   * ============================================================
-   */
-
-  if (!user) {
-    return (
-      <>
-        <div className="min-h-screen flex items-center justify-center bg-slate-50">
-          <Loader2 className="h-8 w-8 animate-spin text-purple-600" />
-        </div>
-      </>
-    );
-  }
-
-  /*
-   * ============================================================
-   * BOTTOM NAVIGATION
-   *
-   * IMPORTANT:
-   * This is declared BEFORE the early page returns so it can
-   * also be rendered on Rewards, Cards and Me.
-   * ============================================================
-   */
-
-  const renderBottomNav = (
-    page: CurrentPage
-  ) => (
-    <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-slate-200/80 bg-white/95 px-3 py-2 shadow-[0_-8px_30px_rgba(15,23,42,0.06)] backdrop-blur-xl">
-      <div className="mx-auto max-w-3xl">
-        <div className="grid grid-cols-4 gap-1">
-
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() =>
-              setCurrentPage(
-                "home"
-              )
-            }
-            className={`h-14 rounded-2xl ${
-              page === "home"
-                ? "bg-purple-50 text-purple-700"
-                : "text-slate-500 hover:bg-slate-50"
-            }`}
-          >
-            <span className="flex flex-col items-center gap-1">
-              <Home className="h-5 w-5" />
-
-              <span className="text-[11px] font-semibold">
-                Home
-              </span>
-            </span>
-          </Button>
-
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() =>
-              setCurrentPage(
-                "rewards"
-              )
-            }
-            className={`h-14 rounded-2xl ${
-              page === "rewards"
-                ? "bg-purple-50 text-purple-700"
-                : "text-slate-500 hover:bg-slate-50"
-            }`}
-          >
-            <span className="flex flex-col items-center gap-1">
-              <Gift className="h-5 w-5" />
-
-              <span className="text-[11px] font-semibold">
-                Rewards
-              </span>
-            </span>
-          </Button>
-
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() =>
-              setCurrentPage(
-                "cards"
-              )
-            }
-            className={`h-14 rounded-2xl ${
-              page === "cards"
-                ? "bg-purple-50 text-purple-700"
-                : "text-slate-500 hover:bg-slate-50"
-            }`}
-          >
-            <span className="flex flex-col items-center gap-1">
-              <CreditCard className="h-5 w-5" />
-
-              <span className="text-[11px] font-semibold">
-                Cards
-              </span>
-            </span>
-          </Button>
-
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() =>
-              setCurrentPage(
-                "me"
-              )
-            }
-            className={`h-14 rounded-2xl ${
-              page === "me"
-                ? "bg-purple-50 text-purple-700"
-                : "text-slate-500 hover:bg-slate-50"
-            }`}
-          >
-            <span className="flex flex-col items-center gap-1">
-              <User className="h-5 w-5" />
-
-              <span className="text-[11px] font-semibold">
-                Me
-              </span>
-            </span>
-          </Button>
-
-        </div>
-      </div>
+if (authLoading) {
+  return (
+    <div>
+      Loading Account
     </div>
   );
+}
 
-  /*
-   * ============================================================
-   * SERVICE PAYMENT
-   * ============================================================
-   */
+if (!user) {
+  return (
+    <div>
+      Please sign in to continue.
+    </div>
+  );
+}
 
-  if (currentPage === "bilalsadasub-extra" && selectedService) {
-    return (
-      <BilalsadasubExtras
-        type={selectedService.type as "airtime-cash" | "gift-card" | "esim"}
-        onBack={() => {
-          setSelectedService(null);
-          setCurrentPage("home");
-        }}
-      />
-    );
-  }
-
-  if (
-    currentPage ===
-    "service-payment"
-  ) {
-    return (
-      <>
-        <ServicePayment
-          service={
-            selectedService
-          }
-          onBack={() => {
-            setSelectedService(
-              null
-            );
-
-            setCurrentPage(
-              "home"
-            );
-          }}
-          onPurchase={
-            handlePurchase
-          }
-          onHistory={() => {
-            setSelectedService(
-              null
-            );
-
-            setCurrentPage(
-              "history"
-            );
-          }}
-        />
-      </>
-    );
-  }
-
-  /*
-   * ============================================================
-   * SEND MONEY
-   * ============================================================
-   */
-
-  if (
-    currentPage ===
-    "send-money"
-  ) {
-    return (
-      <>
-        <SendMoneyPage
-          onBack={() =>
-            setCurrentPage(
-              "home"
-            )
-          }
-          walletBalance={Number(
-            wallet?.balance ?? 0
-          )}
-          onTransfer={
-            handleTransfer
-          }
-        />
-      </>
-    );
-  }
-
-  /*
-   * ============================================================
-   * PROFILE
-   * ============================================================
-   */
-
-  if (
-    currentPage ===
-    "profile"
-  ) {
-    return (
-      <>
-        <ProfilePage
-          onBack={() =>
-            setCurrentPage(
-              "me"
-            )
-          }
-        />
-      </>
-    );
-  }
-
-  /*
-   * ============================================================
-   * HISTORY
-   * ============================================================
-   */
-
-  if (
-    currentPage ===
-    "history"
-  ) {
-    return (
-      <>
-        <TransactionHistory
-          onBack={() =>
-            setCurrentPage(
-              "me"
-            )
-          }
-        />
-      </>
-    );
-  }
-
-  /*
-   * ============================================================
-   * REWARDS
-   * ============================================================
-   */
-
-  if (
-    currentPage ===
-    "rewards"
-  ) {
-    return (
-      <>
-        <div className="min-h-screen pb-20">
-          <RewardsPage
-            onBack={() =>
-              setCurrentPage(
-                "home"
-              )
-            }
-          />
-
-          {renderBottomNav(
-            "rewards"
-          )}
-        </div>
-      </>
-    );
-  }
-
-  /*
-   * ============================================================
-   * CARDS
-   * ============================================================
-   */
-
-  if (
-    currentPage ===
-    "cards"
-  ) {
-    return (
-      <>
-        <div className="min-h-screen pb-20">
-          <CardsPage
-            onBack={() =>
-              setCurrentPage(
-                "home"
-              )
-            }
-          />
-
-          {renderBottomNav(
-            "cards"
-          )}
-        </div>
-      </>
-    );
-  }
-
-  /*
-   * ============================================================
-   * CUSTOMER SERVICE
-   * ============================================================
-   */
-
-  if (
-    currentPage ===
-    "customer-service"
-  ) {
-    return (
-      <>
-        <CustomerServicePage
-          onBack={() =>
-            setCurrentPage(
-              "me"
-            )
-          }
-        />
-      </>
-    );
-  }
-
-  /*
-   * ============================================================
-   * SUPPORT
-   * ============================================================
-   */
-
-  if (
-    currentPage ===
-    "support"
-  ) {
-    return (
-      <>
-        <SupportPage
-          onBack={() =>
-            setCurrentPage(
-              "me"
-            )
-          }
-        />
-      </>
-    );
-  }
-
-  /*
-   * ============================================================
-   * TRANSACTION LIMIT
-   * ============================================================
-   */
-
-  if (
-    currentPage ===
-    "transaction-limit"
-  ) {
-    return (
-      <>
-        <TransactionLimitPage
-          onBack={() =>
-            setCurrentPage(
-              "me"
-            )
-          }
-        />
-      </>
-    );
-  }
-
-  /*
-   * ============================================================
-   * PAYMENT PIN
-   * ============================================================
-   */
-
-  if (
-    currentPage ===
-    "payment-pin"
-  ) {
-    return (
-      <>
-        <PaymentPinPage
-          onBack={() =>
-            setCurrentPage(
-              "me"
-            )
-          }
-        />
-      </>
-    );
-  }
-
-  /*
-   * ============================================================
-   * DISPUTES
-   * ============================================================
-   */
-
-  if (
-    currentPage ===
-    "disputes"
-  ) {
-    return (
-      <>
-        <DisputesPage
-          onBack={() =>
-            setCurrentPage(
-              "me"
-            )
-          }
-        />
-      </>
-    );
-  }
-
-  if (currentPage === "security") {
-    return (
-      <>
-        <SecuritySettingsPage onBack={() => setCurrentPage("me")} />
-      </>
-    );
-  }
-
-  /*
-   * ============================================================
-   * ME
-   * ============================================================
-   */
-
-  if (
-    currentPage ===
-    "me"
-  ) {
-    return (
-      <>
-        <div className="min-h-screen pb-20">
-          <MePage
-            onBack={() =>
-              setCurrentPage(
-                "home"
-              )
-            }
-            onProfileClick={() =>
-              setCurrentPage(
-                "profile"
-              )
-            }
-            onHistoryClick={() =>
-              setCurrentPage(
-                "history"
-              )
-            }
-            onCustomerServiceClick={() =>
-              setCurrentPage(
-                "customer-service"
-              )
-            }
-            onSupportClick={() =>
-              setCurrentPage(
-                "support"
-              )
-            }
-            onTransactionLimitClick={() =>
-              setCurrentPage(
-                "transaction-limit"
-              )
-            }
-            onPaymentPinClick={() =>
-              setCurrentPage(
-                "payment-pin"
-              )
-            }
-            onDisputesClick={() =>
-              setCurrentPage(
-                "disputes"
-              )
-            }
-            onSecurityClick={() => setCurrentPage("security")}
-          />
-
-          {renderBottomNav(
-            "me"
-          )}
-        </div>
-      </>
-    );
-  }
-
-  /*
-   * ============================================================
-   * WALLET LOADING
-   * ============================================================
-   */
-
-  if (walletLoading) {
-    return (
-      <>
-        <div className="min-h-screen flex items-center justify-center bg-slate-50">
-          <div className="text-center">
-            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-white shadow-lg">
-              <Loader2 className="h-8 w-8 animate-spin text-purple-600" />
-            </div>
-
-            <p className="mt-5 text-sm font-medium text-slate-600">
-              Loading your wallet...
-            </p>
-          </div>
-        </div>
-      </>
-    );
-  }
-
-  /*
-   * ============================================================
-   * BALANCE
-   * ============================================================
-   */
-
-  const balance =
-    Number(
-      wallet?.balance ?? 0
-    );
-
-  const formattedBalance =
-    balance.toLocaleString(
-      "en-NG",
-      {
-        minimumFractionDigits: 0,
-        maximumFractionDigits: 2,
+const renderBottomNav = (
+  page: CurrentPage
+) => (
+  <div>
+    <Button
+      variant="ghost"
+      size="sm"
+      onClick={() =>
+        setCurrentPage("home")
       }
-    );
+      className={`h-12 rounded-xl flex flex-col items-center justify-center gap-0.5 ${
+        page === "home"
+          ? "bg-primary/10 text-primary font-bold"
+          : "text-muted-foreground hover:bg-muted"
+      }`}
+    >
+      Home
+    </Button>
 
-  /*
-   * ============================================================
-   * USER DISPLAY NAME
-   * ============================================================
-   */
+    <Button
+      variant="ghost"
+      size="sm"
+      onClick={() =>
+        setCurrentPage("rewards")
+      }
+      className={`h-12 rounded-xl flex flex-col items-center justify-center gap-0.5 ${
+        page === "rewards"
+          ? "bg-primary/10 text-primary font-bold"
+          : "text-muted-foreground hover:bg-muted"
+      }`}
+    >
+      Rewards
+    </Button>
 
-  const displayName =
-    user?.user_metadata
-      ?.full_name ||
-    user?.user_metadata
-      ?.name ||
-    user?.email?.split("@")[0] ||
-    "there";
+    <Button
+      variant="ghost"
+      size="sm"
+      onClick={() =>
+        setCurrentPage("cards")
+      }
+      className={`h-12 rounded-xl flex flex-col items-center justify-center gap-0.5 ${
+        page === "cards"
+          ? "bg-primary/10 text-primary font-bold"
+          : "text-muted-foreground hover:bg-muted"
+      }`}
+    >
+      Cards
+    </Button>
 
-  const firstName =
-    String(displayName)
-      .trim()
-      .split(/\s+/)[0] ||
-    "there";
+    <Button
+      variant="ghost"
+      size="sm"
+      onClick={() =>
+        setCurrentPage("me")
+      }
+      className={`h-12 rounded-xl flex flex-col items-center justify-center gap-0.5 ${
+        page === "me"
+          ? "bg-primary/10 text-primary font-bold"
+          : "text-muted-foreground hover:bg-muted"
+      }`}
+    >
+      Me
+    </Button>
+  </div>
+);
 
-  /*
-   * ============================================================
-   * MAIN DASHBOARD
-   * ============================================================
-   */
+if (
+  currentPage ===
+    "bilalsadasub-extra" &&
+  selectedService
+) {
+  return (
+    <BilalsadasubExtras
+      type={
+        selectedService.type as
+          | "airtime-cash"
+          | "gift-card"
+          | "esim"
+      }
+      onBack={() => {
+        setSelectedService(null);
+        setCurrentPage("home");
+      }}
+    />
+  );
+}
 
+if (
+  currentPage ===
+  "service-payment"
+) {
+  return (
+    <ServicePayment
+      service={selectedService}
+      onBack={() => {
+        setSelectedService(null);
+        setCurrentPage("home");
+      }}
+      onPurchase={handlePurchase}
+      onHistory={() => {
+        setSelectedService(null);
+        setCurrentPage("history");
+      }}
+    />
+  );
+}
+
+if (
+  currentPage ===
+  "send-money"
+) {
+  return (
+    <SendMoneyPage
+      onBack={() =>
+        setCurrentPage("home")
+      }
+      walletBalance={Number(
+        wallet?.balance ?? 0
+      )}
+      onTransfer={handleTransfer}
+    />
+  );
+}
+
+if (
+  currentPage ===
+  "profile"
+) {
+  return (
+    <ProfilePage
+      onBack={() =>
+        setCurrentPage("me")
+      }
+    />
+  );
+}
+
+if (
+  currentPage ===
+  "history"
+) {
+  return (
+    <TransactionHistory
+      onBack={() =>
+        setCurrentPage("me")
+      }
+    />
+  );
+}
+
+if (
+  currentPage ===
+  "rewards"
+) {
   return (
     <>
-      <div
-        className="min-h-screen pb-24 iyanjupay-dashboard"
-        data-theme={
-          dashboardTheme
+      <RewardsPage
+        onBack={() =>
+          setCurrentPage("home")
         }
-      >
-
-        {/* ====================================================== */}
-        {/* TOP HEADER                                             */}
-        {/* ====================================================== */}
-
-        <header
-          className="sticky top-0 z-30 border-b border-white/10 bg-gradient-to-r iyanjupay-dashboard-header text-white shadow-lg"
-        >
-          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-            <div className="flex h-[72px] items-center justify-between">
-
-              <button
-                type="button"
-                onClick={() =>
-                  setCurrentPage(
-                    "home"
-                  )
-                }
-                className="flex items-center gap-3"
-                aria-label="Go to IyanjuPay home"
-              >
-                <div className="iyanjupay-header-logo flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-2xl">
-                  <img
-                    src="/icon-180.png"
-                    alt="IyanjuPay"
-                    className="h-full w-full object-cover"
-                    draggable={false}
-                  />
-                </div>
-
-                <div className="hidden sm:block">
-                  <p className="text-lg font-black tracking-tight">
-                    IyanjuPay
-                  </p>
-
-                  <p className="text-[10px] font-medium text-purple-100">
-                    Your money. Your control.
-                  </p>
-                </div>
-              </button>
-
-              <div className="flex items-center gap-1 sm:gap-2">
-
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() =>
-                    setQrModalOpen(
-                      true
-                    )
-                  }
-                  className="iyanjupay-header-action h-10 w-10 rounded-full p-0"
-                  aria-label="Show QR code"
-                >
-                  <QrCode className="h-5 w-5" />
-                </Button>
-
-                <NotificationCenter userId={user.id} />
-
-                {/* APPEARANCE */}
-
-                <div className="relative">
-
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() =>
-                      setAppearanceOpen(
-                        (open) =>
-                          !open
-                      )
-                    }
-                    className="iyanjupay-header-action h-10 w-10 rounded-full p-0"
-                    aria-label="Change dashboard appearance"
-                    aria-expanded={
-                      appearanceOpen
-                    }
-                    aria-haspopup="menu"
-                  >
-                    <ActiveAppearanceIcon className="h-5 w-5" />
-                  </Button>
-
-                  {appearanceOpen && (
-                    <div
-                      role="menu"
-                      aria-label="Dashboard appearance"
-                      className="iyanjupay-appearance-menu absolute right-0 top-12 z-[60] w-40 overflow-hidden rounded-2xl p-1.5 shadow-2xl"
-                    >
-
-                      <div className="iyanjupay-appearance-label px-2.5 pb-1.5 pt-1 text-[10px] font-bold uppercase tracking-wider">
-                        Appearance
-                      </div>
-
-                      {THEME_OPTIONS.map((option) => {
-                        const theme = option.value;
-                        const ThemeIcon = option.icon;
-
-                        return (
-                            <button
-                              key={
-                                theme
-                              }
-                              type="button"
-                              role="menuitem"
-                              onClick={() => {
-                                setDashboardTheme(
-                                  theme
-                                );
-
-                                setAppearanceOpen(
-                                  false
-                                );
-                              }}
-                              className={`iyanjupay-appearance-option flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left text-xs font-semibold transition ${
-                                dashboardTheme === theme ? "is-selected" : ""
-                              }`}
-                            >
-
-                              <span className="iyanjupay-appearance-icon flex h-7 w-7 items-center justify-center rounded-lg">
-                                <ThemeIcon className="h-3.5 w-3.5" />
-                              </span>
-
-                              <span className="flex-1">
-                                {option.label}
-                              </span>
-
-                              {dashboardTheme ===
-                                theme && (
-                                <Check className="h-3.5 w-3.5 text-emerald-600" />
-                              )}
-
-                            </button>
-                          );
-                      })}
-
-                    </div>
-                  )}
-
-                </div>
-
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() =>
-                    setCurrentPage(
-                      "history"
-                    )
-                  }
-                  className="iyanjupay-header-action hidden h-10 w-10 rounded-full p-0 sm:flex"
-                  aria-label="Transaction history"
-                >
-                  <History className="h-5 w-5" />
-                </Button>
-
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() =>
-                    setCurrentPage(
-                      "me"
-                    )
-                  }
-                  className="iyanjupay-header-action h-10 w-10 rounded-full p-0"
-                  aria-label="Open profile"
-                >
-                  <User className="h-5 w-5" />
-                </Button>
-
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={
-                    signOut
-                  }
-                  className="iyanjupay-header-action hidden h-10 w-10 rounded-full p-0 sm:flex"
-                  aria-label="Sign out"
-                >
-                  <LogOut className="h-5 w-5" />
-                </Button>
-
-              </div>
-            </div>
-          </div>
-        </header>
-
-        {/* ====================================================== */}
-        {/* MAIN CONTENT                                           */}
-        {/* ====================================================== */}
-
-        <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-
-          <AnnouncementBanner userId={user.id} />
-
-          {showMaintenanceBanner && (
-            <div className={`mb-5 rounded-2xl border p-4 ${maintenanceMode ? "border-amber-300 bg-amber-50 text-amber-900" : "border-blue-200 bg-blue-50 text-blue-900"}`}>
-              <p className="text-sm font-bold">{maintenanceMode ? "Maintenance mode" : "IyanjuPay update"}</p>
-              <p className="mt-1 text-sm">{maintenanceReason}</p>
-            </div>
-          )}
-
-          {/* GREETING */}
-
-          <section className="mb-6">
-
-            <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
-
-              <div>
-
-                <p className="mb-1 text-sm font-medium text-purple-600">
-                  Welcome back
-                </p>
-
-                <h1 className="text-2xl font-black tracking-tight text-slate-950 sm:text-3xl">
-                  Hello, {firstName} 👋
-                </h1>
-
-                <p className="mt-1 text-sm text-slate-500 sm:text-base">
-                  What would you like to do today?
-                </p>
-
-              </div>
-
-              <div className="hidden rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-500 shadow-sm sm:flex sm:items-center sm:gap-2">
-
-                <span className="h-2 w-2 rounded-full bg-emerald-500" />
-
-                Account active
-
-              </div>
-
-            </div>
-
-          </section>
-
-          {/* WALLET HERO */}
-
-          <section className="mb-7">
-
-            <Card
-              className="relative overflow-hidden rounded-[28px] border-0 bg-gradient-to-br iyanjupay-dashboard-wallet text-white shadow-[0_20px_60px_rgba(79,70,229,0.22)]"
-            >
-
-              <div className="pointer-events-none absolute -right-20 -top-20 h-56 w-56 rounded-full bg-white/10" />
-
-              <div className="pointer-events-none absolute -bottom-24 right-24 h-48 w-48 rounded-full bg-white/5" />
-
-              <CardContent className="relative p-5 sm:p-7">
-
-                <div className="flex flex-col gap-7">
-
-                  <div className="flex items-start justify-between gap-4">
-
-                    <div>
-
-                      <div className="flex items-center gap-2">
-
-                        <p className="text-sm font-medium text-purple-100">
-                          Available Balance
-                        </p>
-
-                        <span className="rounded-full bg-white/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-purple-100">
-                          NGN
-                        </span>
-
-                      </div>
-
-                      <div className="mt-2 flex items-center gap-3">
-
-                        <span className="text-3xl font-black tracking-tight sm:text-4xl">
-
-                          ₦
-                          {showBalance
-                            ? formattedBalance
-                            : "••••••"}
-
-                        </span>
-
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() =>
-                            setShowBalance(
-                              (
-                                previous
-                              ) =>
-                                !previous
-                            )
-                          }
-                          className="h-9 w-9 rounded-full bg-white/10 p-0 text-white hover:bg-white/20"
-                          aria-label={
-                            showBalance
-                              ? "Hide balance"
-                              : "Show balance"
-                          }
-                        >
-                          {showBalance ? (
-                            <EyeOff className="h-4 w-4" />
-                          ) : (
-                            <Eye className="h-4 w-4" />
-                          )}
-                        </Button>
-
-                      </div>
-
-                      <p className="mt-2 text-xs text-purple-100">
-                        Ready to spend securely
-                      </p>
-
-                    </div>
-
-                    <div className="hidden text-right sm:block">
-
-                      <p className="text-xs font-medium text-purple-100">
-                        Wallet ID
-                      </p>
-
-                      <p className="mt-1 max-w-[180px] truncate font-mono text-sm font-bold tracking-wider">
-                        {wallet?.wallet_id ||
-                          "—"}
-                      </p>
-
-                    </div>
-
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3">
-
-                    <Button
-                      onClick={() => {
-                        if (!allowWalletFunding) { toast({ title: "Wallet funding temporarily unavailable", description: "Please try again later." }); return; }
-                        setFundModalOpen(true);
-                      }}
-                      disabled={!allowWalletFunding}
-                      className="h-12 rounded-2xl bg-white text-purple-700 shadow-lg hover:bg-purple-50"
-                    >
-                      <Plus className="mr-2 h-5 w-5" />
-
-                      <span className="font-bold">
-                        Add Money
-                      </span>
-                    </Button>
-
-                    <Button
-                      onClick={() => {
-                        if (!allowTransfers) { toast({ title: "Transfers temporarily unavailable", description: "Please try again later." }); return; }
-                        setCurrentPage("send-money");
-                      }}
-                      disabled={!allowTransfers}
-                      className="h-12 rounded-2xl border border-white/30 bg-white/10 text-white backdrop-blur-sm hover:bg-white/20"
-                    >
-                      <Send className="mr-2 h-5 w-5" />
-
-                      <span className="font-bold">
-                        Send Money
-                      </span>
-                    </Button>
-
-                  </div>
-
-                  <div className="flex items-center justify-between border-t border-white/10 pt-4 sm:hidden">
-
-                    <span className="text-xs text-purple-100">
-                      Wallet ID
-                    </span>
-
-                    <span className="font-mono text-xs font-bold tracking-wider text-white">
-                      {wallet?.wallet_id ||
-                        "—"}
-                    </span>
-
-                  </div>
-
-                </div>
-
-              </CardContent>
-
-            </Card>
-
-          </section>
-
-          {/* QUICK ACTIONS */}
-
-          <section className="mb-8">
-
-            <div className="mb-3 flex items-center justify-between">
-
-              <div>
-
-                <h2 className="text-lg font-black text-slate-950">
-                  Quick Actions
-                </h2>
-
-                <p className="text-xs text-slate-500">
-                  Get things done faster
-                </p>
-
-              </div>
-
-            </div>
-
-            <div className="grid grid-cols-4 gap-2 sm:gap-3">
-
-              <button
-                type="button"
-                onClick={() =>
-                  handleServiceClick(
-                    services[0]
-                  )
-                }
-                className="group rounded-2xl border border-slate-200 bg-white p-3 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-md sm:p-4"
-              >
-                <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-2xl bg-blue-50 text-blue-600 transition group-hover:scale-105">
-                  <Smartphone className="h-5 w-5" />
-                </div>
-
-                <p className="mt-2 text-[11px] font-bold text-slate-700 sm:text-xs">
-                  Airtime
-                </p>
-              </button>
-
-              <button
-                type="button"
-                onClick={() =>
-                  handleServiceClick(
-                    services[1]
-                  )
-                }
-                className="group rounded-2xl border border-slate-200 bg-white p-3 shadow-sm transition hover:-translate-y-0.5 hover:border-purple-200 hover:shadow-md sm:p-4"
-              >
-                <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-2xl bg-purple-50 text-purple-600 transition group-hover:scale-105">
-                  <Wifi className="h-5 w-5" />
-                </div>
-
-                <p className="mt-2 text-[11px] font-bold text-slate-700 sm:text-xs">
-                  Data
-                </p>
-              </button>
-
-              <button
-                type="button"
-                onClick={() =>
-                  setCurrentPage(
-                    "send-money"
-                  )
-                }
-                className="group rounded-2xl border border-slate-200 bg-white p-3 shadow-sm transition hover:-translate-y-0.5 hover:border-emerald-200 hover:shadow-md sm:p-4"
-              >
-                <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600 transition group-hover:scale-105">
-                  <Send className="h-5 w-5" />
-                </div>
-
-                <p className="mt-2 text-[11px] font-bold text-slate-700 sm:text-xs">
-                  Transfer
-                </p>
-              </button>
-
-              <button
-                type="button"
-                onClick={() =>
-                  setCurrentPage(
-                    "history"
-                  )
-                }
-                className="group rounded-2xl border border-slate-200 bg-white p-3 shadow-sm transition hover:-translate-y-0.5 hover:border-orange-200 hover:shadow-md sm:p-4"
-              >
-                <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-2xl bg-orange-50 text-orange-600 transition group-hover:scale-105">
-                  <History className="h-5 w-5" />
-                </div>
-
-                <p className="mt-2 text-[11px] font-bold text-slate-700 sm:text-xs">
-                  History
-                </p>
-              </button>
-
-            </div>
-          </section>
-
-          {/* SERVICES */}
-
-          <section className="mb-8">
-
-            <div className="mb-4 flex items-end justify-between">
-
-              <div>
-
-                <h2 className="text-xl font-black tracking-tight text-slate-950">
-                  Services
-                </h2>
-
-                <p className="mt-1 text-sm text-slate-500">
-                  Everything you need, in one place
-                </p>
-
-              </div>
-
-              <span className="hidden rounded-full bg-purple-50 px-3 py-1 text-xs font-bold text-purple-700 sm:block">
-                12 available
-              </span>
-
-            </div>
-
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-
-              {services.map(
-                (
-                  service,
-                  index
-                ) => (
-                  <div
-                    key={`${service.type}-${index}`}
-                    className={
-                      service.available
-                        ? "transition hover:-translate-y-0.5"
-                        : "opacity-80"
-                    }
-                  >
-                    <ServiceCard
-                      title={
-                        service.title
-                      }
-                      description={
-                        service.description
-                      }
-                      icon={
-                        service.icon
-                      }
-                      color={
-                        service.color
-                      }
-                      onClick={() =>
-                        handleServiceClick(
-                          service
-                        )
-                      }
-                    />
-                  </div>
-                )
-              )}
-
-            </div>
-
-          </section>
-
-          {/* ACCOUNT OVERVIEW */}
-
-          <section className="mb-8">
-
-            <div className="mb-4">
-
-              <h2 className="text-xl font-black tracking-tight text-slate-950">
-                Account Overview
-              </h2>
-
-              <p className="mt-1 text-sm text-slate-500">
-                A quick view of your activity
-              </p>
-
-            </div>
-
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-
-              <Card className="rounded-3xl border-slate-200/80 bg-white shadow-sm transition hover:shadow-md">
-
-                <CardContent className="p-5">
-
-                  <div className="flex items-start justify-between">
-
-                    <div>
-
-                      <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-                        This Month
-                      </p>
-
-                      <p className="mt-2 text-2xl font-black tracking-tight text-slate-950">
-
-                        {statsLoading
-                          ? "..."
-                          : `₦${stats.monthlySpent.toLocaleString(
-                              "en-NG",
-                              {
-                                minimumFractionDigits: 0,
-                                maximumFractionDigits: 2,
-                              }
-                            )}`}
-
-                      </p>
-
-                      <p className="mt-1 text-xs text-slate-500">
-                        Total spent
-                      </p>
-
-                    </div>
-
-                    <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-red-50 text-red-600">
-                      <Banknote className="h-5 w-5" />
-                    </div>
-
-                  </div>
-
-                </CardContent>
-
-              </Card>
-
-              <Card className="rounded-3xl border-slate-200/80 bg-white shadow-sm transition hover:shadow-md">
-
-                <CardContent className="p-5">
-
-                  <div className="flex items-start justify-between">
-
-                    <div>
-
-                      <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-                        Activity
-                      </p>
-
-                      <p className="mt-2 text-2xl font-black tracking-tight text-slate-950">
-
-                        {statsLoading
-                          ? "..."
-                          : stats.monthlyTransactions.toLocaleString()}
-
-                      </p>
-
-                      <p className="mt-1 text-xs text-slate-500">
-                        Transactions this month
-                      </p>
-
-                    </div>
-
-                    <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">
-                      <History className="h-5 w-5" />
-                    </div>
-
-                  </div>
-
-                </CardContent>
-
-              </Card>
-
-              <Card className="rounded-3xl border-slate-200/80 bg-white shadow-sm transition hover:shadow-md">
-
-                <CardContent className="p-5">
-
-                  <div className="flex items-start justify-between">
-
-                    <div>
-
-                      <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-                        Reliability
-                      </p>
-
-                      <p className="mt-2 text-2xl font-black tracking-tight text-slate-950">
-
-                        {statsLoading
-                          ? "..."
-                          : `${stats.successRate}%`}
-
-                      </p>
-
-                      <p className="mt-1 text-xs text-slate-500">
-                        Successful transactions
-                      </p>
-
-                    </div>
-
-                    <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600">
-                      <Shield className="h-5 w-5" />
-                    </div>
-
-                  </div>
-
-                </CardContent>
-
-              </Card>
-
-            </div>
-
-          </section>
-
-          {/* SECURITY / TRUST */}
-
-          <section className="mb-4">
-
-            <Card className="overflow-hidden rounded-3xl border-slate-200/80 bg-white shadow-sm">
-
-              <CardContent className="p-5 sm:p-6">
-
-                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-
-                  <div className="flex items-start gap-3">
-
-                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-purple-50 text-purple-600">
-                      <Shield className="h-5 w-5" />
-                    </div>
-
-                    <div>
-
-                      <p className="text-sm font-bold text-slate-900">
-                        Your account is protected
-                      </p>
-
-                      <p className="mt-1 max-w-xl text-xs leading-5 text-slate-500">
-                        IyanjuPay uses secure authentication and payment authorization to protect your money and transactions.
-                      </p>
-
-                    </div>
-
-                  </div>
-
-                  <Button
-                    variant="outline"
-                    onClick={() =>
-                      setCurrentPage(
-                        "payment-pin"
-                      )
-                    }
-                    className="rounded-xl border-slate-200 font-semibold"
-                  >
-                    Security Settings
-                  </Button>
-
-                </div>
-
-              </CardContent>
-
-            </Card>
-
-          </section>
-
-        </main>
-
-        {/* ====================================================== */}
-        {/* BOTTOM NAVIGATION                                     */}
-        {/* ====================================================== */}
-
-        {renderBottomNav(
-          currentPage
-        )}
-
-        {/* ====================================================== */}
-        {/* FUND WALLET                                           */}
-        {/* ====================================================== */}
-
-        <FundWalletModal
-          isOpen={
-            fundModalOpen
-          }
-          onClose={() =>
-            setFundModalOpen(
-              false
-            )
-          }
-          onFunded={async () => {
-            await refreshWallet();
-            await loadDashboardStats();
-          }}
-        />
-
-        {/* ====================================================== */}
-        {/* QR CODE                                                */}
-        {/* ====================================================== */}
-
-        <QRCodeModal
-          isOpen={
-            qrModalOpen
-          }
-          onClose={() =>
-            setQrModalOpen(
-              false
-            )
-          }
-          virtualAccountNumber={
-            wallet?.virtual_account_number ||
-            ""
-          }
-          userName={
-            user?.email ||
-            "User"
-          }
-        />
-
-        {/* ====================================================== */}
-        {/* SUPPORT CHAT                                          */}
-        {/* ====================================================== */}
-
-        <Button
-          type="button"
-          onClick={() =>
-            setSupportChatOpen(
-              true
-            )
-          }
-          className="fixed bottom-24 right-4 z-50 h-14 w-14 rounded-full bg-purple-600 p-0 shadow-[0_12px_30px_rgba(124,58,237,0.35)] hover:bg-purple-700 sm:bottom-24 sm:right-6"
-          aria-label="Open live support chat"
-        >
-          <Headphones className="h-6 w-6" />
-        </Button>
-
-        <SupportChat
-          open={
-            supportChatOpen
-          }
-          onClose={() =>
-            setSupportChatOpen(
-              false
-            )
-          }
-        />
-
-        {/* ====================================================== */}
-        {/* WHATSAPP                                              */}
-        {/* ====================================================== */}
-
-        <WhatsAppFloat />
-
-      </div>
+      />
+      {renderBottomNav(
+        "rewards"
+      )}
     </>
   );
+}
+
+if (
+  currentPage ===
+  "cards"
+) {
+  return (
+    <>
+      <CardsPage
+        onBack={() =>
+          setCurrentPage("home")
+        }
+      />
+      {renderBottomNav(
+        "cards"
+      )}
+    </>
+  );
+}
+
+if (
+  currentPage ===
+  "customer-service"
+) {
+  return (
+    <CustomerServicePage
+      onBack={() =>
+        setCurrentPage("me")
+      }
+    />
+  );
+}
+
+if (
+  currentPage ===
+  "support"
+) {
+  return (
+    <SupportPage
+      onBack={() =>
+        setCurrentPage("me")
+      }
+    />
+  );
+}
+
+if (
+  currentPage ===
+  "transaction-limit"
+) {
+  return (
+    <TransactionLimitPage
+      onBack={() =>
+        setCurrentPage("me")
+      }
+    />
+  );
+}
+
+if (
+  currentPage ===
+  "payment-pin"
+) {
+  return (
+    <PaymentPinPage
+      onBack={() =>
+        setCurrentPage("me")
+      }
+    />
+  );
+}
+
+if (
+  currentPage ===
+  "disputes"
+) {
+  return (
+    <DisputesPage
+      onBack={() =>
+        setCurrentPage("me")
+      }
+    />
+  );
+}
+
+if (
+  currentPage ===
+  "security"
+) {
+  return (
+    <SecuritySettingsPage
+      onBack={() =>
+        setCurrentPage("me")
+      }
+    />
+  );
+}
+
+if (
+  currentPage ===
+  "me"
+) {
+  return (
+    <>
+      <MePage
+        onBack={() =>
+          setCurrentPage("home")
+        }
+        onProfileClick={() =>
+          setCurrentPage("profile")
+        }
+        onHistoryClick={() =>
+          setCurrentPage("history")
+        }
+        onCustomerServiceClick={() =>
+          setCurrentPage(
+            "customer-service"
+          )
+        }
+        onSupportClick={() =>
+          setCurrentPage("support")
+        }
+        onTransactionLimitClick={() =>
+          setCurrentPage(
+            "transaction-limit"
+          )
+        }
+        onPaymentPinClick={() =>
+          setCurrentPage(
+            "payment-pin"
+          )
+        }
+        onDisputesClick={() =>
+          setCurrentPage("disputes")
+        }
+        onSecurityClick={() =>
+          setCurrentPage("security")
+        }
+      />
+
+      {renderBottomNav("me")}
+    </>
+  );
+}
+
+if (walletLoading) {
+  return (
+    <div>
+      Loading Wallet
+    </div>
+  );
+}
+
+const balance =
+  Number(wallet?.balance ?? 0);
+
+const formattedBalance =
+  balance.toLocaleString(
+    "en-NG",
+    {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 2,
+    }
+  );
+
+const displayName =
+  user?.user_metadata
+    ?.full_name ||
+  user?.user_metadata?.name ||
+  user?.email?.split("@")[0] ||
+  "User";
+
+const firstName =
+  String(displayName)
+    .trim()
+    .split(/\s+/)[0] ||
+  "User";
+
+return (
+  <>
+    <button
+      type="button"
+      onClick={() =>
+        setCurrentPage("home")
+      }
+      className="flex items-center gap-2.5 text-left focus:outline-none"
+    >
+      IyanjuPay
+      <span>
+        Secure Finance Portal
+      </span>
+    </button>
+
+    <Button
+      variant="ghost"
+      size="icon"
+      onClick={() =>
+        setQrModalOpen(true)
+      }
+      className="h-9 w-9 rounded-xl text-foreground hover:bg-muted"
+      aria-label="Show QR code"
+    >
+      QR
+    </Button>
+
+    <Button
+      variant="ghost"
+      size="icon"
+      onClick={() =>
+        setAppearanceOpen(
+          (open) => !open
+        )
+      }
+      className="h-9 w-9 rounded-xl text-foreground hover:bg-muted"
+      aria-label="Appearance options"
+    >
+      Appearance
+    </Button>
+
+    {appearanceOpen && (
+      <div>
+        <div>
+          Appearance
+        </div>
+
+        {THEME_OPTIONS.map(
+          (option) => {
+            const theme =
+              option.value;
+
+            const ThemeIcon =
+              option.icon;
+
+            return (
+              <button
+                key={theme}
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setDashboardTheme(
+                    theme
+                  );
+                  setAppearanceOpen(
+                    false
+                  );
+                }}
+                className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs font-semibold transition text-foreground hover:bg-muted ${
+                  dashboardTheme ===
+                  theme
+                    ? "bg-muted text-primary"
+                    : ""
+                }`}
+              >
+                <ThemeIcon />
+                {option.label}
+
+                {dashboardTheme ===
+                  theme && (
+                  <span>
+                    ✓
+                  </span>
+                )}
+              </button>
+            );
+          }
+        )}
+      </div>
+    )}
+
+    <Button
+      variant="ghost"
+      size="icon"
+      onClick={() =>
+        setCurrentPage("me")
+      }
+      className="h-9 w-9 rounded-xl text-foreground hover:bg-muted"
+      aria-label="Profile navigation"
+    >
+      Profile
+    </Button>
+
+    {showMaintenanceBanner && (
+      <div
+        className={`rounded-xl border p-3.5 text-xs ${
+          maintenanceMode
+            ? "border-amber-200 bg-amber-500/10 text-amber-600"
+            : "border-blue-200 bg-blue-500/10 text-blue-600"
+        }`}
+      >
+        <div>
+          {maintenanceMode
+            ? "System Maintenance"
+            : "System Update"}
+        </div>
+
+        <div>
+          {maintenanceReason}
+        </div>
+      </div>
+    )}
+
+    <section>
+      <h1>
+        Account Dashboard
+      </h1>
+
+      <p>
+        Welcome, {firstName}
+      </p>
+
+      <p>
+        Select a service parameter
+        below to begin.
+      </p>
+    </section>
+
+    <section>
+      <h2>
+        Quick Actions
+      </h2>
+
+      <div>
+        <button
+          type="button"
+          onClick={() =>
+            handleServiceClick(
+              services[0]
+            )
+          }
+          className="flex flex-col items-center justify-center p-2.5 rounded-xl border border-border bg-background hover:bg-muted transition"
+        >
+          <Smartphone />
+          Airtime
+        </button>
+
+        <button
+          type="button"
+          onClick={() =>
+            handleServiceClick(
+              services[1]
+            )
+          }
+          className="flex flex-col items-center justify-center p-2.5 rounded-xl border border-border bg-background hover:bg-muted transition"
+        >
+          <Wifi />
+          Data
+        </button>
+
+        <button
+          type="button"
+          onClick={() =>
+            setCurrentPage(
+              "send-money"
+            )
+          }
+          className="flex flex-col items-center justify-center p-2.5 rounded-xl border border-border bg-background hover:bg-muted transition"
+        >
+          Transfer
+        </button>
+
+        <button
+          type="button"
+          onClick={() =>
+            setCurrentPage("history")
+          }
+          className="flex flex-col items-center justify-center p-2.5 rounded-xl border border-border bg-background hover:bg-muted transition"
+        >
+          History
+        </button>
+      </div>
+    </section>
+
+    <section>
+      <h2>
+        Payment Services
+      </h2>
+
+      <p>
+        Automated utilities and
+        subscription routing
+      </p>
+
+      <span>
+        12 Active
+      </span>
+
+      <div>
+        {services.map(
+          (service, idx) => (
+            <div
+              key={`${service.type}-${idx}`}
+              className={
+                service.available
+                  ? "h-full"
+                  : "opacity-60"
+              }
+            >
+              <ServiceCard
+                title={
+                  service.title
+                }
+                description={
+                  service.description
+                }
+                icon={
+                  service.icon
+                }
+                color={
+                  service.color
+                }
+                onClick={() =>
+                  handleServiceClick(
+                    service
+                  )
+                }
+              />
+            </div>
+          )
+        )}
+      </div>
+    </section>
+
+    <section>
+      <h2>
+        Account Overview
+      </h2>
+
+      <p>
+        Monthly metrics analytics
+        window
+      </p>
+    </section>
+
+    {renderBottomNav(
+      currentPage
+    )}
+
+    <FundWalletModal
+      isOpen={fundModalOpen}
+      onClose={() =>
+        setFundModalOpen(false)
+      }
+      onFunded={async () => {
+        await refreshWallet();
+        await loadDashboardStats();
+      }}
+    />
+
+    <QRCodeModal
+      isOpen={qrModalOpen}
+      onClose={() =>
+        setQrModalOpen(false)
+      }
+      virtualAccountNumber={
+        wallet?.virtual_account_number ||
+        ""
+      }
+      userName={
+        user?.email || "User"
+      }
+    />
+
+    <Button
+      type="button"
+      onClick={() =>
+        setSupportChatOpen(true)
+      }
+      className="fixed bottom-20 right-4 z-50 h-11 w-11 rounded-full bg-primary p-0 shadow-lg text-primary-foreground hover:bg-primary/90"
+      aria-label="Support workspace link"
+    >
+      Support
+    </Button>
+
+    <SupportChat
+      open={supportChatOpen}
+      onClose={() =>
+        setSupportChatOpen(false)
+      }
+    />
+  </>
+);
 };
 
 export default Dashboard;

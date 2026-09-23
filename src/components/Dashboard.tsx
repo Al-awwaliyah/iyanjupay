@@ -1,3 +1,4 @@
+import { getSafeErrorMessage } from "@/lib/errorHandling";
 import React, {
   useCallback,
   useEffect,
@@ -39,9 +40,9 @@ import {
 } from "@/components/ui/card";
 
 import ServiceCard from "./services/ServiceCard";
-import DashboardActionCard from "./dashboard/DashboardActionCard";
 import FundWalletModal from "./modals/FundWalletModal";
 import ServicePayment from "@/pages/ServicePayment";
+import BilalsadasubExtras from "@/pages/BilalsadasubExtras";
 import QRCodeModal from "./modals/QRCodeModal";
 import WhatsAppFloat from "./WhatsAppFloat";
 import SupportChat from "./support/SupportChat";
@@ -82,7 +83,12 @@ type BillService =
   | "cable"
   | "education"
   | "recharge-card"
+  | "airtime-card"
+  | "data-card"
   | "internet"
+  | "airtime-cash"
+  | "gift-card"
+  | "esim"
   | "savings";
 
 type CurrentPage =
@@ -99,6 +105,7 @@ type CurrentPage =
   | "disputes"
   | "send-money"
   | "service-payment"
+  | "bilalsadasub-extra"
   | "security";
 
 type SelectedService = {
@@ -136,11 +143,16 @@ const SUPPORTED_BILL_SERVICES: BillService[] = [
   "electricity",
   "education",
   "internet",
+  "airtime-card",
+  "data-card",
+  "recharge-card",
+  "airtime-cash",
+  "gift-card",
+  "esim",
 ];
 
 const COMING_SOON_SERVICES: BillService[] = [
   "savings",
-  "recharge-card",
 ];
 
 /*
@@ -407,9 +419,6 @@ const Dashboard = () => {
   const [statsLoading, setStatsLoading] =
     useState(true);
 
-  const [recentTransactions, setRecentTransactions] =
-    useState<DashboardTransaction[]>([]);
-
   /*
    * ============================================================
    * AUTH REDIRECT
@@ -501,7 +510,7 @@ const Dashboard = () => {
 
           if (
             payload?.provider_response
-              ?.data?.message
+              ?.getSafeErrorMessage(data)
           ) {
             return String(
               payload.provider_response
@@ -517,12 +526,12 @@ const Dashboard = () => {
       }
 
       if (
-        error?.message &&
-        error.message !==
+        getSafeErrorMessage(error) &&
+        getSafeErrorMessage(error) !==
           "Edge Function returned a non-2xx status code"
       ) {
         return String(
-          error.message
+          getSafeErrorMessage(error)
         );
       }
 
@@ -588,10 +597,6 @@ const Dashboard = () => {
         const transactions =
           (data ??
             []) as DashboardTransaction[];
-
-        setRecentTransactions(
-          transactions.slice(0, 4)
-        );
 
         const now = new Date();
 
@@ -894,13 +899,54 @@ const Dashboard = () => {
       available: true,
     },
     {
-      title: "Recharge Card",
+      title: "Airtime Recharge PIN",
       description:
-        "Coming soon",
+        "Generate MTN, Glo, 9mobile & Airtel recharge PINs",
+      icon: Receipt,
+      color: "bg-slate-500",
+      type: "airtime-card" as BillService,
+      available: true,
+    },
+    {
+      title: "Data Card",
+      description:
+        "Generate data card PINs",
+      icon: Receipt,
+      color: "bg-cyan-500",
+      type: "data-card" as BillService,
+      available: true,
+    },
+    {
+      title: "Airtime Card",
+      description: "Generate discounted airtime recharge PINs",
       icon: Receipt,
       color: "bg-slate-500",
       type: "recharge-card" as BillService,
-      available: false,
+      available: true,
+    },
+    {
+      title: "Airtime to Cash",
+      description: "Convert eligible airtime to wallet balance",
+      icon: Banknote,
+      color: "bg-emerald-500",
+      type: "airtime-cash" as BillService,
+      available: true,
+    },
+    {
+      title: "Gift Cards",
+      description: "Buy or sell supported gift cards",
+      icon: Gift,
+      color: "bg-pink-500",
+      type: "gift-card" as BillService,
+      available: true,
+    },
+    {
+      title: "Internet eSIM",
+      description: "Buy available Smile or Alpha eSIM numbers",
+      icon: Radio,
+      color: "bg-indigo-500",
+      type: "esim" as BillService,
+      available: true,
     },
     {
       title: "Savings",
@@ -977,7 +1023,9 @@ const Dashboard = () => {
     });
 
     setCurrentPage(
-      "service-payment"
+      service.type === "airtime-cash" || service.type === "gift-card" || service.type === "esim"
+        ? "bilalsadasub-extra"
+        : "service-payment"
     );
   };
 
@@ -987,7 +1035,7 @@ const Dashboard = () => {
    * ============================================================
    *
    * All VTU/service purchases are routed through the secure
-   * Peyflex Edge Function. The provider remains server-side.
+   * ClubKonnect Edge Function. The provider remains server-side.
    *
    * The frontend does NOT debit the wallet and does NOT decide
    * whether a transaction is successful. The Edge Function owns
@@ -998,7 +1046,7 @@ const Dashboard = () => {
   const handlePurchase = async (
     amount: number,
     details: Record<string, any>
-  ): Promise<void> => {
+  ): Promise<any> => {
     if (!user) {
       throw new Error(
         "Authentication required. Please log in again."
@@ -1058,7 +1106,7 @@ const Dashboard = () => {
         error,
       } =
         await supabase.functions.invoke(
-          "peyflex-services",
+          "bilalsadasub-services",
           {
             body: {
               action: "purchase",
@@ -1156,8 +1204,8 @@ const Dashboard = () => {
         data.success !== true
       ) {
         throw new Error(
-          data?.error ||
-            data?.message ||
+          getSafeErrorMessage(data) ||
+            getSafeErrorMessage(data) ||
             data?.provider_message ||
             "Service payment failed."
         );
@@ -1196,11 +1244,13 @@ const Dashboard = () => {
           ? "Payment Processing"
           : "Payment Successful",
         description:
-          data?.message ||
+          getSafeErrorMessage(data) ||
           (isPending
             ? `${selectedService.title} payment is being processed.`
             : `${selectedService.title} payment was completed successfully.`),
       });
+
+      return data;
     } catch (error: any) {
       console.error(
         "Service payment failed:",
@@ -1208,7 +1258,7 @@ const Dashboard = () => {
       );
 
       throw new Error(
-        error?.message ||
+        getSafeErrorMessage(error) ||
           "Unable to complete this service payment."
       );
     }
@@ -1388,8 +1438,8 @@ const Dashboard = () => {
         data.success !== true
       ) {
         throw new Error(
-          data?.error ||
-            data?.message ||
+          getSafeErrorMessage(data) ||
+            getSafeErrorMessage(data) ||
             "Bank transfer failed."
         );
       }
@@ -1402,7 +1452,7 @@ const Dashboard = () => {
         title:
           "Transfer Processing",
         description:
-          data?.message ||
+          getSafeErrorMessage(data) ||
           `₦${amount.toLocaleString()} sent to ${details.recipient}.`,
       });
     } catch (error: any) {
@@ -1415,7 +1465,7 @@ const Dashboard = () => {
         title:
           "Transfer Failed",
         description:
-          error?.message ||
+          getSafeErrorMessage(error) ||
           "Unable to complete the bank transfer.",
         variant:
           "destructive",
@@ -1435,7 +1485,7 @@ const Dashboard = () => {
         <div className="min-h-screen flex items-center justify-center bg-slate-50">
           <div className="text-center">
             <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-white shadow-lg">
-              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+              <Loader2 className="h-8 w-8 animate-spin text-purple-600" />
             </div>
 
             <p className="mt-5 text-sm font-medium text-slate-600">
@@ -1457,7 +1507,7 @@ const Dashboard = () => {
     return (
       <>
         <div className="min-h-screen flex items-center justify-center bg-slate-50">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          <Loader2 className="h-8 w-8 animate-spin text-purple-600" />
         </div>
       </>
     );
@@ -1476,7 +1526,7 @@ const Dashboard = () => {
   const renderBottomNav = (
     page: CurrentPage
   ) => (
-    <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-slate-200/80 bg-white/95 px-3 pt-2 shadow-[0_-8px_30px_rgba(15,23,42,0.06)] backdrop-blur-xl iyanjupay-dashboard-bottom-nav">
+    <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-slate-200/80 bg-white/95 px-3 py-2 shadow-[0_-8px_30px_rgba(15,23,42,0.06)] backdrop-blur-xl">
       <div className="mx-auto max-w-3xl">
         <div className="grid grid-cols-4 gap-1">
 
@@ -1490,7 +1540,7 @@ const Dashboard = () => {
             }
             className={`h-14 rounded-2xl ${
               page === "home"
-                ? "bg-primary/10 text-primary"
+                ? "bg-purple-50 text-purple-700"
                 : "text-slate-500 hover:bg-slate-50"
             }`}
           >
@@ -1513,7 +1563,7 @@ const Dashboard = () => {
             }
             className={`h-14 rounded-2xl ${
               page === "rewards"
-                ? "bg-primary/10 text-primary"
+                ? "bg-purple-50 text-purple-700"
                 : "text-slate-500 hover:bg-slate-50"
             }`}
           >
@@ -1536,7 +1586,7 @@ const Dashboard = () => {
             }
             className={`h-14 rounded-2xl ${
               page === "cards"
-                ? "bg-primary/10 text-primary"
+                ? "bg-purple-50 text-purple-700"
                 : "text-slate-500 hover:bg-slate-50"
             }`}
           >
@@ -1559,7 +1609,7 @@ const Dashboard = () => {
             }
             className={`h-14 rounded-2xl ${
               page === "me"
-                ? "bg-primary/10 text-primary"
+                ? "bg-purple-50 text-purple-700"
                 : "text-slate-500 hover:bg-slate-50"
             }`}
           >
@@ -1582,6 +1632,18 @@ const Dashboard = () => {
    * SERVICE PAYMENT
    * ============================================================
    */
+
+  if (currentPage === "bilalsadasub-extra" && selectedService) {
+    return (
+      <BilalsadasubExtras
+        type={selectedService.type as "airtime-cash" | "gift-card" | "esim"}
+        onBack={() => {
+          setSelectedService(null);
+          setCurrentPage("home");
+        }}
+      />
+    );
+  }
 
   if (
     currentPage ===
@@ -1952,7 +2014,7 @@ const Dashboard = () => {
         <div className="min-h-screen flex items-center justify-center bg-slate-50">
           <div className="text-center">
             <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-white shadow-lg">
-              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+              <Loader2 className="h-8 w-8 animate-spin text-purple-600" />
             </div>
 
             <p className="mt-5 text-sm font-medium text-slate-600">
@@ -2004,26 +2066,6 @@ const Dashboard = () => {
       .split(/\s+/)[0] ||
     "there";
 
-  const transactionTitle = (
-    transaction: DashboardTransaction
-  ) => {
-    const raw =
-      transaction.description ||
-      transaction.category ||
-      transaction.transaction_type ||
-      "Transaction";
-
-    return String(raw)
-      .replace(/[_-]+/g, " ")
-      .replace(/\b\w/g, (character) =>
-        character.toUpperCase()
-      );
-  };
-
-  const transactionIsOut = (
-    transaction: DashboardTransaction
-  ) => isMoneyOutTransaction(transaction);
-
   /*
    * ============================================================
    * MAIN DASHBOARD
@@ -2059,10 +2101,13 @@ const Dashboard = () => {
                 className="flex items-center gap-3"
                 aria-label="Go to IyanjuPay home"
               >
-                <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-white shadow-md">
-                  <span className="text-sm font-black text-primary">
-                    IP
-                  </span>
+                <div className="iyanjupay-header-logo flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-2xl">
+                  <img
+                    src="/icon-180.png"
+                    alt="IyanjuPay"
+                    className="h-full w-full object-cover"
+                    draggable={false}
+                  />
                 </div>
 
                 <div className="hidden sm:block">
@@ -2086,7 +2131,7 @@ const Dashboard = () => {
                       true
                     )
                   }
-                  className="h-10 w-10 rounded-full p-0 text-white hover:bg-white/15"
+                  className="iyanjupay-header-action h-10 w-10 rounded-full p-0"
                   aria-label="Show QR code"
                 >
                   <QrCode className="h-5 w-5" />
@@ -2107,7 +2152,7 @@ const Dashboard = () => {
                           !open
                       )
                     }
-                    className="h-10 w-10 rounded-full p-0 text-white hover:bg-white/15"
+                    className="iyanjupay-header-action h-10 w-10 rounded-full p-0"
                     aria-label="Change dashboard appearance"
                     aria-expanded={
                       appearanceOpen
@@ -2121,10 +2166,10 @@ const Dashboard = () => {
                     <div
                       role="menu"
                       aria-label="Dashboard appearance"
-                      className="absolute right-0 top-12 z-[60] w-40 overflow-hidden rounded-2xl border border-slate-200 bg-white p-1.5 text-slate-900 shadow-2xl"
+                      className="iyanjupay-appearance-menu absolute right-0 top-12 z-[60] w-40 overflow-hidden rounded-2xl p-1.5 shadow-2xl"
                     >
 
-                      <div className="px-2.5 pb-1.5 pt-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                      <div className="iyanjupay-appearance-label px-2.5 pb-1.5 pt-1 text-[10px] font-bold uppercase tracking-wider">
                         Appearance
                       </div>
 
@@ -2148,15 +2193,12 @@ const Dashboard = () => {
                                   false
                                 );
                               }}
-                              className={`flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left text-xs font-semibold transition ${
-                                dashboardTheme ===
-                                theme
-                                  ? "bg-slate-100 text-slate-900"
-                                  : "text-slate-600 hover:bg-slate-50"
+                              className={`iyanjupay-appearance-option flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left text-xs font-semibold transition ${
+                                dashboardTheme === theme ? "is-selected" : ""
                               }`}
                             >
 
-                              <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-slate-100">
+                              <span className="iyanjupay-appearance-icon flex h-7 w-7 items-center justify-center rounded-lg">
                                 <ThemeIcon className="h-3.5 w-3.5" />
                               </span>
 
@@ -2186,7 +2228,7 @@ const Dashboard = () => {
                       "history"
                     )
                   }
-                  className="hidden h-10 w-10 rounded-full p-0 text-white hover:bg-white/15 sm:flex"
+                  className="iyanjupay-header-action hidden h-10 w-10 rounded-full p-0 sm:flex"
                   aria-label="Transaction history"
                 >
                   <History className="h-5 w-5" />
@@ -2200,7 +2242,7 @@ const Dashboard = () => {
                       "me"
                     )
                   }
-                  className="h-10 w-10 rounded-full p-0 text-white hover:bg-white/15"
+                  className="iyanjupay-header-action h-10 w-10 rounded-full p-0"
                   aria-label="Open profile"
                 >
                   <User className="h-5 w-5" />
@@ -2212,7 +2254,7 @@ const Dashboard = () => {
                   onClick={
                     signOut
                   }
-                  className="hidden h-10 w-10 rounded-full p-0 text-white hover:bg-white/15 sm:flex"
+                  className="iyanjupay-header-action hidden h-10 w-10 rounded-full p-0 sm:flex"
                   aria-label="Sign out"
                 >
                   <LogOut className="h-5 w-5" />
@@ -2246,7 +2288,7 @@ const Dashboard = () => {
 
               <div>
 
-                <p className="mb-1 text-sm font-medium text-primary">
+                <p className="mb-1 text-sm font-medium text-purple-600">
                   Welcome back
                 </p>
 
@@ -2371,7 +2413,7 @@ const Dashboard = () => {
                         setFundModalOpen(true);
                       }}
                       disabled={!allowWalletFunding}
-                      className="h-12 rounded-2xl bg-white text-primary shadow-lg hover:bg-white/90"
+                      className="h-12 rounded-2xl bg-white text-purple-700 shadow-lg hover:bg-purple-50"
                     >
                       <Plus className="mr-2 h-5 w-5" />
 
@@ -2438,42 +2480,80 @@ const Dashboard = () => {
 
             </div>
 
-            <div className="grid grid-cols-4 gap-2.5 sm:gap-3">
-              <DashboardActionCard
-                title="Airtime"
-                description="Recharge instantly"
-                icon={Smartphone}
-                iconClassName="bg-blue-500/10 text-blue-600"
-                onClick={() => handleServiceClick(services[0])}
-                showArrow={false}
-              />
+            <div className="grid grid-cols-4 gap-2 sm:gap-3">
 
-              <DashboardActionCard
-                title="Data"
-                description="Fast data bundles"
-                icon={Wifi}
-                iconClassName="bg-violet-500/10 text-violet-600"
-                onClick={() => handleServiceClick(services[1])}
-                showArrow={false}
-              />
+              <button
+                type="button"
+                onClick={() =>
+                  handleServiceClick(
+                    services[0]
+                  )
+                }
+                className="group rounded-2xl border border-slate-200 bg-white p-3 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-md sm:p-4"
+              >
+                <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-2xl bg-blue-50 text-blue-600 transition group-hover:scale-105">
+                  <Smartphone className="h-5 w-5" />
+                </div>
 
-              <DashboardActionCard
-                title="Transfer"
-                description="Send money securely"
-                icon={Send}
-                iconClassName="bg-emerald-500/10 text-emerald-600"
-                onClick={() => setCurrentPage("send-money")}
-                showArrow={false}
-              />
+                <p className="mt-2 text-[11px] font-bold text-slate-700 sm:text-xs">
+                  Airtime
+                </p>
+              </button>
 
-              <DashboardActionCard
-                title="History"
-                description="Track your activity"
-                icon={History}
-                iconClassName="bg-amber-500/10 text-amber-600"
-                onClick={() => setCurrentPage("history")}
-                showArrow={false}
-              />
+              <button
+                type="button"
+                onClick={() =>
+                  handleServiceClick(
+                    services[1]
+                  )
+                }
+                className="group rounded-2xl border border-slate-200 bg-white p-3 shadow-sm transition hover:-translate-y-0.5 hover:border-purple-200 hover:shadow-md sm:p-4"
+              >
+                <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-2xl bg-purple-50 text-purple-600 transition group-hover:scale-105">
+                  <Wifi className="h-5 w-5" />
+                </div>
+
+                <p className="mt-2 text-[11px] font-bold text-slate-700 sm:text-xs">
+                  Data
+                </p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() =>
+                  setCurrentPage(
+                    "send-money"
+                  )
+                }
+                className="group rounded-2xl border border-slate-200 bg-white p-3 shadow-sm transition hover:-translate-y-0.5 hover:border-emerald-200 hover:shadow-md sm:p-4"
+              >
+                <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600 transition group-hover:scale-105">
+                  <Send className="h-5 w-5" />
+                </div>
+
+                <p className="mt-2 text-[11px] font-bold text-slate-700 sm:text-xs">
+                  Transfer
+                </p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() =>
+                  setCurrentPage(
+                    "history"
+                  )
+                }
+                className="group rounded-2xl border border-slate-200 bg-white p-3 shadow-sm transition hover:-translate-y-0.5 hover:border-orange-200 hover:shadow-md sm:p-4"
+              >
+                <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-2xl bg-orange-50 text-orange-600 transition group-hover:scale-105">
+                  <History className="h-5 w-5" />
+                </div>
+
+                <p className="mt-2 text-[11px] font-bold text-slate-700 sm:text-xs">
+                  History
+                </p>
+              </button>
+
             </div>
           </section>
 
@@ -2495,8 +2575,8 @@ const Dashboard = () => {
 
               </div>
 
-              <span className="hidden rounded-full bg-primary/10 px-3 py-1 text-xs font-bold text-primary sm:block">
-                {services.filter((service) => service.available).length} available
+              <span className="hidden rounded-full bg-purple-50 px-3 py-1 text-xs font-bold text-purple-700 sm:block">
+                12 available
               </span>
 
             </div>
@@ -2541,117 +2621,6 @@ const Dashboard = () => {
 
             </div>
 
-          </section>
-
-          {/* RECENT ACTIVITY */}
-
-          <section className="mb-8">
-            <div className="mb-4 flex items-end justify-between gap-3">
-              <div>
-                <h2 className="text-xl font-black tracking-tight text-slate-950">
-                  Recent activity
-                </h2>
-                <p className="mt-1 text-sm text-slate-500">
-                  Your latest wallet and payment activity
-                </p>
-              </div>
-
-              <Button
-                variant="ghost"
-                onClick={() => setCurrentPage("history")}
-                className="rounded-xl px-3 text-xs font-bold text-primary hover:bg-primary/5"
-              >
-                View all
-              </Button>
-            </div>
-
-            <Card className="overflow-hidden rounded-3xl border-slate-200/80 bg-white shadow-sm">
-              <CardContent className="p-0">
-                {recentTransactions.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center px-6 py-10 text-center">
-                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100 text-slate-500">
-                      <History className="h-5 w-5" />
-                    </div>
-                    <p className="mt-3 text-sm font-bold text-slate-800">
-                      No recent activity
-                    </p>
-                    <p className="mt-1 max-w-sm text-xs leading-5 text-slate-500">
-                      Your latest transactions will appear here after you start using IyanjuPay.
-                    </p>
-                  </div>
-                ) : (
-                  <div className="divide-y divide-slate-100">
-                    {recentTransactions.map((transaction) => {
-                      const outgoing = transactionIsOut(transaction);
-                      const successful = isSuccessfulTransaction(transaction);
-                      const amount = Number(transaction.amount);
-
-                      return (
-                        <button
-                          key={transaction.id}
-                          type="button"
-                          onClick={() => setCurrentPage("history")}
-                          className="group flex w-full items-center gap-3 px-4 py-4 text-left transition hover:bg-slate-50 sm:px-5"
-                        >
-                          <span
-                            className={
-                              outgoing
-                                ? "flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-blue-50 text-blue-600"
-                                : "flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600"
-                            }
-                          >
-                            {outgoing ? (
-                              <Send className="h-5 w-5" />
-                            ) : (
-                              <Plus className="h-5 w-5" />
-                            )}
-                          </span>
-
-                          <span className="min-w-0 flex-1">
-                            <span className="block truncate text-sm font-bold text-slate-900">
-                              {transactionTitle(transaction)}
-                            </span>
-                            <span className="mt-1 block text-[11px] text-slate-500">
-                              {new Date(transaction.created_at).toLocaleString("en-NG", {
-                                dateStyle: "medium",
-                                timeStyle: "short",
-                              })}
-                            </span>
-                          </span>
-
-                          <span className="text-right">
-                            <span
-                              className={
-                                "block text-sm font-black " +
-                                (outgoing ? "text-slate-900" : "text-emerald-600")
-                              }
-                            >
-                              {outgoing ? "-" : "+"}
-                              {Number.isFinite(amount)
-                                ? `₦${Math.abs(amount).toLocaleString("en-NG", {
-                                    minimumFractionDigits: 0,
-                                    maximumFractionDigits: 2,
-                                  })}`
-                                : "₦0"}
-                            </span>
-                            <span
-                              className={
-                                "mt-1 inline-flex items-center rounded-full px-2 py-0.5 text-[9px] font-bold " +
-                                (successful
-                                  ? "bg-emerald-50 text-emerald-700"
-                                  : "bg-slate-100 text-slate-600")
-                              }
-                            >
-                              {successful ? "Successful" : transaction.status}
-                            </span>
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
           </section>
 
           {/* ACCOUNT OVERVIEW */}
@@ -2802,7 +2771,7 @@ const Dashboard = () => {
 
                   <div className="flex items-start gap-3">
 
-                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-purple-50 text-purple-600">
                       <Shield className="h-5 w-5" />
                     </div>
 
@@ -2903,7 +2872,7 @@ const Dashboard = () => {
               true
             )
           }
-          className="fixed bottom-24 right-4 z-50 h-14 w-14 rounded-full bg-primary p-0 shadow-lg hover:bg-primary/90 sm:bottom-24 sm:right-6"
+          className="fixed bottom-24 right-4 z-50 h-14 w-14 rounded-full bg-purple-600 p-0 shadow-[0_12px_30px_rgba(124,58,237,0.35)] hover:bg-purple-700 sm:bottom-24 sm:right-6"
           aria-label="Open live support chat"
         >
           <Headphones className="h-6 w-6" />

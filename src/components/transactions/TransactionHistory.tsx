@@ -129,7 +129,7 @@ type NormalizedTransaction = {
   /*
    * IMPORTANT:
    * This is the CUSTOMER-FACING service provider/biller/network.
-   * It must NEVER contain ClubKonnect, Flutterwave, or another
+   * It must NEVER expose internal provider
    * internal fulfilment provider.
    */
   serviceProviderName: string;
@@ -226,8 +226,7 @@ const BILL_KINDS = new Set<TransactionKind>([
  * customer as a service provider/network/biller.
  */
 const INTERNAL_PROVIDER_NAMES = new Set([
-  "clubkonnect",
-  "club konnect",
+    "club konnect",
   "club-konnect",
   "flutterwave",
   "flutter wave",
@@ -423,7 +422,7 @@ const isInternalProviderName = (
  *
  * IMPORTANT:
  * We deliberately DO NOT fall back to metadata.provider.
- * `metadata.provider` is commonly ClubKonnect/Flutterwave and is
+ * `metadata.provider` may identify an internal processing provider and is
  * an internal implementation detail.
  */
 const getCustomerServiceProvider = (

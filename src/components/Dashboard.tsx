@@ -42,7 +42,6 @@ import {
 import ServiceCard from "./services/ServiceCard";
 import FundWalletModal from "./modals/FundWalletModal";
 import ServicePayment from "@/pages/ServicePayment";
-import BilalsadasubExtras from "@/pages/BilalsadasubExtras";
 import QRCodeModal from "./modals/QRCodeModal";
 import WhatsAppFloat from "./WhatsAppFloat";
 import SupportChat from "./support/SupportChat";
@@ -105,7 +104,6 @@ type CurrentPage =
   | "disputes"
   | "send-money"
   | "service-payment"
-  | "bilalsadasub-extra"
   | "security";
 
 type SelectedService = {
@@ -141,17 +139,15 @@ const SUPPORTED_BILL_SERVICES: BillService[] = [
   "data",
   "cable",
   "electricity",
+];
+
+const COMING_SOON_SERVICES: BillService[] = [
   "education",
-  "internet",
-  "airtime-card",
-  "data-card",
   "recharge-card",
   "airtime-cash",
   "gift-card",
   "esim",
-];
-
-const COMING_SOON_SERVICES: BillService[] = [
+  "internet",
   "savings",
 ];
 
@@ -853,119 +849,17 @@ const Dashboard = () => {
    */
 
   const services = [
-    {
-      title: "Buy Airtime",
-      description:
-        "Recharge your phone instantly",
-      icon: Smartphone,
-      color: "bg-blue-500",
-      type: "airtime" as BillService,
-      available: true,
-    },
-    {
-      title: "Buy Data",
-      description:
-        "Fast data bundles",
-      icon: Wifi,
-      color: "bg-purple-500",
-      type: "data" as BillService,
-      available: true,
-    },
-    {
-      title: "Cable TV",
-      description:
-        "DSTV, GOTV & Startimes",
-      icon: CreditCard,
-      color: "bg-red-500",
-      type: "cable" as BillService,
-      available: true,
-    },
-    {
-      title: "Electricity",
-      description:
-        "Pay your power bill",
-      icon: Zap,
-      color: "bg-yellow-500",
-      type: "electricity" as BillService,
-      available: true,
-    },
-    {
-      title: "Education",
-      description:
-        "Education services",
-      icon: GraduationCap,
-      color: "bg-orange-500",
-      type: "education" as BillService,
-      available: true,
-    },
-    {
-      title: "Airtime Recharge PIN",
-      description:
-        "Generate MTN, Glo, 9mobile & Airtel recharge PINs",
-      icon: Receipt,
-      color: "bg-slate-500",
-      type: "airtime-card" as BillService,
-      available: true,
-    },
-    {
-      title: "Data Card",
-      description:
-        "Generate data card PINs",
-      icon: Receipt,
-      color: "bg-cyan-500",
-      type: "data-card" as BillService,
-      available: true,
-    },
-    {
-      title: "Airtime Card",
-      description: "Generate discounted airtime recharge PINs",
-      icon: Receipt,
-      color: "bg-slate-500",
-      type: "recharge-card" as BillService,
-      available: true,
-    },
-    {
-      title: "Airtime to Cash",
-      description: "Convert eligible airtime to wallet balance",
-      icon: Banknote,
-      color: "bg-emerald-500",
-      type: "airtime-cash" as BillService,
-      available: true,
-    },
-    {
-      title: "Gift Cards",
-      description: "Buy or sell supported gift cards",
-      icon: Gift,
-      color: "bg-pink-500",
-      type: "gift-card" as BillService,
-      available: true,
-    },
-    {
-      title: "Internet eSIM",
-      description: "Buy available Smile or Alpha eSIM numbers",
-      icon: Radio,
-      color: "bg-indigo-500",
-      type: "esim" as BillService,
-      available: true,
-    },
-    {
-      title: "Savings",
-      description:
-        "Coming soon",
-      icon: PiggyBank,
-      color: "bg-pink-500",
-      type: "savings" as BillService,
-      available: false,
-    },
-    {
-      title: "Internet Service",
-      description:
-        "Pay internet service bills",
-      icon: Wifi,
-      color: "bg-indigo-500",
-      type: "internet" as BillService,
-      available: true,
-    },
+    { title: "Buy Airtime", description: "Recharge your phone instantly", icon: Smartphone, color: "bg-blue-500", type: "airtime" as BillService, available: true },
+    { title: "Buy Data", description: "Fast data bundles", icon: Wifi, color: "bg-purple-500", type: "data" as BillService, available: true },
+    { title: "Cable TV", description: "DStv, GOtv & Startimes", icon: CreditCard, color: "bg-red-500", type: "cable" as BillService, available: true },
+    { title: "Electricity", description: "Pay your power bill", icon: Zap, color: "bg-yellow-500", type: "electricity" as BillService, available: true },
+    { title: "Education", description: "WAEC, NECO, JAMB & NABTEB", icon: GraduationCap, color: "bg-orange-500", type: "education" as BillService, available: false },
+    { title: "Recharge PIN", description: "Generate airtime recharge PINs", icon: Receipt, color: "bg-slate-500", type: "recharge-card" as BillService, available: false },
+    { title: "Airtime to Cash", description: "Convert eligible airtime to wallet balance", icon: Banknote, color: "bg-emerald-500", type: "airtime-cash" as BillService, available: false },
+    { title: "Gift Cards", description: "Buy or sell supported gift cards", icon: Gift, color: "bg-pink-500", type: "gift-card" as BillService, available: false },
+    { title: "Internet eSIM", description: "eSIM connectivity", icon: Radio, color: "bg-indigo-500", type: "esim" as BillService, available: false },
+    { title: "Internet Service", description: "Pay internet service bills", icon: Wifi, color: "bg-indigo-500", type: "internet" as BillService, available: false },
+    { title: "Savings", description: "Save and grow your money", icon: PiggyBank, color: "bg-green-500", type: "savings" as BillService, available: false },
   ];
 
   /*
@@ -1022,11 +916,7 @@ const Dashboard = () => {
       type: service.type,
     });
 
-    setCurrentPage(
-      service.type === "airtime-cash" || service.type === "gift-card" || service.type === "esim"
-        ? "bilalsadasub-extra"
-        : "service-payment"
-    );
+    setCurrentPage("service-payment");
   };
 
   /*
@@ -1034,8 +924,8 @@ const Dashboard = () => {
    * SERVICE PURCHASE
    * ============================================================
    *
-   * All VTU/service purchases are routed through the secure
-   * ClubKonnect Edge Function. The provider remains server-side.
+   * All supported service purchases are routed through the secure
+   * Flutterwave Bills Edge Function. Provider credentials remain server-side.
    *
    * The frontend does NOT debit the wallet and does NOT decide
    * whether a transaction is successful. The Edge Function owns
@@ -1106,7 +996,7 @@ const Dashboard = () => {
         error,
       } =
         await supabase.functions.invoke(
-          "bilalsadasub-services",
+          "flutterwave-bills",
           {
             body: {
               action: "purchase",
@@ -1632,18 +1522,6 @@ const Dashboard = () => {
    * SERVICE PAYMENT
    * ============================================================
    */
-
-  if (currentPage === "bilalsadasub-extra" && selectedService) {
-    return (
-      <BilalsadasubExtras
-        type={selectedService.type as "airtime-cash" | "gift-card" | "esim"}
-        onBack={() => {
-          setSelectedService(null);
-          setCurrentPage("home");
-        }}
-      />
-    );
-  }
 
   if (
     currentPage ===
@@ -2590,12 +2468,13 @@ const Dashboard = () => {
                 ) => (
                   <div
                     key={`${service.type}-${index}`}
-                    className={
-                      service.available
-                        ? "transition hover:-translate-y-0.5"
-                        : "opacity-80"
-                    }
+                    className={`relative ${service.available ? "transition hover:-translate-y-0.5" : "opacity-80"}`}
                   >
+                    {!service.available && (
+                      <span className="absolute right-2 top-2 z-10 rounded-full bg-slate-900/90 px-2 py-1 text-[9px] font-bold uppercase tracking-wide text-white shadow-sm">
+                        Coming Soon
+                      </span>
+                    )}
                     <ServiceCard
                       title={
                         service.title

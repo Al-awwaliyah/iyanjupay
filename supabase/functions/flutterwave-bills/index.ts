@@ -34,6 +34,19 @@ const SERVICE_CATEGORY_MAP: Record<
   internet: "INTSERVICE",
 };
 
+
+function categoryForService(service: unknown): string {
+  const value = cleanString(service).toLowerCase();
+  const map: Record<string, string> = {
+    airtime: "AIRTIME",
+    data: "MOBILEDATA",
+    cable: "CABLEBILLS",
+    electricity: "UTILITYBILLS",
+    internet: "INTSERVICE",
+  };
+  return map[value] ?? cleanString(service).toUpperCase();
+}
+
 // ============================================================
 // DATA MARKUP
 // ============================================================
@@ -699,7 +712,8 @@ Deno.serve(
       ) {
         const category =
           cleanString(
-            body?.category,
+            body?.category ??
+              categoryForService(body?.service),
           ).toUpperCase();
 
         if (!category) {
@@ -767,8 +781,8 @@ Deno.serve(
       // ======================================================
 
       if (
-        action ===
-        "items"
+        action === "items" ||
+        action === "catalog"
       ) {
         const billerCode =
           cleanString(
@@ -1363,14 +1377,76 @@ Deno.serve(
       }
 
       // ======================================================
+      // CUSTOMER VERIFICATION (Cable IUC/Smartcard + Electricity Meter)
+      // ======================================================
+      if (action === "verify_customer") {
+        const verifyService = normalizeService(body?.service);
+        if (verifyService !== "cable" && verifyService !== "electricity") {
+          return json({ success: false, error: "Customer verification is available for Cable TV and Electricity." }, 400);
+        }
+
+        const verifyBiller = cleanString(body?.biller_code ?? body?.billerCode);
+        const verifyCustomer = cleanString(
+          body?.customer ??
+          body?.iuc ??
+          body?.smartcard_number ??
+          body?.meter ??
+          body?.meter_number
+        );
+        if (!verifyBiller || !verifyCustomer) {
+          return json({ success: false, error: "Provider and customer number are required." }, 400);
+        }
+
+        let verifyItem = cleanString(body?.item_code ?? body?.itemCode);
+        if (!verifyItem) {
+          const itemsResult = await fetchBillItems(verifyBiller);
+          const available = Array.isArray(itemsResult.body?.data) ? itemsResult.body.data : [];
+          verifyItem = cleanString(available[0]?.item_code ?? available[0]?.itemCode ?? available[0]?.code ?? available[0]?.id);
+        }
+
+        if (!verifyItem) {
+          return json({ success: false, error: "No bill package is available for this provider." }, 400);
+        }
+
+        const validation = await validateBillCustomer(verifyItem, verifyCustomer);
+        if (!validation.ok || validation.body?.status !== "success") {
+          return json({
+            success: false,
+            error: validation.body?.message ?? "Unable to verify customer details.",
+            provider_status: validation.status,
+            data: validation.body?.data ?? null,
+          }, 400);
+        }
+
+        const validationData = validation.body?.data ?? {};
+        const customerName =
+          validationData?.customer_name ??
+          validationData?.customerName ??
+          validationData?.name ??
+          validationData?.customer ??
+          validationData?.account_name ??
+          validationData?.accountName ??
+          "";
+
+        return json({
+          success: true,
+          message: validation.body?.message ?? "Customer verified successfully.",
+          customer_name: cleanString(customerName),
+          customerName: cleanString(customerName),
+          item_code: verifyItem,
+          biller_code: verifyBiller,
+          data: validationData,
+        });
+      }
+
+      // ======================================================
       // PAY / SERVICE
       // ======================================================
 
       if (
-        action !==
-          "pay" &&
-        action !==
-          "service"
+        action !== "pay" &&
+        action !== "service" &&
+        action !== "purchase"
       ) {
         return json(
           {
@@ -1387,6 +1463,8 @@ Deno.serve(
               "status",
               "pay",
               "service",
+              "purchase",
+              "verify_customer",
             ],
           },
           400,

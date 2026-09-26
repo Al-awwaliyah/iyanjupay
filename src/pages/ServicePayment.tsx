@@ -650,7 +650,7 @@ function providerLogo(
     .replace(/[^a-z0-9]+/g, " ");
 
   if (value.includes("dstv")) {
-    return "https://seeklogo.com/images/D/DSTV-logo-214D0468CA-seeklogo.com.png";
+    return "https://www.google.com/s2/favicons?domain=dstv.com&sz=128";
   }
 
   if (value.includes("gotv")) {
@@ -666,6 +666,26 @@ function providerLogo(
 
   if (value.includes("showmax")) {
     return "https://www.google.com/s2/favicons?domain=showmax.com&sz=128";
+  }
+
+  const discoDomains: Record<string, string> = {
+    aedc: "aedcgroup.com",
+    bedc: "bedcpower.com",
+    eedc: "enugudisco.com",
+    ekedc: "ekedp.com",
+    ibedc: "ibedc.com",
+    ikedc: "ikejaelectric.com",
+    jed: "josdisco.com",
+    kaedco: "kadunadisco.com.ng",
+    kedco: "kedco.ng",
+    phed: "phed.com.ng",
+    yedc: "yedc.com.ng",
+  };
+
+  const compact = value.replace(/[^a-z0-9]/g, "");
+  const discoKey = Object.keys(discoDomains).find((key) => compact.includes(key));
+  if (discoKey) {
+    return `https://www.google.com/s2/favicons?domain=${discoDomains[discoKey]}&sz=128`;
   }
 
   return null;
@@ -1406,7 +1426,7 @@ export default function ServicePayment({
   const serviceTitle =
     displayServiceTitle(service);
 
-  const serviceFunction = "bilalsadasub-services";
+  const serviceFunction = "flutterwave-bills";
 
   const isAirtime =
     serviceType === "airtime";
@@ -1568,7 +1588,7 @@ export default function ServicePayment({
     isPhoneService
       ? "Phone Number"
       : isCable
-        ? "SmartCard / IUC Number"
+        ? "IUC / Smartcard Number"
         : isElectricity
           ? "Meter Number"
           : isInternet
@@ -1874,7 +1894,11 @@ export default function ServicePayment({
     setMeterType(value);
     setCustomer("");
     setAmount("");
+    setSelectedItemCode("");
     resetVerification();
+    if (selectedBillerCode && value) {
+      void loadItems(selectedBillerCode);
+    }
   };
 
   const verifyIdentifier =
@@ -1904,12 +1928,17 @@ export default function ServicePayment({
       setError("");
 
       try {
+        const validationItemCode =
+          selectedItemCode ||
+          getItemCode(items[0]);
+
         const data = await invoke(
           isCable
             ? {
                 action: "verify_customer",
                 service: "cable",
                 biller_code: selectedBillerCode,
+                item_code: validationItemCode,
                 customer: customer.trim(),
                 iuc: customer.trim(),
                 smartcard_number: customer.trim(),
@@ -1918,6 +1947,7 @@ export default function ServicePayment({
                 action: "verify_customer",
                 service: "electricity",
                 biller_code: selectedBillerCode,
+                item_code: validationItemCode,
                 customer: customer.trim(),
                 meter: customer.trim(),
                 meter_number: customer.trim(),

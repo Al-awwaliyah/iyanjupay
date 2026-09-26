@@ -21,7 +21,6 @@ import {
   PiggyBank,
   QrCode,
   Receipt,
-  Radio,
   Send,
   Shield,
   Smartphone,
@@ -87,7 +86,6 @@ type BillService =
   | "internet"
   | "airtime-cash"
   | "gift-card"
-  | "esim"
   | "savings";
 
 type CurrentPage =
@@ -146,7 +144,6 @@ const COMING_SOON_SERVICES: BillService[] = [
   "recharge-card",
   "airtime-cash",
   "gift-card",
-  "esim",
   "internet",
   "savings",
 ];
@@ -857,7 +854,6 @@ const Dashboard = () => {
     { title: "Recharge PIN", description: "Generate airtime recharge PINs", icon: Receipt, color: "bg-slate-500", type: "recharge-card" as BillService, available: false },
     { title: "Airtime to Cash", description: "Convert eligible airtime to wallet balance", icon: Banknote, color: "bg-emerald-500", type: "airtime-cash" as BillService, available: false },
     { title: "Gift Cards", description: "Buy or sell supported gift cards", icon: Gift, color: "bg-pink-500", type: "gift-card" as BillService, available: false },
-    { title: "Internet eSIM", description: "eSIM connectivity", icon: Radio, color: "bg-indigo-500", type: "esim" as BillService, available: false },
     { title: "Internet Service", description: "Pay internet service bills", icon: Wifi, color: "bg-indigo-500", type: "internet" as BillService, available: false },
     { title: "Savings", description: "Save and grow your money", icon: PiggyBank, color: "bg-green-500", type: "savings" as BillService, available: false },
   ];
@@ -2454,7 +2450,7 @@ const Dashboard = () => {
               </div>
 
               <span className="hidden rounded-full bg-purple-50 px-3 py-1 text-xs font-bold text-purple-700 sm:block">
-                12 available
+                10 services
               </span>
 
             </div>
@@ -2470,11 +2466,6 @@ const Dashboard = () => {
                     key={`${service.type}-${index}`}
                     className={`relative ${service.available ? "transition hover:-translate-y-0.5" : "opacity-80"}`}
                   >
-                    {!service.available && (
-                      <span className="absolute right-2 top-2 z-10 rounded-full bg-slate-900/90 px-2 py-1 text-[9px] font-bold uppercase tracking-wide text-white shadow-sm">
-                        Coming Soon
-                      </span>
-                    )}
                     <ServiceCard
                       title={
                         service.title
@@ -2488,6 +2479,10 @@ const Dashboard = () => {
                       color={
                         service.color
                       }
+                      available={
+                        service.available
+                      }
+                      comingSoon={!service.available}
                       onClick={() =>
                         handleServiceClick(
                           service

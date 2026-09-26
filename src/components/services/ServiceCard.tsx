@@ -86,7 +86,7 @@ const ServiceCard = ({
       }
       onKeyDown={handleKeyDown}
     >
-      <CardContent className="relative flex h-full min-h-[125px] flex-col items-center justify-center p-3 text-center sm:min-h-[135px] sm:p-3.5">
+      <CardContent className="relative flex h-full min-h-[96px] flex-col items-center justify-center p-3 text-center sm:min-h-[104px] sm:p-4">
         {/* Coming Soon Badge */}
 
         {isComingSoon && (
@@ -121,26 +121,10 @@ const ServiceCard = ({
 
         {/* Service Name */}
 
-        <h3 className="line-clamp-1 text-[11px] font-bold leading-tight tracking-tight text-slate-900 sm:text-xs">
+        <h3 className="mt-2 line-clamp-1 text-[11px] font-bold leading-tight tracking-tight text-slate-700 sm:text-xs">
           {title}
         </h3>
 
-        {/* Description */}
-
-        <p className="mt-1 line-clamp-2 max-w-[150px] text-[9px] leading-[1.35] text-slate-500 sm:text-[10px]">
-          {description}
-        </p>
-
-        {/* Open Service */}
-
-        {!isComingSoon && (
-          <div className="mt-2 flex items-center gap-0.5 text-[9px] font-bold text-[#082A63] opacity-0 transition-opacity duration-200 group-hover:opacity-100 sm:text-[10px]">
-            <span>Open</span>
-            <span aria-hidden="true">
-              →
-            </span>
-          </div>
-        )}
       </CardContent>
     </Card>
   );

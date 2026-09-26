@@ -1419,32 +1419,18 @@ Deno.serve(
         }
 
         const validationData = validation.body?.data ?? {};
-        const verifiedCustomerId = cleanString(
-          validationData?.customer ??
-          validationData?.customer_id ??
-          verifyCustomer,
-        );
         const customerName =
           validationData?.customer_name ??
           validationData?.customerName ??
           validationData?.name ??
+          validationData?.customer ??
           validationData?.account_name ??
           validationData?.accountName ??
           "";
 
-        if (!verifiedCustomerId) {
-          return json({
-            success: false,
-            error: "Flutterwave did not return a valid customer identifier.",
-            provider_status: validation.status,
-            data: validationData,
-          }, 400);
-        }
-
         return json({
           success: true,
           message: validation.body?.message ?? "Customer verified successfully.",
-          customer_id: verifiedCustomerId,
           customer_name: cleanString(customerName),
           customerName: cleanString(customerName),
           item_code: verifyItem,
@@ -1614,21 +1600,103 @@ Deno.serve(
       // ITEM
       // ======================================================
 
-      if (!itemCode) {
+      // Flutterwave requires an item_code for bill payments.
+      // Electricity is amount-based in the UI, so the frontend may
+      // not have a package selected yet. Resolve the correct item
+      // directly from Flutterwave using the selected biller and
+      // meter type instead of rejecting the request locally.
+      let resolvedItemCode = itemCode;
+
+      if (!resolvedItemCode && service === "electricity") {
+        const electricityItemsResult = await fetchBillItems(billerCode);
+
+        if (
+          !electricityItemsResult.ok ||
+          electricityItemsResult.body?.status !== "success"
+        ) {
+          return json(
+            {
+              success: false,
+              error:
+                electricityItemsResult.body?.message ??
+                "Unable to load electricity bill packages from Flutterwave.",
+              provider_status: electricityItemsResult.status,
+              provider_response: electricityItemsResult.body ?? null,
+              service,
+              biller_code: billerCode,
+            },
+            502,
+          );
+        }
+
+        const electricityItems = Array.isArray(
+          electricityItemsResult.body?.data,
+        )
+          ? electricityItemsResult.body.data
+          : [];
+
+        const requestedMeterType = cleanString(
+          body?.meter_type ??
+            details?.meter_type ??
+            details?.meterType,
+        ).toLowerCase();
+
+        const matchingItems = requestedMeterType
+          ? electricityItems.filter((item: any) => {
+              const text = [
+                item?.name,
+                item?.short_name,
+                item?.shortName,
+                item?.biller_name,
+                item?.billerName,
+                item?.product_name,
+                item?.productName,
+                item?.description,
+              ]
+                .map(cleanString)
+                .join(" ")
+                .toLowerCase();
+
+              return requestedMeterType === "prepaid"
+                ? text.includes("prepaid")
+                : requestedMeterType === "postpaid"
+                  ? text.includes("postpaid")
+                  : false;
+            })
+          : [];
+
+        const candidate =
+          matchingItems[0] ?? electricityItems[0];
+
+        resolvedItemCode = candidate
+          ? extractItemCode(candidate)
+          : "";
+
+        if (!resolvedItemCode) {
+          return json(
+            {
+              success: false,
+              error:
+                "Flutterwave did not return a valid electricity bill package for this provider.",
+              service,
+              biller_code: billerCode,
+            },
+            400,
+          );
+        }
+      }
+
+      if (!resolvedItemCode) {
         return json(
           {
             success: false,
-
             error:
               "Please select a valid bill package.",
-
             service,
-
             category:
               SERVICE_CATEGORY_MAP[
                 service
               ],
-
             biller_code:
               billerCode,
           },
@@ -1784,7 +1852,7 @@ Deno.serve(
             extractItemCode(
               item,
             ) ===
-            itemCode,
+            resolvedItemCode,
         );
 
       if (!selectedItem) {
@@ -1799,7 +1867,7 @@ Deno.serve(
               billerCode,
 
             item_code:
-              itemCode,
+              resolvedItemCode,
           },
           400,
         );
@@ -1830,7 +1898,7 @@ Deno.serve(
               billerCode,
 
             item_code:
-              itemCode,
+              resolvedItemCode,
 
             item_biller_code:
               itemBiller,
@@ -1885,7 +1953,7 @@ Deno.serve(
                 "The selected data plan does not have a valid provider price.",
 
               item_code:
-                itemCode,
+                resolvedItemCode,
             },
             400,
           );
@@ -2026,7 +2094,7 @@ Deno.serve(
       ) {
         const validation =
           await validateBillCustomer(
-            itemCode,
+            resolvedItemCode,
             customer,
           );
 
@@ -2066,43 +2134,12 @@ Deno.serve(
           validation.body
             ?.data ??
           null;
-
-        // Flutterwave is the source of truth for Cable TV and Electricity
-        // customer verification. Use the exact customer identifier returned
-        // by Flutterwave for the subsequent payment request.
-        if (
-          service === "cable" ||
-          service === "electricity"
-        ) {
-          const verifiedCustomerId = cleanString(
-            validationData?.customer ??
-            validationData?.customer_id ??
-            "",
-          );
-
-          if (!verifiedCustomerId) {
-            return json(
-              {
-                success: false,
-                error:
-                  "Flutterwave did not return a valid verified customer identifier.",
-                provider_status:
-                  validation.status,
-                validation_data:
-                  validationData,
-              },
-              400,
-            );
-          }
-
-          customer = verifiedCustomerId;
-        }
       } else {
         console.log(
           "Skipping customer validation:",
           {
             service,
-            itemCode,
+            resolvedItemCode,
             customer,
           },
         );
@@ -2173,7 +2210,7 @@ Deno.serve(
                 billerCode,
 
               item_code:
-                itemCode,
+                resolvedItemCode,
 
               customer,
 
@@ -2251,7 +2288,7 @@ Deno.serve(
         `/billers/${encodeURIComponent(
           billerCode,
         )}/items/${encodeURIComponent(
-          itemCode,
+          resolvedItemCode,
         )}/payment`;
 
       /**
@@ -2369,7 +2406,7 @@ Deno.serve(
                 billerCode,
 
               item_code:
-                itemCode,
+                resolvedItemCode,
 
               customer,
 
@@ -2516,7 +2553,7 @@ Deno.serve(
                 billerCode,
 
               item_code:
-                itemCode,
+                resolvedItemCode,
 
               customer,
 
@@ -2578,7 +2615,7 @@ Deno.serve(
             billerCode,
 
           item_code:
-            itemCode,
+            resolvedItemCode,
 
           customer,
 
@@ -2653,7 +2690,7 @@ Deno.serve(
                 billerCode,
 
               item_code:
-                itemCode,
+                resolvedItemCode,
 
               customer,
 
@@ -2703,7 +2740,7 @@ Deno.serve(
                   billerCode,
 
                 item_code:
-                  itemCode,
+                  resolvedItemCode,
 
                 customer,
 
@@ -2785,7 +2822,7 @@ Deno.serve(
                 billerCode,
 
               item_code:
-                itemCode,
+                resolvedItemCode,
 
               customer,
 
@@ -2850,7 +2887,7 @@ Deno.serve(
               billerCode,
 
             item_code:
-              itemCode,
+              resolvedItemCode,
 
             customer,
 
@@ -2908,7 +2945,7 @@ Deno.serve(
               billerCode,
 
             item_code:
-              itemCode,
+              resolvedItemCode,
 
             customer,
 
@@ -2977,7 +3014,7 @@ Deno.serve(
             billerCode,
 
           item_code:
-            itemCode,
+            resolvedItemCode,
 
           customer,
 

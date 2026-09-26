@@ -1881,10 +1881,6 @@ export default function ServicePayment({
     resetVerification();
     setError("");
 
-    if (isElectricity) {
-      return;
-    }
-
     await loadItems(code);
   };
 

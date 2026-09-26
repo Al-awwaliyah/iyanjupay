@@ -93,31 +93,6 @@ function cleanString(
   ).trim();
 }
 
-/**
- * Flutterwave expects Nigerian phone customer IDs in international format
- * for airtime/data bill payments. Normalize common Nigerian input formats
- * server-side so the provider never receives 080..., 234..., or a spaced value.
- */
-function normalizePhoneCustomer(
-  value: unknown,
-): string {
-  const v = cleanString(value).replace(/\s+/g, "");
-
-  if (/^0\d{10}$/.test(v)) {
-    return `+234${v.slice(1)}`;
-  }
-
-  if (/^\d{10}$/.test(v)) {
-    return `+234${v}`;
-  }
-
-  if (/^234\d{10}$/.test(v)) {
-    return `+${v}`;
-  }
-
-  return v;
-}
-
 function normalizeService(
   value: unknown,
 ): ServiceType | null {
@@ -1444,18 +1419,32 @@ Deno.serve(
         }
 
         const validationData = validation.body?.data ?? {};
+        const verifiedCustomerId = cleanString(
+          validationData?.customer ??
+          validationData?.customer_id ??
+          verifyCustomer,
+        );
         const customerName =
           validationData?.customer_name ??
           validationData?.customerName ??
           validationData?.name ??
-          validationData?.customer ??
           validationData?.account_name ??
           validationData?.accountName ??
           "";
 
+        if (!verifiedCustomerId) {
+          return json({
+            success: false,
+            error: "Flutterwave did not return a valid customer identifier.",
+            provider_status: validation.status,
+            data: validationData,
+          }, 400);
+        }
+
         return json({
           success: true,
           message: validation.body?.message ?? "Customer verified successfully.",
+          customer_id: verifiedCustomerId,
           customer_name: cleanString(customerName),
           customerName: cleanString(customerName),
           item_code: verifyItem,
@@ -2023,13 +2012,6 @@ Deno.serve(
         }
       }
 
-      // Flutterwave requires +234XXXXXXXXXX for Nigerian airtime/data
-      // customer IDs. Normalize again on the server because frontend
-      // formatting must never be relied on for provider-facing payloads.
-      if (service === "airtime" || service === "data") {
-        customer = normalizePhoneCustomer(customer);
-      }
-
       // ======================================================
       // CUSTOMER VALIDATION
       // ======================================================
@@ -2085,19 +2067,35 @@ Deno.serve(
             ?.data ??
           null;
 
-        // Flutterwave's payment endpoint expects the same customer
-        // identifier that was successfully validated. Some billers
-        // normalize the identifier during validation, so prefer the
-        // provider-returned canonical customer value when available.
-        const validatedCustomer =
-          cleanString(
+        // Flutterwave is the source of truth for Cable TV and Electricity
+        // customer verification. Use the exact customer identifier returned
+        // by Flutterwave for the subsequent payment request.
+        if (
+          service === "cable" ||
+          service === "electricity"
+        ) {
+          const verifiedCustomerId = cleanString(
             validationData?.customer ??
-              validationData?.customer_id ??
-              validationData?.customerId,
+            validationData?.customer_id ??
+            "",
           );
 
-        if (validatedCustomer) {
-          customer = validatedCustomer;
+          if (!verifiedCustomerId) {
+            return json(
+              {
+                success: false,
+                error:
+                  "Flutterwave did not return a valid verified customer identifier.",
+                provider_status:
+                  validation.status,
+                validation_data:
+                  validationData,
+              },
+              400,
+            );
+          }
+
+          customer = verifiedCustomerId;
         }
       } else {
         console.log(

@@ -1021,32 +1021,24 @@ async function verify(service: string, b: O) {
       );
     }
 
-    const primaryPath = "/cable/verify/";
-    const retryPath = "/cable/verify";
-
     let r = await post(
-      primaryPath,
+      "/cable/validate/",
       {
         provider: p,
         iucnumber: i,
       },
     );
 
-    const primaryResponse = r;
-    let retryResponse: typeof r | null = null;
-
-    // Keep the documented trailing-slash route as the primary request.
-    // If Topupmate/LiteSpeed returns 404, make one controlled retry without
-    // the slash and expose both provider responses in the diagnostic output.
+    // // Diagnostic test: try the proposed Cable validation route first, then
+    // retry the same route without the trailing slash only on HTTP 404.
     if (r.httpStatus === 404) {
-      retryResponse = await post(
-        retryPath,
+      r = await post(
+        "/cable/validate",
         {
           provider: p,
           iucnumber: i,
         },
       );
-      r = retryResponse;
     }
 
     if (!r.ok || status(r.body) === "fail") {
@@ -1056,46 +1048,16 @@ async function verify(service: string, b: O) {
           r.body?.error,
       );
 
-      // Safe diagnostic: return the provider HTTP status and exact provider
-      // response body, but never expose the Authorization header/API key.
-      // This is intentionally limited to Cable verification failures.
       if (r.httpStatus === 404) {
-        return {
-          success: false,
-          error:
-            providerMessage ||
-            "Topupmate Cable verification endpoint returned HTTP 404.",
-          provider_status: r.httpStatus,
-          provider_url: `https://connect.topupmate.com/api${retryResponse ? retryPath : primaryPath}`,
-          provider_response: r.body,
-          diagnostic: {
-            primary: {
-              method: "POST",
-              url: "https://connect.topupmate.com/api/cable/verify/",
-              status: primaryResponse.httpStatus,
-              response: primaryResponse.body,
-            },
-            retry: retryResponse
-              ? {
-                  method: "POST",
-                  url: "https://connect.topupmate.com/api/cable/verify",
-                  status: retryResponse.httpStatus,
-                  response: retryResponse.body,
-                }
-              : null,
-          },
-        };
+        throw new Error(
+          "Topupmate Cable validation endpoint returned HTTP 404. The diagnostic below shows the exact provider URL and response.",
+        );
       }
 
-      return {
-        success: false,
-        error:
-          providerMessage ||
+      throw new Error(
+        providerMessage ||
           "Could Not Verify Smart Card/IUC Number",
-        provider_status: r.httpStatus,
-        provider_url: `https://connect.topupmate.com/api${retryResponse ? retryPath : primaryPath}`,
-        provider_response: r.body,
-      };
+      );
     }
 
     // Topupmate returns Cable verification fields at the top level.

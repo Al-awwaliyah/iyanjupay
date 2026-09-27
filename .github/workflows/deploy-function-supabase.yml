@@ -25,9 +25,10 @@ jobs:
       - name: Setup Supabase CLI
         uses: supabase/setup-cli@v2
         with:
-          version: 2.115.0
+          version: latest
 
       - name: Verify Supabase credentials
+        shell: bash
         run: |
           set -euo pipefail
 
@@ -47,16 +48,96 @@ jobs:
           supabase functions list \
             --project-ref "$SUPABASE_PROJECT_ID"
 
+      - name: Verify Edge Function source tree
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          echo "Checking Supabase Edge Function source tree..."
+
+          test -f supabase/functions/_shared/auth.ts
+          test -f supabase/functions/_shared/topupmate.ts
+          test -f supabase/functions/topupmate-cards/index.ts
+          test -f supabase/functions/topupmate-services/index.ts
+
+          echo ""
+          echo "Required files found:"
+          echo ""
+
+          ls -lh supabase/functions/_shared/auth.ts
+          ls -lh supabase/functions/_shared/topupmate.ts
+          ls -lh supabase/functions/topupmate-cards/index.ts
+          ls -lh supabase/functions/topupmate-services/index.ts
+
       - name: Remove retired Peyflex Edge Function
+        shell: bash
         run: |
           supabase functions delete \
             peyflex-services \
             --project-ref "$SUPABASE_PROJECT_ID" || true
 
       - name: Deploy Supabase Edge Functions
+        shell: bash
         run: |
           set -euo pipefail
 
+          for function_dir in supabase/functions/*; do
+            [ -d "$function_dir" ] || continue
+
+            function_name="$(basename "$function_dir")"
+
+            if [ "$function_name" = "_shared" ]; then
+              continue
+            fi
+
+            if [ "$function_name" = "topupmate-services" ]; then
+              continue
+            fi
+
+            echo ""
+            echo "=========================================="
+            echo "Deploying Function: $function_name"
+            echo "=========================================="
+
+            supabase functions deploy \
+              "$function_name" \
+              --use-api \
+              --project-ref "$SUPABASE_PROJECT_ID"
+          done
+
+      - name: Deploy Topupmate Services
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          echo ""
+          echo "=========================================="
+          echo "Deploying Function: topupmate-services"
+          echo "=========================================="
+
+          echo "Verifying Topupmate service files..."
+
+          test -f supabase/functions/topupmate-services/index.ts
+          test -f supabase/functions/_shared/auth.ts
+          test -f supabase/functions/_shared/topupmate.ts
+
+          echo ""
+          echo "Topupmate services source:"
+          ls -lh supabase/functions/topupmate-services/index.ts
+
+          echo ""
+          echo "Shared auth source:"
+          ls -lh supabase/functions/_shared/auth.ts
+
+          echo ""
+          echo "Shared Topupmate source:"
+          ls -lh supabase/functions/_shared/topupmate.ts
+
+          echo ""
+          echo "Deploying topupmate-services..."
+
           supabase functions deploy \
+            topupmate-services \
             --use-api \
-            --project-ref "$SUPABASE_PROJECT_ID"
+            --project-ref "$SUPABASE_PROJECT_ID" \
+            --debug

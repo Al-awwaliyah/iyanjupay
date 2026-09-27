@@ -42,6 +42,7 @@ import {
 import ServiceCard from "./services/ServiceCard";
 import FundWalletModal from "./modals/FundWalletModal";
 import ServicePayment from "@/pages/ServicePayment";
+import BilalsadasubExtras from "@/pages/BilalsadasubExtras";
 import QRCodeModal from "./modals/QRCodeModal";
 import WhatsAppFloat from "./WhatsAppFloat";
 import SupportChat from "./support/SupportChat";
@@ -103,6 +104,7 @@ type CurrentPage =
   | "disputes"
   | "send-money"
   | "service-payment"
+  | "bilalsadasub-extra"
   | "security";
 
 type SelectedService = {
@@ -852,7 +854,7 @@ const Dashboard = () => {
     { title: "Airtime to Cash", description: "", icon: Banknote, color: "bg-emerald-500", type: "airtime-cash" as BillService, available: true },
     { title: "Gift Cards", description: "", icon: Gift, color: "bg-pink-500", type: "gift-card" as BillService, available: true },
     { title: "Internet Service", description: "", icon: Wifi, color: "bg-indigo-500", type: "internet" as BillService, available: true },
-    { title: "Savings", description: "", icon: PiggyBank, color: "bg-pink-500", type: "savings" as BillService, available: true },
+    { title: "Savings", description: "", icon: PiggyBank, color: "bg-pink-500", type: "savings" as BillService, available: false },
   ];
 
   /*
@@ -867,25 +869,26 @@ const Dashboard = () => {
     if (!allowBillPayments) {
       toast({
         title: "Bill payments temporarily unavailable",
-        description: "Airtime, data and other service payments have been disabled by IyanjuPay administration.",
+        description: "Service payments have been disabled by IyanjuPay administration.",
       });
       return;
     }
-    if (
-      !service.available ||
-      !SUPPORTED_BILL_SERVICES.includes(
-        service.type
-      )
-    ) {
-      toast({
-        title:
-          "Service unavailable",
-        description:
-          `${service.title} is not currently available.`,
-        variant:
-          "destructive",
-      });
 
+    if (!service.available) {
+      toast({
+        title: "Service unavailable",
+        description: `${service.title} is not currently configured for transactions.`,
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!SUPPORTED_BILL_SERVICES.includes(service.type)) {
+      toast({
+        title: "Service unavailable",
+        description: `${service.title} is not currently available.`,
+        variant: "destructive",
+      });
       return;
     }
 
@@ -894,7 +897,11 @@ const Dashboard = () => {
       type: service.type,
     });
 
-    setCurrentPage("service-payment");
+    setCurrentPage(
+      service.type === "airtime-cash" || service.type === "gift-card"
+        ? "bilalsadasub-extra"
+        : "service-payment"
+    );
   };
 
   /*
@@ -1500,6 +1507,18 @@ const Dashboard = () => {
    * SERVICE PAYMENT
    * ============================================================
    */
+
+  if (currentPage === "bilalsadasub-extra" && selectedService) {
+    return (
+      <BilalsadasubExtras
+        type={selectedService.type as "airtime-cash" | "gift-card"}
+        onBack={() => {
+          setSelectedService(null);
+          setCurrentPage("home");
+        }}
+      />
+    );
+  }
 
   if (
     currentPage ===

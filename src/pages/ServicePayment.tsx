@@ -70,6 +70,7 @@ const SERVICE_TITLES: Record<string, string> = {
   electricity: "Electricity",
   education: "Education",
   internet: "Internet Service",
+  "gift-card": "Gift Cards",
   "airtime-card": "Airtime Recharge PIN",
   "data-card": "Data E-pin",
   airtime_epin: "Airtime Recharge PIN",
@@ -547,13 +548,12 @@ function planGroup(item: Item): DataTab {
 
   // SME is an internal commercial classification and belongs in Hot Deals.
   // It is never displayed to the customer.
-  if (/\bsme\b/.test(planType) || /\bsme\b/.test(label) && item.is_hot_deal) return "HOT_DEALS";
-
+  // Hot Deals intentionally remains empty for Topupmate data.
   const days = durationDays(item);
-  if (days === 1 || /\b1\s*day\b|\bdaily\b/.test(label)) return "DAILY";
-  if (days === 7 || /\bweekly\b|\b7\s*days?\b/.test(label)) return "WEEKLY";
-  if (days === 30 || /\bmonthly\b|\b30\s*days?\b/.test(label)) return "MONTHLY";
-  if (days === 365 || /\b1\s*year\b|\b365\s*days?\b|\byearly\b/.test(label)) return "YEARLY";
+  if (days <= 1 || /\b1\s*day\b|\bdaily\b/.test(label)) return "DAILY";
+  if (days <= 7 || /\bweekly\b|\b7\s*days?\b/.test(label)) return "WEEKLY";
+  if (days <= 31 || /\bmonthly\b|\b30\s*days?\b/.test(label)) return "MONTHLY";
+  if (days <= 365 || /\b1\s*year\b|\b365\s*days?\b|\byearly\b/.test(label)) return "YEARLY";
   return "OTHER";
 }
 
@@ -1426,26 +1426,15 @@ export default function ServicePayment({
   const isInternet =
     serviceType === "internet";
 
+  const isGiftCard =
+    serviceType === "gift-card";
+
   const backendServiceType = useCallback(
     (billerCode = "", biller?: Biller) => {
       if (serviceType === "internet") return billerCode ? clean(billerCode).toLowerCase() : "internet";
 
       if (serviceType === "education") {
-        const provider = clean(
-          biller?.provider_service ??
-            biller?.providerService ??
-            biller?.service ??
-            biller?.provider_code ??
-            biller?.providerCode
-        ).toLowerCase();
-
-        if (provider === "jamb" || provider === "waec") {
-          return provider;
-        }
-
-        return clean(billerCode).toLowerCase() === "jamb"
-          ? "jamb"
-          : "waec";
+        return "education";
       }
 
       return serviceType;
@@ -1576,7 +1565,9 @@ export default function ServicePayment({
           ? "Meter Number"
           : isInternet
             ? "Account Number"
-            : "Customer Number";
+            : isGiftCard
+              ? "Delivery Email"
+              : "Customer Number";
 
   const customerPlaceholder =
     isPhoneService
@@ -1658,38 +1649,13 @@ export default function ServicePayment({
         let merged: Biller[];
 
         if (serviceType === "education") {
-          const [jambData, waecData] = await Promise.all([
-            invoke({ action: "billers", service: "jamb", country: "NG" }),
-            invoke({ action: "billers", service: "waec", country: "NG" }),
-          ]);
-
-          const educationOptions = [
-            ...firstArray(jambData.billers, jambData.examTypes).map((option) => ({
-              ...option,
-              provider_service: "jamb",
-              provider_name: "JAMB",
-            })),
-            ...firstArray(waecData.billers).map((option) => ({
-              ...option,
-              provider_service: "waec",
-              provider_name: "WAEC",
-            })),
-          ];
-
-          const seen = new Set<string>();
-          merged = educationOptions
-            .map((option) => ({
-              ...option,
-              biller_code: getCode(option) || clean(option.code),
-              display_name: getName(option) || clean(option.label) || clean(option.title),
-            }))
-            .filter((option) => {
-              const key = `${clean(option.provider_service).toLowerCase()}:${getCode(option).toLowerCase()}`;
-              if (!key || seen.has(key)) return false;
-              seen.add(key);
-              return true;
-            });
-        } else {
+          const data = await invoke({ action: "billers", service: "education", country: "NG" });
+          merged = firstArray(data.billers).map((option) => ({
+            ...option,
+            biller_code: getCode(option),
+            display_name: getName(option),
+          }));
+        }        } else {
           const data = await invoke({
             action: "billers",
             service: backendServiceType(),
@@ -1776,6 +1742,9 @@ export default function ServicePayment({
             biller_code: billerCode,
             ...(isCable
               ? { provider_name: getName(billerForCode) }
+              : {}),
+            ...(isGiftCard
+              ? { product_id: billerCode, productId: billerCode }
               : {}),
             country: "NG",
 
@@ -2269,6 +2238,26 @@ export default function ServicePayment({
       accountNumber:
         isInternet
           ? customer.trim()
+          : "",
+
+      email:
+        isGiftCard
+          ? customer.trim()
+          : "",
+
+      recipient_email:
+        isGiftCard
+          ? customer.trim()
+          : "",
+
+      recipient_amount:
+        isGiftCard && selectedItem
+          ? num(selectedItem.recipient_amount ?? selectedItem.denomination)
+          : undefined,
+
+      product_id:
+        isGiftCard
+          ? selectedBillerCode
           : "",
 
       meterNumber:
@@ -2986,6 +2975,22 @@ export default function ServicePayment({
                 </section>
               )}
 
+              {isGiftCard && selectedBillerCode && (
+                <section className="rounded-2xl border bg-white p-3 shadow-sm sm:p-4">
+                  <Label className="text-xs font-bold text-gray-900">Delivery Email</Label>
+                  <Input
+                    type="email"
+                    value={customer}
+                    onChange={(e) => setCustomer(e.target.value.trim())}
+                    placeholder="Enter recipient email"
+                    inputMode="email"
+                    className="mt-2 h-10 rounded-xl text-sm"
+                    disabled={!!processingSession}
+                  />
+                  <p className="mt-1.5 text-[10px] text-gray-500">Your gift card code and redemption instructions will be delivered using this email.</p>
+                </section>
+              )}
+
               {(isCable || isElectricity) && selectedBillerCode && (
                 <section className="rounded-2xl border bg-white p-3 shadow-sm sm:p-4">
                   <div className="mb-2 flex items-center justify-between">
@@ -3133,11 +3138,11 @@ export default function ServicePayment({
                 </>
               )}
 
-              {((isCable && selectedBillerCode) || (isEpin && !isAirtimeCard && selectedBillerCode) || ((serviceType === "education" || isInternet) && selectedBillerCode)) && (
+              {((isCable && selectedBillerCode) || (isEpin && !isAirtimeCard && selectedBillerCode) || ((serviceType === "education" || isInternet || isGiftCard) && selectedBillerCode)) && (
                 <section className="rounded-2xl border bg-white p-3 shadow-sm sm:p-4">
                   <div className="mb-3 flex items-center justify-between">
                     <div>
-                      <h2 className="text-xs font-bold text-gray-900">{serviceType === "education" || isInternet ? "Select product" : "Select package"}</h2>
+                      <h2 className="text-xs font-bold text-gray-900">{serviceType === "education" || isInternet || isGiftCard ? "Select product" : "Select package"}</h2>
                       <p className="mt-0.5 text-[11px] text-gray-500">Choose the option you want.</p>
                     </div>
                   </div>

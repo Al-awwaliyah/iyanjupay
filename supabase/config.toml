@@ -37,8 +37,3 @@ verify_jwt = false
 [functions.bilalsadasub-webhook]
 verify_jwt = false
 
-[functions.topupmate-services]
-verify_jwt = true
-
-[functions.topupmate-cards]
-verify_jwt = true

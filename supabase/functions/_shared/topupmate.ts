@@ -1,18 +1,303 @@
-const LIVE='https://connect.topupmate.com/api/';
-const SANDBOX='https://connect.topupmate.com/sandbox/';
-export type TM={ok:boolean;httpStatus:number;body:any};
-export function base(){const x=(Deno.env.get('TOPUPMATE_BASE_URL')||'').trim();if(x)return x.endsWith('/')?x:x+'/';return (Deno.env.get('TOPUPMATE_ENV')||'live').toLowerCase()==='sandbox'?SANDBOX:LIVE;}
-function key(){const x=(Deno.env.get('TOPUPMATE_API_KEY')||'').trim();if(!x)throw new Error('Topupmate is not configured.');return x;}
-export async function tm(path:string,init:RequestInit={}):Promise<TM>{const h=new Headers(init.headers);h.set('Authorization',`Token ${key()}`);h.set('Accept','application/json');if(init.body)h.set('Content-Type','application/json');const r=await fetch(`${base()}${path.replace(/^\//,'')}`,{...init,headers:h});const t=await r.text();let b:any;try{b=t?JSON.parse(t):null}catch{b={status:r.ok?'success':'fail',msg:t}}return{ok:r.ok,httpStatus:r.status,body:b};}
-export async function get(path:string,p?:Record<string,any>){const q=new URLSearchParams();for(const[k,v]of Object.entries(p||{}))if(v!==undefined&&v!==null&&String(v)!=='')q.set(k,String(v));return tm(path+(q.size?'?'+q.toString():''),{method:'GET'});}
-export async function post(path:string,b:Record<string,any>){return tm(path,{method:'POST',body:JSON.stringify(b)});}
-export function status(b:any){const s=String(b?.status??b?.data?.status??'').toLowerCase();if(['success','successful','completed','complete','succeeded'].includes(s))return'success';if(['processing','pending','queued','initiated','in_progress','in-progress'].includes(s))return'processing';return'fail';}
-export function msg(b:any){return String(b?.msg??b?.message??b?.error??b?.data?.msg??b?.data?.message??b?.data?.error??'Topupmate request failed.').trim();}
-export function pref(b:any){const x=b?.transref??b?.transaction_reference??b?.reference??b?.ref??b?.data?.transref??b?.data?.reference;return String(x??'').trim()||null;}
-export function rows(b:any){if(Array.isArray(b))return b;for(const x of [b?.response,b?.plans,b?.packages,b?.services,b?.data,b?.results])if(Array.isArray(x))return x;return[];}
-export function id(x:any){return String(x?.id??x?.plan_id??x?.planId??x?.planid??x?.service_id??x?.serviceId??x?.networkid??x?.networkId??x?.provider_id??x?.providerId??x?.code??x?.product_id??x?.productId??'').trim();}
-export function name(x:any){return String(x?.name??x?.plan_name??x?.planName??x?.package_name??x?.packageName??x?.description??x?.title??x?.label??x?.network??x?.providerName??x?.provider_name??'').trim();}
-export function provider(x:any){return String(x?.provider??x?.provider_name??x?.providerName??x?.network??x?.network_name??x?.networkName??'').trim();}
-export function price(x:any){const n=Number(x?.price??x?.amount??x?.charge_amount??x?.selling_price??x?.cost??x?.value??x?.denomination);return Number.isFinite(n)?n:0;}
-export function ceil10(n:number){return Math.ceil(Math.max(0,n)/10)*10;}
-export function sell(n:number,markup=3){return n>0?ceil10(n*(1+markup/100)):0;}
+const TOPUPMATE_LIVE_BASE_URL = "https://connect.topupmate.com/api/";
+const TOPUPMATE_SANDBOX_BASE_URL = "https://connect.topupmate.com/sandbox/";
+
+export type TopupmateResult = {
+  ok: boolean;
+  httpStatus: number;
+  body: any;
+};
+
+/**
+ * Returns the configured Topupmate API base URL.
+ *
+ * Environment variables:
+ * - TOPUPMATE_ENV=live|sandbox
+ * - TOPUPMATE_BASE_URL=optional custom base URL
+ */
+export function getTopupmateBaseUrl(): string {
+  const configured = (Deno.env.get("TOPUPMATE_BASE_URL") ?? "").trim();
+
+  if (configured) {
+    let value = configured.replace(/\/+$/, "");
+
+    // The documented live Connect root is /api/. If the secret was saved as
+    // only https://connect.topupmate.com, normalize it here so requests such
+    // as /cable/verify/ do not accidentally hit the website root.
+    try {
+      const u = new URL(value);
+      if (u.hostname === "connect.topupmate.com" && u.pathname === "") {
+        value = `${value}/api`;
+      }
+    } catch {
+      // Keep the configured value unchanged if it is not a valid URL.
+    }
+
+    return `${value}/`;
+  }
+
+  const environment = (Deno.env.get("TOPUPMATE_ENV") ?? "live").trim().toLowerCase();
+
+  return environment === "sandbox"
+    ? TOPUPMATE_SANDBOX_BASE_URL
+    : TOPUPMATE_LIVE_BASE_URL;
+}
+
+function getTopupmateApiKey(): string {
+  const apiKey = (Deno.env.get("TOPUPMATE_API_KEY") ?? "").trim();
+
+  if (!apiKey) {
+    throw new Error("Topupmate is not configured.");
+  }
+
+  return apiKey;
+}
+
+/**
+ * Make an authenticated request to Topupmate.
+ * The API key is read only on the Edge Function server and is never exposed
+ * to the browser.
+ */
+export async function topupmateRequest(
+  path: string,
+  init: RequestInit = {},
+): Promise<TopupmateResult> {
+  const headers = new Headers(init.headers);
+
+  headers.set("Authorization", `Token ${getTopupmateApiKey()}`);
+  headers.set("Accept", "application/json");
+
+  if (init.body && !headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
+  }
+
+  const cleanPath = path.replace(/^\/+/, "");
+  const response = await fetch(`${getTopupmateBaseUrl()}${cleanPath}`, {
+    ...init,
+    headers,
+  });
+
+  const text = await response.text();
+
+  let body: any = null;
+
+  try {
+    body = text ? JSON.parse(text) : null;
+  } catch {
+    body = {
+      status: response.ok ? "success" : "fail",
+      msg: text,
+    };
+  }
+
+  return {
+    ok: response.ok,
+    httpStatus: response.status,
+    body,
+  };
+}
+
+export async function topupmateGet(
+  path: string,
+  params: Record<string, any> = {},
+): Promise<TopupmateResult> {
+  const query = new URLSearchParams();
+
+  for (const [key, value] of Object.entries(params)) {
+    if (value === undefined || value === null || String(value) === "") {
+      continue;
+    }
+
+    query.set(key, String(value));
+  }
+
+  const queryString = query.toString();
+  const requestPath = queryString ? `${path}?${queryString}` : path;
+
+  return topupmateRequest(requestPath, { method: "GET" });
+}
+
+export async function topupmatePost(
+  path: string,
+  body: Record<string, any>,
+): Promise<TopupmateResult> {
+  return topupmateRequest(path, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+/** Normalize Topupmate's response status into the application's states. */
+export function normalizeTopupmateStatus(body: any): "success" | "processing" | "fail" {
+  const value = String(
+    body?.status ??
+      body?.data?.status ??
+      "",
+  ).toLowerCase();
+
+  if (
+    [
+      "success",
+      "successful",
+      "completed",
+      "complete",
+      "succeeded",
+    ].includes(value)
+  ) {
+    return "success";
+  }
+
+  if (
+    [
+      "processing",
+      "pending",
+      "queued",
+      "initiated",
+      "in_progress",
+      "in-progress",
+    ].includes(value)
+  ) {
+    return "processing";
+  }
+
+  return "fail";
+}
+
+/** Return a safe provider message from the different response shapes. */
+export function getTopupmateMessage(body: any): string {
+  return String(
+    body?.msg ??
+      body?.message ??
+      body?.error ??
+      body?.data?.msg ??
+      body?.data?.message ??
+      body?.data?.error ??
+      "Topupmate request failed.",
+  ).trim();
+}
+
+/** Extract the provider transaction/reference value when available. */
+export function getTopupmateReference(body: any): string | null {
+  const reference =
+    body?.transref ??
+    body?.transaction_reference ??
+    body?.reference ??
+    body?.ref ??
+    body?.data?.transref ??
+    body?.data?.transaction_reference ??
+    body?.data?.reference ??
+    body?.data?.ref;
+
+  const value = String(reference ?? "").trim();
+  return value || null;
+}
+
+/** Extract an array from the common Topupmate catalogue response shapes. */
+export function getTopupmateRows(body: any): any[] {
+  if (Array.isArray(body)) {
+    return body;
+  }
+
+  for (const value of [
+    body?.response,
+    body?.plans,
+    body?.packages,
+    body?.services,
+    body?.data,
+    body?.results,
+  ]) {
+    if (Array.isArray(value)) {
+      return value;
+    }
+  }
+
+  return [];
+}
+
+export function getTopupmateId(item: any): string {
+  return String(
+    item?.id ??
+      item?.plan_id ??
+      item?.planId ??
+      item?.service_id ??
+      item?.serviceId ??
+      item?.code ??
+      item?.product_id ??
+      item?.productId ??
+      "",
+  ).trim();
+}
+
+export function getTopupmateName(item: any): string {
+  return String(
+    item?.name ??
+      item?.plan_name ??
+      item?.planName ??
+      item?.package_name ??
+      item?.packageName ??
+      item?.description ??
+      item?.title ??
+      item?.label ??
+      item?.network ??
+      item?.providerName ??
+      item?.provider_name ??
+      "",
+  ).trim();
+}
+
+export function getTopupmateProvider(item: any): string {
+  return String(
+    item?.provider ??
+      item?.provider_name ??
+      item?.providerName ??
+      item?.network ??
+      item?.network_name ??
+      item?.networkName ??
+      "",
+  ).trim();
+}
+
+export function getTopupmatePrice(item: any): number {
+  const value = Number(
+    item?.price ??
+      item?.amount ??
+      item?.charge_amount ??
+      item?.selling_price ??
+      item?.cost ??
+      item?.value ??
+      item?.denomination,
+  );
+
+  return Number.isFinite(value) ? value : 0;
+}
+
+/** Round a positive customer charge upward to the next ₦10 boundary. */
+export function ceilToTen(amount: number): number {
+  return Math.ceil(Math.max(0, Number(amount) || 0) / 10) * 10;
+}
+
+/** Apply the application's percentage markup and round upward to ₦10. */
+export function applyTopupmateMarkup(amount: number, markupPercent = 3): number {
+  const value = Number(amount) || 0;
+
+  if (value <= 0) {
+    return 0;
+  }
+
+  return ceilToTen(value * (1 + markupPercent / 100));
+}
+
+// Backward-compatible aliases used by the Topupmate Edge Functions.
+export const base = getTopupmateBaseUrl;
+export const tm = topupmateRequest;
+export const get = topupmateGet;
+export const post = topupmatePost;
+export const status = normalizeTopupmateStatus;
+export const msg = getTopupmateMessage;
+export const pref = getTopupmateReference;
+export const rows = getTopupmateRows;
+export const id = getTopupmateId;
+export const name = getTopupmateName;
+export const provider = getTopupmateProvider;
+export const price = getTopupmatePrice;
+export const ceil10 = ceilToTen;
+export const sell = applyTopupmateMarkup;

@@ -1655,7 +1655,7 @@ export default function ServicePayment({
             biller_code: getCode(option),
             display_name: getName(option),
           }));
-        }        } else {
+        } else {
           const data = await invoke({
             action: "billers",
             service: backendServiceType(),

@@ -46,16 +46,38 @@ function network(v: any) {
     {
       mtn: "1",
       "1": "1",
+      "01": "1",
       airtel: "2",
       "2": "2",
+      "02": "2",
       glo: "3",
       "3": "3",
+      "03": "3",
       "9mobile": "4",
       "9 mobile": "4",
       "4": "4",
+      "04": "4",
       etisalat: "4",
-    } as any
+    } as Record<string, string>
   )[x] ?? x;
+}
+
+function networkName(v: any) {
+  const x = s(v)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "");
+
+  if (x === "1" || x === "01" || x.includes("mtn")) return "mtn";
+  if (x === "2" || x === "02" || x.includes("airtel")) return "airtel";
+  if (x === "3" || x === "03" || x.includes("glo")) return "glo";
+  if (
+    x === "4" ||
+    x === "04" ||
+    x.includes("9mobile") ||
+    x.includes("etisalat")
+  ) return "9mobile";
+
+  return "";
 }
 
 function cable(v: any) {
@@ -124,6 +146,7 @@ function disco(v: any) {
     "7": "7",
     kaduna: "7",
     kadunaelectric: "7",
+    kaedco: "7",
     kedc: "7",
     knedc: "7",
 
@@ -152,25 +175,16 @@ function disco(v: any) {
 }
 
 function catService(service: string, body: O = {}) {
-  if (service === "airtime") {
-    return "network";
-  }
-
-  if (service === "data") {
-    return "network";
-  }
+  if (service === "airtime") return "network";
+  if (service === "data") return "network";
 
   if (service === "cable") {
-    return body.provider ||
-      body.provider_name ||
-      body.biller_code
+    return body.provider || body.provider_name || body.biller_code
       ? "cabletv"
       : "cable-provider";
   }
 
-  if (service === "electricity") {
-    return "electricity";
-  }
+  if (service === "electricity") return "electricity";
 
   if (
     ["education", "jamb", "waec", "neco", "nabteb"].includes(service)
@@ -182,17 +196,9 @@ function catService(service: string, body: O = {}) {
     return "recharge-card";
   }
 
-  if (service === "data-card") {
-    return "datapin";
-  }
-
-  if (["internet", "smile"].includes(service)) {
-    return "smile";
-  }
-
-  if (service === "gift-card") {
-    return "giftcard";
-  }
+  if (service === "data-card") return "datapin";
+  if (["internet", "smile"].includes(service)) return "smile";
+  if (service === "gift-card") return "giftcard";
 
   return service;
 }
@@ -266,6 +272,14 @@ function providerMatches(raw: any, wanted: string) {
     raw?.provider,
     raw?.provider_name,
     raw?.providerName,
+    raw?.network,
+    raw?.network_name,
+    raw?.networkName,
+    raw?.networkid,
+    raw?.network_id,
+    raw?.networkId,
+    raw?.network_code,
+    raw?.networkCode,
     raw?.exam,
     raw?.exam_type,
     raw?.examType,
@@ -277,18 +291,79 @@ function providerMatches(raw: any, wanted: string) {
 
   return vals.some((v) => {
     const value = String(v ?? "").toLowerCase();
+    const normalized = value.replace(/[^a-z0-9]+/g, "");
 
     return (
-      value.replace(/[^a-z0-9]+/g, "") === w ||
+      normalized === w ||
+      normalized === network(wanted) ||
+      networkName(normalized) === networkName(wanted) ||
       value.includes(wanted.toLowerCase())
     );
   });
 }
 
-/**
- * Normalize a Topupmate catalog item into the format
- * expected by the IyanjuPay frontend.
- */
+function dataPlanMatchesNetwork(raw: any, requestedNetwork: string) {
+  const wantedId = network(requestedNetwork);
+  const wantedName = networkName(wantedId);
+
+  const values = [
+    raw?.networkid,
+    raw?.network_id,
+    raw?.networkId,
+    raw?.network_code,
+    raw?.networkCode,
+    raw?.network,
+    raw?.network_name,
+    raw?.networkName,
+    raw?.provider,
+    raw?.provider_name,
+    raw?.providerName,
+    raw?.operator,
+    raw?.operator_name,
+    raw?.telco,
+    raw?.telco_name,
+    raw?.plan_network,
+    raw?.planNetwork,
+  ];
+
+  for (const value of values) {
+    const rawValue = s(value);
+    if (!rawValue) continue;
+
+    if (network(rawValue) === wantedId) return true;
+    if (networkName(rawValue) === wantedName) return true;
+  }
+
+  return providerMatches(raw, wantedId) ||
+    (wantedName ? providerMatches(raw, wantedName) : false);
+}
+
+function providerPriceValue(r: any) {
+  return price(r);
+}
+
+function getProviderPeriod(r: any) {
+  const values = [
+    r?.period,
+    r?.plan_period,
+    r?.planPeriod,
+    r?.validity,
+    r?.validity_period,
+    r?.validityPeriod,
+    r?.duration,
+    r?.plan_type,
+    r?.planType,
+    r?.type,
+  ];
+
+  for (const value of values) {
+    const text = s(value).replace(/\s+/g, " ");
+    if (text) return text;
+  }
+
+  return "";
+}
+
 function norm(service: string, r: any) {
   const providerName =
     provider(r) ||
@@ -302,6 +377,7 @@ function norm(service: string, r: any) {
     id(r) ||
     r?.plan_id ||
     r?.planid ||
+    r?.planId ||
     r?.data_plan ||
     r?.bundle ||
     r?.code ||
@@ -311,17 +387,40 @@ function norm(service: string, r: any) {
     name(r) ||
     r?.plan_name ||
     r?.planName ||
-    r?.description ||
-    r?.bundle_name ||
     r?.package_name ||
+    r?.packageName ||
+    r?.bundle_name ||
+    r?.bundleName ||
+    r?.description ||
     r?.product_name ||
     itemId;
 
-  const providerPrice = price(r);
-
+  const providerPrice = providerPriceValue(r);
   const sellingPrice = NO.has(service)
     ? providerPrice
     : sell(providerPrice, MARKUP);
+
+  const period = getProviderPeriod(r);
+  const validityDays =
+    r?.validity_days ??
+    r?.validityDays ??
+    r?.duration_days ??
+    r?.durationDays ??
+    "";
+
+  const networkId =
+    r?.networkid ??
+    r?.network_id ??
+    r?.networkId ??
+    r?.network_code ??
+    r?.networkCode ??
+    "";
+
+  const networkNameValue =
+    r?.network ??
+    r?.network_name ??
+    r?.networkName ??
+    providerName;
 
   return {
     id: String(itemId),
@@ -334,6 +433,29 @@ function norm(service: string, r: any) {
     provider: providerName,
     provider_name: providerName,
 
+    network: networkNameValue,
+    network_name: networkNameValue,
+    network_id: networkId,
+    networkId,
+
+    plan_type: r?.plan_type ?? r?.planType ?? r?.type ?? "",
+    planType: r?.planType ?? r?.plan_type ?? r?.type ?? "",
+
+    period,
+    plan_period: r?.plan_period ?? period,
+    planPeriod: r?.planPeriod ?? period,
+
+    validity: r?.validity ?? period,
+    validity_period: r?.validity_period ?? period,
+    validityPeriod: r?.validityPeriod ?? period,
+
+    duration: r?.duration ?? period,
+
+    validity_days: validityDays,
+    validityDays,
+    duration_days: r?.duration_days ?? validityDays,
+    durationDays: r?.durationDays ?? validityDays,
+
     providerPrice,
     provider_price: providerPrice,
 
@@ -342,59 +464,40 @@ function norm(service: string, r: any) {
     amount: sellingPrice,
 
     service,
-
     raw: r,
   };
 }
 
 async function getDataPlans(networkId: string) {
   const candidates = [
-    {
-      service: "data",
-      network: networkId,
-    },
-    {
-      service: "data",
-      networkid: networkId,
-    },
-    {
-      service: "data",
-      network_id: networkId,
-    },
-    {
-      service: "data",
-      provider: networkId,
-    },
-    {
-      service: "data",
-      provider_id: networkId,
-    },
+    { service: "data", network: networkId },
+    { service: "data", networkid: networkId },
+    { service: "data", network_id: networkId },
+    { service: "data", provider: networkId },
+    { service: "data", provider_id: networkId },
   ];
+
+  let fallback: any[] = [];
 
   for (const params of candidates) {
     const r = await get("/services/", params);
-
-    if (!r.ok) {
-      continue;
-    }
+    if (!r.ok) continue;
 
     const a = rows(r.body);
+    if (!a.length) continue;
 
-    if (
-      a.some(
-        (x: any) =>
-          price(x) > 0 ||
-          !!x?.plan_id ||
-          !!x?.planid ||
-          !!x?.data_plan ||
-          !!x?.bundle,
-      )
-    ) {
-      return a;
-    }
+    if (!fallback.length) fallback = a;
+
+    const matching = a.filter((item: any) =>
+      dataPlanMatchesNetwork(item, networkId),
+    );
+
+    if (matching.length) return matching;
   }
 
-  return [];
+  return fallback.filter((item: any) =>
+    dataPlanMatchesNetwork(item, networkId),
+  );
 }
 
 async function getInternetPlans() {
@@ -410,9 +513,7 @@ async function getInternetPlans() {
       service: serviceName,
     });
 
-    if (!r.ok) {
-      continue;
-    }
+    if (!r.ok) continue;
 
     const a = rows(r.body);
 
@@ -490,10 +591,7 @@ function giftProduct(r: any) {
     : [];
 
   const mappedSender = mapRows
-    .map((x: any) => {
-      const v = Object.values(x || {})[0];
-      return Number(v);
-    })
+    .map((x: any) => Number(Object.values(x || {})[0]))
     .filter((x: number) => x > 0);
 
   const effectiveSender = senderDenoms.length
@@ -505,47 +603,28 @@ function giftProduct(r: any) {
   return {
     id: productId,
     code: productId,
-
     name: nm,
     display_name: nm,
-
     provider: "Topupmate",
     provider_name: "Topupmate",
-
     product_id: productId,
     productId,
-
     countryCode: r?.countryCode,
     denominationType: r?.denominationType,
-
     fixedRecipientDenominations: denoms,
-
-    minRecipientDenomination:
-      r?.minRecipientDenomination,
-
-    maxRecipientDenomination:
-      r?.maxRecipientDenomination,
-
+    minRecipientDenomination: r?.minRecipientDenomination,
+    maxRecipientDenomination: r?.maxRecipientDenomination,
     fixedSenderDenominations: effectiveSender,
-
-    fixedRecipientToSenderDenominationsMap:
-      mapRows,
-
+    fixedRecipientToSenderDenominationsMap: mapRows,
     senderFee: r?.senderFee,
     senderFeePercentage: r?.senderFeePercentage,
-
     logoUrls: r?.logoUrls || [],
-
-    redeemInstruction:
-      r?.redeemInstruction || {},
-
+    redeemInstruction: r?.redeemInstruction || {},
     providerPrice: firstPrice,
     price: firstPrice,
-
     selling_price: firstPrice
       ? ceil10(firstPrice * 1.03)
       : 0,
-
     raw: r,
   };
 }
@@ -564,12 +643,10 @@ async function billers(service: string) {
 
   if (service === "gift-card") {
     const a = await giftCatalog();
-
     const products = a
       .filter(
         (x: any) =>
-          String(x?.status ?? "ACTIVE").toLowerCase() !==
-          "inactive",
+          String(x?.status ?? "ACTIVE").toLowerCase() !== "inactive",
       )
       .map(giftProduct)
       .filter((x: any) => x.id);
@@ -597,23 +674,15 @@ async function billers(service: string) {
 
   const st = await get("/status/");
   const sb = st.body || {};
-
   let a = rows(c.body);
 
   if (["cable", "electricity"].includes(service)) {
-    const z =
-      service === "cable"
-        ? sb.cable
-        : sb.electricity;
-
-    if (Array.isArray(z) && z.length) {
-      a = z;
-    }
+    const z = service === "cable" ? sb.cable : sb.electricity;
+    if (Array.isArray(z) && z.length) a = z;
   }
 
   a = a.filter((r: any) => {
     const x = s(r?.status).toLowerCase();
-
     return ![
       "inactive",
       "off",
@@ -634,7 +703,7 @@ async function billers(service: string) {
 
 async function catalog(service: string, b: O) {
   if (service === "data") {
-    const networkId = network(
+    const requestedNetwork = network(
       b.provider_name ||
         b.provider ||
         b.network_name ||
@@ -642,49 +711,33 @@ async function catalog(service: string, b: O) {
         b.biller_code,
     );
 
-    const a = await getDataPlans(networkId);
+    if (!requestedNetwork) {
+      throw new Error("A mobile network is required.");
+    }
+
+    const a = await getDataPlans(requestedNetwork);
 
     const items = a
+      .filter((r: any) =>
+        dataPlanMatchesNetwork(r, requestedNetwork),
+      )
       .map((r: any) => norm(service, r))
       .filter((x: any) => x.providerPrice > 0);
-
-    const wanted = String(
-      b.provider_name ||
-        b.provider ||
-        b.network_name ||
-        b.network ||
-        b.biller_code ||
-        "",
-    ).toLowerCase();
-
-    const filtered = items.filter(
-      (x: any) =>
-        !wanted ||
-        providerMatches(x.raw, wanted) ||
-        String(x.provider)
-          .toLowerCase()
-          .includes(wanted.replace(/^\d+$/, "")) ||
-        String(
-          x.raw?.networkid ??
-            x.raw?.network_id ??
-            "",
-        ) === networkId,
-    );
 
     return {
       success: true,
       service,
+      selected_network: requestedNetwork,
       billers: [],
-      items: filtered,
-      plans: filtered,
-      packages: filtered,
+      items,
+      plans: items,
+      packages: items,
       hot_deals: [],
     };
   }
 
   if (service === "internet" || service === "smile") {
     const a = await getInternetPlans();
-
     const items = a
       .map((r: any) => norm("internet", r))
       .filter((x: any) => x.providerPrice > 0);
@@ -723,70 +776,48 @@ async function catalog(service: string, b: O) {
       ) ?? products[0];
 
     if (!product) {
-      throw new Error(
-        "Gift card product not found.",
-      );
+      throw new Error("Gift card product not found.");
     }
 
     const gp = giftProduct(product);
+    const denoms = gp.fixedRecipientDenominations.length
+      ? gp.fixedRecipientDenominations
+      : [
+          gp.minRecipientDenomination,
+          gp.maxRecipientDenomination,
+        ].filter((x: any) => Number(x) > 0);
 
-    const denoms =
-      gp.fixedRecipientDenominations.length
-        ? gp.fixedRecipientDenominations
-        : [
-            gp.minRecipientDenomination,
-            gp.maxRecipientDenomination,
-          ].filter(
-            (x: any) => Number(x) > 0,
-          );
-
-    const sender =
-      gp.fixedSenderDenominations;
+    const sender = gp.fixedSenderDenominations;
 
     const items = denoms.map(
       (d: number, i: number) => {
-        const providerAmount =
-          Number(sender[i] ?? 0);
+        const providerAmount = Number(sender[i] ?? 0);
+        const customerPrice = providerAmount
+          ? sell(providerAmount, 3)
+          : 0;
 
         return {
           id: `${gp.id}:${d}`,
           code: `${gp.id}:${d}`,
           plan_id: `${gp.id}:${d}`,
-
           name: `${gp.name} $${d}`,
           display_name: `${gp.name} $${d}`,
-
           provider: "Topupmate",
           provider_name: "Topupmate",
-
           providerPrice: providerAmount,
           provider_price: providerAmount,
-
-          selling_price: providerAmount
-            ? sell(providerAmount, 3)
-            : 0,
-
-          price: providerAmount
-            ? sell(providerAmount, 3)
-            : 0,
-
-          amount: providerAmount
-            ? sell(providerAmount, 3)
-            : 0,
-
+          selling_price: customerPrice,
+          price: customerPrice,
+          amount: customerPrice,
           recipient_amount: d,
-
           product_id: gp.id,
           productId: gp.id,
-
           denomination: d,
-
           raw: {
             ...product,
             fixedRecipientDenominations:
               gp.fixedRecipientDenominations,
-            fixedSenderDenominations:
-              sender,
+            fixedSenderDenominations: sender,
           },
         };
       },
@@ -827,8 +858,7 @@ async function catalog(service: string, b: O) {
         id: id(r),
         code: id(r),
         name: name(r) || provider(r),
-        display_name:
-          name(r) || provider(r),
+        display_name: name(r) || provider(r),
         provider: provider(r),
         raw: r,
       })),
@@ -860,7 +890,7 @@ async function catalog(service: string, b: O) {
           dstvprovider: "dstv",
           startimes: "startimes",
           startime: "startimes",
-        } as any)[
+        } as Record<string, string>)[
           wanted.replace(/[^a-z0-9]+/g, "")
         ] ?? wanted
       : wanted;
@@ -868,9 +898,7 @@ async function catalog(service: string, b: O) {
   const items = a
     .map((r) => norm(service, r))
     .filter((r: any) => {
-      if (!wantedName) {
-        return true;
-      }
+      if (!wantedName) return true;
 
       const rp = s(r.provider)
         .toLowerCase()
@@ -884,21 +912,14 @@ async function catalog(service: string, b: O) {
         .replace(/[^a-z0-9]+/g, "");
 
       const rn = s(r.name).toLowerCase();
-
-      const w = wantedName.replace(
-        /[^a-z0-9]+/g,
-        "",
-      );
+      const w = wantedName.replace(/[^a-z0-9]+/g, "");
 
       return (
         rp === w ||
         rawp === w ||
         rn.startsWith(`${w} `) ||
         rn.includes(`${w} `) ||
-        providerMatches(
-          r.raw,
-          wantedName,
-        )
+        providerMatches(r.raw, wantedName)
       );
     });
 
@@ -928,10 +949,7 @@ async function verify(service: string, b: O) {
         b.customer,
     );
 
-    if (
-      !p ||
-      !/^[0-9]{10}$/.test(i)
-    ) {
+    if (!p || !/^[0-9]{10}$/.test(i)) {
       throw new Error(
         "Enter a valid 10-digit IUC / SmartCard number.",
       );
@@ -945,10 +963,7 @@ async function verify(service: string, b: O) {
       },
     );
 
-    if (
-      !r.ok ||
-      status(r.body) === "fail"
-    ) {
+    if (!r.ok || status(r.body) === "fail") {
       throw new Error(msg(r.body));
     }
 
@@ -974,8 +989,7 @@ async function verify(service: string, b: O) {
       success: true,
       customer_name: nm,
       customerName: nm,
-      message:
-        "Customer verified successfully.",
+      message: "Customer verified successfully.",
     };
   }
 
@@ -1003,9 +1017,7 @@ async function verify(service: string, b: O) {
       !m ||
       !["prepaid", "postpaid"].includes(t)
     ) {
-      throw new Error(
-        "Meter details are required.",
-      );
+      throw new Error("Meter details are required.");
     }
 
     const r = await post(
@@ -1017,10 +1029,7 @@ async function verify(service: string, b: O) {
       },
     );
 
-    if (
-      !r.ok ||
-      status(r.body) === "fail"
-    ) {
+    if (!r.ok || status(r.body) === "fail") {
       throw new Error(msg(r.body));
     }
 
@@ -1040,8 +1049,7 @@ async function verify(service: string, b: O) {
       success: true,
       customer_name: nm,
       customerName: nm,
-      message:
-        "Meter verified successfully.",
+      message: "Meter verified successfully.",
     };
   }
 
@@ -1080,8 +1088,7 @@ async function refund(
   return a.rpc("refund_wallet", {
     _user_id: u,
     _amount: amt,
-    _description:
-      "Topupmate service reversal",
+    _description: "Topupmate service reversal",
     _idempotency_key: `REFUND_${r}`,
     _reference: `REFUND_${r}`,
     _metadata: m,
@@ -1098,7 +1105,6 @@ async function purchase(
   ).toLowerCase();
 
   const d = b.details ?? b;
-
   const r =
     s(
       b.idempotency_key ??
@@ -1128,9 +1134,7 @@ async function purchase(
         d.network,
     );
 
-    pAmt = n(
-      d.amount ?? b.amount,
-    );
+    pAmt = n(d.amount ?? b.amount);
 
     if (
       !net ||
@@ -1143,7 +1147,6 @@ async function purchase(
     }
 
     path = "/airtime/";
-
     body = {
       network: net,
       phone: customer,
@@ -1151,7 +1154,6 @@ async function purchase(
       airtime_type: "VTU",
       ref: r,
     };
-
     sAmt = pAmt;
   } else if (service === "data") {
     const net = network(
@@ -1179,7 +1181,6 @@ async function purchase(
     }
 
     path = "/data/";
-
     body = {
       network: net,
       phone: customer,
@@ -1190,16 +1191,14 @@ async function purchase(
     pAmt = n(
       item.providerPrice ??
         item.provider_price ??
-        item.price,
+        item.provider_amount,
     );
 
     if (!pAmt) {
-      const c = await get(
-        "/services/",
-        {
-          service: "data",
-        },
-      );
+      const c = await get("/services/", {
+        service: "data",
+        network: net,
+      });
 
       const f = rows(c.body).find(
         (x: any) => id(x) === plan,
@@ -1214,7 +1213,7 @@ async function purchase(
       );
     }
 
-    sAmt = sell(pAmt, 3);
+    sAmt = sell(pAmt, MARKUP);
   } else if (service === "cable") {
     const pr = cable(
       d.provider_name ??
@@ -1248,17 +1247,13 @@ async function purchase(
     }
 
     path = "/cabletv/";
-
     body = {
       provider: pr,
       iucnumber: i,
       plan,
       ref: r,
-      subtype:
-        s(d.subtype ?? "renew") ||
-        "renew",
-      phone:
-        customer || undefined,
+      subtype: s(d.subtype ?? "renew") || "renew",
+      phone: customer || undefined,
     };
 
     pAmt = n(
@@ -1268,12 +1263,9 @@ async function purchase(
     );
 
     if (!pAmt) {
-      const c = await get(
-        "/services/",
-        {
-          service: "cabletv",
-        },
-      );
+      const c = await get("/services/", {
+        service: "cabletv",
+      });
 
       pAmt = price(
         rows(c.body).find(
@@ -1288,7 +1280,7 @@ async function purchase(
       );
     }
 
-    sAmt = sell(pAmt, 3);
+    sAmt = sell(pAmt, MARKUP);
   } else if (service === "electricity") {
     const pr = disco(
       d.biller_code ??
@@ -1326,26 +1318,17 @@ async function purchase(
     }
 
     path = "/electricity/";
-
     body = {
       provider: pr,
       meternumber: m,
       amount: pAmt,
       metertype: t,
-      phone:
-        customer || undefined,
+      phone: customer || undefined,
       ref: r,
     };
-
     sAmt = pAmt;
   } else if (
-    [
-      "education",
-      "jamb",
-      "waec",
-      "neco",
-      "nabteb",
-    ].includes(service)
+    ["education", "jamb", "waec", "neco", "nabteb"].includes(service)
   ) {
     const pr = s(
       d.provider ??
@@ -1356,13 +1339,10 @@ async function purchase(
 
     const q = Math.max(
       1,
-      Math.floor(
-        n(d.quantity ?? 1),
-      ),
+      Math.floor(n(d.quantity ?? 1)),
     );
 
     path = "/exampin/";
-
     body = {
       provider: pr,
       quantity: q,
@@ -1376,21 +1356,14 @@ async function purchase(
     );
 
     if (!pAmt) {
-      const c = await get(
-        "/services/",
-        {
-          service: "exampin",
-        },
-      );
+      const c = await get("/services/", {
+        service: "exampin",
+      });
 
       pAmt = price(
         rows(c.body).find(
           (x: any) =>
-            id(x) ===
-            s(
-              d.item_code ??
-                item.id,
-            ),
+            id(x) === s(d.item_code ?? item.id),
         ),
       );
     }
@@ -1401,7 +1374,7 @@ async function purchase(
       );
     }
 
-    sAmt = sell(pAmt, 3) * q;
+    sAmt = sell(pAmt, MARKUP) * q;
   } else if (
     service === "airtime-card" ||
     service === "recharge-card"
@@ -1421,9 +1394,7 @@ async function purchase(
 
     const q = Math.max(
       1,
-      Math.floor(
-        n(d.quantity ?? 1),
-      ),
+      Math.floor(n(d.quantity ?? 1)),
     );
 
     if (!net || !plan) {
@@ -1433,15 +1404,11 @@ async function purchase(
     }
 
     path = "/rechargepin/";
-
     body = {
       network: net,
       quantity: q,
       plan,
-      businessname: s(
-        d.businessname ??
-          "IyanjuPay",
-      ),
+      businessname: s(d.businessname ?? "IyanjuPay"),
       ref: r,
     };
 
@@ -1452,12 +1419,9 @@ async function purchase(
     );
 
     if (!pAmt) {
-      const c = await get(
-        "/services/",
-        {
-          service: "recharge-card",
-        },
-      );
+      const c = await get("/services/", {
+        service: "recharge-card",
+      });
 
       pAmt = price(
         rows(c.body).find(
@@ -1489,9 +1453,7 @@ async function purchase(
 
     const q = Math.max(
       1,
-      Math.floor(
-        n(d.quantity ?? 1),
-      ),
+      Math.floor(n(d.quantity ?? 1)),
     );
 
     if (!net || !plan) {
@@ -1501,15 +1463,11 @@ async function purchase(
     }
 
     path = "/datapin/";
-
     body = {
       network: net,
       quantity: q,
       data_plan: plan,
-      businessname: s(
-        d.businessname ??
-          "IyanjuPay",
-      ),
+      businessname: s(d.businessname ?? "IyanjuPay"),
       ref: r,
     };
 
@@ -1520,12 +1478,9 @@ async function purchase(
     );
 
     if (!pAmt) {
-      const c = await get(
-        "/services/",
-        {
-          service: "datapin",
-        },
-      );
+      const c = await get("/services/", {
+        service: "datapin",
+      });
 
       pAmt = price(
         rows(c.body).find(
@@ -1540,7 +1495,7 @@ async function purchase(
       );
     }
 
-    sAmt = sell(pAmt, 3) * q;
+    sAmt = sell(pAmt, MARKUP) * q;
   } else if (service === "gift-card") {
     const productId = s(
       d.product_id ??
@@ -1566,27 +1521,20 @@ async function purchase(
     );
 
     const sender = s(
-      d.sender ??
-        "IyanjuPay Customer",
+      d.sender ?? "IyanjuPay Customer",
     );
 
     const units = Math.max(
       1,
       Math.floor(
-        n(
-          d.units ??
-            d.quantity ??
-            1,
-        ),
+        n(d.units ?? d.quantity ?? 1),
       ),
     );
 
     if (
       !productId ||
       !recipientEmail ||
-      !/^\S+@\S+\.\S+$/.test(
-        recipientEmail,
-      ) ||
+      !/^\S+@\S+\.\S+$/.test(recipientEmail) ||
       amount <= 0
     ) {
       throw new Error(
@@ -1595,7 +1543,6 @@ async function purchase(
     }
 
     path = "/giftcard/";
-
     body = {
       product: Number(productId),
       amount,
@@ -1612,9 +1559,7 @@ async function purchase(
     );
 
     if (!pAmt) {
-      const products =
-        await giftCatalog(productId);
-
+      const products = await giftCatalog(productId);
       const gp = products.find(
         (x: any) =>
           String(
@@ -1628,47 +1573,33 @@ async function purchase(
       const den = Array.isArray(
         gp?.fixedRecipientDenominations,
       )
-        ? gp.fixedRecipientDenominations.map(
-            Number,
-          )
+        ? gp.fixedRecipientDenominations.map(Number)
         : [];
 
       const snd = Array.isArray(
         gp?.fixedSenderDenominations,
       )
-        ? gp.fixedSenderDenominations.map(
-            Number,
-          )
+        ? gp.fixedSenderDenominations.map(Number)
         : [];
 
       const mapped = Array.isArray(
         gp?.fixedRecipientToSenderDenominationsMap,
       )
         ? gp.fixedRecipientToSenderDenominationsMap
-            .map(
-              (x: any) =>
-                Number(
-                  Object.values(
-                    x || {},
-                  )[0],
-                ),
+            .map((x: any) =>
+              Number(Object.values(x || {})[0]),
             )
-            .filter(
-              (x: number) => x > 0,
-            )
+            .filter((x: number) => x > 0)
         : [];
 
-      const effectiveSender =
-        snd.length ? snd : mapped;
-
+      const effectiveSender = snd.length ? snd : mapped;
       const idx = den.findIndex(
         (x: number) => x === amount,
       );
 
-      pAmt =
-        idx >= 0
-          ? n(effectiveSender[idx])
-          : 0;
+      pAmt = idx >= 0
+        ? n(effectiveSender[idx])
+        : 0;
     }
 
     if (!pAmt) {
@@ -1677,8 +1608,7 @@ async function purchase(
       );
     }
 
-    sAmt =
-      sell(pAmt, 3) * units;
+    sAmt = sell(pAmt, MARKUP) * units;
   } else if (
     service === "internet" ||
     service === "smile"
@@ -1704,14 +1634,10 @@ async function purchase(
     }
 
     path = "/smile-data/";
-
     body = {
       PhoneNumber: acct,
       BundleTypeCode: plan,
-      actype: s(
-        d.account_type ??
-          "prepaid",
-      ),
+      actype: s(d.account_type ?? "prepaid"),
     };
 
     pAmt = n(
@@ -1721,17 +1647,13 @@ async function purchase(
     );
 
     if (!pAmt) {
-      const c = await get(
-        "/services/",
-        {
-          service: "smile",
-        },
-      );
+      const c = await get("/services/", {
+        service: "smile",
+      });
 
       pAmt = price(
         rows(c.body).find(
-          (x: any) =>
-            id(x) === plan,
+          (x: any) => id(x) === plan,
         ),
       );
     }
@@ -1742,7 +1664,7 @@ async function purchase(
       );
     }
 
-    sAmt = sell(pAmt, 3);
+    sAmt = sell(pAmt, MARKUP);
   } else {
     throw new Error(
       "This service is not available through Topupmate.",
@@ -1756,28 +1678,20 @@ async function purchase(
     selling_amount: sAmt,
     service,
     request_id: r,
-    customer:
-      customer || null,
+    customer: customer || null,
     provider_catalog_id:
-      s(
-        item.id ??
-          d.item_code,
-      ) || null,
+      s(item.id ?? d.item_code) || null,
   };
 
-  const debit = await a.rpc(
-    "debit_wallet",
-    {
-      _user_id: u.id,
-      _amount: sAmt,
-      _description:
-        `${service} purchase`,
-      _idempotency_key: r,
-      _reference: r,
-      _category: "bill_payment",
-      _metadata: meta,
-    },
-  );
+  const debit = await a.rpc("debit_wallet", {
+    _user_id: u.id,
+    _amount: sAmt,
+    _description: `${service} purchase`,
+    _idempotency_key: r,
+    _reference: r,
+    _category: "bill_payment",
+    _metadata: meta,
+  });
 
   if (debit.error) {
     throw new Error(
@@ -1785,36 +1699,23 @@ async function purchase(
     );
   }
 
-  const tx =
-    debit.data?.id ?? null;
+  const tx = debit.data?.id ?? null;
 
-  await update(
-    a,
-    u.id,
-    r,
-    {
-      status: "pending",
-      provider: "topupmate",
-      provider_reference: r,
-      transaction_type: service,
-      metadata: meta,
-    },
-  );
+  await update(a, u.id, r, {
+    status: "pending",
+    provider: "topupmate",
+    provider_reference: r,
+    transaction_type: service,
+    metadata: meta,
+  });
 
   let pr;
 
   try {
-    const q = await post(
-      path,
-      body,
-    );
-
+    const q = await post(path, body);
     pr = q.body;
 
-    if (
-      !q.ok &&
-      status(pr) !== "processing"
-    ) {
+    if (!q.ok && status(pr) !== "processing") {
       const rr = await refund(
         a,
         u.id,
@@ -1826,22 +1727,16 @@ async function purchase(
         },
       );
 
-      await update(
-        a,
-        u.id,
-        r,
-        {
-          status: "failed",
-          provider: "topupmate",
-          provider_reference:
-            pref(pr) ?? r,
-          metadata: {
-            ...meta,
-            provider_response: pr,
-            refunded: !rr.error,
-          },
+      await update(a, u.id, r, {
+        status: "failed",
+        provider: "topupmate",
+        provider_reference: pref(pr) ?? r,
+        metadata: {
+          ...meta,
+          provider_response: pr,
+          refunded: !rr.error,
         },
-      );
+      });
 
       throw new Error(
         "Purchase failed. Your wallet has been refunded.",
@@ -1855,22 +1750,17 @@ async function purchase(
       throw e;
     }
 
-    await update(
-      a,
-      u.id,
-      r,
-      {
-        status: "pending",
-        provider: "topupmate",
-        provider_reference: r,
-        metadata: {
-          ...meta,
-          reconciliation_required: true,
-          pending_reason:
-            "provider_transport_failure",
-        },
+    await update(a, u.id, r, {
+      status: "pending",
+      provider: "topupmate",
+      provider_reference: r,
+      metadata: {
+        ...meta,
+        reconciliation_required: true,
+        pending_reason:
+          "provider_transport_failure",
       },
-    );
+    });
 
     return {
       success: true,
@@ -1884,8 +1774,7 @@ async function purchase(
   }
 
   const st = status(pr);
-  const pRef =
-    pref(pr) ?? r;
+  const pRef = pref(pr) ?? r;
 
   if (st === "fail") {
     const rr = await refund(
@@ -1899,21 +1788,16 @@ async function purchase(
       },
     );
 
-    await update(
-      a,
-      u.id,
-      r,
-      {
-        status: "failed",
-        provider: "topupmate",
-        provider_reference: pRef,
-        metadata: {
-          ...meta,
-          provider_response: pr,
-          refunded: !rr.error,
-        },
+    await update(a, u.id, r, {
+      status: "failed",
+      provider: "topupmate",
+      provider_reference: pRef,
+      metadata: {
+        ...meta,
+        provider_response: pr,
+        refunded: !rr.error,
       },
-    );
+    });
 
     throw new Error(
       "Purchase failed. Your wallet has been refunded.",
@@ -1921,23 +1805,17 @@ async function purchase(
   }
 
   if (st === "processing") {
-    await update(
-      a,
-      u.id,
-      r,
-      {
-        status: "pending",
-        provider: "topupmate",
-        provider_reference: pRef,
-        metadata: {
-          ...meta,
-          provider_response: pr,
-          reconciliation_required: true,
-          pending_reason:
-            "provider_processing",
-        },
+    await update(a, u.id, r, {
+      status: "pending",
+      provider: "topupmate",
+      provider_reference: pRef,
+      metadata: {
+        ...meta,
+        provider_response: pr,
+        reconciliation_required: true,
+        pending_reason: "provider_processing",
       },
-    );
+    });
 
     return {
       success: true,
@@ -1946,25 +1824,19 @@ async function purchase(
       transaction_reference: r,
       transaction_id: tx,
       provider_reference: pRef,
-      message:
-        "Your payment is being processed.",
+      message: "Your payment is being processed.",
     };
   }
 
-  await update(
-    a,
-    u.id,
-    r,
-    {
-      status: "success",
-      provider: "topupmate",
-      provider_reference: pRef,
-      metadata: {
-        ...meta,
-        provider_response: pr,
-      },
+  await update(a, u.id, r, {
+    status: "success",
+    provider: "topupmate",
+    provider_reference: pRef,
+    metadata: {
+      ...meta,
+      provider_response: pr,
     },
-  );
+  });
 
   return {
     success: true,
@@ -1977,8 +1849,7 @@ async function purchase(
       pr?.response ??
       pr?.data ??
       null,
-    message:
-      "Purchase completed successfully.",
+    message: "Purchase completed successfully.",
   };
 }
 
@@ -2012,7 +1883,6 @@ Deno.serve(async (req) => {
   }
 
   const a = adminClient();
-
   let b: O = {};
 
   try {
@@ -2027,9 +1897,7 @@ Deno.serve(async (req) => {
     );
   }
 
-  const ac = s(
-    b.action,
-  ).toLowerCase();
+  const ac = s(b.action).toLowerCase();
 
   try {
     if (ac === "billers") {
@@ -2040,10 +1908,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    if (
-      ac === "catalog" ||
-      ac === "get_catalog"
-    ) {
+    if (ac === "catalog" || ac === "get_catalog") {
       return json(
         await catalog(
           s(b.service).toLowerCase(),
@@ -2052,10 +1917,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    if (
-      ac === "verify_customer" ||
-      ac === "verify"
-    ) {
+    if (ac === "verify_customer" || ac === "verify") {
       return json(
         await verify(
           s(b.service).toLowerCase(),
@@ -2066,11 +1928,7 @@ Deno.serve(async (req) => {
 
     if (ac === "purchase") {
       return json(
-        await purchase(
-          a,
-          u,
-          b,
-        ),
+        await purchase(a, u, b),
       );
     }
 
@@ -2092,15 +1950,11 @@ Deno.serve(async (req) => {
 
       const q = await get(
         "/transaction/status/",
-        {
-          reference: r,
-        },
+        { reference: r },
       );
 
       if (!q.ok) {
-        throw new Error(
-          msg(q.body),
-        );
+        throw new Error(msg(q.body));
       }
 
       return json({
@@ -2112,14 +1966,10 @@ Deno.serve(async (req) => {
     }
 
     if (ac === "wallet") {
-      const q = await get(
-        "/user/",
-      );
+      const q = await get("/user/");
 
       if (!q.ok) {
-        throw new Error(
-          msg(q.body),
-        );
+        throw new Error(msg(q.body));
       }
 
       return json({
@@ -2129,21 +1979,16 @@ Deno.serve(async (req) => {
     }
 
     if (ac === "notifications") {
-      const q = await get(
-        "/notification/",
-      );
+      const q = await get("/notification/");
 
       if (!q.ok) {
-        throw new Error(
-          msg(q.body),
-        );
+        throw new Error(msg(q.body));
       }
 
       return json({
         success: true,
         notifications:
-          q.body?.notifications ??
-          [],
+          q.body?.notifications ?? [],
       });
     }
 
@@ -2154,9 +1999,7 @@ Deno.serve(async (req) => {
       );
 
       if (!q.ok) {
-        throw new Error(
-          msg(q.body),
-        );
+        throw new Error(msg(q.body));
       }
 
       return json({

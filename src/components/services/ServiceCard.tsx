@@ -7,7 +7,6 @@ import { LucideIcon } from "lucide-react";
 
 interface ServiceCardProps {
   title: string;
-  description?: string;
   icon: LucideIcon;
   onClick: () => void;
   color: string;

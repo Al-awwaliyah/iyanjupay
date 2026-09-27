@@ -1015,9 +1015,9 @@ async function verify(service: string, b: O) {
         b.customer,
     );
 
-    if (!p || !/^[0-9]{10}$/.test(i)) {
+    if (!p || !/^[0-9]{8,20}$/.test(i)) {
       throw new Error(
-        "Enter a valid 10-digit IUC / SmartCard number.",
+        "Enter a valid IUC / SmartCard number (8–20 digits).",
       );
     }
 
@@ -1317,11 +1317,11 @@ async function purchase(
 
     if (
       !pr ||
-      !/^[0-9]{10}$/.test(i) ||
+      !/^[0-9]{8,20}$/.test(i) ||
       !plan
     ) {
       throw new Error(
-        "Cable provider, SmartCard number and package are required.",
+        "Cable provider, valid SmartCard/IUC number and package are required.",
       );
     }
 

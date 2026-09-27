@@ -1043,19 +1043,35 @@ async function verify(service: string, b: O) {
     }
 
     if (!r.ok || status(r.body) === "fail") {
-      throw new Error(msg(r.body));
+      const providerMessage = s(
+        r.body?.msg ??
+          r.body?.message ??
+          r.body?.error,
+      );
+
+      if (r.httpStatus === 404) {
+        throw new Error(
+          "Topupmate Cable verification endpoint returned HTTP 404. Please confirm Cable verification is enabled for this Topupmate account.",
+        );
+      }
+
+      throw new Error(
+        providerMessage ||
+          "Could Not Verify Smart Card/IUC Number",
+      );
     }
 
-    const d =
-      r.body?.response ??
-      r.body?.data ??
-      r.body;
+    // Topupmate returns Cable verification fields at the top level.
+    // Example: { status: "success", name: "Ibrahim Yusuf", Customer_Name: "Ibrahim Yusuf" }
+    const d = r.body ?? {};
 
     const nm = s(
       d?.name ??
+        d?.Customer_Name ??
         d?.customer_name ??
         d?.customerName ??
-        d?.subscriber_name,
+        d?.subscriber_name ??
+        (status(d) === "success" ? d?.msg : ""),
     );
 
     if (!nm) {
@@ -1317,11 +1333,11 @@ async function purchase(
 
     if (
       !pr ||
-      !/^[0-9]{8,20}$/.test(i) ||
+      !/^[0-9]{10}$/.test(i) ||
       !plan
     ) {
       throw new Error(
-        "Cable provider, valid SmartCard/IUC number and package are required.",
+        "Cable provider, SmartCard number and package are required.",
       );
     }
 

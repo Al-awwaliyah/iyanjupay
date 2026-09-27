@@ -1,41 +1,4 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, verif-hash",
-  "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
-};
-
-const json = (body: unknown, status = 200) =>
-  new Response(JSON.stringify(body), {
-    status,
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
-  });
-
-const adminClient = () =>
-  createClient(
-    Deno.env.get("SUPABASE_URL") ?? "",
-    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
-    { auth: { persistSession: false } },
-  );
-
-const getUser = async (req: Request) => {
-  const authHeader = req.headers.get("Authorization");
-  if (!authHeader) return null;
-  const url = Deno.env.get("SUPABASE_URL") ?? "";
-  const anonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
-  if (!url || !anonKey) return null;
-  const client = createClient(url, anonKey, {
-    global: { headers: { Authorization: authHeader } },
-    auth: { persistSession: false },
-  });
-  const { data, error } = await client.auth.getUser();
-  if (error) {
-    console.error("Supabase getUser error:", error.message);
-    return null;
-  }
-  return data.user;
-};
+import { corsHeaders, json, adminClient, getUser } from "../_shared/auth.ts";
 import{get,post,rows,id,name,provider,price,sell,ceil10,status,msg,pref}from'../_shared/topupmate.ts';
 type O=Record<string,any>;const MARKUP=3;const NO=new Set(['airtime','airtime-card','recharge-card','electricity']);const s=(v:any)=>String(v??'').trim();const n=(v:any)=>Number.isFinite(Number(v))?Number(v):0;const ref=()=>`TPM_${crypto.randomUUID().replace(/-/g,'')}`;
 function network(v:any){const x=s(v).toLowerCase();return({mtn:'1','1':'1',airtel:'2','2':'2',glo:'3','3':'3','9mobile':'4','9 mobile':'4','4':'4',etisalat:'4'}as any)[x]??x}

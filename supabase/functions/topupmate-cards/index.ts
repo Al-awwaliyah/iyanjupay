@@ -1,41 +1,5 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, verif-hash",
-  "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
-};
-
-const json = (body: unknown, status = 200) =>
-  new Response(JSON.stringify(body), {
-    status,
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
-  });
-
-const adminClient = () =>
-  createClient(
-    Deno.env.get("SUPABASE_URL") ?? "",
-    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
-    { auth: { persistSession: false } },
-  );
-
-const getUser = async (req: Request) => {
-  const authHeader = req.headers.get("Authorization");
-  if (!authHeader) return null;
-  const url = Deno.env.get("SUPABASE_URL") ?? "";
-  const anonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
-  if (!url || !anonKey) return null;
-  const client = createClient(url, anonKey, {
-    global: { headers: { Authorization: authHeader } },
-    auth: { persistSession: false },
-  });
-  const { data, error } = await client.auth.getUser();
-  if (error) {
-    console.error("Supabase getUser error:", error.message);
-    return null;
-  }
-  return data.user;
-};import{get,post,status,msg,pref,ceil10}from'../_shared/topupmate.ts';
+import { corsHeaders, json, adminClient, getUser } from "../_shared/auth.ts";
+import{get,post,status,msg,pref,ceil10}from'../_shared/topupmate.ts';
 type O=Record<string,any>;const s=(v:any)=>String(v??'').trim(),n=(v:any)=>Number.isFinite(Number(v))?Number(v):0,ref=()=>`CARD_${crypto.randomUUID().replace(/-/g,'')}`;
 async function owned(a:any,u:string,c:string){if(!c)return null;const{data}=await a.from('virtual_cards').select('*').eq('user_id',u).eq('provider','topupmate').eq('provider_card_id',c).maybeSingle();return data;}
 function rateOf(b:any,usd:number){for(const x of [b?.rate,b?.exchange_rate,b?.exchangeRate,b?.conversion_rate,b?.response?.rate,b?.response?.exchange_rate,b?.data?.rate,b?.data?.exchange_rate]){const v=n(x);if(v>0)return v;}const c=n(b?.converted_amount??b?.convertedAmount??b?.response?.converted_amount??b?.data?.converted_amount);return c>0&&usd>0?c/usd:0;}

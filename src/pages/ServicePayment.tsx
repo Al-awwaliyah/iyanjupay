@@ -650,7 +650,7 @@ function providerLogo(
     .replace(/[^a-z0-9]+/g, " ");
 
   if (value.includes("dstv")) {
-    return "https://www.google.com/s2/favicons?domain=dstv.com&sz=128";
+    return "https://seeklogo.com/images/D/DSTV-logo-214D0468CA-seeklogo.com.png";
   }
 
   if (value.includes("gotv")) {
@@ -666,26 +666,6 @@ function providerLogo(
 
   if (value.includes("showmax")) {
     return "https://www.google.com/s2/favicons?domain=showmax.com&sz=128";
-  }
-
-  const discoDomains: Record<string, string> = {
-    aedc: "aedcgroup.com",
-    bedc: "bedcpower.com",
-    eedc: "enugudisco.com",
-    ekedc: "ekedp.com",
-    ibedc: "ibedc.com",
-    ikedc: "ikejaelectric.com",
-    jed: "josdisco.com",
-    kaedco: "kadunadisco.com.ng",
-    kedco: "kedco.ng",
-    phed: "phed.com.ng",
-    yedc: "yedc.com.ng",
-  };
-
-  const compact = value.replace(/[^a-z0-9]/g, "");
-  const discoKey = Object.keys(discoDomains).find((key) => compact.includes(key));
-  if (discoKey) {
-    return `https://www.google.com/s2/favicons?domain=${discoDomains[discoKey]}&sz=128`;
   }
 
   return null;
@@ -1426,7 +1406,7 @@ export default function ServicePayment({
   const serviceTitle =
     displayServiceTitle(service);
 
-  const serviceFunction = "flutterwave-bills";
+  const serviceFunction = "topupmate-services";
 
   const isAirtime =
     serviceType === "airtime";
@@ -1588,7 +1568,7 @@ export default function ServicePayment({
     isPhoneService
       ? "Phone Number"
       : isCable
-        ? "IUC / Smartcard Number"
+        ? "SmartCard / IUC Number"
         : isElectricity
           ? "Meter Number"
           : isInternet
@@ -1881,6 +1861,10 @@ export default function ServicePayment({
     resetVerification();
     setError("");
 
+    if (isElectricity) {
+      return;
+    }
+
     await loadItems(code);
   };
 
@@ -1890,11 +1874,7 @@ export default function ServicePayment({
     setMeterType(value);
     setCustomer("");
     setAmount("");
-    setSelectedItemCode("");
     resetVerification();
-    if (selectedBillerCode && value) {
-      void loadItems(selectedBillerCode);
-    }
   };
 
   const verifyIdentifier =
@@ -1924,17 +1904,12 @@ export default function ServicePayment({
       setError("");
 
       try {
-        const validationItemCode =
-          selectedItemCode ||
-          getItemCode(items[0]);
-
         const data = await invoke(
           isCable
             ? {
                 action: "verify_customer",
                 service: "cable",
                 biller_code: selectedBillerCode,
-                item_code: validationItemCode,
                 customer: customer.trim(),
                 iuc: customer.trim(),
                 smartcard_number: customer.trim(),
@@ -1943,7 +1918,6 @@ export default function ServicePayment({
                 action: "verify_customer",
                 service: "electricity",
                 biller_code: selectedBillerCode,
-                item_code: validationItemCode,
                 customer: customer.trim(),
                 meter: customer.trim(),
                 meter_number: customer.trim(),
@@ -2084,9 +2058,7 @@ export default function ServicePayment({
   const customerPayAmount =
     isEpin && num(amount) > 0
       ? num(amount) * quantity
-      : isAmountOnly && num(amount) > 0
-        ? Math.ceil((num(amount) * 1.05 - Number.EPSILON) / 10) * 10
-        : num(amount);
+      : num(amount);
 
   const providerVariableAmount =
     isAmountOnly && num(amount) > 0
@@ -3103,7 +3075,7 @@ export default function ServicePayment({
                               .filter(([value, item]) => value > 0 && !!getItemCode(item))
                           ).entries()
                         )
-                          .sort(([a], [b]) => a - b)
+                          .sort(([a], [b]) => Number(a) - Number(b))
                           .map(([value, item]) => {
                             const itemCode = getItemCode(item);
                             const selected =
@@ -3128,7 +3100,7 @@ export default function ServicePayment({
                                     : "border-gray-200 bg-white text-gray-800 hover:border-violet-300"
                                 }`}
                               >
-                                ₦{value.toLocaleString("en-NG")}
+                                ₦{Number(value).toLocaleString("en-NG")}
                               </button>
                             );
                           })}

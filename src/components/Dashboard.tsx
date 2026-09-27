@@ -21,6 +21,7 @@ import {
   PiggyBank,
   QrCode,
   Receipt,
+  Radio,
   Send,
   Shield,
   Smartphone,
@@ -503,7 +504,7 @@ const Dashboard = () => {
 
           if (
             payload?.provider_response
-              ?.getSafeErrorMessage(data)
+              ?.data?.message
           ) {
             return String(
               payload.provider_response
@@ -846,16 +847,16 @@ const Dashboard = () => {
    */
 
   const services = [
-    { title: "Buy Airtime", description: "Recharge your phone instantly", icon: Smartphone, color: "bg-blue-500", type: "airtime" as BillService, available: true },
-    { title: "Buy Data", description: "Fast data bundles", icon: Wifi, color: "bg-purple-500", type: "data" as BillService, available: true },
-    { title: "Cable TV", description: "DStv, GOtv & Startimes", icon: CreditCard, color: "bg-red-500", type: "cable" as BillService, available: true },
-    { title: "Electricity", description: "Pay your power bill", icon: Zap, color: "bg-yellow-500", type: "electricity" as BillService, available: true },
-    { title: "Education", description: "WAEC, NECO, JAMB & NABTEB", icon: GraduationCap, color: "bg-orange-500", type: "education" as BillService, available: false },
-    { title: "Recharge PIN", description: "Generate airtime recharge PINs", icon: Receipt, color: "bg-slate-500", type: "recharge-card" as BillService, available: false },
-    { title: "Airtime to Cash", description: "Convert eligible airtime to wallet balance", icon: Banknote, color: "bg-emerald-500", type: "airtime-cash" as BillService, available: false },
-    { title: "Gift Cards", description: "Buy or sell supported gift cards", icon: Gift, color: "bg-pink-500", type: "gift-card" as BillService, available: false },
-    { title: "Internet Service", description: "Pay internet service bills", icon: Wifi, color: "bg-indigo-500", type: "internet" as BillService, available: false },
-    { title: "Savings", description: "Save and grow your money", icon: PiggyBank, color: "bg-green-500", type: "savings" as BillService, available: false },
+    { title: "Buy Airtime", description: "", icon: Smartphone, color: "bg-blue-500", type: "airtime" as BillService, available: true },
+    { title: "Buy Data", description: "", icon: Wifi, color: "bg-purple-500", type: "data" as BillService, available: true },
+    { title: "Cable TV", description: "", icon: CreditCard, color: "bg-red-500", type: "cable" as BillService, available: true },
+    { title: "Electricity", description: "", icon: Zap, color: "bg-yellow-500", type: "electricity" as BillService, available: true },
+    { title: "Education", description: "", icon: GraduationCap, color: "bg-orange-500", type: "education" as BillService, available: false },
+    { title: "Recharge PIN", description: "", icon: Receipt, color: "bg-slate-500", type: "recharge-card" as BillService, available: false },
+    { title: "Airtime to Cash", description: "", icon: Banknote, color: "bg-emerald-500", type: "airtime-cash" as BillService, available: false },
+    { title: "Gift Cards", description: "", icon: Gift, color: "bg-pink-500", type: "gift-card" as BillService, available: false },
+    { title: "Internet Service", description: "", icon: Wifi, color: "bg-indigo-500", type: "internet" as BillService, available: false },
+    { title: "Savings", description: "", icon: PiggyBank, color: "bg-pink-500", type: "savings" as BillService, available: false },
   ];
 
   /*
@@ -920,8 +921,8 @@ const Dashboard = () => {
    * SERVICE PURCHASE
    * ============================================================
    *
-   * All supported service purchases are routed through the secure
-   * Flutterwave Bills Edge Function. Provider credentials remain server-side.
+   * All VTU/service purchases are routed through the secure
+   * ClubKonnect Edge Function. The provider remains server-side.
    *
    * The frontend does NOT debit the wallet and does NOT decide
    * whether a transaction is successful. The Edge Function owns
@@ -967,7 +968,7 @@ const Dashboard = () => {
       );
     }
 
-    const paymentDetails = {
+    const paymentDetails: Record<string, any> = {
       ...details,
       service,
       amount,
@@ -992,7 +993,7 @@ const Dashboard = () => {
         error,
       } =
         await supabase.functions.invoke(
-          "flutterwave-bills",
+          "topupmate-services",
           {
             body: {
               action: "purchase",
@@ -2450,12 +2451,12 @@ const Dashboard = () => {
               </div>
 
               <span className="hidden rounded-full bg-purple-50 px-3 py-1 text-xs font-bold text-purple-700 sm:block">
-                10 services
+                4 live
               </span>
 
             </div>
 
-            <div className="grid grid-cols-4 gap-2 sm:gap-3">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
 
               {services.map(
                 (
@@ -2464,7 +2465,11 @@ const Dashboard = () => {
                 ) => (
                   <div
                     key={`${service.type}-${index}`}
-                    className={`relative ${service.available ? "transition hover:-translate-y-0.5" : "opacity-80"}`}
+                    className={
+                      service.available
+                        ? "transition hover:-translate-y-0.5"
+                        : "opacity-80"
+                    }
                   >
                     <ServiceCard
                       title={
@@ -2478,6 +2483,9 @@ const Dashboard = () => {
                       }
                       color={
                         service.color
+                      }
+                      available={
+                        service.available
                       }
                       onClick={() =>
                         handleServiceClick(

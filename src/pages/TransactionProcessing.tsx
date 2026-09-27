@@ -709,7 +709,7 @@ const TransactionProcessingPage = ({
 
           if (isBill) {
             functionName =
-              "flutterwave-bills";
+              "topupmate-services";
 
             const service =
               String(
@@ -743,7 +743,7 @@ const TransactionProcessingPage = ({
               "NG";
 
             body = {
-              action: "pay",
+              action: "purchase",
 
               service,
 

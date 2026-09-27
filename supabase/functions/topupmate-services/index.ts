@@ -500,43 +500,71 @@ async function getDataPlans(networkId: string) {
   );
 }
 
-async function getInternetPlans() {
-  const candidates = [
-    "smile",
-    "smile-data",
-    "internet",
-    "broadband",
-  ];
+const INTERNET_PROVIDERS = [
+  { key: "smile", name: "Smile", service: "smile" },
+  { key: "alpha", name: "Alpha", service: "alpha" },
+  { key: "kirani", name: "Kirani", service: "kirani" },
+  { key: "ratel", name: "Ratel", service: "ratel" },
+];
+
+function internetProvider(v: any) {
+  const x = s(v).toLowerCase().replace(/[^a-z0-9]+/g, "");
+  if (x.includes("smile")) return "smile";
+  if (x.includes("alpha")) return "alpha";
+  if (x.includes("kirani")) return "kirani";
+  if (x.includes("ratel")) return "ratel";
+  return "";
+}
+
+function internetProviderName(v: any) {
+  const key = internetProvider(v);
+  return INTERNET_PROVIDERS.find((x) => x.key === key)?.name ?? s(v);
+}
+
+async function getInternetPlans(providerKey = "") {
+  const wanted = internetProvider(providerKey);
+  const candidates = wanted
+    ? [wanted, `${wanted}-data`, `${wanted}data`]
+    : INTERNET_PROVIDERS.flatMap((x) => [x.service, `${x.service}-data`]);
+
+  const seen = new Set<string>();
+  const all: any[] = [];
 
   for (const serviceName of candidates) {
-    const r = await get("/services/", {
-      service: serviceName,
-    });
+    if (seen.has(serviceName)) continue;
+    seen.add(serviceName);
 
+    const r = await get("/services/", { service: serviceName });
     if (!r.ok) continue;
 
     const a = rows(r.body);
+    if (!a.length) continue;
 
-    if (
-      a.some(
-        (x: any) =>
-          price(x) > 0 ||
-          !!x?.plan_id ||
-          !!x?.planid ||
-          !!x?.bundle,
-      )
-    ) {
-      return a;
+    const tagged = a.map((x: any) => ({
+      ...x,
+      provider: x?.provider ?? x?.provider_name ?? internetProviderName(wanted || serviceName),
+      provider_name: x?.provider_name ?? x?.provider ?? internetProviderName(wanted || serviceName),
+      internet_provider: wanted || internetProvider(serviceName),
+    }));
+
+    all.push(...tagged);
+
+    if (wanted && tagged.some((x: any) => price(x) > 0 || id(x))) {
+      return tagged;
     }
   }
 
-  return [];
+  return wanted
+    ? all.filter((x: any) => internetProvider(x?.internet_provider ?? x?.provider) === wanted)
+    : all;
 }
 
 async function giftCatalog(productId?: string) {
   const r = await get(
     "/giftcard/available/",
-    productId ? { productId } : {},
+    productId
+      ? { countryCode: "NG", productId }
+      : { countryCode: "NG" },
   );
 
   if (
@@ -641,6 +669,28 @@ async function billers(service: string) {
     };
   }
 
+  if (service === "internet" || service === "smile") {
+    const providers = INTERNET_PROVIDERS.map((x) => ({
+      id: x.key,
+      code: x.key,
+      name: x.name,
+      display_name: x.name,
+      provider: x.key,
+      provider_name: x.name,
+      biller_code: x.key,
+      status: "active",
+    }));
+
+    return {
+      success: true,
+      service: "internet",
+      billers: providers,
+      items: [],
+      plans: [],
+      packages: [],
+    };
+  }
+
   if (service === "gift-card") {
     const a = await giftCatalog();
     const products = a
@@ -737,15 +787,31 @@ async function catalog(service: string, b: O) {
   }
 
   if (service === "internet" || service === "smile") {
-    const a = await getInternetPlans();
+    const requestedProvider = internetProvider(
+      b.provider_name ??
+        b.provider ??
+        b.biller_code ??
+        b.internet_provider,
+    );
+
+    const a = await getInternetPlans(requestedProvider);
     const items = a
-      .map((r: any) => norm("internet", r))
+      .map((r: any) => ({
+        ...norm("internet", r),
+        internet_provider: internetProvider(r?.internet_provider ?? r?.provider ?? requestedProvider),
+        provider: internetProviderName(r?.internet_provider ?? r?.provider ?? requestedProvider),
+        provider_name: internetProviderName(r?.internet_provider ?? r?.provider ?? requestedProvider),
+      }))
       .filter((x: any) => x.providerPrice > 0);
 
     return {
       success: true,
       service: "internet",
-      billers: [],
+      selected_provider: requestedProvider || null,
+      billers: INTERNET_PROVIDERS.map((x) => ({
+        id: x.key, code: x.key, name: x.name, display_name: x.name,
+        provider: x.key, provider_name: x.name, biller_code: x.key, status: "active",
+      })),
       items,
       plans: items,
       packages: items,
@@ -955,13 +1021,26 @@ async function verify(service: string, b: O) {
       );
     }
 
-    const r = await post(
+    let r = await post(
       "/cable/verify/",
       {
         provider: p,
         iucnumber: i,
       },
     );
+
+    // Topupmate documents the trailing-slash route. Some LiteSpeed setups
+    // have been observed to return 404 for the slash form while resolving
+    // the same route without it, so retry only on an actual 404.
+    if (r.httpStatus === 404) {
+      r = await post(
+        "/cable/verify",
+        {
+          provider: p,
+          iucnumber: i,
+        },
+      );
+    }
 
     if (!r.ok || status(r.body) === "fail") {
       throw new Error(msg(r.body));
@@ -1613,6 +1692,15 @@ async function purchase(
     service === "internet" ||
     service === "smile"
   ) {
+    const providerKey = internetProvider(
+      d.provider_name ??
+        d.provider ??
+        d.biller_code ??
+        d.internet_provider ??
+        item.provider_name ??
+        item.provider,
+    ) || "smile";
+
     const plan = s(
       d.item_code ??
         d.plan_code ??
@@ -1624,21 +1712,46 @@ async function purchase(
       d.account_number ??
         d.accountNumber ??
         d.account_id ??
+        d.phoneNumber ??
+        d.phone ??
         d.customer,
     );
 
     if (!plan || !acct) {
       throw new Error(
-        "Internet account and Smile plan are required.",
+        `${internetProviderName(providerKey)} account and plan are required.`,
       );
     }
 
-    path = "/smile-data/";
-    body = {
-      PhoneNumber: acct,
-      BundleTypeCode: plan,
-      actype: s(d.account_type ?? "prepaid"),
-    };
+    if (providerKey === "smile") {
+      path = "/smile-data/";
+      body = {
+        PhoneNumber: acct,
+        BundleTypeCode: plan,
+        actype: s(d.account_type ?? "prepaid"),
+      };
+    } else if (providerKey === "alpha") {
+      path = "/alphatopup/";
+      body = {
+        phone: acct,
+        planid: plan,
+        ref: r,
+      };
+    } else if (providerKey === "kirani") {
+      path = "/kirani/";
+      body = {
+        phone: acct,
+        planid: plan,
+        ref: r,
+      };
+    } else {
+      path = "/ratel/";
+      body = {
+        phone: acct,
+        planid: plan,
+        ref: r,
+      };
+    }
 
     pAmt = n(
       item.providerPrice ??
@@ -1648,7 +1761,7 @@ async function purchase(
 
     if (!pAmt) {
       const c = await get("/services/", {
-        service: "smile",
+        service: providerKey,
       });
 
       pAmt = price(
@@ -1660,11 +1773,12 @@ async function purchase(
 
     if (!pAmt) {
       throw new Error(
-        "The selected internet plan is unavailable.",
+        `The selected ${internetProviderName(providerKey)} plan is unavailable.`,
       );
     }
 
     sAmt = sell(pAmt, MARKUP);
+
   } else {
     throw new Error(
       "This service is not available through Topupmate.",

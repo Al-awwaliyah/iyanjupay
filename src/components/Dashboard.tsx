@@ -138,16 +138,12 @@ const SUPPORTED_BILL_SERVICES: BillService[] = [
   "data",
   "cable",
   "electricity",
-];
-
-const COMING_SOON_SERVICES: BillService[] = [
   "education",
   "recharge-card",
-  "airtime-cash",
-  "gift-card",
   "internet",
-  "savings",
 ];
+
+const COMING_SOON_SERVICES: BillService[] = [];
 
 /*
  * ============================================================
@@ -847,16 +843,16 @@ const Dashboard = () => {
    */
 
   const services = [
-    { title: "Buy Airtime", icon: Smartphone, color: "bg-blue-500", type: "airtime" as BillService, available: true },
-    { title: "Buy Data", icon: Wifi, color: "bg-purple-500", type: "data" as BillService, available: true },
-    { title: "Cable TV", icon: CreditCard, color: "bg-red-500", type: "cable" as BillService, available: true },
-    { title: "Electricity", icon: Zap, color: "bg-yellow-500", type: "electricity" as BillService, available: true },
-    { title: "Education", icon: GraduationCap, color: "bg-orange-500", type: "education" as BillService, available: false },
-    { title: "Recharge PIN", icon: Receipt, color: "bg-slate-500", type: "recharge-card" as BillService, available: false },
-    { title: "Airtime to Cash", icon: Banknote, color: "bg-emerald-500", type: "airtime-cash" as BillService, available: false },
-    { title: "Gift Cards", icon: Gift, color: "bg-pink-500", type: "gift-card" as BillService, available: false },
-    { title: "Internet Service", icon: Wifi, color: "bg-indigo-500", type: "internet" as BillService, available: false },
-    { title: "Savings", icon: PiggyBank, color: "bg-pink-500", type: "savings" as BillService, available: false },
+    { title: "Buy Airtime", description: "", icon: Smartphone, color: "bg-blue-500", type: "airtime" as BillService, available: true },
+    { title: "Buy Data", description: "", icon: Wifi, color: "bg-purple-500", type: "data" as BillService, available: true },
+    { title: "Cable TV", description: "", icon: CreditCard, color: "bg-red-500", type: "cable" as BillService, available: true },
+    { title: "Electricity", description: "", icon: Zap, color: "bg-yellow-500", type: "electricity" as BillService, available: true },
+    { title: "Education", description: "", icon: GraduationCap, color: "bg-orange-500", type: "education" as BillService, available: true },
+    { title: "Recharge PIN", description: "", icon: Receipt, color: "bg-slate-500", type: "recharge-card" as BillService, available: true },
+    { title: "Airtime to Cash", description: "", icon: Banknote, color: "bg-emerald-500", type: "airtime-cash" as BillService, available: true },
+    { title: "Gift Cards", description: "", icon: Gift, color: "bg-pink-500", type: "gift-card" as BillService, available: true },
+    { title: "Internet Service", description: "", icon: Wifi, color: "bg-indigo-500", type: "internet" as BillService, available: true },
+    { title: "Savings", description: "", icon: PiggyBank, color: "bg-pink-500", type: "savings" as BillService, available: true },
   ];
 
   /*
@@ -875,21 +871,6 @@ const Dashboard = () => {
       });
       return;
     }
-
-    if (
-      COMING_SOON_SERVICES.includes(
-        service.type
-      )
-    ) {
-      toast({
-        title: "Coming soon",
-        description:
-          `${service.title} is not yet available.`,
-      });
-
-      return;
-    }
-
     if (
       !service.available ||
       !SUPPORTED_BILL_SERVICES.includes(
@@ -2456,7 +2437,7 @@ const Dashboard = () => {
 
             </div>
 
-            <div className="grid grid-cols-4 gap-2 sm:gap-3">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
 
               {services.map(
                 (

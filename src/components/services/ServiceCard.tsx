@@ -10,7 +10,6 @@ interface ServiceCardProps {
   icon: LucideIcon;
   onClick: () => void;
   color: string;
-  comingSoon?: boolean;
   available?: boolean;
 }
 
@@ -19,16 +18,14 @@ const ServiceCard = ({
   icon: Icon,
   onClick,
   color,
-  comingSoon = false,
   available = true,
 }: ServiceCardProps) => {
-  const isComingSoon =
-    comingSoon || !available;
+  const isUnavailable = !available;
 
   const handleKeyDown = (
     event: React.KeyboardEvent<HTMLDivElement>,
   ) => {
-    if (isComingSoon) return;
+    if (isUnavailable) return;
 
     if (
       event.key === "Enter" ||
@@ -41,72 +38,22 @@ const ServiceCard = ({
 
   return (
     <Card
-      role={
-        isComingSoon
-          ? undefined
-          : "button"
-      }
-      tabIndex={
-        isComingSoon ? -1 : 0
-      }
-      aria-label={
-        isComingSoon
-          ? `${title}, coming soon`
-          : title
-      }
-      aria-disabled={isComingSoon}
-      className={[
-        "group relative h-full overflow-hidden",
-        "rounded-2xl border bg-white",
-        "transition-all duration-200",
-        isComingSoon
-          ? [
-              "cursor-default",
-              "border-slate-200",
-              "opacity-75",
-            ].join(" ")
-          : [
-              "cursor-pointer",
-              "border-slate-200",
-              "hover:-translate-y-0.5",
-              "hover:border-slate-300",
-              "hover:shadow-lg",
-              "focus:outline-none",
-              "focus:ring-2",
-              "focus:ring-[#082A63]/25",
-              "focus:ring-offset-1",
-            ].join(" "),
-      ].join(" ")}
+      role={isUnavailable ? undefined : "button"}
+      tabIndex={isUnavailable ? -1 : 0}
+      aria-label={title}
+      aria-disabled={isUnavailable}
+      className="group relative h-full overflow-hidden rounded-2xl border border-slate-200 bg-white p-3 shadow-sm transition hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-[#082A63]/25 focus:ring-offset-1 sm:p-4"
       onClick={
-        isComingSoon
-          ? undefined
-          : onClick
+        isUnavailable ? undefined : onClick
       }
       onKeyDown={handleKeyDown}
     >
-      <CardContent className="relative flex h-full min-h-[125px] flex-col items-center justify-center p-3 text-center sm:min-h-[135px] sm:p-3.5">
-        {/* Coming Soon Badge */}
-
-        {isComingSoon && (
-          <div className="absolute right-2 top-2 rounded-full bg-slate-100 px-1.5 py-0.5 text-[7px] font-bold uppercase tracking-wide text-slate-500 sm:right-2.5 sm:top-2.5 sm:px-2 sm:text-[8px]">
-            Coming Soon
-          </div>
-        )}
-
+      <CardContent className="flex h-full flex-col items-center justify-center p-0 text-center">
         {/* Service Icon */}
 
         <div
           className={[
-            "mb-2.5 flex h-10 w-10 shrink-0",
-            "items-center justify-center",
-            "rounded-xl shadow-sm",
-            "transition-all duration-200",
-            isComingSoon
-              ? "grayscale"
-              : [
-                  "group-hover:scale-105",
-                  "group-hover:shadow-md",
-                ].join(" "),
+            "mx-auto flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl transition group-hover:scale-105",
             color,
           ].join(" ")}
         >
@@ -122,17 +69,6 @@ const ServiceCard = ({
         <h3 className="line-clamp-1 text-[11px] font-bold leading-tight tracking-tight text-slate-900 sm:text-xs">
           {title}
         </h3>
-
-        {/* Open Service */}
-
-        {!isComingSoon && (
-          <div className="mt-2 flex items-center gap-0.5 text-[9px] font-bold text-[#082A63] opacity-0 transition-opacity duration-200 group-hover:opacity-100 sm:text-[10px]">
-            <span>Open</span>
-            <span aria-hidden="true">
-              →
-            </span>
-          </div>
-        )}
       </CardContent>
     </Card>
   );

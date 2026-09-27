@@ -1,5 +1,4 @@
-import { corsHeaders, json, adminClient, getUser } from "../_shared/auth.ts";
-import{get,post,status,msg,pref,ceil10}from'../_shared/topupmate.ts';
+import{corsHeaders,json,adminClient,getUser}from'../_shared/auth.ts';import{get,post,status,msg,pref,ceil10}from'../_shared/topupmate.ts';
 type O=Record<string,any>;const s=(v:any)=>String(v??'').trim(),n=(v:any)=>Number.isFinite(Number(v))?Number(v):0,ref=()=>`CARD_${crypto.randomUUID().replace(/-/g,'')}`;
 async function owned(a:any,u:string,c:string){if(!c)return null;const{data}=await a.from('virtual_cards').select('*').eq('user_id',u).eq('provider','topupmate').eq('provider_card_id',c).maybeSingle();return data;}
 function rateOf(b:any,usd:number){for(const x of [b?.rate,b?.exchange_rate,b?.exchangeRate,b?.conversion_rate,b?.response?.rate,b?.response?.exchange_rate,b?.data?.rate,b?.data?.exchange_rate]){const v=n(x);if(v>0)return v;}const c=n(b?.converted_amount??b?.convertedAmount??b?.response?.converted_amount??b?.data?.converted_amount);return c>0&&usd>0?c/usd:0;}

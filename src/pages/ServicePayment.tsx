@@ -297,6 +297,9 @@ function getItemCode(item: Item | null | undefined): string {
 
 function canonicalCableProvider(value: unknown): string {
   const raw = clean(value).toLowerCase().replace(/[^a-z0-9]+/g, " ");
+  if (raw === "1") return "gotv";
+  if (raw === "2") return "dstv";
+  if (raw === "3") return "startimes";
   if (raw.includes("dstv") || raw.includes("digital satellite")) return "dstv";
   if (raw.includes("gotv") || raw.includes("go tv")) return "gotv";
   if (raw.includes("startimes") || raw.includes("startime")) return "startimes";
@@ -355,7 +358,7 @@ function filterCableItems(items: Item[], billerCode: string): Item[] {
     (item) => cableProviderFromItem(item) === selected,
   );
 
-  return matching.length ? matching : items;
+  return matching;
 }
 
 function getItemPrice(item: Item | null | undefined): number {

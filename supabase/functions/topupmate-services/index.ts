@@ -1,5 +1,24 @@
-import{corsHeaders,json,adminClient,getUser}from'../_shared/auth.ts';
-import{get,post,rows,id,name,provider,price,sell,ceil10,status,msg,pref}from'../_shared/topupmate.ts';
+import {
+  corsHeaders,
+  json,
+  adminClient,
+  getUser,
+} from "../_shared/auth.ts";
+
+import {
+  get,
+  post,
+  rows,
+  id,
+  name,
+  provider,
+  price,
+  sell,
+  ceil10,
+  status,
+  msg,
+  pref,
+} from "../_shared/topupmate.ts";
 type O=Record<string,any>;const MARKUP=3;const NO=new Set(['airtime','airtime-card','recharge-card','electricity']);const s=(v:any)=>String(v??'').trim();const n=(v:any)=>Number.isFinite(Number(v))?Number(v):0;const ref=()=>`TPM_${crypto.randomUUID().replace(/-/g,'')}`;
 function network(v:any){const x=s(v).toLowerCase();return({mtn:'1','1':'1',airtel:'2','2':'2',glo:'3','3':'3','9mobile':'4','9 mobile':'4','4':'4',etisalat:'4'}as any)[x]??x}
 function cable(v:any){const x=s(v).toLowerCase().replace(/[^a-z0-9]+/g,'');if(x==='1'||x==='gotv'||x.includes('gotv'))return'1';if(x==='2'||x==='dstv'||x.includes('dstv'))return'2';if(x==='3'||x==='startimes'||x==='startime'||x.includes('startimes')||x.includes('startime'))return'3';return s(v)}

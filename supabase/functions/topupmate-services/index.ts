@@ -343,16 +343,21 @@ function providerPriceValue(r: any) {
 }
 
 function getProviderPeriod(r: any) {
-  const explicit = [r?.period,r?.plan_period,r?.planPeriod,r?.validity,r?.validity_period,r?.validityPeriod,r?.duration];
-  for (const value of explicit) {
-    const text = s(value).replace(/\s+/g, " ").trim();
-    if (text && !/^\d+(?:\.\d+)?$/.test(text)) return text;
+  const values = [
+    r?.validity,
+    r?.validity_period,
+    r?.validityPeriod,
+    r?.duration,
+    r?.period,
+    r?.plan_period,
+    r?.planPeriod,
+  ];
+
+  for (const value of values) {
+    const text = s(value).replace(/\s+/g, " ");
+    if (text) return text;
   }
-  const names = [r?.plan_name,r?.planName,r?.package_name,r?.packageName,r?.bundle_name,r?.bundleName,r?.name,r?.description];
-  for (const value of names) {
-    const text = s(value).replace(/\s+/g, " ").trim();
-    if (text && /(?:daily|weekly|monthly|yearly|annual|\b\d+(?:\.\d+)?\s*(?:day|days|week|weeks|month|months|year|years)\b)/i.test(text)) return text;
-  }
+
   return "";
 }
 
@@ -392,7 +397,15 @@ function norm(service: string, r: any) {
     ? providerPrice
     : sell(providerPrice, MARKUP);
 
-  const period = getProviderPeriod(r);
+  let period = getProviderPeriod(r);
+  if (!period) {
+    const descriptive = s(
+      r?.name ?? r?.plan_name ?? r?.planName ?? r?.description ?? r?.package_name ?? r?.packageName,
+    );
+    const match = descriptive.match(/(\d+(?:\.\d+)?)\s*(day|days|week|weeks|month|months|year|years)\b/i);
+    period = match ? `${match[1]} ${match[2]}` : "";
+  }
+
   const validityDays =
     r?.validity_days ??
     r?.validityDays ??
@@ -515,16 +528,16 @@ function internetProviderName(v: any) {
 
 async function getInternetPlans(providerKey = "") {
   const wanted = internetProvider(providerKey);
-  const aliases: Record<string, string[]> = {
-    smile: ["smile", "smile-data", "smiledata"],
-    alpha: ["alpha", "alphatopup", "alpha-data", "alphadata"],
-    kirani: ["kirani", "kirani-data", "kiranidata"],
-    ratel: ["ratel", "ratel-data", "rateldata"],
+  const serviceAliases: Record<string, string[]> = {
+    smile: ["smile", "smile-data"],
+    alpha: ["alpha", "alphatopup", "alpha-data"],
+    kirani: ["kirani", "kirani-data"],
+    ratel: ["ratel", "ratel-data"],
   };
 
   const candidates = wanted
-    ? (aliases[wanted] ?? [wanted, `${wanted}-data`, `${wanted}data`])
-    : INTERNET_PROVIDERS.flatMap((x) => aliases[x.key] ?? [x.service, `${x.service}-data`]);
+    ? (serviceAliases[wanted] ?? [wanted, `${wanted}-data`])
+    : INTERNET_PROVIDERS.flatMap((x) => serviceAliases[x.key] ?? [x.service]);
 
   const seen = new Set<string>();
   const all: any[] = [];
@@ -558,17 +571,80 @@ async function getInternetPlans(providerKey = "") {
     : all;
 }
 
-async function giftCatalog(productId?: string, countryCode?: string) {
-  const params: Record<string, any> = {};
-  if (countryCode) params.countryCode = countryCode;
-  if (productId) params.productId = productId;
-  const r = await get("/giftcard/available/", params);
-  if (!r.ok || String(r.body?.status).toLowerCase() === "fail") throw new Error(msg(r.body));
-  const source = r.body?.msg ?? r.body?.data?.msg ?? r.body?.data ?? r.body?.response ?? r.body?.results ?? r.body;
-  if (Array.isArray(source)) return source;
-  if (Array.isArray(source?.products)) return source.products;
-  if (Array.isArray(source?.items)) return source.items;
-  return rows(source);
+function giftRows(body: any): any[] {
+  const candidates = [
+    body,
+    body?.response,
+    body?.data,
+    body?.results,
+    body?.items,
+    body?.products,
+    body?.plans,
+    body?.packages,
+    body?.giftcards,
+    body?.giftCards,
+    body?.catalog,
+    body?.catalogue,
+    body?.msg,
+  ];
+
+  for (const candidate of candidates) {
+    if (Array.isArray(candidate)) return candidate;
+    if (candidate && typeof candidate === "object") {
+      for (const key of [
+        "items",
+        "products",
+        "plans",
+        "packages",
+        "giftcards",
+        "giftCards",
+        "catalog",
+        "catalogue",
+        "data",
+        "response",
+        "results",
+      ]) {
+        if (Array.isArray(candidate[key])) return candidate[key];
+      }
+    }
+  }
+
+  return [];
+}
+
+async function giftCatalog(productId?: string) {
+  const primary = await get(
+    "/giftcard/available/",
+    productId ? { productId } : {},
+  );
+
+  if (
+    primary.ok &&
+    String(primary.body?.status).toLowerCase() !== "fail"
+  ) {
+    const primaryRows = giftRows(primary.body);
+    if (primaryRows.length) return primaryRows;
+  }
+
+  // countryCode is optional in Topupmate's catalogue endpoint. Keep NG as a
+  // fallback rather than making it the primary filter, because gift cards are
+  // commonly sold for US/UK/global regions rather than NG-only inventory.
+  const fallback = await get(
+    "/giftcard/available/",
+    productId
+      ? { countryCode: "NG", productId }
+      : { countryCode: "NG" },
+  );
+
+  if (
+    !fallback.ok ||
+    String(fallback.body?.status).toLowerCase() === "fail"
+  ) {
+    if (!primary.ok) throw new Error(msg(primary.body));
+    return [];
+  }
+
+  return giftRows(fallback.body);
 }
 
 function giftProduct(r: any) {
@@ -785,7 +861,23 @@ async function catalog(service: string, b: O) {
     );
 
     const a = await getInternetPlans(requestedProvider);
-    const items = a
+    const tagged = a.map((r: any) => ({
+      ...r,
+      internet_provider: internetProvider(
+        r?.internet_provider ??
+          r?.provider ??
+          r?.provider_name ??
+          requestedProvider,
+      ) || requestedProvider,
+    }));
+
+    const providerRows = requestedProvider
+      ? tagged.filter((r: any) =>
+          internetProvider(r.internet_provider ?? r.provider ?? r.provider_name) === requestedProvider,
+        )
+      : tagged;
+
+    const items = providerRows
       .map((r: any) => ({
         ...norm("internet", r),
         internet_provider: internetProvider(r?.internet_provider ?? r?.provider ?? requestedProvider),
@@ -802,6 +894,60 @@ async function catalog(service: string, b: O) {
         id: x.key, code: x.key, name: x.name, display_name: x.name,
         provider: x.key, provider_name: x.name, biller_code: x.key, status: "active",
       })),
+      items,
+      plans: items,
+      packages: items,
+    };
+  }
+
+  if (["education", "jamb", "waec", "neco", "nabteb"].includes(service)) {
+    const wanted = s(
+      b.provider_service ??
+        b.provider ??
+        b.provider_name ??
+        b.biller_code ??
+        service,
+    ).toLowerCase();
+
+    const wantedKey = wanted.replace(/[^a-z0-9]+/g, "");
+    const catalogueServices = wantedKey && wantedKey !== "education"
+      ? [wantedKey, "exampin"]
+      : ["exampin"];
+
+    let raw: any[] = [];
+    for (const catalogueService of catalogueServices) {
+      const c = await get("/services/", { service: catalogueService });
+      if (!c.ok || String(c.body?.status).toLowerCase() === "fail") continue;
+      const candidateRows = rows(c.body);
+      if (candidateRows.length) {
+        raw = candidateRows;
+        // Prefer a provider-specific catalogue when Topupmate exposes one.
+        if (catalogueService !== "exampin") break;
+      }
+    }
+
+    const matching = raw.filter((r: any) => {
+      if (!wantedKey || wantedKey === "education") return true;
+      const values = [
+        r?.provider, r?.provider_name, r?.providerName,
+        r?.exam, r?.exam_type, r?.examType,
+        r?.service, r?.service_name, r?.product,
+        r?.name, r?.plan_name, r?.planName, r?.description,
+      ];
+      const text = values.map((v) => s(v).toLowerCase().replace(/[^a-z0-9]+/g, " ")).join(" ");
+      return text.includes(wantedKey);
+    });
+
+    const source = matching.length ? matching : (catalogueServices[0] !== "exampin" ? [] : raw);
+    const items = source
+      .map((r: any) => norm("education", r))
+      .filter((x: any) => x.providerPrice > 0);
+
+    return {
+      success: true,
+      service: "education",
+      selected_provider: wantedKey ? wantedKey.toUpperCase() : null,
+      billers: educationProviders,
       items,
       plans: items,
       packages: items,
@@ -1011,32 +1157,24 @@ async function verify(service: string, b: O) {
       );
     }
 
-    const primaryPath = "/cable/verify/";
-    const retryPath = "/cable/verify";
-
     let r = await post(
-      primaryPath,
+      "/cable/verify/",
       {
         provider: p,
         iucnumber: i,
       },
     );
 
-    const primaryResponse = r;
-    let retryResponse: typeof r | null = null;
-
-    // Keep the documented trailing-slash route as the primary request.
-    // If Topupmate/LiteSpeed returns 404, make one controlled retry without
-    // the slash and expose both provider responses in the diagnostic output.
+    // Use Topupmate documented Cable verification endpoint; retry only without
+    // the trailing slash when the provider returns 404.
     if (r.httpStatus === 404) {
-      retryResponse = await post(
-        retryPath,
+      r = await post(
+        "/cable/verify",
         {
           provider: p,
           iucnumber: i,
         },
       );
-      r = retryResponse;
     }
 
     if (!r.ok || status(r.body) === "fail") {
@@ -1046,46 +1184,16 @@ async function verify(service: string, b: O) {
           r.body?.error,
       );
 
-      // Safe diagnostic: return the provider HTTP status and exact provider
-      // response body, but never expose the Authorization header/API key.
-      // This is intentionally limited to Cable verification failures.
       if (r.httpStatus === 404) {
-        return {
-          success: false,
-          error:
-            providerMessage ||
-            "Topupmate Cable verification endpoint returned HTTP 404.",
-          provider_status: r.httpStatus,
-          provider_url: `https://connect.topupmate.com/api${retryResponse ? retryPath : primaryPath}`,
-          provider_response: r.body,
-          diagnostic: {
-            primary: {
-              method: "POST",
-              url: "https://connect.topupmate.com/api/cable/verify/",
-              status: primaryResponse.httpStatus,
-              response: primaryResponse.body,
-            },
-            retry: retryResponse
-              ? {
-                  method: "POST",
-                  url: "https://connect.topupmate.com/api/cable/verify",
-                  status: retryResponse.httpStatus,
-                  response: retryResponse.body,
-                }
-              : null,
-          },
-        };
+        throw new Error(
+          "Topupmate Cable validation endpoint returned HTTP 404. The diagnostic below shows the exact provider URL and response.",
+        );
       }
 
-      return {
-        success: false,
-        error:
-          providerMessage ||
+      throw new Error(
+        providerMessage ||
           "Could Not Verify Smart Card/IUC Number",
-        provider_status: r.httpStatus,
-        provider_url: `https://connect.topupmate.com/api${retryResponse ? retryPath : primaryPath}`,
-        provider_response: r.body,
-      };
+      );
     }
 
     // Topupmate returns Cable verification fields at the top level.
@@ -1217,14 +1325,6 @@ async function refund(
   });
 }
 
-function normaliseNigeriaPhone(value: any) {
-  const x = s(value).replace(/\s+/g, "");
-  if (/^0\d{10}$/.test(x)) return x;
-  if (/^\+234\d{10}$/.test(x)) return `0${x.slice(4)}`;
-  if (/^234\d{10}$/.test(x)) return `0${x.slice(3)}`;
-  return x;
-}
-
 async function purchase(
   a: any,
   u: any,
@@ -1265,11 +1365,10 @@ async function purchase(
     );
 
     pAmt = n(d.amount ?? b.amount);
-    const airtimePhone = normaliseNigeriaPhone(customer);
 
     if (
       !net ||
-      !/^0\d{10}$/.test(airtimePhone) ||
+      !/^[0-9]{11}$/.test(customer) ||
       pAmt < 50
     ) {
       throw new Error(
@@ -1280,7 +1379,7 @@ async function purchase(
     path = "/airtime/";
     body = {
       network: net,
-      phone: airtimePhone,
+      phone: customer,
       amount: pAmt,
       airtime_type: "VTU",
       ref: r,
@@ -1301,11 +1400,9 @@ async function purchase(
         item.code,
     );
 
-    const dataPhone = normaliseNigeriaPhone(customer);
-
     if (
       !net ||
-      !/^0\d{10}$/.test(dataPhone) ||
+      !/^[0-9]{11}$/.test(customer) ||
       !plan
     ) {
       throw new Error(
@@ -1316,7 +1413,7 @@ async function purchase(
     path = "/data/";
     body = {
       network: net,
-      phone: dataPhone,
+      phone: customer,
       plan,
       ref: r,
     };

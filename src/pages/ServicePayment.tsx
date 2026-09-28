@@ -408,13 +408,12 @@ function getProviderPeriod(item: Item): string {
     item.validity, item.validity_period, item.validityPeriod,
     item.duration, item.period, item.plan_period, item.planPeriod,
     raw.validity, raw.validity_period, raw.validityPeriod,
-    raw.validity_text, raw.validityText, raw.validity_label, raw.validityLabel,
-    raw.duration, raw.duration_text, raw.durationText, raw.period, raw.plan_period, raw.planPeriod,
+    raw.duration, raw.period, raw.plan_period, raw.planPeriod,
   ];
 
   for (const value of values) {
     const text = clean(value).replace(/\s+/g, " ").trim();
-    if (text && /(?:hour|hr|day|week|month|year|daily|weekly|monthly|yearly|annual)/i.test(text)) {
+    if (text && /(?:day|week|month|year|daily|weekly|monthly|yearly|annual)/i.test(text)) {
       return text;
     }
   }
@@ -442,12 +441,6 @@ function durationDays(item: Item): number {
   }
 
   const text = getProviderPeriod(item).toLowerCase();
-  const hours = text.match(/(\d+(?:\.\d+)?)\s*(hour|hours|hr|hrs)\b/i);
-  if (hours) {
-    const h = Number(hours[1]);
-    if (Number.isFinite(h) && h > 0) return Math.max(1, Math.ceil(h / 24));
-  }
-
   const match = text.match(/(\d+(?:\.\d+)?)\s*(day|days|week|weeks|month|months|year|years)|^(daily|weekly|monthly|yearly|annual)$/i);
   if (!match) return 0;
 
@@ -3269,21 +3262,7 @@ export default function ServicePayment({
                           new Map(
                             items
                               .map((item) => [
-                                num(
-                                  item.value ??
-                                    item.denomination ??
-                                    item.face_value ??
-                                    item.faceValue ??
-                                    item.plan_amount ??
-                                    item.planAmount ??
-                                    item.raw?.value ??
-                                    item.raw?.denomination ??
-                                    item.raw?.face_value ??
-                                    item.raw?.faceValue ??
-                                    item.raw?.amount ??
-                                    item.amount ??
-                                    item.price
-                                ),
+                                num(item.value ?? item.denomination),
                                 item,
                               ] as const)
                               .filter(([value, item]) => value > 0 && !!getItemCode(item))

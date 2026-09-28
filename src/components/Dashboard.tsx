@@ -2456,7 +2456,7 @@ const Dashboard = () => {
 
             </div>
 
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <div className="grid grid-cols-4 gap-2 sm:gap-3">
 
               {services.map(
                 (
@@ -2474,9 +2474,6 @@ const Dashboard = () => {
                     <ServiceCard
                       title={
                         service.title
-                      }
-                      description={
-                        service.description
                       }
                       icon={
                         service.icon

@@ -523,16 +523,9 @@ function internetProviderName(v: any) {
 
 async function getInternetPlans(providerKey = "") {
   const wanted = internetProvider(providerKey);
-  const routeAliases: Record<string, string[]> = {
-    smile: ["smile", "smile-data"],
-    alpha: ["alpha", "alphatopup", "alpha-data"],
-    kirani: ["kirani", "kirani-data"],
-    ratel: ["ratel", "ratel-data"],
-  };
-
   const candidates = wanted
-    ? (routeAliases[wanted] ?? [wanted, `${wanted}-data`, `${wanted}data`])
-    : INTERNET_PROVIDERS.flatMap((x) => routeAliases[x.key] ?? [x.service]);
+    ? [wanted, `${wanted}-data`, `${wanted}data`]
+    : INTERNET_PROVIDERS.flatMap((x) => [x.service, `${x.service}-data`]);
 
   const seen = new Set<string>();
   const all: any[] = [];
@@ -551,7 +544,7 @@ async function getInternetPlans(providerKey = "") {
       ...x,
       provider: x?.provider ?? x?.provider_name ?? internetProviderName(wanted || serviceName),
       provider_name: x?.provider_name ?? x?.provider ?? internetProviderName(wanted || serviceName),
-      internet_provider: internetProvider(x?.internet_provider ?? x?.provider ?? x?.provider_name) || wanted || internetProvider(serviceName),
+      internet_provider: wanted || internetProvider(serviceName),
     }));
 
     all.push(...tagged);
@@ -566,29 +559,65 @@ async function getInternetPlans(providerKey = "") {
     : all;
 }
 
-function arrayRows(...values: any[]): any[] {
-  for (const value of values) {
-    if (Array.isArray(value)) return value;
-    if (value && typeof value === "object") {
-      for (const nested of [
-        value.response,
-        value.data,
-        value.results,
-        value.items,
-        value.products,
-        value.plans,
-        value.packages,
-        value.msg,
+function giftRows(body: any): any[] {
+  const candidates = [
+    body,
+    body?.response,
+    body?.data,
+    body?.results,
+    body?.items,
+    body?.products,
+    body?.plans,
+    body?.packages,
+    body?.giftcards,
+    body?.giftCards,
+    body?.catalog,
+    body?.catalogue,
+    body?.msg,
+  ];
+
+  for (const candidate of candidates) {
+    if (Array.isArray(candidate)) return candidate;
+    if (candidate && typeof candidate === "object") {
+      for (const key of [
+        "items",
+        "products",
+        "plans",
+        "packages",
+        "giftcards",
+        "giftCards",
+        "catalog",
+        "catalogue",
+        "data",
+        "response",
+        "results",
       ]) {
-        if (Array.isArray(nested)) return nested;
+        if (Array.isArray(candidate[key])) return candidate[key];
       }
     }
   }
+
   return [];
 }
 
 async function giftCatalog(productId?: string) {
-  const r = await get(
+  const primary = await get(
+    "/giftcard/available/",
+    productId ? { productId } : {},
+  );
+
+  if (
+    primary.ok &&
+    String(primary.body?.status).toLowerCase() !== "fail"
+  ) {
+    const primaryRows = giftRows(primary.body);
+    if (primaryRows.length) return primaryRows;
+  }
+
+  // countryCode is optional in Topupmate's catalogue endpoint. Keep NG as a
+  // fallback rather than making it the primary filter, because gift cards are
+  // commonly sold for US/UK/global regions rather than NG-only inventory.
+  const fallback = await get(
     "/giftcard/available/",
     productId
       ? { countryCode: "NG", productId }
@@ -596,21 +625,14 @@ async function giftCatalog(productId?: string) {
   );
 
   if (
-    !r.ok ||
-    String(r.body?.status).toLowerCase() === "fail"
+    !fallback.ok ||
+    String(fallback.body?.status).toLowerCase() === "fail"
   ) {
-    throw new Error(msg(r.body));
+    if (!primary.ok) throw new Error(msg(primary.body));
+    return [];
   }
 
-  return arrayRows(
-    r.body?.response,
-    r.body?.data,
-    r.body?.results,
-    r.body?.items,
-    r.body?.products,
-    r.body?.msg,
-    r.body,
-  );
+  return giftRows(fallback.body);
 }
 
 function giftProduct(r: any) {
@@ -690,7 +712,7 @@ function giftProduct(r: any) {
 }
 
 async function billers(service: string) {
-  if (["education", "jamb", "waec", "neco", "nabteb"].includes(service)) {
+  if (service === "education") {
     return {
       success: true,
       service,
@@ -709,7 +731,6 @@ async function billers(service: string) {
       display_name: x.name,
       provider: x.key,
       provider_name: x.name,
-      provider_service: x.key,
       biller_code: x.key,
       status: "active",
     }));
@@ -717,23 +738,6 @@ async function billers(service: string) {
     return {
       success: true,
       service: "internet",
-      billers: providers,
-      items: [],
-      plans: [],
-      packages: [],
-    };
-  }
-
-  if (service === "recharge-card" || service === "airtime-card") {
-    const providers = [
-      { id: "1", code: "1", biller_code: "1", name: "MTN", display_name: "MTN", provider: "1", provider_name: "MTN", network_code: "1", status: "active" },
-      { id: "2", code: "2", biller_code: "2", name: "Airtel", display_name: "Airtel", provider: "2", provider_name: "Airtel", network_code: "2", status: "active" },
-      { id: "3", code: "3", biller_code: "3", name: "Glo", display_name: "Glo", provider: "3", provider_name: "Glo", network_code: "3", status: "active" },
-      { id: "4", code: "4", biller_code: "4", name: "9mobile", display_name: "9mobile", provider: "4", provider_name: "9mobile", network_code: "4", status: "active" },
-    ];
-    return {
-      success: true,
-      service,
       billers: providers,
       items: [],
       plans: [],
@@ -845,7 +849,23 @@ async function catalog(service: string, b: O) {
     );
 
     const a = await getInternetPlans(requestedProvider);
-    const items = a
+    const tagged = a.map((r: any) => ({
+      ...r,
+      internet_provider: internetProvider(
+        r?.internet_provider ??
+          r?.provider ??
+          r?.provider_name ??
+          requestedProvider,
+      ) || requestedProvider,
+    }));
+
+    const providerRows = requestedProvider
+      ? tagged.filter((r: any) =>
+          internetProvider(r.internet_provider ?? r.provider ?? r.provider_name) === requestedProvider,
+        )
+      : tagged;
+
+    const items = providerRows
       .map((r: any) => ({
         ...norm("internet", r),
         internet_provider: internetProvider(r?.internet_provider ?? r?.provider ?? requestedProvider),
@@ -862,6 +882,45 @@ async function catalog(service: string, b: O) {
         id: x.key, code: x.key, name: x.name, display_name: x.name,
         provider: x.key, provider_name: x.name, biller_code: x.key, status: "active",
       })),
+      items,
+      plans: items,
+      packages: items,
+    };
+  }
+
+  if (["education", "jamb", "waec", "neco", "nabteb"].includes(service)) {
+    const wanted = s(
+      b.provider ??
+        b.provider_name ??
+        b.biller_code ??
+        service,
+    ).toLowerCase();
+
+    const c = await get("/services/", { service: "exampin" });
+    if (!c.ok || String(c.body?.status).toLowerCase() === "fail") {
+      throw new Error(msg(c.body));
+    }
+
+    const raw = rows(c.body);
+    const matching = raw.filter((r: any) =>
+      providerMatches(r, wanted) ||
+      s(r?.provider).toLowerCase().includes(wanted) ||
+      s(r?.provider_name).toLowerCase().includes(wanted) ||
+      s(r?.exam).toLowerCase().includes(wanted) ||
+      s(r?.exam_type).toLowerCase().includes(wanted) ||
+      s(r?.name).toLowerCase().includes(wanted),
+    );
+
+    const source = matching;
+    const items = source
+      .map((r: any) => norm("education", r))
+      .filter((x: any) => x.providerPrice > 0);
+
+    return {
+      success: true,
+      service: "education",
+      selected_provider: wanted.toUpperCase(),
+      billers: educationProviders,
       items,
       plans: items,
       packages: items,
@@ -943,99 +1002,6 @@ async function catalog(service: string, b: O) {
       success: true,
       service: "gift-card",
       billers: [gp],
-      items,
-      plans: items,
-      packages: items,
-    };
-  }
-
-  if (service === "recharge-card" || service === "airtime-card") {
-    const requestedNetwork = network(
-      b.network_code ??
-        b.networkId ??
-        b.provider ??
-        b.provider_name ??
-        b.biller_code ??
-        "",
-    );
-
-    if (!requestedNetwork) {
-      throw new Error("A mobile network is required.");
-    }
-
-    const c = await get("/services/", { service: "recharge-card" });
-    if (!c.ok || String(c.body?.status).toLowerCase() === "fail") {
-      throw new Error(msg(c.body));
-    }
-
-    const all = rows(c.body);
-    const matched = all.filter((item: any) =>
-      dataPlanMatchesNetwork(item, requestedNetwork) ||
-      providerMatches(item, requestedNetwork)
-    );
-
-    const source = matched.length
-      ? matched
-      : all.filter((item: any) =>
-          providerMatches(item, networkName(requestedNetwork))
-        );
-
-    const items = source
-      .map((r: any) => norm("recharge-card", r))
-      .map((item: any) => ({
-        ...item,
-        denomination: n(item.raw?.denomination ?? item.raw?.value ?? item.raw?.amount ?? item.providerPrice),
-        value: n(item.raw?.value ?? item.raw?.denomination ?? item.raw?.amount ?? item.providerPrice),
-      }))
-      .filter((x: any) => x.providerPrice > 0 && x.id);
-
-    return {
-      success: true,
-      service: "recharge-card",
-      selected_network: requestedNetwork,
-      billers: [],
-      items,
-      plans: items,
-      packages: items,
-    };
-  }
-
-  if (["education", "jamb", "waec", "neco", "nabteb"].includes(service)) {
-    const requestedProvider = s(
-      b.provider_service ??
-        b.provider_name ??
-        b.provider ??
-        b.biller_code ??
-        service,
-    ).toLowerCase();
-
-    const c = await get("/services/", { service: "exampin" });
-    if (!c.ok || String(c.body?.status).toLowerCase() === "fail") {
-      throw new Error(msg(c.body));
-    }
-
-    const all = rows(c.body);
-    const wanted = requestedProvider.replace(/[^a-z0-9]+/g, "");
-    const matched = all.filter((item: any) => {
-      if (!wanted || wanted === "education") return true;
-      return providerMatches(item, requestedProvider);
-    });
-
-    const source = matched.length ? matched : (
-      wanted === "jamb" || wanted === "waec" || wanted === "neco" || wanted === "nabteb"
-        ? all.filter((item: any) => providerMatches(item, wanted.toUpperCase()))
-        : all
-    );
-
-    const items = source
-      .map((r: any) => norm("education", r))
-      .filter((x: any) => x.providerPrice > 0);
-
-    return {
-      success: true,
-      service: "education",
-      selected_provider: requestedProvider,
-      billers: educationProviders,
       items,
       plans: items,
       packages: items,
@@ -1165,7 +1131,7 @@ async function verify(service: string, b: O) {
     }
 
     let r = await post(
-      "/cabletv/verify/",
+      "/cable/validate/",
       {
         provider: p,
         iucnumber: i,
@@ -1176,7 +1142,7 @@ async function verify(service: string, b: O) {
     // retry the same route without the trailing slash only on HTTP 404.
     if (r.httpStatus === 404) {
       r = await post(
-        "/cabletv/verify/",
+        "/cable/validate",
         {
           provider: p,
           iucnumber: i,
@@ -1193,7 +1159,7 @@ async function verify(service: string, b: O) {
 
       if (r.httpStatus === 404) {
         throw new Error(
-          "Topupmate Cable verification endpoint returned HTTP 404. Please confirm the live Cable verification route.",
+          "Topupmate Cable validation endpoint returned HTTP 404. The diagnostic below shows the exact provider URL and response.",
         );
       }
 

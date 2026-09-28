@@ -344,16 +344,13 @@ function providerPriceValue(r: any) {
 
 function getProviderPeriod(r: any) {
   const values = [
-    r?.period,
-    r?.plan_period,
-    r?.planPeriod,
     r?.validity,
     r?.validity_period,
     r?.validityPeriod,
     r?.duration,
-    r?.plan_type,
-    r?.planType,
-    r?.type,
+    r?.period,
+    r?.plan_period,
+    r?.planPeriod,
   ];
 
   for (const value of values) {
@@ -400,7 +397,15 @@ function norm(service: string, r: any) {
     ? providerPrice
     : sell(providerPrice, MARKUP);
 
-  const period = getProviderPeriod(r);
+  let period = getProviderPeriod(r);
+  if (!period) {
+    const descriptive = s(
+      r?.name ?? r?.plan_name ?? r?.planName ?? r?.description ?? r?.package_name ?? r?.packageName,
+    );
+    const match = descriptive.match(/(\d+(?:\.\d+)?)\s*(day|days|week|weeks|month|months|year|years)\b/i);
+    period = match ? `${match[1]} ${match[2]}` : "";
+  }
+
   const validityDays =
     r?.validity_days ??
     r?.validityDays ??
@@ -523,9 +528,16 @@ function internetProviderName(v: any) {
 
 async function getInternetPlans(providerKey = "") {
   const wanted = internetProvider(providerKey);
+  const serviceAliases: Record<string, string[]> = {
+    smile: ["smile", "smile-data"],
+    alpha: ["alpha", "alphatopup", "alpha-data"],
+    kirani: ["kirani", "kirani-data"],
+    ratel: ["ratel", "ratel-data"],
+  };
+
   const candidates = wanted
-    ? [wanted, `${wanted}-data`, `${wanted}data`]
-    : INTERNET_PROVIDERS.flatMap((x) => [x.service, `${x.service}-data`]);
+    ? (serviceAliases[wanted] ?? [wanted, `${wanted}-data`])
+    : INTERNET_PROVIDERS.flatMap((x) => serviceAliases[x.key] ?? [x.service]);
 
   const seen = new Set<string>();
   const all: any[] = [];
@@ -890,28 +902,43 @@ async function catalog(service: string, b: O) {
 
   if (["education", "jamb", "waec", "neco", "nabteb"].includes(service)) {
     const wanted = s(
-      b.provider ??
+      b.provider_service ??
+        b.provider ??
         b.provider_name ??
         b.biller_code ??
         service,
     ).toLowerCase();
 
-    const c = await get("/services/", { service: "exampin" });
-    if (!c.ok || String(c.body?.status).toLowerCase() === "fail") {
-      throw new Error(msg(c.body));
+    const wantedKey = wanted.replace(/[^a-z0-9]+/g, "");
+    const catalogueServices = wantedKey && wantedKey !== "education"
+      ? [wantedKey, "exampin"]
+      : ["exampin"];
+
+    let raw: any[] = [];
+    for (const catalogueService of catalogueServices) {
+      const c = await get("/services/", { service: catalogueService });
+      if (!c.ok || String(c.body?.status).toLowerCase() === "fail") continue;
+      const candidateRows = rows(c.body);
+      if (candidateRows.length) {
+        raw = candidateRows;
+        // Prefer a provider-specific catalogue when Topupmate exposes one.
+        if (catalogueService !== "exampin") break;
+      }
     }
 
-    const raw = rows(c.body);
-    const matching = raw.filter((r: any) =>
-      providerMatches(r, wanted) ||
-      s(r?.provider).toLowerCase().includes(wanted) ||
-      s(r?.provider_name).toLowerCase().includes(wanted) ||
-      s(r?.exam).toLowerCase().includes(wanted) ||
-      s(r?.exam_type).toLowerCase().includes(wanted) ||
-      s(r?.name).toLowerCase().includes(wanted),
-    );
+    const matching = raw.filter((r: any) => {
+      if (!wantedKey || wantedKey === "education") return true;
+      const values = [
+        r?.provider, r?.provider_name, r?.providerName,
+        r?.exam, r?.exam_type, r?.examType,
+        r?.service, r?.service_name, r?.product,
+        r?.name, r?.plan_name, r?.planName, r?.description,
+      ];
+      const text = values.map((v) => s(v).toLowerCase().replace(/[^a-z0-9]+/g, " ")).join(" ");
+      return text.includes(wantedKey);
+    });
 
-    const source = matching;
+    const source = matching.length ? matching : (catalogueServices[0] !== "exampin" ? [] : raw);
     const items = source
       .map((r: any) => norm("education", r))
       .filter((x: any) => x.providerPrice > 0);
@@ -919,7 +946,7 @@ async function catalog(service: string, b: O) {
     return {
       success: true,
       service: "education",
-      selected_provider: wanted.toUpperCase(),
+      selected_provider: wantedKey ? wantedKey.toUpperCase() : null,
       billers: educationProviders,
       items,
       plans: items,
@@ -1131,18 +1158,18 @@ async function verify(service: string, b: O) {
     }
 
     let r = await post(
-      "/cabletv/verify/",
+      "/cable/verify/",
       {
         provider: p,
         iucnumber: i,
       },
     );
 
-    // // Diagnostic test: try the proposed Cable validation route first, then
-    // retry the same route without the trailing slash only on HTTP 404.
+    // Use Topupmate documented Cable verification endpoint; retry only without
+    // the trailing slash when the provider returns 404.
     if (r.httpStatus === 404) {
       r = await post(
-        "/cabletv/verify/",
+        "/cable/verify",
         {
           provider: p,
           iucnumber: i,

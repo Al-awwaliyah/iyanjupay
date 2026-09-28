@@ -68,7 +68,7 @@ const SERVICE_TITLES: Record<string, string> = {
   "data-card": "Data E-pin",
   airtime_epin: "Airtime Recharge PIN",
   data_epin: "Data E-pin",
-  "recharge-card": "Airtime Recharge PIN",
+  "recharge-card": "Recharge PIN",
 };
 
 
@@ -404,177 +404,97 @@ function normaliseDataPlanLabel(value: unknown): string {
 
 function getProviderPeriod(item: Item): string {
   const raw = item.raw && typeof item.raw === "object" ? item.raw : {};
-
   const values = [
-    item.period,
-    item.plan_period,
-    item.planPeriod,
-    item.validity,
-    item.validity_period,
-    item.validityPeriod,
-    item.duration,
-    item.plan_type,
-    item.planType,
-    raw.period,
-    raw.plan_period,
-    raw.planPeriod,
-    raw.validity,
-    raw.validity_period,
-    raw.validityPeriod,
-    raw.duration,
-    raw.plan_type,
-    raw.planType,
-    raw.type,
+    item.validity, item.validity_period, item.validityPeriod,
+    item.duration, item.period, item.plan_period, item.planPeriod,
+    raw.validity, raw.validity_period, raw.validityPeriod,
+    raw.duration, raw.period, raw.plan_period, raw.planPeriod,
   ];
 
   for (const value of values) {
     const text = clean(value).replace(/\s+/g, " ").trim();
-    if (text) return text;
+    if (text && /(?:day|week|month|year|daily|weekly|monthly|yearly|annual)/i.test(text)) {
+      return text;
+    }
   }
 
-  return "";
+  const descriptive = [
+    item.display_name, item.displayName, item.name, item.plan_name,
+    item.planName, item.description, raw.name, raw.plan_name,
+    raw.planName, raw.description,
+  ].map(clean).join(" ");
+
+  const match = descriptive.match(/(?:^|\s)(\d+(?:\.\d+)?)\s*(day|days|week|weeks|month|months|year|years)\b/i);
+  return match ? `${match[1]} ${match[2]}` : "";
 }
 
 function durationDays(item: Item): number {
   const raw = item.raw && typeof item.raw === "object" ? item.raw : {};
-
-  // Only inspect fields that actually describe validity/duration. Some
-  // Topupmate catalogues use numeric plan/type codes; treating those as days
-  // was pushing otherwise monthly/weekly plans into the wrong tab.
   const candidates = [
-    item.validity_days,
-    item.validityDays,
-    item.duration_days,
-    item.durationDays,
-    item.validity,
-    item.validity_period,
-    item.validityPeriod,
-    item.period,
-    item.plan_period,
-    item.planPeriod,
-    item.duration,
-    raw.validity_days,
-    raw.validityDays,
-    raw.duration_days,
-    raw.durationDays,
-    raw.validity,
-    raw.validity_period,
-    raw.validityPeriod,
-    raw.period,
-    raw.plan_period,
-    raw.planPeriod,
-    raw.duration,
+    item.validity_days, item.validityDays, item.duration_days, item.durationDays,
+    raw.validity_days, raw.validityDays, raw.duration_days, raw.durationDays,
   ];
 
   for (const value of candidates) {
-    const text = clean(value).replace(/\s+/g, " ").trim();
-    if (!text) continue;
-
-    const explicit = text.match(
-      /^(\d+(?:\.\d+)?)\s*(day|days|week|weeks|month|months|year|years)$/i,
-    );
-    if (explicit) {
-      const count = Number(explicit[1]);
-      const unit = explicit[2].toLowerCase();
-      if (unit.startsWith("year")) return count * 365;
-      if (unit.startsWith("month")) return count * 30;
-      if (unit.startsWith("week")) return count * 7;
-      return count;
-    }
-
-    const embedded = text.match(
-      /(\d+(?:\.\d+)?)\s*(day|days|week|weeks|month|months|year|years)\b/i,
-    );
-    if (embedded) {
-      const count = Number(embedded[1]);
-      const unit = embedded[2].toLowerCase();
-      if (unit.startsWith("year")) return count * 365;
-      if (unit.startsWith("month")) return count * 30;
-      if (unit.startsWith("week")) return count * 7;
-      return count;
-    }
-
-    // A bare numeric validity value is valid only in explicit duration fields.
-    const numeric = Number(text);
-    if (Number.isFinite(numeric) && numeric > 0 && numeric <= 1000) {
-      return numeric;
-    }
-
-    const lower = text.toLowerCase();
-    if (/^daily$|^day$/.test(lower)) return 1;
-    if (/^weekly$|^week$/.test(lower)) return 7;
-    if (/^monthly$|^month$/.test(lower)) return 30;
-    if (/^yearly$|^annual$|^year$/.test(lower)) return 365;
+    const n = Number(value);
+    if (Number.isFinite(n) && n > 0 && n <= 1000) return n;
   }
 
-  // Finally inspect descriptive text for phrases such as "30 Days".
-  const descriptive = [
-    item.name,
-    item.display_name,
-    item.plan_name,
-    item.planName,
-    item.description,
-    getItemCode(item),
-    raw.name,
-    raw.plan_name,
-    raw.planName,
-    raw.description,
-  ].map(clean).join(" ");
+  const text = getProviderPeriod(item).toLowerCase();
+  const match = text.match(/(\d+(?:\.\d+)?)\s*(day|days|week|weeks|month|months|year|years)|^(daily|weekly|monthly|yearly|annual)$/i);
+  if (!match) return 0;
 
-  const match = descriptive.match(
-    /(\d+(?:\.\d+)?)\s*(day|days|week|weeks|month|months|year|years)\b/i,
-  );
-  if (match) {
-    const count = Number(match[1]);
-    const unit = match[2].toLowerCase();
-    if (unit.startsWith("year")) return count * 365;
-    if (unit.startsWith("month")) return count * 30;
-    if (unit.startsWith("week")) return count * 7;
-    return count;
-  }
+  const count = Number(match[1] ?? 1);
+  const unit = String(match[2] ?? match[3]).toLowerCase();
+  if (unit.startsWith("year") || unit === "annual" || unit === "yearly") return count * 365;
+  if (unit.startsWith("month") || unit === "monthly") return count * 30;
+  if (unit.startsWith("week") || unit === "weekly") return count * 7;
+  return count;
+}
 
-  return 0;
+function planGroup(item: Item): DataTab {
+  const period = getProviderPeriod(item).toLowerCase();
+
+  if (/hot|promo|promotion|bonus|awoof|sme|direct|gifting|gift/.test(period)) return "OTHER";
+  if (/daily|(^|\D)1\s*day|24\s*hour/.test(period)) return "DAILY";
+  if (/weekly|(^|\D)(7\s*day|1\s*week)/.test(period)) return "WEEKLY";
+  if (/monthly|(^|\D)(30\s*day|31\s*day|1\s*month)/.test(period)) return "MONTHLY";
+  if (/yearly|annual|(^|\D)(365\s*day|1\s*year)/.test(period)) return "YEARLY";
+
+  const days = durationDays(item);
+  if (days <= 1 && days > 0) return "DAILY";
+  if (days <= 7 && days > 0) return "WEEKLY";
+  if (days <= 31 && days > 0) return "MONTHLY";
+  if (days <= 365 && days > 0) return "YEARLY";
+
+  const label = [item.display_name, item.name, item.description].map(clean).join(" ").toLowerCase();
+  if (/daily|1\s*day/.test(label)) return "DAILY";
+  if (/weekly|7\s*day|1\s*week/.test(label)) return "WEEKLY";
+  if (/monthly|30\s*day|31\s*day|1\s*month/.test(label)) return "MONTHLY";
+  if (/yearly|annual|365\s*day|1\s*year/.test(label)) return "YEARLY";
+
+  return "OTHER";
 }
 
 function getPlanName(item: Item): string {
   return normaliseDataPlanLabel(
-    item.display_name ??
-      item.displayName ??
-      item.name ??
-      item.plan_name ??
-      item.planName ??
-      item.packageName ??
-      item.package_name ??
-      item.description ??
-      getItemCode(item),
+    item.display_name ?? item.displayName ?? item.name ??
+      item.plan_name ?? item.planName ?? item.packageName ??
+      item.package_name ?? item.description ?? getItemCode(item),
   );
 }
 
 function getDataPlanSize(item: Item): string {
   const candidates = [
-    item.display_name,
-    item.displayName,
-    item.name,
-    item.plan_name,
-    item.planName,
-    getItemCode(item),
-    item.data,
-    item.data_amount,
-    item.dataAmount,
-    item.volume,
-    item.bundle_size,
-    item.bundleSize,
-    item.size,
+    item.display_name, item.displayName, item.name, item.plan_name,
+    item.planName, getItemCode(item), item.data, item.data_amount,
+    item.dataAmount, item.volume, item.bundle_size, item.bundleSize, item.size,
   ];
 
   for (const value of candidates) {
     const label = clean(value).replace(/\s+/g, " ").trim();
-    const match = label.match(
-      /(?:^|\s|m)(\d+(?:\.\d+)?)\s*(KB|KBS|MB|MBS|GB|GBS|TB|TBS)\b/i,
-    );
-    if (match) {
-      return `${match[1]} ${match[2].replace(/s$/i, "").toUpperCase()}`;
-    }
+    const match = label.match(/(?:^|\s|m)(\d+(?:\.\d+)?)\s*(KB|KBS|MB|MBS|GB|GBS|TB|TBS)\b/i);
+    if (match) return `${match[1]} ${match[2].replace(/s$/i, "").toUpperCase()}`;
   }
 
   return normaliseDataPlanLabel(getPlanName(item));
@@ -583,72 +503,18 @@ function getDataPlanSize(item: Item): string {
 function getDataPlanDuration(item: Item): string {
   const explicit = getProviderPeriod(item);
   if (explicit) return explicit;
-
   const days = durationDays(item);
-  if (days > 0) {
-    if (days >= 365) return `${Math.round(days / 365)} year${days >= 730 ? "s" : ""}`;
-    if (days >= 28 && days % 30 === 0) {
-      const months = days / 30;
-      return `${months} month${months === 1 ? "" : "s"}`;
-    }
-    if (days % 7 === 0) {
-      const weeks = days / 7;
-      return `${weeks} week${weeks === 1 ? "" : "s"}`;
-    }
-    return `${days} days`;
+  if (days >= 365) return `${Math.round(days / 365)} year${days >= 730 ? "s" : ""}`;
+  if (days >= 28 && days % 30 === 0) {
+    const months = days / 30;
+    return `${months} month${months === 1 ? "" : "s"}`;
   }
-
+  if (days > 0 && days % 7 === 0) {
+    const weeks = days / 7;
+    return `${weeks} week${weeks === 1 ? "" : "s"}`;
+  }
+  if (days > 0) return `${days} days`;
   return "Data plan";
-}
-
-function planGroup(item: Item): DataTab {
-  const raw = item.raw && typeof item.raw === "object" ? item.raw : {};
-  const periodText = [
-    item.period,
-    item.plan_period,
-    item.planPeriod,
-    item.validity,
-    item.validity_period,
-    item.validityPeriod,
-    item.duration,
-    raw.period,
-    raw.plan_period,
-    raw.planPeriod,
-    raw.validity,
-    raw.validity_period,
-    raw.validityPeriod,
-    raw.duration,
-  ].map(clean).join(" ").toLowerCase();
-
-  if (/hot|promo|promotion|bonus|awoof|sme|direct|gifting|gift/.test(periodText)) {
-    return "OTHER";
-  }
-  if (/daily|1\s*day|24\s*hour/.test(periodText)) return "DAILY";
-  if (/weekly|7\s*day|1\s*week/.test(periodText)) return "WEEKLY";
-  if (/monthly|30\s*day|31\s*day|1\s*month/.test(periodText)) return "MONTHLY";
-  if (/yearly|annual|365\s*day|1\s*year/.test(periodText)) return "YEARLY";
-
-  const days = durationDays(item);
-  if (days <= 1 && days > 0) return "DAILY";
-  if (days <= 7 && days > 0) return "WEEKLY";
-  if (days <= 31 && days > 0) return "MONTHLY";
-  if (days <= 365 && days > 0) return "YEARLY";
-
-  const label = [
-    item.display_name,
-    item.displayName,
-    item.name,
-    item.description,
-    raw.name,
-    raw.description,
-  ].map(clean).join(" ").toLowerCase();
-
-  if (/daily|1\s*day/.test(label)) return "DAILY";
-  if (/weekly|7\s*day|1\s*week/.test(label)) return "WEEKLY";
-  if (/monthly|30\s*day|31\s*day|1\s*month/.test(label)) return "MONTHLY";
-  if (/yearly|annual|365\s*day|1\s*year/.test(label)) return "YEARLY";
-
-  return "OTHER";
 }
 
 function isVariable(item: Item): boolean {
@@ -778,9 +644,9 @@ function providerLogo(
     [/benin|bedc/, "bedc.com.ng"],
     [/yola|yedc/, "yedc.com.ng"],
     [/smile/, "smile.com.ng"],
-    [/alpha/, "alphatopup.com"],
-    [/kirani/, "kirani.com.ng"],
-    [/ratel/, "ratel.com.ng"],
+    [/alpha/, "topupmate.com"],
+    [/kirani/, "kirani.ng"],
+    [/ratel/, "ratelplus.net"],
     [/jamb/, "jamb.gov.ng"],
     [/waec/, "waec.org"],
     [/neco/, "neco.gov.ng"],
@@ -2802,17 +2668,14 @@ export default function ServicePayment({
       code ===
       selectedBillerCode;
 
+    const providerFallbackLogo = providerLogo(name, code);
     const logo =
       clean(
         biller.logo_url ??
           biller.logoUrl ??
           biller.logo ??
           firstArray(biller.logoUrls, biller.logo_urls)[0]
-      ) ||
-      providerLogo(
-        name,
-        code
-      );
+      ) || providerFallbackLogo;
 
     return (
       <button
@@ -2847,13 +2710,23 @@ export default function ServicePayment({
               alt=""
               className="h-full w-full object-contain p-1"
               onError={(e) => {
-                e.currentTarget.style.display =
-                  "none";
+                const img = e.currentTarget;
+                if (providerFallbackLogo && img.dataset.fallback !== "1" && img.src !== providerFallbackLogo) {
+                  img.dataset.fallback = "1";
+                  img.src = providerFallbackLogo;
+                  return;
+                }
+                img.style.display = "none";
+                const fallback = img.parentElement?.querySelector<HTMLSpanElement>("[data-logo-initials]");
+                if (fallback) fallback.style.display = "flex";
               }}
             />
           ) : (
             initials(name)
           )}
+          <span data-logo-initials="true" className="hidden h-full w-full items-center justify-center">
+            {initials(name)}
+          </span>
         </span>
 
         <span

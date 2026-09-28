@@ -1158,7 +1158,7 @@ async function verify(service: string, b: O) {
     }
 
     let r = await post(
-      "/cable/verify/",
+      "/cabletv/verify/",
       {
         provider: p,
         iucnumber: i,
@@ -1169,7 +1169,7 @@ async function verify(service: string, b: O) {
     // the trailing slash when the provider returns 404.
     if (r.httpStatus === 404) {
       r = await post(
-        "/cable/verify",
+        "/cabletv/verify/",
         {
           provider: p,
           iucnumber: i,

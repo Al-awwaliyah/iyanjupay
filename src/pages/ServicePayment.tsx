@@ -27,6 +27,7 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useCustomerAppSettings } from "@/hooks/useCustomerAppSettings";
+import { getSafeErrorMessage } from "@/lib/errorHandling";
 
 interface ServicePaymentProps {
   service: { title: string; type: string } | null;
@@ -406,26 +407,29 @@ function getProviderPeriod(item: Item): string {
   const raw = item.raw && typeof item.raw === "object" ? item.raw : {};
   const values = [
     item.validity, item.validity_period, item.validityPeriod,
-    item.duration, item.period, item.plan_period, item.planPeriod,
+    item.validity_text, item.validityText, item.validity_label, item.validityLabel,
+    item.duration, item.duration_text, item.durationText, item.period,
+    item.plan_period, item.planPeriod,
     raw.validity, raw.validity_period, raw.validityPeriod,
-    raw.duration, raw.period, raw.plan_period, raw.planPeriod,
+    raw.validity_text, raw.validityText, raw.validity_label, raw.validityLabel,
+    raw.duration, raw.duration_text, raw.durationText, raw.period, raw.plan_period, raw.planPeriod,
   ];
 
   for (const value of values) {
     const text = clean(value).replace(/\s+/g, " ").trim();
-    if (text && /(?:day|week|month|year|daily|weekly|monthly|yearly|annual)/i.test(text)) {
-      return text;
-    }
+    if (!text) continue;
+    if (/(?:hour|hours|hr|hrs|day|days|week|weeks|month|months|year|years|daily|weekly|monthly|yearly|annual)/i.test(text)) return text;
+    const numeric = Number(text);
+    if (Number.isFinite(numeric) && numeric > 0) return `${numeric} days`;
   }
 
   const descriptive = [
-    item.display_name, item.displayName, item.name, item.plan_name,
-    item.planName, item.description, raw.name, raw.plan_name,
-    raw.planName, raw.description,
+    item.display_name, item.displayName, item.name, item.plan_name, item.planName,
+    item.description, item.plan_type, item.planType, raw.name, raw.plan_name, raw.planName, raw.description, raw.plan_type, raw.type,
   ].map(clean).join(" ");
 
-  const match = descriptive.match(/(?:^|\s)(\d+(?:\.\d+)?)\s*(day|days|week|weeks|month|months|year|years)\b/i);
-  return match ? `${match[1]} ${match[2]}` : "";
+  const match = descriptive.match(/(?:^|\s)(daily|weekly|monthly|yearly|annual|\d+(?:\.\d+)?\s*(?:hour|hours|hr|hrs|day|days|week|weeks|month|months|year|years))\b/i);
+  return match ? match[1] : "";
 }
 
 function durationDays(item: Item): number {
@@ -433,6 +437,8 @@ function durationDays(item: Item): number {
   const candidates = [
     item.validity_days, item.validityDays, item.duration_days, item.durationDays,
     raw.validity_days, raw.validityDays, raw.duration_days, raw.durationDays,
+    item.validity, item.validity_period, item.validityPeriod, item.duration,
+    raw.validity, raw.validity_period, raw.validityPeriod, raw.duration,
   ];
 
   for (const value of candidates) {
@@ -441,11 +447,12 @@ function durationDays(item: Item): number {
   }
 
   const text = getProviderPeriod(item).toLowerCase();
-  const match = text.match(/(\d+(?:\.\d+)?)\s*(day|days|week|weeks|month|months|year|years)|^(daily|weekly|monthly|yearly|annual)$/i);
+  const match = text.match(/(\d+(?:\.\d+)?)\s*(hour|hours|hr|hrs|day|days|week|weeks|month|months|year|years)|^(daily|weekly|monthly|yearly|annual)$/i);
   if (!match) return 0;
 
   const count = Number(match[1] ?? 1);
   const unit = String(match[2] ?? match[3]).toLowerCase();
+  if (unit.startsWith("hour") || unit === "hr" || unit === "hrs") return Math.max(1, Math.ceil(count / 24));
   if (unit.startsWith("year") || unit === "annual" || unit === "yearly") return count * 365;
   if (unit.startsWith("month") || unit === "monthly") return count * 30;
   if (unit.startsWith("week") || unit === "weekly") return count * 7;
@@ -574,6 +581,21 @@ function canonicalNetworkName(
   return "";
 }
 
+function textLogo(label: string): string {
+  const safe = clean(label).slice(0, 5).toUpperCase();
+  return (
+    "data:image/svg+xml;charset=UTF-8," +
+    encodeURIComponent(`
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 64">
+        <rect width="160" height="64" rx="12" fill="#ffffff"/>
+        <circle cx="32" cy="32" r="22" fill="#082A63"/>
+        <text x="32" y="38" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="17" font-weight="700" fill="#ffffff">${safe}</text>
+        <text x="62" y="38" font-family="Arial,Helvetica,sans-serif" font-size="18" font-weight="700" fill="#082A63">IyanjuPay</text>
+      </svg>
+    `)
+  );
+}
+
 function providerLogo(
   name: string,
   code = ""
@@ -581,15 +603,15 @@ function providerLogo(
   const network = canonicalNetworkName(name, code);
 
   if (network === "MTN") {
-    return "https://cdn.simpleicons.org/mtn";
+    return "https://www.google.com/s2/favicons?domain=mtn.ng&sz=128";
   }
 
   if (network === "Glo") {
-    return "https://cdn.simpleicons.org/glo";
+    return "https://www.google.com/s2/favicons?domain=gloworld.com&sz=128";
   }
 
   if (network === "Airtel") {
-    return "https://cdn.simpleicons.org/airtel";
+    return "https://www.google.com/s2/favicons?domain=airtel.com.ng&sz=128";
   }
 
   if (network === "9mobile") {
@@ -612,19 +634,28 @@ function providerLogo(
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, " ");
 
+  if (value.includes("jamb")) return textLogo("JAMB");
+  if (value.includes("waec")) return textLogo("WAEC");
+  if (value.includes("neco")) return textLogo("NECO");
+  if (value.includes("nabteb")) return textLogo("NABTEB");
+  if (value.includes("smile")) return textLogo("SMILE");
+  if (value.includes("alpha")) return textLogo("ALPHA");
+  if (value.includes("kirani")) return textLogo("KIRANI");
+  if (value.includes("ratel")) return textLogo("RATEL");
+
   if (value.includes("dstv")) {
     return "https://seeklogo.com/images/D/DSTV-logo-214D0468CA-seeklogo.com.png";
   }
 
   if (value.includes("gotv")) {
-    return "https://cdn.simpleicons.org/gotv";
+    return "https://www.google.com/s2/favicons?domain=gotvafrica.com&sz=128";
   }
 
   if (
     value.includes("startime") ||
     value.includes("startimes")
   ) {
-    return "https://cdn.simpleicons.org/startimes";
+    return "https://www.google.com/s2/favicons?domain=startimestv.com&sz=128";
   }
 
   if (value.includes("showmax")) {
@@ -704,16 +735,16 @@ const OFFLINE_BILLERS: Record<string, Biller[]> = {
       ],
 
   electricity: [
-    { biller_code: "01", name: "Abuja Electric" },
-    { biller_code: "02", name: "Benin Electric" },
-    { biller_code: "03", name: "Enugu Electric" },
-    { biller_code: "04", name: "Eko Electric" },
-    { biller_code: "05", name: "Ibadan Electric" },
-    { biller_code: "06", name: "Ikeja Electric" },
-    { biller_code: "07", name: "Jos Electric" },
-    { biller_code: "08", name: "Kaduna Electric" },
-    { biller_code: "09", name: "Kano Electric" },
-    { biller_code: "10", name: "Port Harcourt Electric" },
+    { biller_code: "01", name: "Ikeja Electric" },
+    { biller_code: "02", name: "Eko Electric" },
+    { biller_code: "03", name: "Kano Electric" },
+    { biller_code: "04", name: "Port Harcourt Electric" },
+    { biller_code: "05", name: "Jos Electric" },
+    { biller_code: "06", name: "Ibadan Electric" },
+    { biller_code: "07", name: "Kaduna Electric" },
+    { biller_code: "08", name: "Abuja Electric" },
+    { biller_code: "09", name: "Enugu Electric" },
+    { biller_code: "10", name: "Benin Electric" },
     { biller_code: "11", name: "Yola Electric" },
   ],
 };
@@ -855,8 +886,10 @@ function canonicalInternetProvider(biller: Biller): string {
     biller.raw?.providerName,
   ].map(clean).join(" ").toLowerCase();
 
-  // Internet Service is intentionally limited to Smile.
   if (raw.includes("smile")) return "Smile";
+  if (raw.includes("alpha")) return "Alpha";
+  if (raw.includes("kirani")) return "Kirani";
+  if (raw.includes("ratel")) return "Ratel";
 
   return "";
 }
@@ -982,6 +1015,7 @@ function mergeBillers(
       service === "airtime" ||
       service === "data" ||
       service === "airtime-card" ||
+      service === "recharge-card" ||
       service === "data-card";
 
     const displayName = isNetworkService
@@ -1232,9 +1266,9 @@ function ServiceTransactionProcessing({
 
       setStatus(nextStatus);
     } catch (error: any) {
+      console.error("IyanjuPay service transaction failed", error);
       setMessage(
-        error?.message ||
-          "We could not complete this transaction."
+        getSafeErrorMessage(error, "We could not complete this transaction. Please try again.")
       );
 
       setStatus("failed");
@@ -1440,12 +1474,12 @@ function ServiceTransactionProcessing({
               )}
 
               {isSuccess &&
-                details?.service === "airtime-card" &&
+                (details?.service === "airtime-card" || details?.service === "recharge-card" || details?.service === "gift-card") &&
                 fulfillment &&
                 Object.keys(fulfillment).length > 0 && (
                   <div className="rounded-2xl border border-emerald-200 bg-emerald-50/80 p-4 text-sm text-emerald-950">
                     <div className="mb-2 flex items-center justify-between gap-3">
-                      <div className="font-bold">Recharge PIN details</div>
+                      <div className="font-bold">{details?.service === "gift-card" ? "Gift Card details" : "Recharge PIN details"}</div>
                       <Copy className="h-4 w-4 text-emerald-700" />
                     </div>
                     <div className="space-y-2">
@@ -1798,17 +1832,13 @@ export default function ServicePayment({
         );
 
       if (fnError) {
-        throw new Error(
-          fnError.message ||
-            "Service request failed."
-        );
+        console.error("IyanjuPay service request failed", fnError);
+        throw new Error("SERVICE_REQUEST_FAILED");
       }
 
       if (!data || data.success !== true) {
-        throw new Error(
-          data?.error ||
-            "Service request failed."
-        );
+        console.error("IyanjuPay service response failed", data);
+        throw new Error("SERVICE_REQUEST_FAILED");
       }
 
       return data;
@@ -1881,8 +1911,7 @@ export default function ServicePayment({
         }
       } catch (e: any) {
         const message =
-          e?.message ||
-          "Unable to load service options.";
+          getSafeErrorMessage(e, "Unable to load service options.");
 
         setError(message);
 
@@ -1981,8 +2010,7 @@ export default function ServicePayment({
           }
         } catch (e: any) {
           const message =
-            e?.message ||
-            "Unable to load packages.";
+            getSafeErrorMessage(e, "Unable to load packages.");
 
           setError(message);
 
@@ -2120,8 +2148,7 @@ export default function ServicePayment({
         setVerifiedName("");
 
         const message =
-          e?.message ||
-          "Unable to verify the number.";
+          getSafeErrorMessage(e, "Unable to verify the number. Please check the number and try again.");
 
         setError(message);
 
@@ -2637,8 +2664,7 @@ export default function ServicePayment({
         });
       } catch (e: any) {
         const message =
-          e?.message ||
-          "Unable to complete this payment.";
+          getSafeErrorMessage(e, "Unable to complete this payment. Please try again.");
 
         setError(message);
 
@@ -2668,10 +2694,14 @@ export default function ServicePayment({
       code ===
       selectedBillerCode;
 
-    // Ignore provider-supplied logo fields because some catalog records can
-    // contain a generic/platform logo. Always use the explicit brand mapping.
     const providerFallbackLogo = providerLogo(name, code);
-    const logo = providerFallbackLogo;
+    const logo =
+      clean(
+        biller.logo_url ??
+          biller.logoUrl ??
+          biller.logo ??
+          firstArray(biller.logoUrls, biller.logo_urls)[0]
+      ) || providerFallbackLogo;
 
     return (
       <button
@@ -3258,14 +3288,7 @@ export default function ServicePayment({
                           new Map(
                             items
                               .map((item) => [
-                                num(
-                                  item.value ??
-                                    item.denomination ??
-                                    item.face_value ??
-                                    item.faceValue ??
-                                    item.amount ??
-                                    item.price
-                                ),
+                                num(item.value ?? item.denomination ?? item.face_value ?? item.faceValue ?? item.plan_amount ?? item.planAmount ?? item.raw?.value ?? item.raw?.denomination ?? item.raw?.face_value ?? item.raw?.faceValue ?? item.raw?.amount),
                                 item,
                               ] as const)
                               .filter(([value, item]) => value > 0 && !!getItemCode(item))

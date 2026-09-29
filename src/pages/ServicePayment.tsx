@@ -2658,14 +2658,14 @@ export default function ServicePayment({
           !!processingSession ||
           verifyingPin
         }
-        className={`iyanjupay-service-biller-card flex min-w-0 flex-col items-center justify-center gap-1 rounded-2xl border bg-white px-1.5 py-2 transition active:scale-[0.98] ${
+        className={`iyanjupay-service-biller-card flex min-w-0 min-h-[92px] flex-col items-center justify-center gap-1.5 rounded-2xl border bg-white px-2 py-2 transition active:scale-[0.98] ${
           selected
             ? "border-[#6D28D9] bg-violet-50 ring-1 ring-[#6D28D9]/20"
             : "border-gray-200 hover:border-violet-300 hover:bg-violet-50/30"
         }`}
       >
         <span
-          className={`iyanjupay-service-biller-logo flex h-9 w-9 items-center justify-center overflow-hidden rounded-xl border bg-white text-xs font-bold text-gray-600 shadow-sm ${
+          className={`iyanjupay-service-biller-logo flex h-16 w-full max-w-[76px] items-center justify-center overflow-hidden rounded-xl border bg-white text-xs font-bold text-gray-600 shadow-sm ${
             selected
               ? "border-[#6D28D9]"
               : "border-gray-200"
@@ -2675,7 +2675,7 @@ export default function ServicePayment({
             <img
               src={logo}
               alt=""
-              className="h-full w-full object-contain p-1"
+              className="block h-auto max-h-14 w-auto max-w-full object-contain p-0.5"
               onError={(e) => {
                 const img = e.currentTarget;
                 if (providerFallbackLogo && img.dataset.fallback !== "1" && img.src !== providerFallbackLogo) {

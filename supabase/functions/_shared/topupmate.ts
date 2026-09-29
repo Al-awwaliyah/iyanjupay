@@ -128,19 +128,9 @@ export async function topupmatePost(
 
 /** Normalize Topupmate's response status into the application's states. */
 export function normalizeTopupmateStatus(body: any): "success" | "processing" | "fail" {
-  const explicitSuccess =
-    body?.success === true || body?.data?.success === true;
-  const explicitFailure =
-    body?.success === false || body?.data?.success === false;
-
-  if (explicitSuccess) return "success";
-  if (explicitFailure) return "fail";
-
   const value = String(
     body?.status ??
       body?.data?.status ??
-      body?.data?.transaction_status ??
-      body?.transaction_status ??
       "",
   ).toLowerCase();
 
@@ -151,7 +141,15 @@ export function normalizeTopupmateStatus(body: any): "success" | "processing" | 
       "completed",
       "complete",
       "succeeded",
-    ].includes(value)
+      "ok",
+      "true",
+      "1",
+    ].includes(value) ||
+    body?.success === true ||
+    body?.success === "true" ||
+    body?.ok === true ||
+    body?.data?.success === true ||
+    body?.data?.success === "true"
   ) {
     return "success";
   }
@@ -164,7 +162,9 @@ export function normalizeTopupmateStatus(body: any): "success" | "processing" | 
       "initiated",
       "in_progress",
       "in-progress",
-    ].includes(value)
+    ].includes(value) ||
+    body?.success === false &&
+      ["processing", "pending", "queued", "initiated", "in_progress", "in-progress"].includes(String(body?.status ?? "").toLowerCase())
   ) {
     return "processing";
   }
@@ -207,18 +207,28 @@ export function getTopupmateRows(body: any): any[] {
     return body;
   }
 
-  for (const value of [
-    body?.msg,
+  const candidates = [
     body?.response,
     body?.plans,
     body?.packages,
     body?.services,
+    body?.items,
+    body?.products,
+    body?.providers,
+    body?.msg,
     body?.data,
     body?.results,
-    body?.items,
-  ]) {
-    if (Array.isArray(value)) {
-      return value;
+  ];
+
+  for (const value of candidates) {
+    if (Array.isArray(value)) return value;
+    if (value && typeof value === "object") {
+      for (const nested of [
+        value.items, value.plans, value.packages, value.products,
+        value.providers, value.results, value.response, value.msg, value.data,
+      ]) {
+        if (Array.isArray(nested)) return nested;
+      }
     }
   }
 

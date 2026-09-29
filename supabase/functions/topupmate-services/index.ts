@@ -36,18 +36,13 @@ const s = (v: any) => String(v ?? "").trim();
 const n = (v: any) =>
   Number.isFinite(Number(v)) ? Number(v) : 0;
 
-function topupmatePhone(v: any): string {
-  const raw = s(v).replace(/\s+/g, "");
-  if (/^\+234\d{10}$/.test(raw)) return `0${raw.slice(4)}`;
-  if (/^234\d{10}$/.test(raw)) return `0${raw.slice(3)}`;
-  return raw;
-}
-
 const ref = () =>
   `TPM_${crypto.randomUUID().replace(/-/g, "")}`;
 
 function network(v: any) {
-  const x = s(v).toLowerCase().replace(/[^a-z0-9]+/g, "");
+  const x = s(v)
+    .toLowerCase()
+    .replace(/\s+/g, "");
 
   return (
     {
@@ -55,12 +50,12 @@ function network(v: any) {
       "1": "1",
       "01": "1",
       glo: "2",
+      globacom: "2",
       "2": "2",
       "02": "2",
       "9mobile": "3",
-      "9mobilet2": "3",
-      "t2": "3",
       etisalat: "3",
+      t2: "3",
       "3": "3",
       "03": "3",
       airtel: "4",
@@ -76,11 +71,18 @@ function networkName(v: any) {
     .replace(/[^a-z0-9]+/g, "");
 
   if (x === "1" || x === "01" || x.includes("mtn")) return "mtn";
-  if (x === "2" || x === "02" || x.includes("glo")) return "glo";
-  if (x === "3" || x === "03" || x === "9mobile" || x.includes("t2") || x.includes("etisalat")) return "9mobile";
+  if (x === "2" || x === "02" || x.includes("glo") || x.includes("globacom")) return "glo";
+  if (x === "3" || x === "03" || x.includes("9mobile") || x.includes("etisalat") || x === "t2") return "9mobile";
   if (x === "4" || x === "04" || x.includes("airtel")) return "airtel";
 
   return "";
+}
+
+function normalizeNigerianPhone(v: any) {
+  const raw = s(v).replace(/[\s()-]/g, "");
+  if (/^\+234\d{10}$/.test(raw)) return `0${raw.slice(4)}`;
+  if (/^234\d{10}$/.test(raw)) return `0${raw.slice(3)}`;
+  return raw;
 }
 
 function cable(v: any) {
@@ -350,13 +352,7 @@ function getProviderPeriod(r: any) {
     r?.validity,
     r?.validity_period,
     r?.validityPeriod,
-    r?.validity_text,
-    r?.validityText,
-    r?.validity_label,
-    r?.validityLabel,
     r?.duration,
-    r?.duration_text,
-    r?.durationText,
     r?.period,
     r?.plan_period,
     r?.planPeriod,
@@ -364,18 +360,10 @@ function getProviderPeriod(r: any) {
 
   for (const value of values) {
     const text = s(value).replace(/\s+/g, " ");
-    if (!text) continue;
-    if (/(?:day|week|month|year|daily|weekly|monthly|yearly|annual|hour)/i.test(text)) return text;
-    const numeric = Number(text);
-    if (Number.isFinite(numeric) && numeric > 0) return `${numeric} days`;
+    if (text) return text;
   }
 
-  const descriptive = [
-    r?.name, r?.plan_name, r?.planName, r?.description, r?.package_name,
-    r?.packageName, r?.display_name, r?.displayName, r?.plan_type, r?.type,
-  ].map(s).join(" ");
-  const match = descriptive.match(/(daily|weekly|monthly|yearly|annual|\d+(?:\.\d+)?\s*(?:hour|hours|day|days|week|weeks|month|months|year|years))/i);
-  return match ? match[1] : "";
+  return "";
 }
 
 function norm(service: string, r: any) {
@@ -423,16 +411,12 @@ function norm(service: string, r: any) {
     period = match ? `${match[1]} ${match[2]}` : "";
   }
 
-  const rawValidityDays =
-    r?.validity_days ?? r?.validityDays ??
-    r?.duration_days ?? r?.durationDays;
-  const numericValidity = Number(
-    rawValidityDays ?? r?.validity ?? r?.validity_period ?? r?.validityPeriod ?? r?.duration,
-  );
   const validityDays =
-    Number.isFinite(numericValidity) && numericValidity > 0
-      ? numericValidity
-      : rawValidityDays ?? "";
+    r?.validity_days ??
+    r?.validityDays ??
+    r?.duration_days ??
+    r?.durationDays ??
+    "";
 
   const networkId =
     r?.networkid ??
@@ -488,6 +472,23 @@ function norm(service: string, r: any) {
     price: sellingPrice,
     selling_price: sellingPrice,
     amount: sellingPrice,
+
+    value: Number(
+      r?.value ??
+        r?.denomination ??
+        r?.face_value ??
+        r?.faceValue ??
+        r?.amount ??
+        r?.price ??
+        0
+    ) || 0,
+    denomination: Number(
+      r?.denomination ??
+        r?.value ??
+        r?.face_value ??
+        r?.faceValue ??
+        0
+    ) || 0,
 
     service,
     raw: r,
@@ -583,7 +584,6 @@ async function getInternetPlans(providerKey = "") {
     all.push(...tagged);
 
     if (wanted && tagged.some((x: any) => price(x) > 0 || id(x))) {
-      // Keep searching aliases only when this response contains no usable plan price.
       return tagged;
     }
   }
@@ -628,151 +628,18 @@ function giftRows(body: any): any[] {
       ]) {
         if (Array.isArray(candidate[key])) return candidate[key];
       }
+      const values = Object.values(candidate).filter(
+        (x: any) => x && typeof x === "object" && !Array.isArray(x),
+      );
+      if (values.length && values.some((x: any) =>
+        x.productId != null || x.product_id != null || x.productName != null || x.name != null
+      )) {
+        return values;
+      }
     }
   }
 
   return [];
-}
-
-function rechargeDenomination(r: any): number {
-  for (const value of [
-    r?.denomination, r?.value, r?.face_value, r?.faceValue,
-    r?.plan_amount, r?.planAmount, r?.plan_value, r?.planValue,
-    r?.amount,
-  ]) {
-    const v = n(value);
-    if (v > 0) return v;
-  }
-  return 0;
-}
-
-function rechargeRowsForNetwork(raw: any[], networkId: string): any[] {
-  const tagged = raw.filter((r: any) => dataPlanMatchesNetwork(r, networkId));
-  return tagged.length ? tagged : raw;
-}
-
-function normaliseRechargeItem(r: any, networkId: string) {
-  const denomination = rechargeDenomination(r);
-  const code = s(
-    r?.plan ?? r?.plan_code ?? r?.planCode ?? r?.item_code ??
-    r?.itemCode ?? r?.id ?? r?.code ?? denomination,
-  );
-  const providerPrice = n(
-    r?.price ?? r?.selling_price ?? r?.sellingPrice ?? r?.provider_price ??
-    r?.providerPrice ?? r?.cost ?? r?.amount ?? denomination,
-  );
-  return {
-    ...norm("recharge-card", r),
-    id: code,
-    code,
-    plan_id: code,
-    item_code: code,
-    network_id: networkId,
-    networkId,
-    network: networkName(networkId),
-    network_name: networkName(networkId),
-    denomination,
-    value: denomination,
-    face_value: denomination,
-    providerPrice,
-    provider_price: providerPrice,
-    price: providerPrice,
-    selling_price: providerPrice,
-    amount: providerPrice,
-    raw: r,
-  };
-}
-
-async function rechargeCatalog(networkId: string) {
-  const candidates = [
-    { service: "recharge-card", network: networkId },
-    { service: "recharge-card", networkid: networkId },
-    { service: "recharge-card", network_id: networkId },
-    { service: "recharge-card", provider: networkId },
-  ];
-  let fallback: any[] = [];
-  for (const params of candidates) {
-    const r = await get("/services/", params);
-    if (!r.ok) continue;
-    const source = rows(r.body);
-    if (!source.length) continue;
-    if (!fallback.length) fallback = source;
-    const matching = rechargeRowsForNetwork(source, networkId);
-    if (matching.length) return matching;
-  }
-  return rechargeRowsForNetwork(fallback, networkId);
-}
-
-function fxRate(body: any, amount: number): number {
-  for (const value of [
-    body?.rate, body?.exchange_rate, body?.exchangeRate, body?.conversion_rate,
-    body?.response?.rate, body?.response?.exchange_rate,
-    body?.data?.rate, body?.data?.exchange_rate,
-  ]) {
-    const valueNumber = n(value);
-    if (valueNumber > 0) return valueNumber;
-  }
-  const converted = n(
-    body?.converted_amount ?? body?.convertedAmount ??
-    body?.response?.converted_amount ?? body?.data?.converted_amount,
-  );
-  return converted > 0 && amount > 0 ? converted / amount : 0;
-}
-
-async function convertCurrency(amount: number, from: string, to = "NGN"): Promise<number> {
-  const value = n(amount);
-  const source = s(from).toUpperCase() || to;
-  const target = s(to).toUpperCase();
-  if (value <= 0) return 0;
-  if (source === target) return value;
-
-  const q = await post("/fx-conversions/rates/", {
-    from: source,
-    to: target,
-    amount: value,
-  });
-  if (!q.ok || status(q.body) === "fail") {
-    throw new Error("Unable to calculate the current gift card exchange rate.");
-  }
-  const rate = fxRate(q.body, value);
-  if (!rate) throw new Error("Unable to calculate the current gift card exchange rate.");
-  return value * rate;
-}
-
-function mappedSenderForRecipient(product: any, recipientAmount: number): number {
-  const maps = Array.isArray(product?.fixedRecipientToSenderDenominationsMap)
-    ? product.fixedRecipientToSenderDenominationsMap
-    : [];
-  for (const entry of maps) {
-    if (!entry || typeof entry !== "object") continue;
-    for (const [key, value] of Object.entries(entry)) {
-      const keyNumber = n(key);
-      const valueNumber = n(value);
-      if (Math.abs(keyNumber - recipientAmount) < 0.000001 && valueNumber > 0) return valueNumber;
-      if (Math.abs(valueNumber - recipientAmount) < 0.000001 && keyNumber > 0) return keyNumber;
-    }
-  }
-  return 0;
-}
-
-async function giftProviderNaira(product: any, recipientAmount: number): Promise<number> {
-  const recipientCurrency = s(product?.recipientCurrencyCode ?? product?.recipient_currency_code ?? "USD").toUpperCase();
-  const senderCurrency = s(product?.senderCurrencyCode ?? product?.sender_currency_code ?? "USD").toUpperCase();
-  const fixedFee = n(product?.senderFee);
-  const percentageFee = n(product?.senderFeePercentage);
-
-  let senderAmount = mappedSenderForRecipient(product, recipientAmount);
-
-  if (!senderAmount) {
-    if (recipientCurrency === senderCurrency) {
-      senderAmount = recipientAmount;
-    } else {
-      senderAmount = await convertCurrency(recipientAmount, recipientCurrency, senderCurrency);
-    }
-  }
-
-  const grossSender = senderAmount + fixedFee + (senderAmount * percentageFee / 100);
-  return convertCurrency(grossSender, senderCurrency, "NGN");
 }
 
 async function giftCatalog(productId?: string) {
@@ -851,22 +718,9 @@ function giftProduct(r: any) {
     .map((x: any) => Number(Object.values(x || {})[0]))
     .filter((x: number) => x > 0);
 
-  const recipientCurrencyCode = s(r?.recipientCurrencyCode ?? r?.recipient_currency_code ?? r?.recipientCurrency);
-  const senderCurrencyCode = s(r?.senderCurrencyCode ?? r?.sender_currency_code ?? r?.senderCurrency);
-  const fixedFee = n(r?.senderFee);
-  const percentageFee = n(r?.senderFeePercentage);
-  const sameCurrency = recipientCurrencyCode && senderCurrencyCode
-    ? recipientCurrencyCode.toUpperCase() === senderCurrencyCode.toUpperCase()
-    : false;
-  const calculatedSameCurrency = sameCurrency && denoms.length
-    ? denoms.map((value: number) => value + fixedFee + (value * percentageFee / 100))
-    : [];
-
   const effectiveSender = senderDenoms.length
     ? senderDenoms
-    : mappedSender.length
-      ? mappedSender
-      : calculatedSameCurrency;
+    : mappedSender;
 
   const firstPrice = effectiveSender[0] || 0;
 
@@ -880,8 +734,6 @@ function giftProduct(r: any) {
     product_id: productId,
     productId,
     countryCode: r?.countryCode,
-    recipientCurrencyCode,
-    senderCurrencyCode,
     denominationType: r?.denominationType,
     fixedRecipientDenominations: denoms,
     minRecipientDenomination: r?.minRecipientDenomination,
@@ -902,24 +754,6 @@ function giftProduct(r: any) {
 }
 
 async function billers(service: string) {
-  if (["airtime-card", "recharge-card", "data-card"].includes(service)) {
-    const networks = [
-      { id: "1", code: "01", name: "MTN" },
-      { id: "2", code: "02", name: "Glo" },
-      { id: "3", code: "03", name: "9mobile" },
-      { id: "4", code: "04", name: "Airtel" },
-    ];
-    return {
-      success: true,
-      service,
-      billers: networks.map((x) => ({
-        id: x.id, code: x.code, biller_code: x.code, networkid: x.id,
-        name: x.name, display_name: x.name, network_name: x.name, status: "active",
-      })),
-      items: [], plans: [], packages: [],
-    };
-  }
-
   if (service === "education") {
     return {
       success: true,
@@ -1014,22 +848,6 @@ async function billers(service: string) {
 }
 
 async function catalog(service: string, b: O) {
-  if (service === "airtime-card" || service === "recharge-card") {
-    const requestedNetwork = network(
-      b.provider_name ?? b.provider ?? b.network_name ?? b.network ?? b.biller_code,
-    );
-    if (!requestedNetwork) throw new Error("A mobile network is required.");
-    const raw = await rechargeCatalog(requestedNetwork);
-    const items = raw
-      .map((r: any) => normaliseRechargeItem(r, requestedNetwork))
-      .filter((x: any) => x.denomination > 0 && x.providerPrice > 0)
-      .sort((a: any, b: any) => a.denomination - b.denomination);
-    return {
-      success: true, service: "recharge-card", selected_network: requestedNetwork,
-      billers: [], items, plans: items, packages: items,
-    };
-  }
-
   if (service === "data") {
     const requestedNetwork = network(
       b.provider_name ||
@@ -1203,32 +1021,27 @@ async function catalog(service: string, b: O) {
 
     const sender = gp.fixedSenderDenominations;
 
-    const pricedItems = await Promise.all(
-      denoms.map(async (d: number) => {
-        const providerNaira = await giftProviderNaira(product, d);
-        const customerPrice = providerNaira
-          ? sell(providerNaira, MARKUP)
+    const items = denoms.map(
+      (d: number, i: number) => {
+        const providerAmount = Number(sender[i] ?? 0);
+        const customerPrice = providerAmount
+          ? sell(providerAmount, 3)
           : 0;
 
         return {
           id: `${gp.id}:${d}`,
           code: `${gp.id}:${d}`,
           plan_id: `${gp.id}:${d}`,
-          name: `${gp.name} ${gp.recipientCurrencyCode || ""} ${d}`.trim(),
-          display_name: `${gp.name} ${gp.recipientCurrencyCode || ""} ${d}`.trim(),
+          name: `${gp.name} $${d}`,
+          display_name: `${gp.name} $${d}`,
           provider: "Topupmate",
           provider_name: "Topupmate",
-          providerPrice: providerNaira,
-          provider_price: providerNaira,
+          providerPrice: providerAmount,
+          provider_price: providerAmount,
           selling_price: customerPrice,
           price: customerPrice,
           amount: customerPrice,
           recipient_amount: d,
-          recipient_currency: gp.recipientCurrencyCode,
-          sender_currency: gp.senderCurrencyCode,
-          sender_fee: gp.senderFee,
-          sender_fee_percentage: gp.senderFeePercentage,
-          denomination_type: gp.denominationType,
           product_id: gp.id,
           productId: gp.id,
           denomination: d,
@@ -1239,10 +1052,8 @@ async function catalog(service: string, b: O) {
             fixedSenderDenominations: sender,
           },
         };
-      }),
+      },
     );
-
-    const items = pricedItems;
 
     return {
       success: true,
@@ -1377,7 +1188,7 @@ async function verify(service: string, b: O) {
     }
 
     let r = await post(
-      "/cabletv/verify/",
+      "/cable/verify/",
       {
         provider: p,
         iucnumber: i,
@@ -1388,7 +1199,7 @@ async function verify(service: string, b: O) {
     // the trailing slash when the provider returns 404.
     if (r.httpStatus === 404) {
       r = await post(
-        "/cabletv/verify/",
+        "/cable/verify",
         {
           provider: p,
           iucnumber: i,
@@ -1469,7 +1280,7 @@ async function verify(service: string, b: O) {
       throw new Error("Meter details are required.");
     }
 
-    const r = await post(
+    let r = await post(
       "/electricity/verify/",
       {
         provider: p,
@@ -1477,6 +1288,20 @@ async function verify(service: string, b: O) {
         metertype: t,
       },
     );
+
+    // Keep compatibility with both documented route variants used by
+    // Topupmate Connect accounts. Only retry on HTTP 404; never duplicate a
+    // real verification failure.
+    if (r.httpStatus === 404) {
+      r = await post(
+        "/electricity/verify",
+        {
+          provider: p,
+          meternumber: m,
+          metertype: t,
+        },
+      );
+    }
 
     if (!r.ok || status(r.body) === "fail") {
       throw new Error(msg(r.body));
@@ -1562,7 +1387,7 @@ async function purchase(
 
   const item = d.item ?? {};
 
-  const customer = s(
+  const customer = normalizeNigerianPhone(
     d.customer ??
       d.phone ??
       d.mobile_number ??
@@ -1584,11 +1409,10 @@ async function purchase(
     );
 
     pAmt = n(d.amount ?? b.amount);
-    const providerPhone = topupmatePhone(customer);
 
     if (
       !net ||
-      !/^[0-9]{11}$/.test(providerPhone) ||
+      !/^[0-9]{11}$/.test(customer) ||
       pAmt < 50
     ) {
       throw new Error(
@@ -1599,7 +1423,7 @@ async function purchase(
     path = "/airtime/";
     body = {
       network: net,
-      phone: providerPhone,
+      phone: customer,
       amount: pAmt,
       airtime_type: "VTU",
       ref: r,
@@ -1614,14 +1438,15 @@ async function purchase(
     );
 
     const plan = s(
-      d.item_code ?? d.itemCode ?? d.plan_code ?? d.planCode ??
-      item.item_code ?? item.itemCode ?? item.id ?? item.code,
+      d.item_code ??
+        d.plan_code ??
+        item.id ??
+        item.code,
     );
-    const providerPhone = topupmatePhone(customer);
 
     if (
       !net ||
-      !/^[0-9]{11}$/.test(providerPhone) ||
+      !/^[0-9]{11}$/.test(customer) ||
       !plan
     ) {
       throw new Error(
@@ -1632,7 +1457,7 @@ async function purchase(
     path = "/data/";
     body = {
       network: net,
-      phone: providerPhone,
+      phone: customer,
       plan,
       ref: r,
     };
@@ -1679,8 +1504,10 @@ async function purchase(
     );
 
     const plan = s(
-      d.item_code ?? d.itemCode ?? d.plan_code ?? d.planCode ??
-      item.item_code ?? item.itemCode ?? item.plan_id ?? item.id ?? item.code,
+      d.item_code ??
+        d.plan_code ??
+        item.id ??
+        item.code,
     );
 
     if (
@@ -1698,8 +1525,6 @@ async function purchase(
       provider: pr,
       iucnumber: i,
       plan,
-      package: plan,
-      package_code: plan,
       ref: r,
       subtype: s(d.subtype ?? "renew") || "renew",
       phone: customer || undefined,
@@ -1780,8 +1605,10 @@ async function purchase(
     ["education", "jamb", "waec", "neco", "nabteb"].includes(service)
   ) {
     const pr = s(
-      d.provider ?? d.provider_name ?? d.biller_code ??
-      item.provider ?? item.provider_name ?? "WAEC",
+      d.provider ??
+        d.provider_name ??
+        d.biller_code ??
+        "WAEC",
     ).toUpperCase();
 
     const q = Math.max(
@@ -1792,8 +1619,6 @@ async function purchase(
     path = "/exampin/";
     body = {
       provider: pr,
-      exam: pr,
-      exam_type: pr,
       quantity: q,
       ref: r,
     };
@@ -1836,8 +1661,9 @@ async function purchase(
     );
 
     const plan = s(
-      d.item_code ?? d.itemCode ?? d.plan_code ?? d.planCode ??
-      item.item_code ?? item.itemCode ?? item.plan_id ?? item.id ?? item.code,
+      d.item_code ??
+        item.id ??
+        item.code,
     );
 
     const q = Math.max(
@@ -2010,11 +1836,44 @@ async function purchase(
       const products = await giftCatalog(productId);
       const gp = products.find(
         (x: any) =>
-          String(x?.productId ?? x?.product_id ?? x?.id ?? "") === productId,
+          String(
+            x?.productId ??
+              x?.product_id ??
+              x?.id ??
+              "",
+          ) === productId,
       );
-      if (gp) {
-        pAmt = await giftProviderNaira(gp, amount);
-      }
+
+      const den = Array.isArray(
+        gp?.fixedRecipientDenominations,
+      )
+        ? gp.fixedRecipientDenominations.map(Number)
+        : [];
+
+      const snd = Array.isArray(
+        gp?.fixedSenderDenominations,
+      )
+        ? gp.fixedSenderDenominations.map(Number)
+        : [];
+
+      const mapped = Array.isArray(
+        gp?.fixedRecipientToSenderDenominationsMap,
+      )
+        ? gp.fixedRecipientToSenderDenominationsMap
+            .map((x: any) =>
+              Number(Object.values(x || {})[0]),
+            )
+            .filter((x: number) => x > 0)
+        : [];
+
+      const effectiveSender = snd.length ? snd : mapped;
+      const idx = den.findIndex(
+        (x: number) => x === amount,
+      );
+
+      pAmt = idx >= 0
+        ? n(effectiveSender[idx])
+        : 0;
     }
 
     if (!pAmt) {
@@ -2165,11 +2024,37 @@ async function purchase(
     const q = await post(path, body);
     pr = q.body;
 
-    const ambiguousProviderResponse =
-      !q.ok &&
-      (q.httpStatus >= 500 || q.httpStatus === 408 || q.httpStatus === 429);
+    const httpStatus = q.httpStatus;
+    const transportAmbiguous =
+      httpStatus === 408 ||
+      httpStatus === 429 ||
+      httpStatus >= 500;
 
-    if (!q.ok && status(pr) !== "processing" && !ambiguousProviderResponse) {
+    if (transportAmbiguous) {
+      await update(a, u.id, r, {
+        status: "pending",
+        provider: "topupmate",
+        provider_reference: pref(pr) ?? r,
+        metadata: {
+          ...meta,
+          provider_response: pr,
+          reconciliation_required: true,
+          pending_reason: `provider_http_${httpStatus}`,
+        },
+      });
+
+      return {
+        success: true,
+        status: "pending",
+        reference: r,
+        transaction_reference: r,
+        transaction_id: tx,
+        provider_reference: pref(pr) ?? r,
+        message: "Your payment is being verified. Please wait while we confirm the provider result.",
+      };
+    }
+
+    if (!q.ok && status(pr) !== "processing") {
       const rr = await refund(
         a,
         u.id,
@@ -2195,30 +2080,6 @@ async function purchase(
       throw new Error(
         "Purchase failed. Your wallet has been refunded.",
       );
-    }
-
-    if (ambiguousProviderResponse) {
-      await update(a, u.id, r, {
-        status: "pending",
-        provider: "topupmate",
-        provider_reference: pref(pr) ?? r,
-        metadata: {
-          ...meta,
-          provider_response: pr,
-          reconciliation_required: true,
-          pending_reason: `provider_http_${q.httpStatus}`,
-        },
-      });
-
-      return {
-        success: true,
-        status: "pending",
-        reference: r,
-        transaction_reference: r,
-        transaction_id: tx,
-        provider_reference: pref(pr) ?? r,
-        message: "Your payment is being verified. Please wait while we confirm the provider result.",
-      };
     }
   } catch (e) {
     if (
@@ -2255,6 +2116,37 @@ async function purchase(
   const pRef = pref(pr) ?? r;
 
   if (st === "fail") {
+    const explicitFailure =
+      pr?.success === false ||
+      pr?.data?.success === false ||
+      ["fail", "failed", "failure", "error", "rejected", "declined"].includes(
+        String(pr?.status ?? pr?.data?.status ?? "").toLowerCase(),
+      );
+
+    if (!explicitFailure) {
+      await update(a, u.id, r, {
+        status: "pending",
+        provider: "topupmate",
+        provider_reference: pRef,
+        metadata: {
+          ...meta,
+          provider_response: pr,
+          reconciliation_required: true,
+          pending_reason: "unrecognized_provider_response",
+        },
+      });
+
+      return {
+        success: true,
+        status: "pending",
+        reference: r,
+        transaction_reference: r,
+        transaction_id: tx,
+        provider_reference: pRef,
+        message: "Your payment is being verified. Please wait while we confirm the provider result.",
+      };
+    }
+
     const rr = await refund(
       a,
       u.id,
@@ -2316,19 +2208,6 @@ async function purchase(
     },
   });
 
-  const providerData = pr?.response ?? pr?.data ?? null;
-  const giftData = service === "gift-card"
-    ? (providerData && typeof providerData === "object" ? providerData : pr)
-    : null;
-  const fulfillment = service === "gift-card" && giftData
-    ? {
-        product_name: giftData?.productName ?? giftData?.product_name ?? item?.name ?? "Gift Card",
-        redeem: giftData?.redeem ?? giftData?.code ?? giftData?.claim_code ?? null,
-        redeem_details: giftData?.redeem_details ?? giftData?.redeemDetails ?? giftData?.redeemInstruction?.verbose ?? null,
-        amount_charged: giftData?.amount_charged ?? giftData?.amountCharged ?? null,
-      }
-    : null;
-
   return {
     success: true,
     status: "success",
@@ -2336,8 +2215,10 @@ async function purchase(
     transaction_reference: r,
     transaction_id: tx,
     provider_reference: pRef,
-    provider_data: providerData,
-    fulfillment,
+    provider_data:
+      pr?.response ??
+      pr?.data ??
+      null,
     message: "Purchase completed successfully.",
   };
 }
@@ -2514,7 +2395,10 @@ Deno.serve(async (req) => {
     return json(
       {
         success: false,
-        error: "Service request could not be completed. Please try again.",
+        error: String(
+          e?.message ??
+            "Service request failed.",
+        ),
       },
       400,
     );

@@ -66,7 +66,7 @@ const ServiceCard = ({
 
         {/* Service Name */}
 
-        <h3 className="line-clamp-1 text-[11px] font-bold leading-tight tracking-tight text-slate-900 sm:text-xs">
+        <h3 className="line-clamp-2 min-h-[2rem] text-[11px] font-bold leading-tight tracking-tight text-slate-900 sm:text-xs">
           {title}
         </h3>
       </CardContent>

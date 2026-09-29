@@ -128,9 +128,19 @@ export async function topupmatePost(
 
 /** Normalize Topupmate's response status into the application's states. */
 export function normalizeTopupmateStatus(body: any): "success" | "processing" | "fail" {
+  const explicitSuccess =
+    body?.success === true || body?.data?.success === true;
+  const explicitFailure =
+    body?.success === false || body?.data?.success === false;
+
+  if (explicitSuccess) return "success";
+  if (explicitFailure) return "fail";
+
   const value = String(
     body?.status ??
       body?.data?.status ??
+      body?.data?.transaction_status ??
+      body?.transaction_status ??
       "",
   ).toLowerCase();
 
@@ -198,12 +208,14 @@ export function getTopupmateRows(body: any): any[] {
   }
 
   for (const value of [
+    body?.msg,
     body?.response,
     body?.plans,
     body?.packages,
     body?.services,
     body?.data,
     body?.results,
+    body?.items,
   ]) {
     if (Array.isArray(value)) {
       return value;

@@ -136,11 +136,16 @@ function planDays(r: any): number {
 }
 
 function planGroupFromDays(days: number): PlanGroup {
-  if (days <= 0) return "OTHER";
-  if (days <= 1) return "DAILY";
-  if (days <= 7) return "WEEKLY";
-  if (days <= 31) return "MONTHLY";
-  if (days >= 360 && days <= 400) return "YEARLY";
+  // IyanjuPay data tabs:
+  // Daily = 1–3 days
+  // Weekly = 7–14 days
+  // Monthly = 30–90 days
+  // Yearly = 365 days
+  // Everything else = Other.
+  if (days >= 1 && days <= 3) return "DAILY";
+  if (days >= 7 && days <= 14) return "WEEKLY";
+  if (days >= 30 && days <= 90) return "MONTHLY";
+  if (days === 365) return "YEARLY";
   return "OTHER";
 }
 
@@ -1837,7 +1842,8 @@ async function purchase(
 
     path = "/giftcard/";
     body = {
-      product: Number(productId),
+      // Topupmate documents product as a string Product ID.
+      product: productId,
       amount,
       email: recipientEmail,
       sender,
@@ -2128,6 +2134,34 @@ async function purchase(
     },
   });
 
+  let fulfillment: any = null;
+
+  // Topupmate requires a separate GET /giftcard/redeem/ call to retrieve
+  // the voucher/code after a successful gift-card purchase.
+  if (service === "gift-card") {
+    try {
+      const voucher = await get("/giftcard/redeem/", { ref: r });
+      if (voucher.ok && status(voucher.body) !== "fail") {
+        fulfillment =
+          voucher.body?.response ??
+          voucher.body?.data ??
+          voucher.body ??
+          null;
+      } else {
+        console.error("Topupmate gift-card redemption lookup failed", {
+          reference: r,
+          http_status: voucher.httpStatus,
+          body: voucher.body,
+        });
+      }
+    } catch (voucherError) {
+      console.error("Topupmate gift-card redemption lookup error", {
+        reference: r,
+        error: voucherError,
+      });
+    }
+  }
+
   return {
     success: true,
     status: "success",
@@ -2139,6 +2173,7 @@ async function purchase(
       pr?.response ??
       pr?.data ??
       null,
+    fulfillment,
     message: "Purchase completed successfully.",
   };
 }

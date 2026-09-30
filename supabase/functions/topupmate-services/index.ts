@@ -459,6 +459,22 @@ function providerMatches(raw: any, wanted: string) {
   });
 }
 
+function dataPlanId(raw: any): string {
+  // Topupmate data catalogues use `planid` as the actual purchase identifier.
+  // Some responses may also contain a generic `id`; never substitute that
+  // value for `planid` when both are present.
+  return s(
+    raw?.planid ??
+      raw?.plan_id ??
+      raw?.planId ??
+      raw?.data_plan ??
+      raw?.dataplan ??
+      raw?.code ??
+      raw?.id ??
+      "",
+  );
+}
+
 function dataPlanMatchesNetwork(raw: any, requestedNetwork: string) {
   const wantedId = network(requestedNetwork);
   const wantedName = networkName(wantedId);
@@ -518,14 +534,16 @@ function norm(service: string, r: any) {
     "";
 
   const itemId =
-    id(r) ||
-    r?.plan_id ||
-    r?.planid ||
-    r?.planId ||
-    r?.data_plan ||
-    r?.bundle ||
-    r?.code ||
-    "";
+    service === "data"
+      ? dataPlanId(r)
+      : (id(r) ||
+        r?.plan_id ||
+        r?.planid ||
+        r?.planId ||
+        r?.data_plan ||
+        r?.bundle ||
+        r?.code ||
+        "");
 
   const itemName =
     name(r) ||
@@ -954,8 +972,10 @@ async function billers(service: string, b: O = {}) {
   }
 
   if (service === "gift-card") {
-    const country = s(b.country_code ?? b.countryCode).toUpperCase();
-    const a = await giftCatalog(undefined, country || undefined);
+    // Gift cards are intentionally not grouped or filtered by country.
+    // Topupmate's countryCode parameter is optional; the no-parameter
+    // catalogue is the source of truth for the complete available list.
+    const a = await giftCatalog();
 
     const products = a
       .filter(
@@ -968,12 +988,10 @@ async function billers(service: string, b: O = {}) {
     return {
       success: true,
       service,
-      country_code: country || null,
-      countries: GIFT_COUNTRIES,
       billers: products,
-      items: [],
-      plans: [],
-      packages: [],
+      items: products,
+      plans: products,
+      packages: products,
     };
   }
 
@@ -1154,12 +1172,29 @@ async function catalog(service: string, b: O) {
       b.product_id ?? b.productId ?? b.biller_code ?? b.provider,
     );
 
-    const country = s(b.country_code ?? b.countryCode).toUpperCase();
+    // Do not group/filter the gift-card catalogue by country.
+    const products = await giftCatalog(productId || undefined);
 
-    const products = await giftCatalog(productId || undefined, country || undefined);
+    if (!productId) {
+      const allProducts = products
+        .filter(
+          (x: any) =>
+            s(pick(x, ["status"]) ?? "ACTIVE").toLowerCase() !== "inactive",
+        )
+        .map(giftProduct)
+        .filter((x: any) => x.id);
 
-    const product =
-      products.find((x: any) => giftKey(x) === productId) ?? products[0];
+      return {
+        success: true,
+        service: "gift-card",
+        billers: allProducts,
+        items: allProducts,
+        plans: allProducts,
+        packages: allProducts,
+      };
+    }
+
+    const product = products.find((x: any) => giftKey(x) === productId);
 
     if (!product) {
       throw new UserError("This gift card is not available right now.");
@@ -1581,7 +1616,16 @@ async function purchase(
       first(d.network_code, d.networkId, d.biller_code, d.network),
     );
 
-    const plan = first(d.item_code, d.plan_code, item.id, item.code);
+    const plan = first(
+      d.item_code,
+      d.plan_code,
+      d.planid,
+      d.planId,
+      item.plan_id,
+      item.planid,
+      item.id,
+      item.code,
+    );
 
     if (!net) fail("Please select a mobile network.");
     if (!/^[0-9]{11}$/.test(customer)) {
@@ -1608,7 +1652,7 @@ async function purchase(
       });
 
       const f = rows(c.body).find(
-        (x: any) => id(x) === plan,
+        (x: any) => dataPlanId(x) === plan,
       );
 
       pAmt = price(f);
@@ -1824,10 +1868,7 @@ async function purchase(
       ref: r,
     };
 
-    const products = await giftCatalog(
-      productId,
-      first(d.country_code, d.countryCode) || undefined,
-    );
+    const products = await giftCatalog(productId);
 
     const found = products.find((x: any) => giftKey(x) === productId);
     const gp = found ? giftProduct(found) : null;
@@ -1976,7 +2017,20 @@ async function purchase(
   let pr;
 
   try {
-    const q = await post(path, body);
+    let q = await post(path, body);
+
+    // Topupmate documents /exampin/ with a trailing slash, but some live
+    // LiteSpeed deployments expose the same route without it. Retry only on
+    // an actual HTTP 404; never send a second purchase for another status.
+    if (service === "education" && q.httpStatus === 404) {
+      const retryPath = "/exampin";
+      const retry = await post(retryPath, body);
+      if (retry.ok || retry.httpStatus !== 404) {
+        path = retryPath;
+        q = retry;
+      }
+    }
+
     pr = q.body;
 
     if (!q.ok || status(pr) === "fail") {

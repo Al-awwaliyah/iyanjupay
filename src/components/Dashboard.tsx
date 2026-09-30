@@ -87,6 +87,8 @@ type BillService =
   | "internet"
   | "airtime-cash"
   | "gift-card"
+  | "tech-store"
+  | "esim"
   | "savings";
 
 type CurrentPage =
@@ -146,6 +148,8 @@ const SUPPORTED_BILL_SERVICES: BillService[] = [
 
 const COMING_SOON_SERVICES: BillService[] = [
   "airtime-cash",
+  "tech-store",
+  "esim",
   "savings",
 ];
 
@@ -770,6 +774,8 @@ const Dashboard = () => {
     { title: "Airtime to Cash", description: "", icon: Banknote, color: "bg-emerald-500", type: "airtime-cash" as BillService, available: false },
     { title: "Gift Cards", description: "", icon: Gift, color: "bg-pink-500", type: "gift-card" as BillService, available: true },
     { title: "Internet Service", description: "", icon: Wifi, color: "bg-indigo-500", type: "internet" as BillService, available: true },
+    { title: "Tech Store", description: "Phones, laptops, gadgets & hardware", icon: Smartphone, color: "bg-cyan-500", type: "tech-store" as BillService, available: false },
+    { title: "Internet eSIM", description: "International eSIM & travel data", icon: Wifi, color: "bg-sky-500", type: "esim" as BillService, available: false },
     { title: "Savings", description: "", icon: PiggyBank, color: "bg-pink-500", type: "savings" as BillService, available: false },
   ];
 

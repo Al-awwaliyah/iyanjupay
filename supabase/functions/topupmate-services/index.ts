@@ -115,7 +115,7 @@ function daysFromText(text: string, bareNumberIsDays = false): number {
 
 function planDays(r: any): number {
   const explicit = [
-    pick(r, ["validity_days", "validitydays", "duration_days", "durationdays", "days"]),
+    pick(r, ["validity_days", "validitydays", "duration_days", "durationdays", "days", "day", "validity_day", "validityday"]),
     pick(r, ["validity", "validity_period", "validityperiod", "duration", "period", "plan_period", "planperiod", "plan_validity", "planvalidity", "expiry", "expires"]),
   ];
 
@@ -356,36 +356,40 @@ async function catalogueRows(keys: string[], extra: O = {}) {
   return [];
 }
 
-const educationProviders = [
-  {
-    id: "JAMB",
-    code: "JAMB",
-    name: "JAMB",
-    provider: "JAMB",
-    provider_service: "jamb",
-  },
-  {
-    id: "WAEC",
-    code: "WAEC",
-    name: "WAEC",
-    provider: "WAEC",
-    provider_service: "waec",
-  },
-  {
-    id: "NECO",
-    code: "NECO",
-    name: "NECO",
-    provider: "NECO",
-    provider_service: "neco",
-  },
-  {
-    id: "NABTEB",
-    code: "NABTEB",
-    name: "NABTEB",
-    provider: "NABTEB",
-    provider_service: "nabteb",
-  },
-];
+async function getEducationProviders() {
+  const r = await get("/services/", { service: "exampin" });
+  if (!r.ok || String(r.body?.status).toLowerCase() === "fail") {
+    throw new UserError(SERVICE_DOWN);
+  }
+
+  return rows(r.body)
+    .filter((x: any) => {
+      const st = s(x?.status).toLowerCase();
+      return !["off", "inactive", "disabled", "unavailable"].includes(st);
+    })
+    .map((x: any) => {
+      const code = s(x?.id ?? x?.provider_id ?? x?.provider);
+      const nm = first(x?.provider, x?.name, code).toUpperCase();
+      const providerPrice = price(x);
+      return {
+        id: code,
+        code,
+        biller_code: code,
+        name: nm,
+        display_name: nm,
+        provider: nm,
+        provider_name: nm,
+        provider_service: nm.toLowerCase(),
+        providerPrice,
+        price: providerPrice,
+        selling_price: sell(providerPrice, MARKUP),
+        status: x?.status ?? "active",
+        raw: x,
+      };
+    })
+    .filter((x: any) => x.id && x.providerPrice > 0);
+}
+
 
 function publicBiller(r: any) {
   const code = String(
@@ -656,9 +660,31 @@ async function getDataPlans(networkId: string) {
 
 const INTERNET_PROVIDERS = [
   { key: "smile", name: "Smile", service: "smile" },
-  { key: "alpha", name: "Alpha", service: "alpha" },
-  { key: "kirani", name: "Kirani", service: "kirani" },
+  { key: "alpha", name: "Alpha Caller", service: "alpha" },
+  { key: "kirani", name: "Kirani Caller", service: "kirani" },
   { key: "ratel", name: "Ratel", service: "ratel" },
+];
+
+const SMILE_PLANS = [
+  { id: "828", name: "Smile Midi 1.5GB + 3GB Stream", price: 1250, day: 30 },
+  { id: "848", name: "Smile Mini 3.5GB", price: 1500, day: 7 },
+  { id: "845", name: "Smile Mini 3GB", price: 1500, day: 2 },
+  { id: "829", name: "Smile Midi 2GB + 4GB Stream", price: 1500, day: 30 },
+  { id: "804", name: "SmileVoice ONLY 135", price: 1850, day: 30 },
+  { id: "830", name: "Smile Midi 3GB + 5GB Stream", price: 2000, day: 30 },
+  { id: "846", name: "Smile Mini 5GB", price: 2200, day: 2 },
+  { id: "849", name: "Smile Mini 6GB", price: 2300, day: 7 },
+  { id: "831", name: "Smile Midi 6GB + 5GB Stream", price: 3000, day: 30 },
+  { id: "832", name: "Smile Midi 8GB + 5GB Stream", price: 3500, day: 30 },
+  { id: "808", name: "SmileVoice ONLY 175", price: 3600, day: 90 },
+  { id: "833", name: "Smile Midi 10GB + 5GB Stream", price: 4000, day: 30 },
+  { id: "843", name: "Smile Mini 1GB", price: 450, day: 1 },
+  { id: "805", name: "SmileVoice ONLY 430", price: 5700, day: 30 },
+  { id: "807", name: "SmileVoice ONLY 450", price: 7200, day: 60 },
+  { id: "847", name: "Smile Mini 1GB", price: 750, day: 7 },
+  { id: "844", name: "Smile Mini 2.5GB", price: 750, day: 1 },
+  { id: "803", name: "SmileVoice ONLY 65", price: 900, day: 30 },
+  { id: "809", name: "SmileVoice ONLY 500", price: 9000, day: 90 },
 ];
 
 function internetProvider(v: any) {
@@ -675,49 +701,33 @@ function internetProviderName(v: any) {
   return INTERNET_PROVIDERS.find((x) => x.key === key)?.name ?? s(v);
 }
 
+function smilePlans() {
+  return SMILE_PLANS.map((x) => ({
+    id: x.id,
+    code: x.id,
+    planid: x.id,
+    name: x.name,
+    display_name: x.name,
+    provider: "Smile",
+    provider_name: "Smile",
+    internet_provider: "smile",
+    providerPrice: x.price,
+    provider_price: x.price,
+    price: x.price,
+    selling_price: sell(x.price, MARKUP),
+    amount: x.price,
+    day: x.day,
+    validity_days: x.day,
+    validity: `${x.day} day${x.day === 1 ? "" : "s"}`,
+    period: `${x.day} day${x.day === 1 ? "" : "s"}`,
+    plan_group: planGroupFromDays(x.day),
+    raw: x,
+  }));
+}
+
 async function getInternetPlans(providerKey = "") {
   const wanted = internetProvider(providerKey);
-  const serviceAliases: Record<string, string[]> = {
-    smile: ["smile", "smile-data"],
-    alpha: ["alpha", "alphatopup", "alpha-data"],
-    kirani: ["kirani", "kirani-data"],
-    ratel: ["ratel", "ratel-data"],
-  };
-
-  const candidates = wanted
-    ? (serviceAliases[wanted] ?? [wanted, `${wanted}-data`])
-    : INTERNET_PROVIDERS.flatMap((x) => serviceAliases[x.key] ?? [x.service]);
-
-  const seen = new Set<string>();
-  const all: any[] = [];
-
-  for (const serviceName of candidates) {
-    if (seen.has(serviceName)) continue;
-    seen.add(serviceName);
-
-    const r = await get("/services/", { service: serviceName });
-    if (!r.ok) continue;
-
-    const a = rows(r.body);
-    if (!a.length) continue;
-
-    const tagged = a.map((x: any) => ({
-      ...x,
-      provider: x?.provider ?? x?.provider_name ?? internetProviderName(wanted || serviceName),
-      provider_name: x?.provider_name ?? x?.provider ?? internetProviderName(wanted || serviceName),
-      internet_provider: wanted || internetProvider(serviceName),
-    }));
-
-    all.push(...tagged);
-
-    if (wanted && tagged.some((x: any) => price(x) > 0 || id(x))) {
-      return tagged;
-    }
-  }
-
-  return wanted
-    ? all.filter((x: any) => internetProvider(x?.internet_provider ?? x?.provider) === wanted)
-    : all;
+  return wanted === "smile" || !wanted ? smilePlans() : [];
 }
 
 /*
@@ -889,10 +899,11 @@ function giftProduct(r: any) {
 
 async function billers(service: string, b: O = {}) {
   if (service === "education") {
+    const providers = await getEducationProviders();
     return {
       success: true,
       service,
-      billers: educationProviders,
+      billers: providers,
       items: [],
       plans: [],
       packages: [],
@@ -1048,100 +1059,90 @@ async function catalog(service: string, b: O) {
 
   if (service === "internet" || service === "smile") {
     const requestedProvider = internetProvider(
-      b.provider_name ??
-        b.provider ??
-        b.biller_code ??
-        b.internet_provider,
+      b.provider_name ?? b.provider ?? b.biller_code ?? b.internet_provider,
     );
 
-    const a = await getInternetPlans(requestedProvider);
-    const tagged = a.map((r: any) => ({
-      ...r,
-      internet_provider: internetProvider(
-        r?.internet_provider ??
-          r?.provider ??
-          r?.provider_name ??
-          requestedProvider,
-      ) || requestedProvider,
-    }));
-
-    const providerRows = requestedProvider
-      ? tagged.filter((r: any) =>
-          internetProvider(r.internet_provider ?? r.provider ?? r.provider_name) === requestedProvider,
-        )
-      : tagged;
-
-    const items = providerRows
-      .map((r: any) => ({
-        ...norm("internet", r),
-        internet_provider: internetProvider(r?.internet_provider ?? r?.provider ?? requestedProvider),
-        provider: internetProviderName(r?.internet_provider ?? r?.provider ?? requestedProvider),
-        provider_name: internetProviderName(r?.internet_provider ?? r?.provider ?? requestedProvider),
-      }))
-      .filter((x: any) => x.providerPrice > 0);
+    if (requestedProvider === "smile" || !requestedProvider) {
+      const items = smilePlans();
+      return {
+        success: true,
+        service: "internet",
+        selected_provider: requestedProvider || "smile",
+        billers: INTERNET_PROVIDERS.map((x) => ({
+          id: x.key, code: x.key, name: x.name, display_name: x.name,
+          provider: x.key, provider_name: x.name, biller_code: x.key, status: "active",
+        })),
+        items,
+        plans: items,
+        packages: items,
+        amount_based: false,
+      };
+    }
 
     return {
       success: true,
       service: "internet",
-      selected_provider: requestedProvider || null,
+      selected_provider: requestedProvider,
       billers: INTERNET_PROVIDERS.map((x) => ({
         id: x.key, code: x.key, name: x.name, display_name: x.name,
         provider: x.key, provider_name: x.name, biller_code: x.key, status: "active",
       })),
-      items,
-      plans: items,
-      packages: items,
+      items: [],
+      plans: [],
+      packages: [],
+      amount_based: true,
     };
   }
 
   if (["education", "jamb", "waec", "neco", "nabteb"].includes(service)) {
-    const wanted = s(
-      b.provider_service ??
-        b.provider ??
-        b.provider_name ??
-        b.biller_code ??
-        service,
+    const wanted = first(
+      b.provider_service,
+      b.provider,
+      b.provider_name,
+      b.biller_code,
+      service,
     ).toLowerCase();
-
-    const wantedKey = wanted.replace(/[^a-z0-9]+/g, "");
-    const catalogueServices = wantedKey && wantedKey !== "education"
-      ? [wantedKey, "exampin"]
-      : ["exampin"];
-
-    let raw: any[] = [];
-    for (const catalogueService of catalogueServices) {
-      const c = await get("/services/", { service: catalogueService });
-      if (!c.ok || String(c.body?.status).toLowerCase() === "fail") continue;
-      const candidateRows = rows(c.body);
-      if (candidateRows.length) {
-        raw = candidateRows;
-        // Prefer a provider-specific catalogue when Topupmate exposes one.
-        if (catalogueService !== "exampin") break;
-      }
-    }
-
-    const matching = raw.filter((r: any) => {
-      if (!wantedKey || wantedKey === "education") return true;
-      const values = [
-        r?.provider, r?.provider_name, r?.providerName,
-        r?.exam, r?.exam_type, r?.examType,
-        r?.service, r?.service_name, r?.product,
-        r?.name, r?.plan_name, r?.planName, r?.description,
-      ];
-      const text = values.map((v) => s(v).toLowerCase().replace(/[^a-z0-9]+/g, " ")).join(" ");
-      return text.includes(wantedKey);
+    const wantedNorm = wanted.replace(/[^a-z0-9]+/g, "");
+    const providers = await getEducationProviders();
+    const selected = providers.find((x: any) => {
+      const code = s(x.id).toLowerCase();
+      const name = s(x.name).toLowerCase().replace(/[^a-z0-9]+/g, "");
+      return code === wanted || name === wantedNorm || name.includes(wantedNorm);
     });
 
-    const source = matching.length ? matching : (catalogueServices[0] !== "exampin" ? [] : raw);
+    if (!selected) fail("The selected examination body is unavailable.");
+
+    const catalogue = await get("/services/", { service: "exampin" });
+    const raw = rows(catalogue.body);
+    const selectedId = s(selected.id);
+    const matching = raw.filter((x: any) =>
+      s(x?.id ?? x?.provider_id ?? x?.provider) === selectedId ||
+      s(x?.provider ?? x?.name).toLowerCase().replace(/[^a-z0-9]+/g, "") ===
+        s(selected.name).toLowerCase().replace(/[^a-z0-9]+/g, ""),
+    );
+    const source = matching.length ? matching : [selected.raw];
     const items = source
-      .map((r: any) => norm("education", r))
+      .map((r: any) => {
+        const providerPrice = price(r) || selected.providerPrice;
+        return {
+          ...norm("education", r),
+          id: selectedId,
+          code: selectedId,
+          plan_id: selectedId,
+          provider: selected.name,
+          provider_name: selected.name,
+          providerPrice,
+          price: providerPrice,
+          selling_price: sell(providerPrice, MARKUP),
+        };
+      })
       .filter((x: any) => x.providerPrice > 0);
 
     return {
       success: true,
       service: "education",
-      selected_provider: wantedKey ? wantedKey.toUpperCase() : null,
-      billers: educationProviders,
+      selected_provider: selectedId,
+      billers: providers,
       items,
       plans: items,
       packages: items,
@@ -1701,54 +1702,26 @@ async function purchase(
   } else if (
     ["education", "jamb", "waec", "neco", "nabteb"].includes(service)
   ) {
-    // `first()` skips empty strings; the old `??` chain sent an empty provider
-    // whenever the client posted provider_name: "".
-    const rawBody = first(
-      d.provider_service,
+    const providerId = first(
       d.biller_code,
-      d.provider,
-      d.provider_name,
-      item.provider_service,
-      ["jamb", "waec", "neco", "nabteb"].includes(service) ? service : "",
-      item.raw?.provider,
-    ).toUpperCase();
-
-    const pr = ["JAMB", "WAEC", "NECO", "NABTEB"].find((x) => rawBody.includes(x)) ?? "";
-
-    if (!["JAMB", "WAEC", "NECO", "NABTEB"].includes(pr)) {
-      fail("Please select an examination body.");
-    }
-
-    const q = Math.max(
-      1,
-      Math.floor(n(d.quantity ?? 1)),
+      d.billerCode,
+      item.provider_id,
+      item.providerId,
+      item.id,
+      item.code,
     );
+    if (!providerId) fail("Please select an examination body.");
 
+    const q = Math.max(1, Math.floor(n(d.quantity ?? 1)));
     path = "/exampin/";
-    body = {
-      provider: pr,
-      quantity: q,
-      ref: r,
-    };
+    body = { provider: providerId, quantity: q, ref: r };
 
-    // Provider prices are always resolved server-side; a price sent by the
-    // client is never trusted.
-    pAmt = 0;
-
-    const wantedItem = first(d.item_code, item.id, item.code);
-
-    for (const catalogueService of [pr.toLowerCase(), "exampin"]) {
-      if (pAmt) break;
-
-      const c = await get("/services/", { service: catalogueService });
-      if (!c.ok) continue;
-
-      const found = rows(c.body).find((x: any) => id(x) === wantedItem);
-      pAmt = found ? price(found) : 0;
-    }
-
+    const c = await get("/services/", { service: "exampin" });
+    const found = rows(c.body).find((x: any) =>
+      s(x?.id ?? x?.provider_id ?? x?.provider) === providerId,
+    );
+    pAmt = price(found) || n(item.providerPrice ?? item.provider_price ?? item.price);
     if (!pAmt) fail("The selected education PIN is unavailable.");
-
     sAmt = sell(pAmt, MARKUP) * q;
   } else if (isPinService(service) && service !== "data-card") {
     const net = network(
@@ -1891,8 +1864,6 @@ async function purchase(
       ),
     ) || "smile";
 
-    const plan = first(d.item_code, d.plan_code, item.id, item.code);
-
     const acct = first(
       d.account_number,
       d.accountNumber,
@@ -1901,36 +1872,51 @@ async function purchase(
       d.phone,
       d.customer,
     );
-
-    if (!acct) fail(`Enter your ${internetProviderName(providerKey)} account ID.`);
-    if (!plan) fail("Please select a plan.");
+    if (!acct) fail(`Enter your ${internetProviderName(providerKey)} account or phone number.`);
 
     if (providerKey === "smile") {
+      const compact = acct.replace(/[\s+()-]/g, "");
+      let smileIdentifier = compact;
+      let actype = first(d.account_type, d.accountType).trim();
+
+      if (/^234\d{10}$/.test(compact)) {
+        smileIdentifier = compact;
+        actype = "PhoneNumber";
+      } else if (/^0\d{10}$/.test(compact)) {
+        smileIdentifier = `234${compact.slice(1)}`;
+        actype = "PhoneNumber";
+      } else if (/^\d{10}$/.test(compact)) {
+        smileIdentifier = compact;
+        actype = "AccountNumber";
+      }
+
+      if (!actype || !["PhoneNumber", "AccountNumber"].includes(actype)) {
+        fail("Enter a valid Smile phone number or 10-digit account number.");
+      }
+
+      const plan = first(d.item_code, d.plan_code, item.id, item.code);
+      if (!plan) fail("Please select a Smile bundle.");
+      const selectedPlan = smilePlans().find((x: any) => s(x.id) === plan);
+      if (!selectedPlan) fail("The selected Smile bundle is unavailable.");
+
       path = "/smile-data/";
       body = {
-        PhoneNumber: acct,
-        BundleTypeCode: plan,
-        actype: first(d.account_type) || "prepaid",
+        PhoneNumber: smileIdentifier,
+        BundleTypeCode: Number(plan),
+        actype,
+        ref: r,
       };
-    } else if (providerKey === "alpha") {
-      path = "/alphatopup/";
-      body = { phone: acct, planid: plan, ref: r };
-    } else if (providerKey === "kirani") {
-      path = "/kirani/";
-      body = { phone: acct, planid: plan, ref: r };
+      pAmt = selectedPlan.providerPrice;
+      sAmt = sell(pAmt, MARKUP);
     } else {
-      path = "/ratel/";
-      body = { phone: acct, planid: plan, ref: r };
+      const amount = n(d.provider_amount ?? d.providerAmount ?? d.amount ?? b.amount);
+      if (amount <= 0) fail("Enter a valid amount.");
+      path = providerKey === "alpha" ? "/alphatopup/" : providerKey === "kirani" ? "/kirani/" : "/ratel/";
+      body = { phone: acct, amount, ref: r };
+      pAmt = amount;
+      sAmt = sell(pAmt, MARKUP);
     }
 
-    const plans = await getInternetPlans(providerKey);
-    pAmt = price(plans.find((x: any) => id(x) === plan));
-
-    if (!pAmt) {
-      fail(`The selected ${internetProviderName(providerKey)} plan is unavailable.`);
-    }
-
-    sAmt = sell(pAmt, MARKUP);
   } else {
     fail("This service is not available right now.");
   }
@@ -1993,7 +1979,7 @@ async function purchase(
     const q = await post(path, body);
     pr = q.body;
 
-    if (!q.ok && status(pr) !== "processing") {
+    if (!q.ok || status(pr) === "fail") {
       console.error("Topupmate purchase rejected", {
         service,
         path,
@@ -2024,10 +2010,11 @@ async function purchase(
         },
       });
 
+      const providerMessage = msg(pr);
       throw new UserError(
         rr.error
-          ? "Purchase failed. Please contact support if your wallet was debited."
-          : "Purchase failed. Your wallet has been refunded.",
+          ? `Purchase failed: ${providerMessage}. Please contact support if your wallet was debited.`
+          : `Purchase failed: ${providerMessage}. Your wallet has been refunded.`,
       );
     }
   } catch (e) {

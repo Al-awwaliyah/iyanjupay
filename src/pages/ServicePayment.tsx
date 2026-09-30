@@ -25,6 +25,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
+import { getFunctionErrorMessage, getSafeErrorMessage } from "@/lib/errorHandling";
 import { supabase } from "@/integrations/supabase/client";
 import { useCustomerAppSettings } from "@/hooks/useCustomerAppSettings";
 
@@ -453,6 +454,21 @@ function durationDays(item: Item): number {
 }
 
 function planGroup(item: Item): DataTab {
+  // The backend works out the bundle group from every validity field.
+  const serverGroup = clean(
+    (item as any).plan_group ?? (item as any).planGroup,
+  ).toUpperCase();
+
+  if (
+    serverGroup === "DAILY" ||
+    serverGroup === "WEEKLY" ||
+    serverGroup === "MONTHLY" ||
+    serverGroup === "YEARLY" ||
+    serverGroup === "OTHER"
+  ) {
+    return serverGroup as DataTab;
+  }
+
   const period = getProviderPeriod(item).toLowerCase();
 
   if (/hot|promo|promotion|bonus|awoof|sme|direct|gifting|gift/.test(period)) return "OTHER";
@@ -549,123 +565,112 @@ function canonicalNetworkName(
   name: unknown,
   code = ""
 ): string {
-  const value = `${clean(name)} ${clean(code)}`
+  const label = clean(name)
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, " ")
     .replace(/\s+/g, " ")
     .trim();
 
-  if (value.includes("9mobile") || value.includes("etisalat") || /\b03\b/.test(value)) {
-    return "9mobile";
-  }
+  if (label.includes("9mobile") || label.includes("etisalat")) return "9mobile";
+  if (label.includes("airtel")) return "Airtel";
+  if (label.includes("mtn")) return "MTN";
+  if (/\bglo\b|globacom/.test(label)) return "Glo";
 
-  if (value.includes("airtel") || /\b04\b/.test(value)) {
-    return "Airtel";
-  }
+  // Topupmate network ids: 1 = MTN, 2 = Airtel, 3 = Glo, 4 = 9mobile.
+  const byId: Record<string, string> = {
+    "1": "MTN", "01": "MTN",
+    "2": "Airtel", "02": "Airtel",
+    "3": "Glo", "03": "Glo",
+    "4": "9mobile", "04": "9mobile",
+  };
 
-  if (value.includes("mtn") || /\b01\b/.test(value)) {
-    return "MTN";
-  }
-
-  if (value.includes("glo") || /\b02\b/.test(value)) {
-    return "Glo";
-  }
-
-  return "";
+  return byId[clean(code).toLowerCase()] ?? "";
 }
+
+/*
+ * Provider logos are served from /public/providers (no third-party
+ * favicon services, so nothing can 404 or be blocked). To change a logo,
+ * replace the file with the same name, e.g. public/providers/mtn.svg.
+ */
+const LOGO_PATTERNS: Array<[RegExp, string]> = [
+  [/9mobile|etisalat/, "9mobile"],
+  [/airtel/, "airtel"],
+  [/\bmtn\b/, "mtn"],
+  [/\bglo\b|globacom/, "glo"],
+  [/dstv/, "dstv"],
+  [/gotv/, "gotv"],
+  [/startime/, "startimes"],
+  [/showmax/, "showmax"],
+  [/ikeja|ikedc/, "ikeja-electric"],
+  [/\beko\b|ekedc/, "eko-electric"],
+  [/kano|kedco/, "kano-electric"],
+  [/port\s*harcourt|phedc|\bphed\b/, "port-harcourt-electric"],
+  [/\bjos\b|jedc|\bjed\b/, "jos-electric"],
+  [/ibadan|ibedc/, "ibadan-electric"],
+  [/kaduna|kaedco|knedc/, "kaduna-electric"],
+  [/abuja|aedc/, "abuja-electric"],
+  [/enugu|eedc/, "enugu-electric"],
+  [/benin|bedc/, "benin-electric"],
+  [/yola|yedc/, "yola-electric"],
+  [/smile/, "smile"],
+  [/alpha/, "alpha"],
+  [/kirani/, "kirani"],
+  [/ratel/, "ratel"],
+  [/jamb/, "jamb"],
+  [/waec/, "waec"],
+  [/neco/, "neco"],
+  [/nabteb/, "nabteb"],
+  [/amazon/, "amazon"],
+  [/apple|itunes/, "apple"],
+  [/google\s*play/, "google-play"],
+  [/steam/, "steam"],
+  [/playstation|psn/, "playstation"],
+  [/xbox/, "xbox"],
+  [/netflix/, "netflix"],
+  [/spotify/, "spotify"],
+  [/razer/, "razer"],
+];
 
 function providerLogo(
   name: string,
   code = ""
 ): string | null {
   const network = canonicalNetworkName(name, code);
-
-  const networkLogos: Record<string, string> = {
-    MTN: "/providers/mtn.svg",
-    Glo: "/providers/glo.svg",
-    Airtel: "/providers/airtel.svg",
-    "9mobile": "/providers/9mobile.svg",
-  };
-
-  if (networkLogos[network]) {
-    return networkLogos[network];
-  }
-
-  const value = `${name} ${code}`
+  const value = `${name} ${network || code}`
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, " ")
-    .trim();
+    .replace(/[^a-z0-9]+/g, " ");
 
-  const localLogos: Array<[RegExp, string]> = [
-    [/dstv/, "/providers/dstv.svg"],
-    [/gotv/, "/providers/gotv.svg"],
-    [/startime|startimes/, "/providers/startimes.svg"],
-    [/showmax/, "/providers/showmax.svg"],
-
-    [/ikeja|ikedc/, "/providers/ikedc.svg"],
-    [/eko|ekedc/, "/providers/ekedc.svg"],
-    [/kano|kedco/, "/providers/kedco.svg"],
-    [/port\s*harcourt|phedc|phed/, "/providers/phed.svg"],
-    [/jos|jedc|\bjed\b/, "/providers/jed.svg"],
-    [/ibadan|ibedc/, "/providers/ibedc.svg"],
-    [/kaduna|kaedco|knedc/, "/providers/kaedco.svg"],
-    [/abuja|aedc/, "/providers/aedc.svg"],
-    [/enugu|eedc/, "/providers/eedc.svg"],
-    [/benin|bedc/, "/providers/bedc.svg"],
-    [/yola|yedc/, "/providers/yedc.svg"],
-
-    [/smile/, "/providers/smile.svg"],
-    [/alpha/, "/providers/alpha.svg"],
-    [/kirani/, "/providers/kirani.svg"],
-    [/ratel/, "/providers/ratel.svg"],
-
-    [/jamb/, "/providers/jamb.svg"],
-    [/waec/, "/providers/waec.svg"],
-    [/neco/, "/providers/neco.svg"],
-    [/nabteb/, "/providers/nabteb.svg"],
-
-    [/amazon/, "/providers/amazon.svg"],
-    [/apple|itunes/, "/providers/apple.svg"],
-    [/google\s*play/, "/providers/google-play.svg"],
-    [/steam/, "/providers/steam.svg"],
-    [/playstation/, "/providers/playstation.svg"],
-    [/xbox/, "/providers/xbox.svg"],
-    [/netflix/, "/providers/netflix.svg"],
-    [/spotify/, "/providers/spotify.svg"],
-    [/razer/, "/providers/razer.svg"],
-  ];
-
-  const matched = localLogos.find(([pattern]) => pattern.test(value));
-  return matched ? matched[1] : null;
+  const matched = LOGO_PATTERNS.find(([pattern]) => pattern.test(value));
+  return matched ? `/providers/${matched[1]}.svg` : null;
 }
 
 const OFFLINE_BILLERS: Record<string, Biller[]> = {
   airtime: [
-    { biller_code: "01", name: "MTN" },
-    { biller_code: "02", name: "Glo" },
-    { biller_code: "03", name: "9mobile" },
-    { biller_code: "04", name: "Airtel" },
+    { biller_code: "1", name: "MTN" },
+    { biller_code: "2", name: "Airtel" },
+    { biller_code: "3", name: "Glo" },
+    { biller_code: "4", name: "9mobile" },
   ],
 
   data: [
-    { biller_code: "01", name: "MTN" },
-    { biller_code: "02", name: "Glo" },
-    { biller_code: "03", name: "9mobile" },
-    { biller_code: "04", name: "Airtel" },
+    { biller_code: "1", name: "MTN" },
+    { biller_code: "2", name: "Airtel" },
+    { biller_code: "3", name: "Glo" },
+    { biller_code: "4", name: "9mobile" },
   ],
 
   "airtime-card": [
-    { biller_code: "01", name: "MTN" },
-    { biller_code: "02", name: "Glo" },
-    { biller_code: "03", name: "9mobile" },
-    { biller_code: "04", name: "Airtel" },
+    { biller_code: "1", name: "MTN" },
+    { biller_code: "2", name: "Airtel" },
+    { biller_code: "3", name: "Glo" },
+    { biller_code: "4", name: "9mobile" },
   ],
 
   "data-card": [
-    { biller_code: "01", name: "MTN" },
-    { biller_code: "02", name: "Glo" },
-    { biller_code: "03", name: "9mobile" },
-    { biller_code: "04", name: "Airtel" },
+    { biller_code: "1", name: "MTN" },
+    { biller_code: "2", name: "Airtel" },
+    { biller_code: "3", name: "Glo" },
+    { biller_code: "4", name: "9mobile" },
   ],
 
   cable: [
@@ -826,8 +831,10 @@ function canonicalInternetProvider(biller: Biller): string {
     biller.raw?.providerName,
   ].map(clean).join(" ").toLowerCase();
 
-  // Internet Service is intentionally limited to Smile.
   if (raw.includes("smile")) return "Smile";
+  if (raw.includes("alpha")) return "Alpha";
+  if (raw.includes("kirani")) return "Kirani";
+  if (raw.includes("ratel")) return "Ratel";
 
   return "";
 }
@@ -896,50 +903,15 @@ function mergeBillers(
   const canonicalName = (
     biller: Biller
   ): string => {
-    const raw =
-      `${getName(biller)} ${getCode(
-        biller
-      )}`.toLowerCase();
+    const raw = getName(biller).toLowerCase();
 
-    if (
-      raw.includes("mtn") ||
-      /\b01\b/.test(raw)
-    ) {
-      return "mtn";
-    }
-
-    if (
-      raw.includes("glo") ||
-      /\b02\b/.test(raw)
-    ) {
-      return "glo";
-    }
-
-    if (
-      raw.includes("9mobile") ||
-      raw.includes("etisalat") ||
-      /\b03\b/.test(raw)
-    ) {
-      return "9mobile";
-    }
-
-    if (
-      raw.includes("airtel") ||
-      /\b04\b/.test(raw)
-    ) {
-      return "airtel";
-    }
-
+    if (raw.includes("mtn")) return "mtn";
+    if (/\bglo\b/.test(raw)) return "glo";
+    if (raw.includes("9mobile") || raw.includes("etisalat")) return "9mobile";
+    if (raw.includes("airtel")) return "airtel";
     if (raw.includes("dstv")) return "dstv";
     if (raw.includes("gotv")) return "gotv";
-
-    if (
-      raw.includes("startime") ||
-      raw.includes("startimes")
-    ) {
-      return "startimes";
-    }
-
+    if (raw.includes("startime")) return "startimes";
 
     return "";
   };
@@ -982,6 +954,28 @@ function mergeBillers(
   (OFFLINE_BILLERS[service] ?? []).forEach(add);
 
   return result;
+}
+
+/**
+ * Long names ("Internet Service", "Port Harcourt Electric" ...) are shown on
+ * two lines inside their card instead of being cut off with "...".
+ */
+function splitTwoLines(name: string): [string, string] {
+  const text = clean(name).replace(/\s+/g, " ");
+
+  if (text.length < 16 || !text.includes(" ")) return [text, ""];
+
+  const middle = text.length / 2;
+  let best = -1;
+
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] !== " ") continue;
+    if (best === -1 || Math.abs(i - middle) < Math.abs(best - middle)) {
+      best = i;
+    }
+  }
+
+  return [text.slice(0, best), text.slice(best + 1)];
 }
 
 function initials(name: string): string {
@@ -1204,7 +1198,7 @@ function ServiceTransactionProcessing({
       setStatus(nextStatus);
     } catch (error: any) {
       setMessage(
-        error?.message ||
+        getSafeErrorMessage(error) ||
           "We could not complete this transaction."
       );
 
@@ -1636,6 +1630,13 @@ export default function ServicePayment({
   const [quantity, setQuantity] =
     useState(1);
 
+  // Gift cards: optional country filter and product search.
+  const [giftCountry, setGiftCountry] = useState("");
+  const [giftCountries, setGiftCountries] = useState<
+    Array<{ code: string; name: string }>
+  >([]);
+  const [giftSearch, setGiftSearch] = useState("");
+
   const [meterType, setMeterType] =
     useState("");
 
@@ -1770,15 +1771,19 @@ export default function ServicePayment({
 
       if (fnError) {
         throw new Error(
-          fnError.message ||
-            "Service request failed."
+          await getFunctionErrorMessage(
+            fnError,
+            "We could not complete this request. Please try again."
+          )
         );
       }
 
       if (!data || data.success !== true) {
         throw new Error(
-          data?.error ||
-            "Service request failed."
+          getSafeErrorMessage(
+            data,
+            "We could not complete this request. Please try again."
+          )
         );
       }
 
@@ -1814,7 +1819,12 @@ export default function ServicePayment({
             action: "billers",
             service: backendServiceType(),
             country: "NG",
+            ...(isGiftCard ? { country_code: giftCountry } : {}),
           });
+
+          if (isGiftCard && Array.isArray(data.countries)) {
+            setGiftCountries(data.countries);
+          }
 
           const loaded = firstArray(
             data.billers,
@@ -1832,12 +1842,14 @@ export default function ServicePayment({
         }
 
         if (isAirtimeCard) {
-          const order = ["01", "04", "03", "02"];
-          merged = [...merged].sort(
-            (a, b) =>
-              order.indexOf(getCode(a)) -
-              order.indexOf(getCode(b)),
-          );
+          const order = ["MTN", "Airtel", "Glo", "9mobile"];
+          const rank = (b: Biller) => {
+            const i = order.indexOf(
+              canonicalNetworkName(getName(b), getCode(b)),
+            );
+            return i === -1 ? order.length : i;
+          };
+          merged = [...merged].sort((a, b) => rank(a) - rank(b));
         }
 
         setBillers(merged);
@@ -1852,7 +1864,7 @@ export default function ServicePayment({
         }
       } catch (e: any) {
         const message =
-          e?.message ||
+          getSafeErrorMessage(e) ||
           "Unable to load service options.";
 
         setError(message);
@@ -1874,6 +1886,7 @@ export default function ServicePayment({
       isAirtimeCard,
       isRechargeCard,
       isGiftCard,
+      giftCountry,
       toast,
     ]);
 
@@ -1915,6 +1928,12 @@ export default function ServicePayment({
                 }
               : {}),
             country: "NG",
+            ...(isGiftCard
+              ? {
+                  product_id: billerCode,
+                  country_code: giftCountry,
+                }
+              : {}),
 
             ...(isElectricity
               ? {
@@ -1952,7 +1971,7 @@ export default function ServicePayment({
           }
         } catch (e: any) {
           const message =
-            e?.message ||
+            getSafeErrorMessage(e) ||
             "Unable to load packages.";
 
           setError(message);
@@ -1974,6 +1993,9 @@ export default function ServicePayment({
         isData,
         isElectricity,
         isCable,
+        isInternet,
+        isGiftCard,
+        giftCountry,
         meterType,
         selectedBiller,
         billers,
@@ -2091,7 +2113,7 @@ export default function ServicePayment({
         setVerifiedName("");
 
         const message =
-          e?.message ||
+          getSafeErrorMessage(e) ||
           "Unable to verify the number.";
 
         setError(message);
@@ -2228,6 +2250,45 @@ export default function ServicePayment({
       selectedItem?.max_amount ??
       selectedItem?.maxAmount
   );
+
+  const visibleBillers = useMemo(() => {
+    if (!isGiftCard) return billers;
+
+    const query = giftSearch.trim().toLowerCase();
+    const filtered = query
+      ? billers.filter((b) =>
+          `${getName(b)} ${clean(b.display_name)}`
+            .toLowerCase()
+            .includes(query),
+        )
+      : billers;
+
+    return filtered.slice(0, 60);
+  }, [billers, isGiftCard, giftSearch]);
+
+  const dataTabCounts =
+    useMemo(() => {
+      const counts: Record<string, number> = {};
+
+      if (isData) {
+        for (const item of items) {
+          if (isVariable(item)) continue;
+          const group = planGroup(item);
+          counts[group] = (counts[group] ?? 0) + 1;
+        }
+      }
+
+      return counts;
+    }, [isData, items]);
+
+  // Open the first bundle group that actually has plans.
+  useEffect(() => {
+    if (!isData || !items.length) return;
+    if (dataTabCounts[dataTab]) return;
+
+    const firstWithPlans = DATA_TABS.find((tab) => dataTabCounts[tab]);
+    if (firstWithPlans) setDataTab(firstWithPlans);
+  }, [isData, items, dataTab, dataTabCounts]);
 
   const visibleDataPlans =
     useMemo(() => {
@@ -2469,6 +2530,20 @@ export default function ServicePayment({
       service: backendServiceType(selectedBillerCode, selectedBiller),
       country: "NG",
 
+      // Gift-card delivery / product fields.
+      ...(isGiftCard
+        ? {
+            product_id: selectedBillerCode,
+            email: customer.trim(),
+            recipient_email: customer.trim(),
+            recipient_amount:
+              selectedItem?.recipient_amount ?? selectedItem?.denomination,
+            country_code:
+              clean(selectedBiller?.countryCode) || giftCountry,
+            units: quantity,
+          }
+        : {}),
+
       // VTUGATE request fields.
       service_id:
         isData && selectedItem
@@ -2608,7 +2683,7 @@ export default function ServicePayment({
         });
       } catch (e: any) {
         const message =
-          e?.message ||
+          getSafeErrorMessage(e) ||
           "Unable to complete this payment.";
 
         setError(message);
@@ -2639,10 +2714,14 @@ export default function ServicePayment({
       code ===
       selectedBillerCode;
 
-    // Ignore provider-supplied logo fields because some catalog records can
-    // contain a generic/platform logo. Always use the explicit brand mapping.
     const providerFallbackLogo = providerLogo(name, code);
-    const logo = providerFallbackLogo;
+    const logo =
+      clean(
+        biller.logo_url ??
+          biller.logoUrl ??
+          biller.logo ??
+          firstArray(biller.logoUrls, biller.logo_urls)[0]
+      ) || providerFallbackLogo;
 
     return (
       <button
@@ -2658,14 +2737,14 @@ export default function ServicePayment({
           !!processingSession ||
           verifyingPin
         }
-        className={`iyanjupay-service-biller-card flex min-w-0 min-h-[92px] flex-col items-center justify-center gap-1.5 rounded-2xl border bg-white px-2 py-2 transition active:scale-[0.98] ${
+        className={`iyanjupay-service-biller-card flex min-w-0 flex-col items-center justify-center gap-1 rounded-2xl border bg-white px-1.5 py-2 transition active:scale-[0.98] ${
           selected
             ? "border-[#6D28D9] bg-violet-50 ring-1 ring-[#6D28D9]/20"
             : "border-gray-200 hover:border-violet-300 hover:bg-violet-50/30"
         }`}
       >
         <span
-          className={`iyanjupay-service-biller-logo flex h-16 w-full max-w-[76px] items-center justify-center overflow-hidden rounded-xl border bg-white text-xs font-bold text-gray-600 shadow-sm ${
+          className={`iyanjupay-service-biller-logo flex h-9 w-9 items-center justify-center overflow-hidden rounded-xl border bg-white text-xs font-bold text-gray-600 shadow-sm ${
             selected
               ? "border-[#6D28D9]"
               : "border-gray-200"
@@ -2675,7 +2754,7 @@ export default function ServicePayment({
             <img
               src={logo}
               alt=""
-              className="block h-auto max-h-14 w-auto max-w-full object-contain p-0.5"
+              className="h-full w-full object-contain p-1"
               onError={(e) => {
                 const img = e.currentTarget;
                 if (providerFallbackLogo && img.dataset.fallback !== "1" && img.src !== providerFallbackLogo) {
@@ -2697,14 +2776,25 @@ export default function ServicePayment({
         </span>
 
         <span
-          className={`max-w-[86px] truncate text-[10px] font-semibold leading-tight ${
+          className={`max-w-[86px] break-words text-center text-[10px] font-semibold leading-tight ${
             selected
               ? "text-[#4C1D95]"
               : "text-gray-800"
           }`}
           title={name}
         >
-          {name}
+          {(() => {
+            const [line1, line2] = splitTwoLines(name);
+            return line2 ? (
+              <>
+                {line1}
+                <br />
+                {line2}
+              </>
+            ) : (
+              line1
+            );
+          })()}
         </span>
       </button>
     );
@@ -3021,7 +3111,7 @@ export default function ServicePayment({
                 <div className="mb-3 flex items-center justify-between gap-3">
                   <div className="min-w-0">
                     <h2 className="text-sm font-bold text-gray-900">
-                      {isAirtime ? "Select network" : isData ? "Select network" : isCable ? "Select service" : isElectricity ? "Select Disco" : serviceType === "education" ? "Select examination" : isInternet ? "Select service" : "Select option"}
+                      {isAirtime ? "Select network" : isData ? "Select network" : isCable ? "Select service" : isElectricity ? "Select Disco" : serviceType === "education" ? "Select examination" : isInternet ? "Select service" : isGiftCard ? "Select gift card" : "Select option"}
                     </h2>
                     <p className="mt-0.5 text-[11px] text-gray-500">
                       Choose an option to continue.
@@ -3040,14 +3130,46 @@ export default function ServicePayment({
                   </Button>
                 </div>
 
+                {isGiftCard && (
+                  <div className="mb-3 space-y-2">
+                    <Input
+                      value={giftSearch}
+                      onChange={(e) => setGiftSearch(e.target.value)}
+                      placeholder="Search gift cards (Amazon, Steam, Netflix...)"
+                      className="h-10 rounded-xl text-sm"
+                    />
+
+                    <div className="flex gap-1.5 overflow-x-auto pb-1">
+                      {[{ code: "", name: "All" }, ...giftCountries].map((c) => (
+                        <button
+                          key={c.code || "all"}
+                          type="button"
+                          onClick={() => {
+                            setGiftCountry(c.code);
+                            setSelectedBillerCode("");
+                            setItems([]);
+                          }}
+                          className={`whitespace-nowrap rounded-lg px-3 py-1.5 text-[11px] font-bold transition ${
+                            giftCountry === c.code
+                              ? "bg-[#082A63] text-white shadow-sm"
+                              : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                          }`}
+                        >
+                          {c.name}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 {loadingBillers ? (
                   <div className="flex items-center justify-center py-7 text-xs text-gray-500">
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     Loading options...
                   </div>
-                ) : billers.length ? (
+                ) : visibleBillers.length ? (
                   <div className="grid w-full grid-cols-4 gap-2 sm:grid-cols-5 md:grid-cols-6">
-                    {billers.map(renderBillerCard)}
+                    {visibleBillers.map(renderBillerCard)}
                   </div>
                 ) : (
                   <div className="rounded-xl bg-gray-50 p-4 text-center text-xs text-gray-500">
@@ -3229,14 +3351,7 @@ export default function ServicePayment({
                           new Map(
                             items
                               .map((item) => [
-                                num(
-                                  item.value ??
-                                    item.denomination ??
-                                    item.face_value ??
-                                    item.faceValue ??
-                                    item.amount ??
-                                    item.price
-                                ),
+                                num(item.value ?? item.denomination),
                                 item,
                               ] as const)
                               .filter(([value, item]) => value > 0 && !!getItemCode(item))
@@ -3301,8 +3416,12 @@ export default function ServicePayment({
                 <section className="rounded-2xl border bg-white p-3 shadow-sm sm:p-4">
                   <div className="mb-3 flex items-center justify-between">
                     <div>
-                      <h2 className="text-xs font-bold text-gray-900">{serviceType === "education" || isInternet || isGiftCard ? "Select product" : "Select package"}</h2>
-                      <p className="mt-0.5 text-[11px] text-gray-500">Choose the option you want.</p>
+                      <h2 className="text-xs font-bold text-gray-900">{isGiftCard ? "Select amount" : serviceType === "education" || isInternet ? "Select product" : "Select package"}</h2>
+                      <p className="mt-0.5 text-[11px] text-gray-500">
+                        {isGiftCard
+                          ? `Amounts are in ${clean(selectedBiller?.recipientCurrencyCode) || "USD"}; you pay the naira price shown.`
+                          : "Choose the option you want."}
+                      </p>
                     </div>
                   </div>
 
@@ -3320,6 +3439,14 @@ export default function ServicePayment({
                       No options available.
                     </div>
                   )}
+
+                  {isGiftCard &&
+                    clean(selectedBiller?.redeemInstruction?.concise) && (
+                      <div className="mt-3 rounded-xl bg-blue-50 p-3 text-[11px] leading-relaxed text-blue-900">
+                        <span className="font-bold">How to redeem: </span>
+                        {clean(selectedBiller?.redeemInstruction?.concise)}
+                      </div>
+                    )}
                 </section>
               )}
 

@@ -128,19 +128,9 @@ export async function topupmatePost(
 
 /** Normalize Topupmate's response status into the application's states. */
 export function normalizeTopupmateStatus(body: any): "success" | "processing" | "fail" {
-  const explicitSuccess =
-    body?.success === true || body?.data?.success === true;
-  const explicitFailure =
-    body?.success === false || body?.data?.success === false;
-
-  if (explicitSuccess) return "success";
-  if (explicitFailure) return "fail";
-
   const value = String(
     body?.status ??
       body?.data?.status ??
-      body?.data?.transaction_status ??
-      body?.transaction_status ??
       "",
   ).toLowerCase();
 
@@ -201,24 +191,56 @@ export function getTopupmateReference(body: any): string | null {
   return value || null;
 }
 
-/** Extract an array from the common Topupmate catalogue response shapes. */
-export function getTopupmateRows(body: any): any[] {
-  if (Array.isArray(body)) {
-    return body;
+/**
+ * Case- and separator-insensitive field lookup. Topupmate returns keys in
+ * mixed styles (planid, PlanID, plan_id, BundleTypeCode, Customer_Name ...),
+ * so exact-key lookups silently miss data.
+ */
+export function pick(obj: any, keys: string[]): any {
+  if (!obj || typeof obj !== "object" || Array.isArray(obj)) return undefined;
+
+  const map = new Map<string, any>();
+  for (const [k, v] of Object.entries(obj)) {
+    map.set(k.toLowerCase().replace(/[^a-z0-9]/g, ""), v);
   }
 
-  for (const value of [
-    body?.msg,
-    body?.response,
-    body?.plans,
-    body?.packages,
-    body?.services,
-    body?.data,
-    body?.results,
-    body?.items,
-  ]) {
-    if (Array.isArray(value)) {
-      return value;
+  for (const key of keys) {
+    const v = map.get(key.toLowerCase().replace(/[^a-z0-9]/g, ""));
+    if (v !== undefined && v !== null && String(v).trim() !== "") return v;
+  }
+
+  return undefined;
+}
+
+function looksLikeRows(a: any): boolean {
+  return Array.isArray(a) && a.length > 0 && a.some((x) => x && typeof x === "object");
+}
+
+/**
+ * Extract an array of records from any of the common Topupmate/Reloadly-style
+ * response envelopes (response, data, content, results, plans ...), searching
+ * up to four levels deep.
+ */
+export function getTopupmateRows(body: any, depth = 0): any[] {
+  if (Array.isArray(body)) return body;
+  if (!body || typeof body !== "object" || depth > 4) return [];
+
+  const preferred = [
+    "response", "plans", "packages", "services", "data", "results",
+    "content", "items", "products", "giftcards", "catalog", "catalogue",
+    "list", "rows", "records",
+  ];
+
+  for (const key of preferred) {
+    const value = pick(body, [key]);
+    if (looksLikeRows(value)) return value;
+  }
+
+  for (const key of preferred) {
+    const value = pick(body, [key]);
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      const nested = getTopupmateRows(value, depth + 1);
+      if (nested.length) return nested;
     }
   }
 
@@ -227,56 +249,44 @@ export function getTopupmateRows(body: any): any[] {
 
 export function getTopupmateId(item: any): string {
   return String(
-    item?.id ??
-      item?.plan_id ??
-      item?.planId ??
-      item?.service_id ??
-      item?.serviceId ??
-      item?.code ??
-      item?.product_id ??
-      item?.productId ??
-      "",
+    pick(item, [
+      "id", "plan_id", "planid", "bundletypecode", "bundle_code", "bundlecode",
+      "data_plan", "dataplan", "service_id", "serviceid", "code",
+      "product_id", "productid", "package_id", "packageid", "plancode",
+      "variation_code", "variationcode",
+    ]) ?? "",
   ).trim();
 }
 
 export function getTopupmateName(item: any): string {
   return String(
-    item?.name ??
-      item?.plan_name ??
-      item?.planName ??
-      item?.package_name ??
-      item?.packageName ??
-      item?.description ??
-      item?.title ??
-      item?.label ??
-      item?.network ??
-      item?.providerName ??
-      item?.provider_name ??
-      "",
+    pick(item, [
+      "name", "plan_name", "planname", "package_name", "packagename",
+      "bundle_name", "bundlename", "bundle", "description", "title",
+      "label", "product_name", "productname", "network", "provider_name",
+      "providername",
+    ]) ?? "",
   ).trim();
 }
 
 export function getTopupmateProvider(item: any): string {
   return String(
-    item?.provider ??
-      item?.provider_name ??
-      item?.providerName ??
-      item?.network ??
-      item?.network_name ??
-      item?.networkName ??
-      "",
+    pick(item, [
+      "provider", "provider_name", "providername", "network",
+      "network_name", "networkname", "operator",
+    ]) ?? "",
   ).trim();
 }
 
 export function getTopupmatePrice(item: any): number {
   const value = Number(
-    item?.price ??
-      item?.amount ??
-      item?.charge_amount ??
-      item?.selling_price ??
-      item?.cost ??
-      item?.value ??
-      item?.denomination,
+    pick(item, [
+      "price", "amount", "charge_amount", "selling_price", "sellingprice",
+      "cost", "plan_amount", "planamount", "bundle_amount", "bundleamount",
+      "plan_price", "planprice", "bundle_price", "bundleprice",
+      "total_amount", "totalamount", "charge", "fee",
+      "value", "denomination",
+    ]),
   );
 
   return Number.isFinite(value) ? value : 0;

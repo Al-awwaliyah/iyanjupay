@@ -1,4 +1,4 @@
-import { getSafeErrorMessage } from "@/lib/errorHandling";
+import { getSafeErrorMessage, getFunctionErrorMessage, sanitizeMessage } from "@/lib/errorHandling";
 import React, {
   useCallback,
   useEffect,
@@ -443,94 +443,8 @@ const Dashboard = () => {
       error: any,
       fallback =
         "Unable to process your request."
-    ): Promise<string> => {
-      console.error(
-        "Supabase function error:",
-        error
-      );
-
-      try {
-        if (
-          error?.context &&
-          typeof error.context.json ===
-            "function"
-        ) {
-          const response =
-            error.context;
-
-          let payload: any = null;
-
-          try {
-            payload =
-              await response.json();
-          } catch {
-            payload = null;
-          }
-
-          console.error(
-            "Edge Function response:",
-            payload
-          );
-
-          if (payload?.error) {
-            return String(
-              payload.error
-            );
-          }
-
-          if (payload?.message) {
-            return String(
-              payload.message
-            );
-          }
-
-          if (
-            payload?.provider_message
-          ) {
-            return String(
-              payload.provider_message
-            );
-          }
-
-          if (
-            payload?.provider_response
-              ?.message
-          ) {
-            return String(
-              payload.provider_response
-                .message
-            );
-          }
-
-          if (
-            payload?.provider_response
-              ?.data?.message
-          ) {
-            return String(
-              payload.provider_response
-                .data.message
-            );
-          }
-        }
-      } catch (parseError) {
-        console.error(
-          "Could not parse Edge Function error:",
-          parseError
-        );
-      }
-
-      if (
-        getSafeErrorMessage(error) &&
-        getSafeErrorMessage(error) !==
-          "Edge Function returned a non-2xx status code"
-      ) {
-        return String(
-          getSafeErrorMessage(error)
-        );
-      }
-
-      return fallback;
-    };
+    ): Promise<string> =>
+      getFunctionErrorMessage(error, fallback);
 
   /*
    * ============================================================
@@ -1131,7 +1045,7 @@ const Dashboard = () => {
           ? "Payment Processing"
           : "Payment Successful",
         description:
-          getSafeErrorMessage(data) ||
+          sanitizeMessage(data?.message, "") ||
           (isPending
             ? `${selectedService.title} payment is being processed.`
             : `${selectedService.title} payment was completed successfully.`),

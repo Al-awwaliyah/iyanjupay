@@ -1,4 +1,4 @@
-import { getSafeErrorMessage } from "@/lib/errorHandling";
+import { getSafeErrorMessage, getFunctionErrorMessage, sanitizeMessage } from "@/lib/errorHandling";
 import React, {
   useCallback,
   useEffect,
@@ -379,32 +379,8 @@ const TransactionProcessingPage = ({
     async (
       error: any,
       fallback: string,
-    ): Promise<string> => {
-      let message =
-        getSafeErrorMessage(error) ||
-        fallback;
-
-      try {
-        if (
-          error?.context &&
-          typeof error.context.json ===
-            "function"
-        ) {
-          const payload =
-            await error.context.json();
-
-          message =
-            payload?.error ||
-            payload?.message ||
-            payload?.details ||
-            message;
-        }
-      } catch {
-        // Keep original error.
-      }
-
-      return message;
-    };
+    ): Promise<string> =>
+      getFunctionErrorMessage(error, fallback);
 
   // ==========================================================
   // NORMALIZE STATUS
@@ -955,8 +931,8 @@ const TransactionProcessingPage = ({
           // ==================================================
 
           setErrorMessage(
-            finalResponse.error ||
-              finalResponse.message ||
+            sanitizeMessage(finalResponse.error, "") ||
+              sanitizeMessage(finalResponse.message, "") ||
               `The ${transactionName.toLowerCase()} could not be completed.`,
           );
         } catch (error: any) {

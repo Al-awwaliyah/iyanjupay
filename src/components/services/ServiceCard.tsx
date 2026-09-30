@@ -66,8 +66,28 @@ const ServiceCard = ({
 
         {/* Service Name */}
 
-        <h3 className="line-clamp-2 min-h-[2rem] text-[11px] font-bold leading-tight tracking-tight text-slate-900 sm:text-xs">
-          {title}
+        <h3 className="min-h-[2.1em] break-words text-center text-[11px] font-bold leading-tight tracking-tight text-slate-900 sm:text-xs">
+          {(() => {
+            // Names as long as (or longer than) "Internet Service" are shown
+            // on two lines: <p>Internet<br/>Service</p>.
+            const text = title.replace(/\s+/g, " ").trim();
+            if (text.length < 16 || !text.includes(" ")) return text;
+
+            const middle = text.length / 2;
+            let best = -1;
+            for (let i = 0; i < text.length; i++) {
+              if (text[i] !== " ") continue;
+              if (best === -1 || Math.abs(i - middle) < Math.abs(best - middle)) best = i;
+            }
+
+            return (
+              <>
+                {text.slice(0, best)}
+                <br />
+                {text.slice(best + 1)}
+              </>
+            );
+          })()}
         </h3>
       </CardContent>
     </Card>

@@ -1,3 +1,4 @@
+import { getSafeErrorMessage } from "@/lib/errorHandling";
 import React, {
   useCallback,
   useEffect,
@@ -25,9 +26,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { getFunctionErrorMessage, getSafeErrorMessage } from "@/lib/errorHandling";
 import { supabase } from "@/integrations/supabase/client";
 import { useCustomerAppSettings } from "@/hooks/useCustomerAppSettings";
+import {
+  authenticateWithBiometric,
+  isBiometricEnabled,
+} from "@/lib/biometricAuth";
 
 interface ServicePaymentProps {
   service: { title: string; type: string } | null;
@@ -43,6 +47,7 @@ type Biller = Record<string, any>;
 type Item = Record<string, any>;
 
 type DataTab =
+  | "HOT_DEALS"
   | "DAILY"
   | "WEEKLY"
   | "MONTHLY"
@@ -55,7 +60,7 @@ const SERVICE_ALIASES: Record<string, string> = {
   data_epin: "data-card",
   data_card: "data-card",
   recharge: "airtime-card",
-  recharge_card: "recharge-card",
+  recharge_card: "airtime-card",
 };
 
 const SERVICE_TITLES: Record<string, string> = {
@@ -65,13 +70,12 @@ const SERVICE_TITLES: Record<string, string> = {
   electricity: "Electricity",
   education: "Education",
   internet: "Internet Service",
+  "gift-card": "Gift Cards",
   "airtime-card": "Airtime Recharge PIN",
   "data-card": "Data E-pin",
   airtime_epin: "Airtime Recharge PIN",
   data_epin: "Data E-pin",
-  "recharge-card": "Recharge PIN",
-  "tech-store": "Tech Store",
-  esim: "Internet eSIM",
+  "recharge-card": "Airtime Recharge PIN",
 };
 
 
@@ -96,14 +100,13 @@ const BILL_AMOUNTS = [
 ];
 
 const DATA_TABS: DataTab[] = [
+  "HOT_DEALS",
   "DAILY",
   "WEEKLY",
   "MONTHLY",
   "YEARLY",
   "OTHER",
 ];
-
-const TOPUPMATE_MARKUP_PERCENT = 3;
 
 /*
  * ============================================================
@@ -295,6 +298,9 @@ function getItemCode(item: Item | null | undefined): string {
 
 function canonicalCableProvider(value: unknown): string {
   const raw = clean(value).toLowerCase().replace(/[^a-z0-9]+/g, " ");
+  if (raw === "1") return "gotv";
+  if (raw === "2") return "dstv";
+  if (raw === "3") return "startimes";
   if (raw.includes("dstv") || raw.includes("digital satellite")) return "dstv";
   if (raw.includes("gotv") || raw.includes("go tv")) return "gotv";
   if (raw.includes("startimes") || raw.includes("startime")) return "startimes";
@@ -353,7 +359,7 @@ function filterCableItems(items: Item[], billerCode: string): Item[] {
     (item) => cableProviderFromItem(item) === selected,
   );
 
-  return matching.length ? matching : items;
+  return matching;
 }
 
 function getItemPrice(item: Item | null | undefined): number {
@@ -407,134 +413,148 @@ function normaliseDataPlanLabel(value: unknown): string {
   return label || "Data plan";
 }
 
-function getProviderPeriod(item: Item): string {
-  const raw = item.raw && typeof item.raw === "object" ? item.raw : {};
-  const values = [
-    item.validity, item.validity_period, item.validityPeriod,
-    item.duration, item.period, item.plan_period, item.planPeriod,
-    raw.validity, raw.validity_period, raw.validityPeriod,
-    raw.duration, raw.period, raw.plan_period, raw.planPeriod,
-  ];
-
-  for (const value of values) {
-    const text = clean(value).replace(/\s+/g, " ").trim();
-    if (text && /(?:day|week|month|year|daily|weekly|monthly|yearly|annual)/i.test(text)) {
-      return text;
-    }
-  }
-
-  const descriptive = [
-    item.display_name, item.displayName, item.name, item.plan_name,
-    item.planName, item.description, raw.name, raw.plan_name,
-    raw.planName, raw.description,
-  ].map(clean).join(" ");
-
-  const match = descriptive.match(/(?:^|\s)(\d+(?:\.\d+)?)\s*(day|days|week|weeks|month|months|year|years)\b/i);
-  return match ? `${match[1]} ${match[2]}` : "";
-}
-
 function durationDays(item: Item): number {
   const raw = item.raw && typeof item.raw === "object" ? item.raw : {};
   const candidates = [
-    item.validity_days, item.validityDays, item.duration_days, item.durationDays,
-    raw.validity_days, raw.validityDays, raw.duration_days, raw.durationDays,
+    item.validity_days,
+    item.validityDays,
+    item.duration_days,
+    item.durationDays,
+    item.duration,
+    item.validity,
+    item.validity_period,
+    item.validityPeriod,
+    item.period,
+    item.plan_period,
+    item.planPeriod,
+    item.plan_type,
+    item.planType,
+    item.name,
+    item.plan_name,
+    item.planName,
+    item.description,
+    getItemCode(item),
+    raw.validity_days,
+    raw.validityDays,
+    raw.duration_days,
+    raw.durationDays,
+    raw.duration,
+    raw.validity,
+    raw.validity_period,
+    raw.validityPeriod,
+    raw.period,
+    raw.plan_period,
+    raw.planPeriod,
+    raw.plan_type,
+    raw.planType,
+    raw.type,
+    raw.category,
+    raw.name,
+    raw.plan_name,
+    raw.planName,
+    raw.description,
   ];
 
   for (const value of candidates) {
-    const n = Number(value);
-    if (Number.isFinite(n) && n > 0 && n <= 1000) return n;
+    const numeric = num(value);
+    if (numeric > 0 && numeric <= 1000) return numeric;
+
+    const match = clean(value).match(
+      /(\d+(?:\.\d+)?)\s*(day|days|week|weeks|month|months)/i,
+    );
+    if (!match) continue;
+
+    const count = Number(match[1]);
+    const unit = match[2].toLowerCase();
+    if (unit.startsWith("month")) return count * 30;
+    if (unit.startsWith("week")) return count * 7;
+    return count;
   }
 
-  const text = getProviderPeriod(item).toLowerCase();
-  const match = text.match(/(\d+(?:\.\d+)?)\s*(day|days|week|weeks|month|months|year|years)|^(daily|weekly|monthly|yearly|annual)$/i);
-  if (!match) return 0;
-
-  const count = Number(match[1] ?? 1);
-  const unit = String(match[2] ?? match[3]).toLowerCase();
-  if (unit.startsWith("year") || unit === "annual" || unit === "yearly") return count * 365;
-  if (unit.startsWith("month") || unit === "monthly") return count * 30;
-  if (unit.startsWith("week") || unit === "weekly") return count * 7;
-  return count;
-}
-
-function planGroup(item: Item): DataTab {
-  // The backend works out the bundle group from every validity field.
-  const serverGroup = clean(
-    (item as any).plan_group ?? (item as any).planGroup,
-  ).toUpperCase();
-
-  if (
-    serverGroup === "DAILY" ||
-    serverGroup === "WEEKLY" ||
-    serverGroup === "MONTHLY" ||
-    serverGroup === "YEARLY" ||
-    serverGroup === "OTHER"
-  ) {
-    return serverGroup as DataTab;
-  }
-
-  const period = getProviderPeriod(item).toLowerCase();
-
-  if (/hot|promo|promotion|bonus|awoof|sme|direct|gifting|gift/.test(period)) return "OTHER";
-  if (/daily|(^|\D)1\s*day|24\s*hour/.test(period)) return "DAILY";
-  if (/weekly|(^|\D)(7\s*day|1\s*week)/.test(period)) return "WEEKLY";
-  if (/monthly|(^|\D)(30\s*day|31\s*day|1\s*month)/.test(period)) return "MONTHLY";
-  if (/yearly|annual|(^|\D)(365\s*day|1\s*year)/.test(period)) return "YEARLY";
-
-  const days = durationDays(item);
-  if (days >= 1 && days <= 3) return "DAILY";
-  if (days >= 7 && days <= 14) return "WEEKLY";
-  if (days >= 30 && days <= 90) return "MONTHLY";
-  if (days === 365) return "YEARLY";
-
-  const label = [item.display_name, item.name, item.description].map(clean).join(" ").toLowerCase();
-  if (/daily|1\s*day/.test(label)) return "DAILY";
-  if (/weekly|7\s*day|1\s*week/.test(label)) return "WEEKLY";
-  if (/monthly|30\s*day|31\s*day|1\s*month/.test(label)) return "MONTHLY";
-  if (/yearly|annual|365\s*day|1\s*year/.test(label)) return "YEARLY";
-
-  return "OTHER";
+  return 0;
 }
 
 function getPlanName(item: Item): string {
   return normaliseDataPlanLabel(
-    item.display_name ?? item.displayName ?? item.name ??
-      item.plan_name ?? item.planName ?? item.packageName ??
-      item.package_name ?? item.description ?? getItemCode(item),
+    item.display_name ??
+      item.displayName ??
+      item.name ??
+      item.plan_name ??
+      item.planName ??
+      item.packageName ??
+      item.package_name ??
+      item.description ??
+      getItemCode(item),
   );
 }
 
 function getDataPlanSize(item: Item): string {
   const candidates = [
-    item.display_name, item.displayName, item.name, item.plan_name,
-    item.planName, getItemCode(item), item.data, item.data_amount,
-    item.dataAmount, item.volume, item.bundle_size, item.bundleSize, item.size,
+    item.display_name,
+    item.displayName,
+    item.name,
+    item.plan_name,
+    item.planName,
+    getItemCode(item),
+    item.data,
+    item.data_amount,
+    item.dataAmount,
+    item.volume,
+    item.bundle_size,
+    item.bundleSize,
+    item.size,
   ];
 
   for (const value of candidates) {
     const label = clean(value).replace(/\s+/g, " ").trim();
-    const match = label.match(/(?:^|\s|m)(\d+(?:\.\d+)?)\s*(KB|KBS|MB|MBS|GB|GBS|TB|TBS)\b/i);
-    if (match) return `${match[1]} ${match[2].replace(/s$/i, "").toUpperCase()}`;
+    const match = label.match(
+      /(?:^|\s|m)(\d+(?:\.\d+)?)\s*(KB|KBS|MB|MBS|GB|GBS|TB|TBS)\b/i,
+    );
+    if (match) {
+      return `${match[1]} ${match[2].replace(/s$/i, "").toUpperCase()}`;
+    }
   }
 
   return normaliseDataPlanLabel(getPlanName(item));
 }
 
 function getDataPlanDuration(item: Item): string {
-  const explicit = getProviderPeriod(item);
-  if (explicit) return explicit;
   const days = durationDays(item);
-  if (days >= 365) return `${Math.round(days / 365)} year${days >= 730 ? "s" : ""}`;
-  if (days >= 28 && days % 30 === 0) {
-    const months = days / 30;
-    return `${months} month${months === 1 ? "" : "s"}`;
+  if (days > 0) {
+    if (days >= 28) return `${days} days`;
+    if (days % 7 === 0) return `${days / 7} week${days / 7 === 1 ? "" : "s"}`;
+    return `${days} days`;
   }
-  if (days > 0 && days % 7 === 0) {
-    const weeks = days / 7;
-    return `${weeks} week${weeks === 1 ? "" : "s"}`;
-  }
-  if (days > 0) return `${days} days`;
-  return "Data plan";
+
+  const explicit = clean(
+    item.validity ??
+      item.duration ??
+      item.period ??
+      item.plan_period ??
+      item.planPeriod ??
+      item.validity_period ??
+      item.validityPeriod,
+  );
+
+  return explicit || "Data plan";
+}
+
+function planGroup(item: Item): DataTab {
+  const planType = [item.plan_type, item.planType, item.type].map(clean).join(" ").toLowerCase();
+  const label = [
+    item.display_name, item.displayName, item.name, item.description,
+    item.validity, item.period, item.validity_period, item.validityPeriod,
+  ].map(clean).join(" ").toLowerCase();
+
+  // SME is an internal commercial classification and belongs in Hot Deals.
+  // It is never displayed to the customer.
+  // Hot Deals intentionally remains empty for Topupmate data.
+  const days = durationDays(item);
+  if (days <= 1 || /\b1\s*day\b|\bdaily\b/.test(label)) return "DAILY";
+  if (days <= 7 || /\bweekly\b|\b7\s*days?\b/.test(label)) return "WEEKLY";
+  if (days <= 31 || /\bmonthly\b|\b30\s*days?\b/.test(label)) return "MONTHLY";
+  if (days <= 365 || /\b1\s*year\b|\b365\s*days?\b|\byearly\b/.test(label)) return "YEARLY";
+  return "OTHER";
 }
 
 function isVariable(item: Item): boolean {
@@ -569,134 +589,90 @@ function canonicalNetworkName(
   name: unknown,
   code = ""
 ): string {
-  const label = clean(name)
+  const value = `${clean(name)} ${clean(code)}`
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, " ")
     .replace(/\s+/g, " ")
     .trim();
 
-  if (label.includes("9mobile") || label.includes("etisalat")) return "9mobile";
-  if (label.includes("airtel")) return "Airtel";
-  if (label.includes("mtn")) return "MTN";
-  if (/\bglo\b|globacom/.test(label)) return "Glo";
+  if (value.includes("9mobile") || value.includes("etisalat") || /\b03\b/.test(value)) {
+    return "9mobile";
+  }
 
-  // Topupmate network ids: 1 = MTN, 2 = Airtel, 3 = Glo, 4 = 9mobile.
-  const byId: Record<string, string> = {
-    "1": "MTN", "01": "MTN",
-    "2": "Airtel", "02": "Airtel",
-    "3": "Glo", "03": "Glo",
-    "4": "9mobile", "04": "9mobile",
-  };
+  if (value.includes("airtel") || /\b04\b/.test(value)) {
+    return "Airtel";
+  }
 
-  return byId[clean(code).toLowerCase()] ?? "";
+  if (value.includes("mtn") || /\b01\b/.test(value)) {
+    return "MTN";
+  }
+
+  if (value.includes("glo") || /\b02\b/.test(value)) {
+    return "Glo";
+  }
+
+  return "";
 }
-
-/*
- * Provider logos are served from /public/providers (no third-party
- * favicon services, so nothing can 404 or be blocked). To change a logo,
- * replace the file with the same name, e.g. public/providers/mtn.svg.
- */
-const LOGO_PATTERNS: Array<[RegExp, string]> = [
-  [/9mobile|etisalat/, "9mobile"],
-  [/airtel/, "airtel"],
-  [/\bmtn\b/, "mtn"],
-  [/\bglo\b|globacom/, "glo"],
-  [/dstv/, "dstv"],
-  [/gotv/, "gotv"],
-  [/startime/, "startimes"],
-  [/showmax/, "showmax"],
-  [/ikeja|ikedc/, "ikedc"],
-  [/\beko\b|ekedc/, "eko-electric"],
-  [/kano|kedco/, "kedco"],
-  [/port\s*harcourt|phedc|\bphed\b/, "port-harcourt-electric"],
-  [/\bjos\b|jedc|\bjed\b/, "jos-electric"],
-  [/ibadan|ibedc/, "ibedc"],
-  [/kaduna|kaedco|knedc/, "kaedco"],
-  [/abuja|aedc/, "aedc"],
-  [/enugu|eedc/, "eedc"],
-  [/benin|bedc/, "bedc"],
-  [/yola|yedc/, "yedc"],
-  [/smile/, "smile"],
-  [/alpha/, "alpha"],
-  [/kirani/, "kirani"],
-  [/ratel/, "ratel"],
-  [/jamb/, "jamb"],
-  [/waec/, "waec"],
-  [/neco/, "neco"],
-  [/nabteb/, "nabteb"],
-  [/amazon/, "amazon"],
-  [/apple|itunes/, "apple"],
-  [/google\s*play/, "google-play"],
-  [/steam/, "steam"],
-  [/playstation|psn/, "playstation"],
-  [/xbox/, "xbox"],
-  [/netflix/, "netflix"],
-  [/spotify/, "spotify"],
-  [/razer/, "razer"],
-];
 
 function providerLogo(
   name: string,
   code = ""
 ): string | null {
   const network = canonicalNetworkName(name, code);
-  const value = `${name} ${network || code}`
+
+  if (network === "MTN") {
+    return "https://www.google.com/s2/favicons?domain=mtn.ng&sz=128";
+  }
+
+  if (network === "Glo") {
+    return "https://www.google.com/s2/favicons?domain=gloworld.com&sz=128";
+  }
+
+  if (network === "Airtel") {
+    return "https://www.google.com/s2/favicons?domain=airtel.com.ng&sz=128";
+  }
+
+  if (network === "9mobile") {
+    // Self-contained 9mobile mark. This avoids hotlink/CORS/CDN failures
+    // that can make the remote logo disappear inside the PWA.
+    return (
+      "data:image/svg+xml;charset=UTF-8," +
+      encodeURIComponent(`
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 64">
+          <rect width="160" height="64" rx="12" fill="#ffffff"/>
+          <circle cx="31" cy="32" r="21" fill="#d6df00"/>
+          <path d="M22 20c8-4 17 1 17 9 0 6-4 9-10 11l-7 3v-7l7-3c3-1 4-2 4-4 0-3-4-4-7-2l-4 2z" fill="#087f3f"/>
+          <text x="57" y="40" font-family="Arial,Helvetica,sans-serif" font-size="25" font-weight="700" fill="#087f3f">mobile</text>
+        </svg>
+      `)
+    );
+  }
+
+  const value = `${name} ${code}`
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, " ");
 
-  const matched = LOGO_PATTERNS.find(([pattern]) => pattern.test(value));
-  return matched ? `/providers/${matched[1]}.svg` : null;
+  if (value.includes("dstv")) {
+    return "https://seeklogo.com/images/D/DSTV-logo-214D0468CA-seeklogo.com.png";
+  }
+
+  if (value.includes("gotv")) {
+    return "https://www.google.com/s2/favicons?domain=gotvafrica.com&sz=128";
+  }
+
+  if (
+    value.includes("startime") ||
+    value.includes("startimes")
+  ) {
+    return "https://www.google.com/s2/favicons?domain=startimestv.com&sz=128";
+  }
+
+  if (value.includes("showmax")) {
+    return "https://www.google.com/s2/favicons?domain=showmax.com&sz=128";
+  }
+
+  return null;
 }
-
-const OFFLINE_BILLERS: Record<string, Biller[]> = {
-  airtime: [
-    { biller_code: "1", name: "MTN" },
-    { biller_code: "2", name: "Airtel" },
-    { biller_code: "3", name: "Glo" },
-    { biller_code: "4", name: "9mobile" },
-  ],
-
-  data: [
-    { biller_code: "1", name: "MTN" },
-    { biller_code: "2", name: "Airtel" },
-    { biller_code: "3", name: "Glo" },
-    { biller_code: "4", name: "9mobile" },
-  ],
-
-  "airtime-card": [
-    { biller_code: "1", name: "MTN" },
-    { biller_code: "2", name: "Airtel" },
-    { biller_code: "3", name: "Glo" },
-    { biller_code: "4", name: "9mobile" },
-  ],
-
-  "data-card": [
-    { biller_code: "1", name: "MTN" },
-    { biller_code: "2", name: "Airtel" },
-    { biller_code: "3", name: "Glo" },
-    { biller_code: "4", name: "9mobile" },
-  ],
-
-  cable: [
-    { biller_code: "dstv", name: "DStv" },
-    { biller_code: "gotv", name: "GOtv" },
-    { biller_code: "startimes", name: "Startimes" },
-      ],
-
-  electricity: [
-    { biller_code: "01", name: "Abuja Electric" },
-    { biller_code: "02", name: "Benin Electric" },
-    { biller_code: "03", name: "Enugu Electric" },
-    { biller_code: "04", name: "Eko Electric" },
-    { biller_code: "05", name: "Ibadan Electric" },
-    { biller_code: "06", name: "Ikeja Electric" },
-    { biller_code: "07", name: "Jos Electric" },
-    { biller_code: "08", name: "Kaduna Electric" },
-    { biller_code: "09", name: "Kano Electric" },
-    { biller_code: "10", name: "Port Harcourt Electric" },
-    { biller_code: "11", name: "Yola Electric" },
-  ],
-};
 
 function normaliseDiscoText(value: unknown): string {
   return clean(value)
@@ -788,18 +764,6 @@ function filterElectricityDiscos(live: Biller[]): Biller[] {
     });
   }
 
-  // Only use the old list when the provider returned no usable electricity billers.
-  if (!result.length) {
-    for (const biller of OFFLINE_BILLERS.electricity ?? []) {
-      const code = getCode(biller);
-      const name = getName(biller);
-      const key = normaliseDiscoText(name) || code.toLowerCase();
-      if (!key || seen.has(key)) continue;
-      seen.add(key);
-      result.push({ ...biller, display_name: name });
-    }
-  }
-
   return result;
 }
 function isPlaceholderBiller(
@@ -835,151 +799,44 @@ function canonicalInternetProvider(biller: Biller): string {
     biller.raw?.providerName,
   ].map(clean).join(" ").toLowerCase();
 
+  // Internet Service is intentionally limited to Smile.
   if (raw.includes("smile")) return "Smile";
-  if (raw.includes("alpha")) return "Alpha";
-  if (raw.includes("kirani")) return "Kirani";
-  if (raw.includes("ratel")) return "Ratel";
 
   return "";
 }
 
 function filterNetworkProviders(service: string, live: Biller[]): Biller[] {
-  const allowed = service === "data" || service === "airtime"
-    ? new Set(["MTN", "Airtel", "Glo", "9mobile"])
-    : null;
-
   const result: Biller[] = [];
   const seen = new Set<string>();
-
   for (const biller of live) {
     if (isPlaceholderBiller(biller)) continue;
-
     const code = getCode(biller);
-    const rawName = getName(biller);
-    const name = allowed
-      ? canonicalNetworkName(rawName, code)
-      : canonicalInternetProvider(biller);
-
-    if (!name || (allowed && !allowed.has(name))) continue;
-
-    const key = name.toLowerCase();
-    if (seen.has(key)) continue;
+    const name = clean(getName(biller) || biller.display_name || code);
+    const key = (code || name).toLowerCase();
+    if (!key || seen.has(key)) continue;
     seen.add(key);
-
-    result.push({
-      ...biller,
-      display_name: name,
-    });
+    result.push({ ...biller, display_name: name });
   }
-
   return result;
 }
 
-function mergeBillers(
-  service: string,
-  live: Biller[]
-): Biller[] {
-  const cleaned = live.filter(
-    (b) => !isPlaceholderBiller(b)
-  );
-
-  if (service === "electricity") {
-    return filterElectricityDiscos(cleaned);
-  }
-
+function mergeBillers(service: string, live: Biller[]): Biller[] {
+  const cleaned = live.filter((b) => !isPlaceholderBiller(b));
+  if (service === "electricity") return filterElectricityDiscos(cleaned);
   if (service === "data" || service === "airtime" || service === "internet") {
-    const filtered = filterNetworkProviders(service, cleaned);
-    if (filtered.length) return filtered;
-
-    // Keep the four mobile networks available if the catalogue response is
-    // temporarily missing names; their stable codes are used internally only.
-    if (service === "data" || service === "airtime") {
-      return (OFFLINE_BILLERS[service] ?? []).map((b) => ({
-        ...b,
-        display_name: b.name,
-      }));
-    }
+    return filterNetworkProviders(service, cleaned);
   }
-
   const result: Biller[] = [];
   const seen = new Set<string>();
-
-  const canonicalName = (
-    biller: Biller
-  ): string => {
-    const raw = getName(biller).toLowerCase();
-
-    if (raw.includes("mtn")) return "mtn";
-    if (/\bglo\b/.test(raw)) return "glo";
-    if (raw.includes("9mobile") || raw.includes("etisalat")) return "9mobile";
-    if (raw.includes("airtel")) return "airtel";
-    if (raw.includes("dstv")) return "dstv";
-    if (raw.includes("gotv")) return "gotv";
-    if (raw.includes("startime")) return "startimes";
-
-    return "";
-  };
-
-  const add = (biller: Biller) => {
+  for (const biller of cleaned) {
     const code = getCode(biller);
-    const name = getName(biller);
-    const canonical = canonicalName(biller);
-
-    const isNetworkService =
-      service === "airtime" ||
-      service === "data" ||
-      service === "airtime-card" ||
-      service === "data-card";
-
-    const displayName = isNetworkService
-      ? canonicalNetworkName(name, code)
-      : canonical === "dstv"
-        ? "DStv"
-        : canonical === "gotv"
-          ? "GOtv"
-          : canonical === "startimes"
-            ? "Startimes"
-            : name;
-
-    const key = isNetworkService
-      ? displayName.toLowerCase() || code.toLowerCase()
-      : canonical || code.toLowerCase() || name.toLowerCase();
-
-    if (!key || seen.has(key)) return;
-
+    const name = clean(getName(biller) || biller.display_name || code);
+    const key = (code || name).toLowerCase();
+    if (!key || seen.has(key)) continue;
     seen.add(key);
-    result.push({
-      ...biller,
-      display_name: displayName || name || code,
-    });
-  };
-
-  cleaned.forEach(add);
-  (OFFLINE_BILLERS[service] ?? []).forEach(add);
-
-  return result;
-}
-
-/**
- * Long names ("Internet Service", "Port Harcourt Electric" ...) are shown on
- * two lines inside their card instead of being cut off with "...".
- */
-function splitTwoLines(name: string): [string, string] {
-  const text = clean(name).replace(/\s+/g, " ");
-
-  if (text.length < 16 || !text.includes(" ")) return [text, ""];
-
-  const middle = text.length / 2;
-  let best = -1;
-
-  for (let i = 0; i < text.length; i++) {
-    if (text[i] !== " ") continue;
-    if (best === -1 || Math.abs(i - middle) < Math.abs(best - middle)) {
-      best = i;
-    }
+    result.push({ ...biller, display_name: name });
   }
-
-  return [text.slice(0, best), text.slice(best + 1)];
+  return result;
 }
 
 function initials(name: string): string {
@@ -1434,42 +1291,6 @@ function ServiceTransactionProcessing({
                   </div>
                 )}
 
-              {isSuccess &&
-                details?.service === "gift-card" &&
-                fulfillment &&
-                Object.keys(fulfillment).length > 0 && (
-                  <div className="rounded-2xl border border-violet-200 bg-gradient-to-br from-violet-50 via-white to-blue-50 p-4 shadow-sm">
-                    <div className="mb-3 flex items-center justify-between gap-3">
-                      <div>
-                        <div className="text-[10px] font-bold uppercase tracking-wide text-violet-700">
-                          Digital voucher
-                        </div>
-                        <div className="mt-0.5 text-base font-extrabold text-gray-900">
-                          Your gift card is ready
-                        </div>
-                      </div>
-                      <ShieldCheck className="h-5 w-5 text-violet-700" />
-                    </div>
-
-                    <div className="space-y-2">
-                      {Object.entries(fulfillment).map(([key, value]) => (
-                        <div key={key} className="rounded-xl border border-violet-100 bg-white/90 px-3 py-2.5">
-                          <div className="text-[10px] font-bold uppercase tracking-wide text-violet-700">
-                            {key.replace(/_/g, " ")}
-                          </div>
-                          <div className="mt-1 break-all font-mono text-sm font-semibold text-gray-900">
-                            {typeof value === "string" ? value : JSON.stringify(value)}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-
-                    <p className="mt-3 text-[11px] leading-5 text-gray-600">
-                      Keep your voucher code private. Use the redemption instructions supplied by the provider.
-                    </p>
-                  </div>
-                )}
-
               {isPending && (
                 <div className="iyanjupay-processing-pending rounded-2xl border p-4 text-sm">
                   <div className="flex items-start gap-3">
@@ -1610,9 +1431,11 @@ export default function ServicePayment({
 
   const backendServiceType = useCallback(
     (billerCode = "", biller?: Biller) => {
-      if (serviceType === "internet") return "internet";
+      if (serviceType === "internet") return billerCode ? clean(billerCode).toLowerCase() : "internet";
 
-      if (serviceType === "education") return "education";
+      if (serviceType === "education") {
+        return "education";
+      }
 
       return serviceType;
     },
@@ -1629,13 +1452,11 @@ export default function ServicePayment({
   const isRechargeCard =
     serviceType === "recharge-card";
 
-  const isPinService =
-    isEpin || isRechargeCard;
-
   const isPhoneService =
     isAirtime ||
     isData ||
-    isEpin;
+    isEpin ||
+    serviceType === "education";
 
   const isAmountOnly =
     isAirtime || isElectricity;
@@ -1669,18 +1490,17 @@ export default function ServicePayment({
   const [quantity, setQuantity] =
     useState(1);
 
-  // Gift cards: optional country filter and product search.
-  const [giftCountry, setGiftCountry] = useState("");
-  const [giftCountries, setGiftCountries] = useState<
-    Array<{ code: string; name: string }>
-  >([]);
-  const [giftSearch, setGiftSearch] = useState("");
-
   const [meterType, setMeterType] =
     useState("");
 
   const [dataTab, setDataTab] =
     useState<DataTab>("DAILY");
+
+  const [giftCategory, setGiftCategory] =
+    useState("ALL");
+
+  const [giftCountry, setGiftCountry] =
+    useState("ALL");
 
   const [customAmount, setCustomAmount] =
     useState(false);
@@ -1742,9 +1562,6 @@ export default function ServicePayment({
     [items, selectedItemCode]
   );
 
-  const isInternetAmount =
-    isInternet && selectedBillerCode !== "smile";
-
   const customerLabel =
     isPhoneService
       ? "Phone Number"
@@ -1753,7 +1570,7 @@ export default function ServicePayment({
         : isElectricity
           ? "Meter Number"
           : isInternet
-            ? (selectedBillerCode === "smile" ? "Smile Account / Registered Phone" : "Phone Number")
+            ? "Account Number"
             : isGiftCard
               ? "Delivery Email"
               : "Customer Number";
@@ -1766,10 +1583,8 @@ export default function ServicePayment({
         : isElectricity
           ? "Enter meter number"
           : isInternet
-            ? (selectedBillerCode === "smile" ? "Enter Smile account number or registered phone" : "Enter phone number")
-            : isGiftCard
-              ? "Enter recipient email"
-              : "Enter customer number";
+            ? "Enter internet account number"
+            : "Enter customer number";
 
   const resetVerification =
     useCallback(() => {
@@ -1788,6 +1603,8 @@ export default function ServicePayment({
     setMeterType("");
     setCustomAmount(false);
     setDataTab("DAILY");
+    setGiftCategory("ALL");
+    setGiftCountry("ALL");
     resetVerification();
     setError("");
     setShowPin(false);
@@ -1813,19 +1630,15 @@ export default function ServicePayment({
 
       if (fnError) {
         throw new Error(
-          await getFunctionErrorMessage(
-            fnError,
-            "We could not complete this request. Please try again."
-          )
+          fnError.message ||
+            "Service request failed."
         );
       }
 
       if (!data || data.success !== true) {
         throw new Error(
-          getSafeErrorMessage(
-            data,
-            "We could not complete this request. Please try again."
-          )
+          getSafeErrorMessage(data) ||
+            "Service request failed."
         );
       }
 
@@ -1844,15 +1657,9 @@ export default function ServicePayment({
         let merged: Biller[];
 
         if (serviceType === "education") {
-          const data = await invoke({
-            action: "billers",
-            service: "education",
-            country: "NG",
-          });
-
-          merged = firstArray(data.billers, data.examTypes).map((option) => ({
+          const data = await invoke({ action: "billers", service: "education", country: "NG" });
+          merged = firstArray(data.billers).map((option) => ({
             ...option,
-            provider_service: option.provider_service ?? option.provider,
             biller_code: getCode(option),
             display_name: getName(option),
           }));
@@ -1861,12 +1668,7 @@ export default function ServicePayment({
             action: "billers",
             service: backendServiceType(),
             country: "NG",
-            ...(isGiftCard ? { country_code: giftCountry } : {}),
           });
-
-          if (isGiftCard && Array.isArray(data.countries)) {
-            setGiftCountries(data.countries);
-          }
 
           const loaded = firstArray(
             data.billers,
@@ -1881,17 +1683,6 @@ export default function ServicePayment({
             serviceType,
             loaded
           );
-        }
-
-        if (isAirtimeCard) {
-          const order = ["MTN", "Airtel", "Glo", "9mobile"];
-          const rank = (b: Biller) => {
-            const i = order.indexOf(
-              canonicalNetworkName(getName(b), getCode(b)),
-            );
-            return i === -1 ? order.length : i;
-          };
-          merged = [...merged].sort((a, b) => rank(a) - rank(b));
         }
 
         setBillers(merged);
@@ -1927,8 +1718,6 @@ export default function ServicePayment({
       serviceType,
       isAirtimeCard,
       isRechargeCard,
-      isGiftCard,
-      giftCountry,
       toast,
     ]);
 
@@ -1946,12 +1735,6 @@ export default function ServicePayment({
         setItems([]);
         setSelectedItemCode("");
 
-        if (isInternet && billerCode !== "smile") {
-          setLoadingItems(false);
-          setAmount("");
-          return;
-        }
-
         if (!isData) {
           setAmount("");
         }
@@ -1968,20 +1751,9 @@ export default function ServicePayment({
             ...(isCable
               ? { provider_name: getName(billerForCode) }
               : {}),
-            ...(isInternet
-              ? {
-                  provider: billerCode,
-                  provider_name: getName(billerForCode),
-                  internet_provider: billerCode,
-                }
-              : {}),
-            country: "NG",
             ...(isGiftCard
-              ? {
-                  product_id: billerCode,
-                  country_code: giftCountry,
-                }
-              : {}),
+              ? { product_id: billerCode, productId: billerCode }
+              : { country: "NG" }),
 
             ...(isElectricity
               ? {
@@ -2041,9 +1813,6 @@ export default function ServicePayment({
         isData,
         isElectricity,
         isCable,
-        isInternet,
-        isGiftCard,
-        giftCountry,
         meterType,
         selectedBiller,
         billers,
@@ -2071,7 +1840,7 @@ export default function ServicePayment({
     resetVerification();
     setError("");
 
-    if (isElectricity || (isInternet && code !== "smile")) {
+    if (isElectricity) {
       return;
     }
 
@@ -2265,24 +2034,10 @@ export default function ServicePayment({
     setError("");
   };
 
-  const variableMarkupPercent = num(
-    selectedBiller?.markup_percent ??
-      selectedBiller?.markupPercentage ??
-      selectedBiller?.percentage ??
-      0
-  );
-
   const customerPayAmount =
-    (isPinService || isGiftCard) && num(amount) > 0
+    isEpin && num(amount) > 0
       ? num(amount) * quantity
-      : isInternetAmount && num(amount) > 0
-        ? Math.ceil((num(amount) * (1 + TOPUPMATE_MARKUP_PERCENT / 100)) / 10) * 10
-        : isAmountOnly && num(amount) > 0
-          ? roundUpTo50(
-              num(amount) *
-                (1 + variableMarkupPercent / 100)
-            )
-          : num(amount);
+      : num(amount);
 
   const providerVariableAmount =
     isAmountOnly && num(amount) > 0
@@ -2300,45 +2055,6 @@ export default function ServicePayment({
       selectedItem?.max_amount ??
       selectedItem?.maxAmount
   );
-
-  const visibleBillers = useMemo(() => {
-    if (!isGiftCard) return billers;
-
-    const query = giftSearch.trim().toLowerCase();
-    const filtered = query
-      ? billers.filter((b) =>
-          `${getName(b)} ${clean(b.display_name)}`
-            .toLowerCase()
-            .includes(query),
-        )
-      : billers;
-
-    return filtered.slice(0, 60);
-  }, [billers, isGiftCard, giftSearch]);
-
-  const dataTabCounts =
-    useMemo(() => {
-      const counts: Record<string, number> = {};
-
-      if (isData) {
-        for (const item of items) {
-          if (isVariable(item)) continue;
-          const group = planGroup(item);
-          counts[group] = (counts[group] ?? 0) + 1;
-        }
-      }
-
-      return counts;
-    }, [isData, items]);
-
-  // Open the first bundle group that actually has plans.
-  useEffect(() => {
-    if (!isData || !items.length) return;
-    if (dataTabCounts[dataTab]) return;
-
-    const firstWithPlans = DATA_TABS.find((tab) => dataTabCounts[tab]);
-    if (firstWithPlans) setDataTab(firstWithPlans);
-  }, [isData, items, dataTab, dataTabCounts]);
 
   const visibleDataPlans =
     useMemo(() => {
@@ -2389,8 +2105,7 @@ export default function ServicePayment({
 
   const canEnterAmount =
     isAirtime ||
-    isElectricity ||
-    isInternetAmount;
+    isElectricity;
 
   const needsItem =
     !canEnterAmount;
@@ -2398,7 +2113,7 @@ export default function ServicePayment({
   const hasRequiredIdentifier =
     isCable || isElectricity
       ? verified
-      : isEpin || serviceType === "education"
+      : isEpin
         ? true
         : !!customer.trim();
 
@@ -2441,7 +2156,7 @@ export default function ServicePayment({
       return "Please select a package.";
     }
 
-    if ((isPinService || isGiftCard) && (!Number.isInteger(quantity) || quantity < 1 || quantity > 100)) {
+    if (isEpin && (!Number.isInteger(quantity) || quantity < 1 || quantity > 100)) {
       return "Quantity must be between 1 and 100.";
     }
 
@@ -2532,6 +2247,26 @@ export default function ServicePayment({
           ? customer.trim()
           : "",
 
+      email:
+        isGiftCard
+          ? customer.trim()
+          : "",
+
+      recipient_email:
+        isGiftCard
+          ? customer.trim()
+          : "",
+
+      recipient_amount:
+        isGiftCard && selectedItem
+          ? num(selectedItem.recipient_amount ?? selectedItem.denomination)
+          : undefined,
+
+      product_id:
+        isGiftCard
+          ? selectedBillerCode
+          : "",
+
       meterNumber:
         isElectricity
           ? customer.trim()
@@ -2581,20 +2316,6 @@ export default function ServicePayment({
       service: backendServiceType(selectedBillerCode, selectedBiller),
       country: "NG",
 
-      // Gift-card delivery / product fields.
-      ...(isGiftCard
-        ? {
-            product_id: selectedBillerCode,
-            email: customer.trim(),
-            recipient_email: customer.trim(),
-            recipient_amount:
-              selectedItem?.recipient_amount ?? selectedItem?.denomination,
-            country_code:
-              clean(selectedBiller?.countryCode) || giftCountry,
-            units: quantity,
-          }
-        : {}),
-
       // VTUGATE request fields.
       service_id:
         isData && selectedItem
@@ -2625,7 +2346,7 @@ export default function ServicePayment({
           ? clean(selectedBiller?.disco ?? selectedBiller?.raw?.disco ?? selectedBillerCode).toLowerCase()
           : "",
       quantity:
-        isPinService || isGiftCard
+        isEpin
           ? quantity
           : serviceType === "education"
             ? 1
@@ -2638,9 +2359,7 @@ export default function ServicePayment({
         customerPayAmount,
 
       provider_amount:
-        isAmountOnly || isInternetAmount
-          ? num(amount)
-          : undefined,
+        isAmountOnly ? providerVariableAmount : undefined,
 
       item: selectedItem,
       biller: selectedBiller,
@@ -2652,18 +2371,54 @@ export default function ServicePayment({
     };
   };
 
-  const startPurchase = () => {
-    const validationError =
-      validateBeforePin();
+  const startPurchase = async () => {
+    const validationError = validateBeforePin();
 
     if (validationError) {
       toast({
-        title:
-          "Check your details",
-        description:
-          validationError,
+        title: "Check your details",
+        description: validationError,
         variant: "destructive",
       });
+      return;
+    }
+
+    // When biometric authorization is enabled, it replaces the
+    // manual Payment PIN prompt for this transaction.
+    if (isBiometricEnabled()) {
+      setVerifyingPin(true);
+      setError("");
+
+      try {
+        await authenticateWithBiometric(
+          "Authorize IyanjuPay payment",
+        );
+
+        const idempotencyKey = createIdempotencyKey();
+        const details = {
+          ...buildDetails(),
+          idempotency_key: idempotencyKey,
+          idempotencyKey,
+          service_title: serviceTitle,
+        };
+
+        setProcessingSession({
+          amount: customerPayAmount,
+          details,
+          idempotencyKey,
+        });
+      } catch (error) {
+        console.error("Biometric payment authorization failed:", error);
+        const message = "Biometric verification failed. Please try again.";
+        setError(message);
+        toast({
+          title: "Payment authorization",
+          description: message,
+          variant: "destructive",
+        });
+      } finally {
+        setVerifyingPin(false);
+      }
 
       return;
     }
@@ -2673,84 +2428,96 @@ export default function ServicePayment({
     setShowPin(true);
   };
 
-  const confirmPurchase =
-    async () => {
-      if (!/^\d{4}$/.test(paymentPin)) {
-        toast({
-          title: "Invalid PIN",
-          description:
-            "Enter your 4-digit payment PIN.",
-          variant: "destructive",
+  const confirmPurchase = async () => {
+    if (!/^\d{4}$/.test(paymentPin)) {
+      toast({
+        title: "Invalid PIN",
+        description: "Enter your 4-digit payment PIN.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setVerifyingPin(true);
+    setError("");
+
+    try {
+      const { data, error: pinError } =
+        await supabase.rpc("verify_payment_pin", {
+          _pin: paymentPin,
         });
 
-        return;
+      if (pinError) {
+        console.error("Payment PIN verification error:", pinError);
+        throw new Error("Unable to verify payment PIN.");
       }
 
-      setVerifyingPin(true);
-      setError("");
-
-      try {
-        const {
-          data,
-          error: pinError,
-        } =
-          await supabase.rpc(
-            "verify_payment_pin",
-            {
-              _pin: paymentPin,
-            }
-          );
-
-        if (pinError) {
-          throw new Error(
-            "Unable to verify payment PIN."
-          );
-        }
-
-        if (!data?.success) {
-          throw new Error(
-            data?.message ||
-              "Invalid payment PIN."
-          );
-        }
-
-        const idempotencyKey =
-          createIdempotencyKey();
-
-        const details = {
-          ...buildDetails(),
-          idempotency_key:
-            idempotencyKey,
-          idempotencyKey,
-          service_title:
-            serviceTitle,
-        };
-
-        setShowPin(false);
-        setPaymentPin("");
-
-        setProcessingSession({
-          amount: customerPayAmount,
-          details,
-          idempotencyKey,
-        });
-      } catch (e: any) {
-        const message =
-          getSafeErrorMessage(e) ||
-          "Unable to complete this payment.";
-
-        setError(message);
-
-        toast({
-          title:
-            "Payment failed",
-          description: message,
-          variant: "destructive",
-        });
-      } finally {
-        setVerifyingPin(false);
+      if (!data?.success) {
+        throw new Error("Invalid payment PIN.");
       }
-    };
+
+      const idempotencyKey = createIdempotencyKey();
+
+      const details = {
+        ...buildDetails(),
+        idempotency_key: idempotencyKey,
+        idempotencyKey,
+        service_title: serviceTitle,
+      };
+
+      setShowPin(false);
+      setPaymentPin("");
+
+      setProcessingSession({
+        amount: customerPayAmount,
+        details,
+        idempotencyKey,
+      });
+    } catch (error) {
+      console.error("Payment authorization failed:", error);
+      const message = "Unable to authorize this payment. Please try again.";
+      setError(message);
+      toast({
+        title: "Payment authorization",
+        description: message,
+        variant: "destructive",
+      });
+    } finally {
+      setVerifyingPin(false);
+    }
+  };
+
+  const giftCategories = useMemo(() => {
+    if (!isGiftCard) return [];
+    return Array.from(
+      new Set(
+        billers
+          .map((b) => clean(b.raw?.category?.name ?? b.category?.name ?? b.category))
+          .filter(Boolean)
+      )
+    ).sort((a, b) => a.localeCompare(b));
+  }, [billers, isGiftCard]);
+
+  const giftCountries = useMemo(() => {
+    if (!isGiftCard) return [];
+    return Array.from(
+      new Set(
+        billers
+          .map((b) => clean(b.raw?.country?.name ?? b.country?.name ?? b.country))
+          .filter(Boolean)
+      )
+    ).sort((a, b) => a.localeCompare(b));
+  }, [billers, isGiftCard]);
+
+  const visibleGiftBillers = useMemo(() => {
+    if (!isGiftCard) return billers;
+    return billers.filter((b) => {
+      const category = clean(b.raw?.category?.name ?? b.category?.name ?? b.category);
+      const country = clean(b.raw?.country?.name ?? b.country?.name ?? b.country);
+      return (giftCategory === "ALL" || category === giftCategory) &&
+        (giftCountry === "ALL" || country === giftCountry);
+    });
+  }, [billers, giftCategory, giftCountry, isGiftCard]);
 
   const renderBillerCard = (
     biller: Biller
@@ -2767,13 +2534,16 @@ export default function ServicePayment({
       code ===
       selectedBillerCode;
 
-    const providerFallbackLogo = providerLogo(name, code);
-    const logo = providerFallbackLogo || clean(
-      biller.logo_url ??
-        biller.logoUrl ??
-        biller.logo ??
-        firstArray(biller.logoUrls, biller.logo_urls)[0]
-    );
+    const logo =
+      clean(
+        biller.logo_url ??
+          biller.logoUrl ??
+          biller.logo
+      ) ||
+      providerLogo(
+        name,
+        code
+      );
 
     return (
       <button
@@ -2796,7 +2566,7 @@ export default function ServicePayment({
         }`}
       >
         <span
-          className={`iyanjupay-service-biller-logo flex h-16 w-full max-w-[92px] items-center justify-center overflow-visible rounded-xl border bg-white px-1.5 py-1 text-xs font-bold text-gray-600 shadow-sm ${
+          className={`iyanjupay-service-biller-logo flex h-9 w-9 items-center justify-center overflow-hidden rounded-xl border bg-white text-xs font-bold text-gray-600 shadow-sm ${
             selected
               ? "border-[#6D28D9]"
               : "border-gray-200"
@@ -2806,47 +2576,26 @@ export default function ServicePayment({
             <img
               src={logo}
               alt=""
-              className="block max-h-full max-w-full object-contain"
+              className="h-full w-full object-contain p-1"
               onError={(e) => {
-                const img = e.currentTarget;
-                if (providerFallbackLogo && img.dataset.fallback !== "1" && img.src !== providerFallbackLogo) {
-                  img.dataset.fallback = "1";
-                  img.src = providerFallbackLogo;
-                  return;
-                }
-                img.style.display = "none";
-                const fallback = img.parentElement?.querySelector<HTMLSpanElement>("[data-logo-initials]");
-                if (fallback) fallback.style.display = "flex";
+                e.currentTarget.style.display =
+                  "none";
               }}
             />
           ) : (
             initials(name)
           )}
-          <span data-logo-initials="true" className="hidden h-full w-full items-center justify-center">
-            {initials(name)}
-          </span>
         </span>
 
         <span
-          className={`max-w-[86px] break-words text-center text-[10px] font-semibold leading-tight ${
+          className={`max-w-[86px] truncate text-[10px] font-semibold leading-tight ${
             selected
               ? "text-[#4C1D95]"
               : "text-gray-800"
           }`}
           title={name}
         >
-          {(() => {
-            const [line1, line2] = splitTwoLines(name);
-            return line2 ? (
-              <>
-                {line1}
-                <br />
-                {line2}
-              </>
-            ) : (
-              line1
-            );
-          })()}
+          {name}
         </span>
       </button>
     );
@@ -2957,18 +2706,18 @@ export default function ServicePayment({
         </div>
 
         <div className="mt-1.5 text-sm font-extrabold text-[#4C1D95] sm:text-base">
-          {naira(price)}
+          {isGiftCard ? `$${price.toFixed(2)}` : naira(price)}
         </div>
 
-        {(serviceType === "cable" || item.validity_days || item.validity || item.duration || getProviderPeriod(item)) ? (
-          <div className="mt-1 truncate text-[10px] font-medium text-gray-500 sm:text-xs">
-            {getProviderPeriod(item) ||
-              clean(
-                item.validity ??
-                  item.duration ??
-                  (item.validity_days ? `${item.validity_days} days` : "")
-              ) ||
-              "Period not specified"}
+        {item.validity_days ||
+        item.validity ||
+        item.duration ? (
+          <div className="mt-1 truncate text-[10px] text-gray-500 sm:text-xs">
+            {clean(
+              item.validity ??
+                item.duration ??
+                `${item.validity_days} days`
+            )}
           </div>
         ) : null}
       </button>
@@ -2977,41 +2726,6 @@ export default function ServicePayment({
 
   if (!service) {
     return null;
-  }
-
-  if (serviceType === "tech-store" || serviceType === "esim") {
-    const comingSoonTitle =
-      serviceType === "tech-store" ? "Tech Store" : "Internet eSIM";
-    const comingSoonText =
-      serviceType === "tech-store"
-        ? "Genuine phones, laptops, gadgets and other hardware will be available here soon."
-        : "International eSIM profiles and global travel data will be available here soon.";
-
-    return (
-      <div className="iyanjupay-service-payment-page min-h-full">
-        <header className="sticky top-0 z-20 border-b bg-white/95 shadow-sm backdrop-blur">
-          <div className="mx-auto flex max-w-3xl items-center justify-between px-4 py-3.5">
-            <Button variant="ghost" size="icon" onClick={onBack} aria-label="Back">
-              <ArrowLeft className="h-5 w-5" />
-            </Button>
-            <h1 className="text-base font-bold">{comingSoonTitle}</h1>
-            <span className="w-9" />
-          </div>
-        </header>
-        <main className="mx-auto flex max-w-3xl items-center justify-center px-4 py-16">
-          <section className="w-full rounded-3xl border bg-white p-8 text-center shadow-sm">
-            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-blue-50 text-[#082A63]">
-              <Sparkles className="h-7 w-7" />
-            </div>
-            <h2 className="mt-5 text-xl font-extrabold text-gray-900">{comingSoonTitle}</h2>
-            <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-gray-500">{comingSoonText}</p>
-            <div className="mt-5 inline-flex rounded-full bg-gray-100 px-4 py-2 text-xs font-bold text-gray-600">
-              Coming soon
-            </div>
-          </section>
-        </main>
-      </div>
-    );
   }
 
   /*
@@ -3107,45 +2821,41 @@ export default function ServicePayment({
                 </h2>
 
                 <p className="iyanjupay-payment-pin-description mt-1 text-sm">
-                  Enter your 4-digit payment PIN to
-                  continue.
+                  {isBiometricEnabled()
+                    ? "Use your enabled biometric to authorize this payment."
+                    : "Enter your 4-digit payment PIN to continue."}
                 </p>
 
                 <div className="mt-6">
-                  <Input
-                    autoFocus
-                    inputMode="numeric"
-                    maxLength={4}
-                    type="password"
-                    value={paymentPin}
-                    onChange={(e) =>
-                      setPaymentPin(
-                        e.target.value
-                          .replace(
-                            /\D/g,
-                            ""
-                          )
-                          .slice(
-                            0,
-                            4
-                          )
-                      )
-                    }
-                    onKeyDown={(e) => {
-                      if (
-                        e.key ===
-                        "Enter"
-                      ) {
-                        void confirmPurchase();
+                  {isBiometricEnabled() ? (
+                    <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-center text-sm text-blue-800">
+                      Use your enabled biometric to authorize this payment.
+                    </div>
+                  ) : (
+                    <Input
+                      autoFocus
+                      inputMode="numeric"
+                      maxLength={4}
+                      type="password"
+                      value={paymentPin}
+                      onChange={(e) =>
+                        setPaymentPin(
+                          e.target.value
+                            .replace(/\D/g, "")
+                            .slice(0, 4)
+                        )
                       }
-                    }}
-                    placeholder="••••"
-                    className="iyanjupay-payment-pin-input h-14 text-center text-2xl tracking-[0.5em]"
-                    disabled={
-                      verifyingPin
-                    }
-                    aria-label="Payment PIN"
-                  />
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          void confirmPurchase();
+                        }
+                      }}
+                      placeholder="••••"
+                      className="iyanjupay-payment-pin-input h-14 text-center text-2xl tracking-[0.5em]"
+                      disabled={verifyingPin}
+                      aria-label="Payment PIN"
+                    />
+                  )}
                 </div>
 
                 {error && (
@@ -3162,14 +2872,16 @@ export default function ServicePayment({
                     }
                     disabled={
                       verifyingPin ||
-                      paymentPin.length !==
-                        4
+                      (!isBiometricEnabled() &&
+                        paymentPin.length !== 4)
                     }
                   >
                     {verifyingPin ? (
                       <>
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Verifying PIN...
+                        {isBiometricEnabled()
+                          ? "Verifying biometrics..."
+                          : "Verifying PIN..."}
                       </>
                     ) : (
                       "Confirm Payment"
@@ -3198,7 +2910,7 @@ export default function ServicePayment({
                 <div className="mb-3 flex items-center justify-between gap-3">
                   <div className="min-w-0">
                     <h2 className="text-sm font-bold text-gray-900">
-                      {isAirtime ? "Select network" : isData ? "Select network" : isCable ? "Select service" : isElectricity ? "Select Disco" : serviceType === "education" ? "Select examination" : isInternet ? "Select service" : isGiftCard ? "Select gift card" : "Select option"}
+                      {isAirtime ? "Select network" : isData ? "Select network" : isCable ? "Select service" : isElectricity ? "Select Disco" : serviceType === "education" ? "Select examination" : isInternet ? "Select service" : "Select option"}
                     </h2>
                     <p className="mt-0.5 text-[11px] text-gray-500">
                       Choose an option to continue.
@@ -3217,47 +2929,48 @@ export default function ServicePayment({
                   </Button>
                 </div>
 
-                {isGiftCard && (
-                  <div className="mb-3 space-y-2">
-                    <Input
-                      value={giftSearch}
-                      onChange={(e) => setGiftSearch(e.target.value)}
-                      placeholder="Search gift cards (Amazon, Steam, Netflix...)"
-                      className="h-10 rounded-xl text-sm"
-                    />
-
-                    <div className="flex gap-1.5 overflow-x-auto pb-1">
-                      {[{ code: "", name: "All" }, ...giftCountries].map((c) => (
-                        <button
-                          key={c.code || "all"}
-                          type="button"
-                          onClick={() => {
-                            setGiftCountry(c.code);
-                            setSelectedBillerCode("");
-                            setItems([]);
-                          }}
-                          className={`whitespace-nowrap rounded-lg px-3 py-1.5 text-[11px] font-bold transition ${
-                            giftCountry === c.code
-                              ? "bg-[#082A63] text-white shadow-sm"
-                              : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-                          }`}
-                        >
-                          {c.name}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
                 {loadingBillers ? (
                   <div className="flex items-center justify-center py-7 text-xs text-gray-500">
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     Loading options...
                   </div>
-                ) : visibleBillers.length ? (
-                  <div className="grid w-full grid-cols-4 gap-2 sm:grid-cols-5 md:grid-cols-6">
-                    {visibleBillers.map(renderBillerCard)}
-                  </div>
+                ) : billers.length ? (
+                  <>
+                    {isGiftCard && (
+                      <div className="mb-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                        <select
+                          value={giftCategory}
+                          onChange={(e) => setGiftCategory(e.target.value)}
+                          disabled={!!processingSession}
+                          className="h-10 rounded-xl border border-gray-200 bg-white px-3 text-xs font-semibold text-gray-700 outline-none focus:border-[#6D28D9]"
+                        >
+                          <option value="ALL">All Categories</option>
+                          {giftCategories.map((category) => (
+                            <option key={category} value={category}>{category}</option>
+                          ))}
+                        </select>
+                        <select
+                          value={giftCountry}
+                          onChange={(e) => setGiftCountry(e.target.value)}
+                          disabled={!!processingSession}
+                          className="h-10 rounded-xl border border-gray-200 bg-white px-3 text-xs font-semibold text-gray-700 outline-none focus:border-[#6D28D9]"
+                        >
+                          <option value="ALL">All Countries</option>
+                          {giftCountries.map((country) => (
+                            <option key={country} value={country}>{country}</option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+                    <div className="grid w-full grid-cols-4 gap-2 sm:grid-cols-5 md:grid-cols-6">
+                      {(isGiftCard ? visibleGiftBillers : billers).map(renderBillerCard)}
+                    </div>
+                    {isGiftCard && !visibleGiftBillers.length && (
+                      <div className="mt-3 rounded-xl bg-gray-50 p-4 text-center text-xs text-gray-500">
+                        No gift cards match the selected filters.
+                      </div>
+                    )}
+                  </>
                 ) : (
                   <div className="rounded-xl bg-gray-50 p-4 text-center text-xs text-gray-500">
                     No service options available right now.
@@ -3346,9 +3059,7 @@ export default function ServicePayment({
                     className="mt-2 h-10 rounded-xl text-sm"
                     disabled={!!processingSession}
                   />
-                  <p className="mt-1.5 text-[10px] text-gray-500">
-                    The gift-card code and redemption instructions will be delivered to this email.
-                  </p>
+                  <p className="mt-1.5 text-[10px] text-gray-500">Your gift card code and redemption instructions will be delivered using this email.</p>
                 </section>
               )}
 
@@ -3397,7 +3108,7 @@ export default function ServicePayment({
                             : "bg-gray-100 text-gray-600 hover:bg-gray-200"
                         }`}
                       >
-                        {tab === "OTHER" ? "Others" : tab.charAt(0) + tab.slice(1).toLowerCase()}
+                        {tab === "HOT_DEALS" ? "Hot Deals" : tab === "OTHER" ? "Other" : tab.charAt(0) + tab.slice(1).toLowerCase()}
                       </button>
                     ))}
                   </div>
@@ -3419,18 +3130,18 @@ export default function ServicePayment({
                 </section>
               )}
 
-              {(isAirtimeCard || isRechargeCard) && selectedBillerCode && (
+              {isAirtimeCard && selectedBillerCode && (
                 <>
                   <section className="rounded-2xl border bg-white p-3 shadow-sm sm:p-4">
                     <div className="mb-3">
                       <h2 className="text-xs font-bold text-gray-900">Value</h2>
-                      <p className="mt-0.5 text-[11px] text-gray-500">Choose the recharge PIN denomination.</p>
+                      <p className="mt-0.5 text-[11px] text-gray-500">Choose the recharge card denomination.</p>
                     </div>
 
                     {loadingItems ? (
                       <div className="flex items-center justify-center py-7 text-xs text-gray-500">
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Loading recharge PIN values...
+                        Loading recharge card values...
                       </div>
                     ) : (
                       <div className="grid grid-cols-3 gap-2">
@@ -3499,16 +3210,12 @@ export default function ServicePayment({
                 </>
               )}
 
-              {((isCable && selectedBillerCode) || (isEpin && !isAirtimeCard && selectedBillerCode) || ((serviceType === "education" || (isInternet && !isInternetAmount) || isGiftCard) && selectedBillerCode)) && (
+              {((isCable && selectedBillerCode) || (isEpin && !isAirtimeCard && selectedBillerCode) || ((serviceType === "education" || isInternet || isGiftCard) && selectedBillerCode)) && (
                 <section className="rounded-2xl border bg-white p-3 shadow-sm sm:p-4">
                   <div className="mb-3 flex items-center justify-between">
                     <div>
-                      <h2 className="text-xs font-bold text-gray-900">{isGiftCard ? "Select amount" : serviceType === "education" || isInternet ? "Select product" : "Select package"}</h2>
-                      <p className="mt-0.5 text-[11px] text-gray-500">
-                        {isGiftCard
-                          ? `Amounts are in ${clean(selectedBiller?.recipientCurrencyCode) || "USD"}; you pay the naira price shown.`
-                          : "Choose the option you want."}
-                      </p>
+                      <h2 className="text-xs font-bold text-gray-900">{serviceType === "education" || isInternet || isGiftCard ? "Select product" : "Select package"}</h2>
+                      <p className="mt-0.5 text-[11px] text-gray-500">Choose the option you want.</p>
                     </div>
                   </div>
 
@@ -3526,40 +3233,10 @@ export default function ServicePayment({
                       No options available.
                     </div>
                   )}
-
-                  {isGiftCard &&
-                    clean(selectedBiller?.redeemInstruction?.concise) && (
-                      <div className="mt-3 rounded-xl bg-blue-50 p-3 text-[11px] leading-relaxed text-blue-900">
-                        <span className="font-bold">How to redeem: </span>
-                        {clean(selectedBiller?.redeemInstruction?.concise)}
-                      </div>
-                    )}
                 </section>
               )}
 
-              {isGiftCard && selectedBillerCode && (
-                <section className="rounded-2xl border bg-white p-3 shadow-sm sm:p-4">
-                  <Label htmlFor="gift-card-quantity" className="text-xs font-bold text-gray-900">Quantity</Label>
-                  <Input
-                    id="gift-card-quantity"
-                    type="number"
-                    min={1}
-                    max={100}
-                    step={1}
-                    inputMode="numeric"
-                    value={quantity}
-                    onChange={(e) => {
-                      const next = Number(e.target.value);
-                      setQuantity(Number.isFinite(next) ? Math.trunc(next) : 1);
-                    }}
-                    className="mt-2 h-10 rounded-xl text-sm"
-                    disabled={!!processingSession || verifyingPin}
-                  />
-                  <p className="mt-1.5 text-[10px] text-gray-500">Allowed range: 1 to 100 cards.</p>
-                </section>
-              )}
-
-              {canEnterAmount && ((isElectricity && verified) || isAirtime || isInternetAmount) && (
+              {canEnterAmount && ((isElectricity && verified) || isAirtime) && (
                 <section className="rounded-2xl border bg-white p-3 shadow-sm sm:p-4">
                   <div className="mb-3 flex items-center justify-between">
                     <div>
@@ -3637,13 +3314,9 @@ export default function ServicePayment({
                 >
                   {isAirtime
                     ? "Buy Airtime"
-                    : isInternetAmount
-                      ? "Buy Internet Service"
-                      : isPinService
+                    : isAirtimeCard
                       ? "Generate PINs"
-                      : isGiftCard
-                        ? "Buy Gift Card"
-                        : `Continue${hasAmount ? ` to Pay ${naira(customerPayAmount)}` : ""}`}
+                      : `Continue${hasAmount ? ` to Pay ${naira(customerPayAmount)}` : ""}`}
                 </Button>
                 <p className="mt-2 text-center text-[10px] text-gray-500">
                   Your payment PIN is required to complete this purchase.

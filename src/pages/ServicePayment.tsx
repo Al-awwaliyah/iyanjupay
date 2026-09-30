@@ -2495,7 +2495,7 @@ export default function ServicePayment({
           .map((b) => clean(b.raw?.category?.name ?? b.category?.name ?? b.category))
           .filter(Boolean)
       )
-    ).sort((a, b) => a.localeCompare(b));
+    ).map(String).sort((a, b) => a.localeCompare(b));
   }, [billers, isGiftCard]);
 
   const giftCountries = useMemo(() => {
@@ -2506,7 +2506,7 @@ export default function ServicePayment({
           .map((b) => clean(b.raw?.country?.name ?? b.country?.name ?? b.country))
           .filter(Boolean)
       )
-    ).sort((a, b) => a.localeCompare(b));
+    ).map(String).sort((a, b) => a.localeCompare(b));
   }, [billers, isGiftCard]);
 
   const visibleGiftBillers = useMemo(() => {
@@ -2534,9 +2534,23 @@ export default function ServicePayment({
       code ===
       selectedBillerCode;
 
+    const topupmateLogos = [
+      ...(Array.isArray(biller.logoUrls) ? biller.logoUrls : []),
+      ...(Array.isArray(biller.logo_urls) ? biller.logo_urls : []),
+      ...(Array.isArray(biller.raw?.logoUrls) ? biller.raw.logoUrls : []),
+      ...(Array.isArray(biller.raw?.logo_urls) ? biller.raw.logo_urls : []),
+    ]
+      .map((value: any) =>
+        typeof value === "string"
+          ? value
+          : clean(value?.url ?? value?.logoUrl ?? value?.logo)
+      )
+      .filter(Boolean);
+
     const logo =
       clean(
-        biller.logo_url ??
+        topupmateLogos[0] ??
+          biller.logo_url ??
           biller.logoUrl ??
           biller.logo
       ) ||

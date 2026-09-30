@@ -1,0 +1,33 @@
+IyanjuPay Topupmate Provider Fixes — 2026-09-30
+
+Changed:
+- src/pages/ServicePayment.tsx
+  - Data grouping: Daily 1-3 days; Weekly 7-14; Monthly 30-90; Yearly exactly 365; all other durations -> Other.
+  - Cable package cards now show package name, selling price, and period.
+  - Provider logo filename mapping corrected to existing public provider filenames.
+  - Provider logo display area enlarged and uses object-contain without clipping/stretching.
+  - Gift-card successful purchases display returned voucher fulfillment.
+  - Added Coming Soon screens for Tech Store and Internet eSIM.
+
+- src/components/Dashboard.tsx
+  - Added Tech Store and Internet eSIM as Coming Soon services.
+
+- supabase/functions/topupmate-services/index.ts
+  - Gift-card purchase now sends Topupmate's documented string product ID.
+  - After successful gift-card purchase, calls GET /giftcard/redeem/ with the purchase reference and returns fulfillment.
+  - Data plan grouping uses requested day ranges.
+
+- supabase/functions/topupmate-cards/index.ts
+  - Virtual-card creation no longer fails before reaching Topupmate solely because fee/minimum environment values are absent.
+  - IyanjuPay markup defaults to $2.
+  - If provider fee/minimum secrets are configured, they are used; otherwise provider validates the request.
+  - No undocumented numeric fee/minimum values were invented.
+
+Not changed:
+- Flutterwave payment architecture.
+- Wallet/database architecture.
+- Existing Supabase schema.
+- Provider authentication architecture.
+
+Logo note:
+- The current public/providers SVGs in the supplied ZIP are reconstructed artwork. They were not replaced with invented “official” copies. The display/mapping layer was corrected; exact official source assets still require verified provider-source artwork.

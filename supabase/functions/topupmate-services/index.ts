@@ -23,6 +23,7 @@ import {
 type O = Record<string, any>;
 
 const MARKUP = 3;
+const GIFT_CARD_MARKUP_USD = 1;
 
 const NO = new Set([
   "airtime",
@@ -631,7 +632,16 @@ function giftProduct(r: any) {
     ? senderDenoms
     : mappedSender;
 
-  const firstPrice = effectiveSender[0] || 0;
+  const rangeSenderMinimum = n(
+    r?.minSenderDenomination,
+  );
+  const exchangeRate = n(
+    r?.recipientCurrencyToSenderCurrencyExchangeRate,
+  );
+  const firstPrice =
+    effectiveSender[0] ||
+    rangeSenderMinimum ||
+    (n(r?.minRecipientDenomination) * exchangeRate);
 
   return {
     id: productId,
@@ -655,8 +665,12 @@ function giftProduct(r: any) {
     redeemInstruction: r?.redeemInstruction || {},
     providerPrice: firstPrice,
     price: firstPrice,
+    markup_usd: GIFT_CARD_MARKUP_USD,
+    selling_price_usd: firstPrice
+      ? Number((firstPrice + GIFT_CARD_MARKUP_USD).toFixed(2))
+      : 0,
     selling_price: firstPrice
-      ? ceil10(firstPrice * 1.03)
+      ? Number((firstPrice + GIFT_CARD_MARKUP_USD).toFixed(2))
       : 0,
     raw: r,
   };
@@ -864,9 +878,14 @@ async function catalog(service: string, b: O) {
 
     const items = denoms.map(
       (d: number, i: number) => {
-        const providerAmount = Number(sender[i] ?? 0);
+        const providerAmount = Number(
+          sender[i] ??
+            (Number(d) *
+              n(gp.raw?.recipientCurrencyToSenderCurrencyExchangeRate)) ??
+            0,
+        );
         const customerPrice = providerAmount
-          ? sell(providerAmount, 3)
+          ? Number((providerAmount + GIFT_CARD_MARKUP_USD).toFixed(2))
           : 0;
 
         return {
@@ -1738,7 +1757,10 @@ async function purchase(
 
       pAmt = idx >= 0
         ? n(effectiveSender[idx])
-        : 0;
+        : n(
+            amount *
+              n(gp?.recipientCurrencyToSenderCurrencyExchangeRate),
+          );
     }
 
     if (!pAmt) {
@@ -1747,7 +1769,7 @@ async function purchase(
       );
     }
 
-    sAmt = sell(pAmt, MARKUP) * units;
+    sAmt = Number((pAmt + GIFT_CARD_MARKUP_USD).toFixed(2)) * units;
   } else if (
     service === "internet" ||
     service === "smile"

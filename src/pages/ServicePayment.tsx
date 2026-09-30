@@ -103,6 +103,8 @@ const DATA_TABS: DataTab[] = [
   "OTHER",
 ];
 
+const TOPUPMATE_MARKUP_PERCENT = 3;
+
 /*
  * ============================================================
  * ELECTRICITY DISCO CONFIGURATION
@@ -1633,8 +1635,7 @@ export default function ServicePayment({
   const isPhoneService =
     isAirtime ||
     isData ||
-    isEpin ||
-    serviceType === "education";
+    isEpin;
 
   const isAmountOnly =
     isAirtime || isElectricity;
@@ -1741,6 +1742,9 @@ export default function ServicePayment({
     [items, selectedItemCode]
   );
 
+  const isInternetAmount =
+    isInternet && selectedBillerCode !== "smile";
+
   const customerLabel =
     isPhoneService
       ? "Phone Number"
@@ -1749,7 +1753,7 @@ export default function ServicePayment({
         : isElectricity
           ? "Meter Number"
           : isInternet
-            ? "Account Number"
+            ? (selectedBillerCode === "smile" ? "Smile Account / Registered Phone" : "Phone Number")
             : isGiftCard
               ? "Delivery Email"
               : "Customer Number";
@@ -1762,7 +1766,7 @@ export default function ServicePayment({
         : isElectricity
           ? "Enter meter number"
           : isInternet
-            ? "Enter internet account number"
+            ? (selectedBillerCode === "smile" ? "Enter Smile account number or registered phone" : "Enter phone number")
             : isGiftCard
               ? "Enter recipient email"
               : "Enter customer number";
@@ -1942,6 +1946,12 @@ export default function ServicePayment({
         setItems([]);
         setSelectedItemCode("");
 
+        if (isInternet && billerCode !== "smile") {
+          setLoadingItems(false);
+          setAmount("");
+          return;
+        }
+
         if (!isData) {
           setAmount("");
         }
@@ -2061,7 +2071,7 @@ export default function ServicePayment({
     resetVerification();
     setError("");
 
-    if (isElectricity) {
+    if (isElectricity || (isInternet && code !== "smile")) {
       return;
     }
 
@@ -2265,12 +2275,14 @@ export default function ServicePayment({
   const customerPayAmount =
     (isPinService || isGiftCard) && num(amount) > 0
       ? num(amount) * quantity
-      : isAmountOnly && num(amount) > 0
-        ? roundUpTo50(
-            num(amount) *
-              (1 + variableMarkupPercent / 100)
-          )
-        : num(amount);
+      : isInternetAmount && num(amount) > 0
+        ? Math.ceil((num(amount) * (1 + TOPUPMATE_MARKUP_PERCENT / 100)) / 10) * 10
+        : isAmountOnly && num(amount) > 0
+          ? roundUpTo50(
+              num(amount) *
+                (1 + variableMarkupPercent / 100)
+            )
+          : num(amount);
 
   const providerVariableAmount =
     isAmountOnly && num(amount) > 0
@@ -2377,7 +2389,8 @@ export default function ServicePayment({
 
   const canEnterAmount =
     isAirtime ||
-    isElectricity;
+    isElectricity ||
+    isInternetAmount;
 
   const needsItem =
     !canEnterAmount;
@@ -2385,7 +2398,7 @@ export default function ServicePayment({
   const hasRequiredIdentifier =
     isCable || isElectricity
       ? verified
-      : isEpin
+      : isEpin || serviceType === "education"
         ? true
         : !!customer.trim();
 
@@ -2625,7 +2638,9 @@ export default function ServicePayment({
         customerPayAmount,
 
       provider_amount:
-        isAmountOnly ? providerVariableAmount : undefined,
+        isAmountOnly || isInternetAmount
+          ? num(amount)
+          : undefined,
 
       item: selectedItem,
       biller: selectedBiller,
@@ -3484,7 +3499,7 @@ export default function ServicePayment({
                 </>
               )}
 
-              {((isCable && selectedBillerCode) || (isEpin && !isAirtimeCard && selectedBillerCode) || ((serviceType === "education" || isInternet || isGiftCard) && selectedBillerCode)) && (
+              {((isCable && selectedBillerCode) || (isEpin && !isAirtimeCard && selectedBillerCode) || ((serviceType === "education" || (isInternet && !isInternetAmount) || isGiftCard) && selectedBillerCode)) && (
                 <section className="rounded-2xl border bg-white p-3 shadow-sm sm:p-4">
                   <div className="mb-3 flex items-center justify-between">
                     <div>
@@ -3544,7 +3559,7 @@ export default function ServicePayment({
                 </section>
               )}
 
-              {canEnterAmount && ((isElectricity && verified) || isAirtime) && (
+              {canEnterAmount && ((isElectricity && verified) || isAirtime || isInternetAmount) && (
                 <section className="rounded-2xl border bg-white p-3 shadow-sm sm:p-4">
                   <div className="mb-3 flex items-center justify-between">
                     <div>
@@ -3622,7 +3637,9 @@ export default function ServicePayment({
                 >
                   {isAirtime
                     ? "Buy Airtime"
-                    : isPinService
+                    : isInternetAmount
+                      ? "Buy Internet Service"
+                      : isPinService
                       ? "Generate PINs"
                       : isGiftCard
                         ? "Buy Gift Card"

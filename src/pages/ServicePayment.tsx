@@ -2,6 +2,7 @@ import React, {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import {
@@ -28,7 +29,10 @@ import { useToast } from "@/hooks/use-toast";
 import { getFunctionErrorMessage, getSafeErrorMessage } from "@/lib/errorHandling";
 import { supabase } from "@/integrations/supabase/client";
 import { useCustomerAppSettings } from "@/hooks/useCustomerAppSettings";
-import PaymentPinModal from "@/components/security/PaymentPinModal";
+import {
+  authenticateWithBiometric,
+  isBiometricEnabled,
+} from "@/lib/biometricAuth";
 
 interface ServicePaymentProps {
   service: { title: string; type: string } | null;
@@ -1546,7 +1550,6 @@ function ServiceTransactionProcessing({
             </div>
           </section>
         </main>
-
       </div>
     </>
   );
@@ -1707,6 +1710,11 @@ export default function ServicePayment({
 
   const [showPin, setShowPin] =
     useState(false);
+
+  const biometricAttemptRef = useRef(false);
+
+  const [paymentPin, setPaymentPin] =
+    useState("");
 
   const [verifyingPin, setVerifyingPin] =
     useState(false);
@@ -2710,6 +2718,43 @@ export default function ServicePayment({
     };
   };
 
+  useEffect(() => {
+    if (!showPin) {
+      biometricAttemptRef.current = false;
+      return;
+    }
+
+    if (!isBiometricEnabled() || biometricAttemptRef.current) return;
+
+    biometricAttemptRef.current = true;
+    let cancelled = false;
+
+    const timer = window.setTimeout(async () => {
+      if (cancelled) return;
+
+      setVerifyingPin(true);
+      setError("");
+
+      try {
+        await authenticateWithBiometric("Authorize IyanjuPay transaction");
+        if (!cancelled) {
+          await confirmPurchase();
+        }
+      } catch (e: any) {
+        if (!cancelled) {
+          const message = e?.message || "Biometric verification was not completed. You can use your Payment PIN instead.";
+          setError(message);
+          setVerifyingPin(false);
+        }
+      }
+    }, 150);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [showPin]);
+
   const startPurchase = () => {
     const validationError =
       validateBeforePin();
@@ -2726,37 +2771,91 @@ export default function ServicePayment({
       return;
     }
 
+    setPaymentPin("");
     setError("");
     setShowPin(true);
   };
 
-  const confirmPurchase = async () => {
-    setVerifyingPin(true);
-    setError("");
+  const confirmPurchase =
+    async () => {
+      if (!isBiometricEnabled() && !/^\d{4}$/.test(paymentPin)) {
+        toast({
+          title: "Invalid PIN",
+          description:
+            "Enter your 4-digit payment PIN.",
+          variant: "destructive",
+        });
 
-    try {
-      const idempotencyKey = createIdempotencyKey();
-      const details = {
-        ...buildDetails(),
-        idempotency_key: idempotencyKey,
-        idempotencyKey,
-        service_title: serviceTitle,
-      };
+        return;
+      }
 
-      setShowPin(false);
-      setProcessingSession({
-        amount: customerPayAmount,
-        details,
-        idempotencyKey,
-      });
-    } catch (e: any) {
-      const message = getSafeErrorMessage(e) || "Unable to complete this payment.";
-      setError(message);
-      toast({ title: "Payment failed", description: message, variant: "destructive" });
-    } finally {
-      setVerifyingPin(false);
-    }
-  };
+      setVerifyingPin(true);
+      setError("");
+
+      try {
+        if (!isBiometricEnabled()) {
+          const {
+            data,
+            error: pinError,
+          } =
+            await supabase.rpc(
+              "verify_payment_pin",
+              {
+                _pin: paymentPin,
+              }
+            );
+
+          if (pinError) {
+            throw new Error(
+              "Unable to verify payment PIN."
+            );
+          }
+
+          if (!data?.success) {
+            throw new Error(
+              data?.message ||
+                "Invalid payment PIN."
+            );
+          }
+        }
+
+        const idempotencyKey =
+          createIdempotencyKey();
+
+        const details = {
+          ...buildDetails(),
+          idempotency_key:
+            idempotencyKey,
+          idempotencyKey,
+          service_title:
+            serviceTitle,
+        };
+
+        setShowPin(false);
+        setPaymentPin("");
+
+        setProcessingSession({
+          amount: customerPayAmount,
+          details,
+          idempotencyKey,
+        });
+      } catch (e: any) {
+        const message =
+          getSafeErrorMessage(e) ||
+          "Unable to complete this payment.";
+
+        setError(message);
+
+        toast({
+          title:
+            "Payment failed",
+          description: message,
+          variant: "destructive",
+        });
+      } finally {
+        setVerifyingPin(false);
+      }
+    };
 
   const renderBillerCard = (
     biller: Biller
@@ -3098,8 +3197,110 @@ export default function ServicePayment({
         </header>
 
         <main className="mx-auto max-w-5xl space-y-3 px-3 py-4 pb-8 sm:px-4">
-          {showPin ? null : (
-            <>              {isGiftCard && (
+          {showPin ? (
+            /*
+             * ==================================================
+             * PAYMENT PIN SCREEN
+             * ==================================================
+             */
+            <section className="iyanjupay-payment-pin-card rounded-3xl border p-6 shadow-sm">
+              <div className="mx-auto max-w-sm text-center">
+                <div className="iyanjupay-payment-pin-icon mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full">
+                  <ShieldCheck className="h-7 w-7" />
+                </div>
+
+                <h2 className="text-xl font-bold">
+                  Confirm payment
+                </h2>
+
+                <p className="iyanjupay-payment-pin-description mt-1 text-sm">
+                  Enter your 4-digit payment PIN to
+                  continue.
+                </p>
+
+                <div className="mt-6">
+                  <Input
+                    autoFocus
+                    inputMode="numeric"
+                    maxLength={4}
+                    type="password"
+                    value={paymentPin}
+                    onChange={(e) =>
+                      setPaymentPin(
+                        e.target.value
+                          .replace(
+                            /\D/g,
+                            ""
+                          )
+                          .slice(
+                            0,
+                            4
+                          )
+                      )
+                    }
+                    onKeyDown={(e) => {
+                      if (
+                        e.key ===
+                        "Enter"
+                      ) {
+                        void confirmPurchase();
+                      }
+                    }}
+                    placeholder="••••"
+                    className="iyanjupay-payment-pin-input h-14 text-center text-2xl tracking-[0.5em]"
+                    disabled={
+                      verifyingPin
+                    }
+                    aria-label="Payment PIN"
+                  />
+                </div>
+
+                {error && (
+                  <div className="iyanjupay-payment-pin-error mt-4 rounded-xl border p-3 text-sm">
+                    {error}
+                  </div>
+                )}
+
+                <div className="mt-5 space-y-2">
+                  <Button
+                    className="iyanjupay-service-primary h-12 w-full bg-gradient-to-r from-[#4C1D95] via-[#6D28D9] to-[#2563EB] font-bold text-white shadow-sm hover:brightness-105"
+                    onClick={() =>
+                      void confirmPurchase()
+                    }
+                    disabled={
+                      verifyingPin ||
+                      paymentPin.length !==
+                        4
+                    }
+                  >
+                    {verifyingPin ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Verifying PIN...
+                      </>
+                    ) : (
+                      "Confirm Payment"
+                    )}
+                  </Button>
+
+                  <Button
+                    variant="outline"
+                    className="iyanjupay-payment-pin-back h-12 w-full"
+                    onClick={() =>
+                      setShowPin(false)
+                    }
+                    disabled={
+                      verifyingPin
+                    }
+                  >
+                    Back
+                  </Button>
+                </div>
+              </div>
+            </section>
+          ) : (
+            <>
+              {isGiftCard && (
                 <section className="rounded-2xl border bg-white p-3 shadow-sm sm:p-4">
                   <div className="mb-3">
                     <h2 className="text-sm font-bold text-gray-900">Gift Card</h2>
@@ -3592,7 +3793,7 @@ export default function ServicePayment({
                         : `Continue${hasAmount ? ` to Pay ${naira(customerPayAmount)}` : ""}`}
                 </Button>
                 <p className="mt-2 text-center text-[10px] text-gray-500">
-                  Biometric authentication is used when enabled; otherwise your payment PIN is required.
+                  Biometric authentication is used when enabled; otherwise your Payment PIN is required.
                 </p>
               </section>
                 </>
@@ -3622,14 +3823,6 @@ export default function ServicePayment({
             </>
           )}
         </main>
-
-        <PaymentPinModal
-          open={showPin}
-          onCancel={() => setShowPin(false)}
-          onVerified={() => void confirmPurchase()}
-          title="Authorize Payment"
-          description="Use your enabled biometric authentication to authorize this transaction, or enter your Payment PIN when biometric authentication is disabled."
-        />
       </div>
     </>
   );

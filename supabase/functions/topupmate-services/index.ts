@@ -766,34 +766,66 @@ const GIFT_COUNTRIES = [
   { code: "AE", name: "UAE" },
 ];
 
-function giftRows(body: any): any[] {
-  // Topupmate live returns the catalogue in a paginated `content` array.
-  // Keep the generic extractor as a fallback, but explicitly inspect the
-  // documented envelope first so an unrelated `response`/`data` field can
-  // never cause the product list to be dropped.
-  const direct = [
-    // Topupmate's live gift-card endpoint commonly returns the catalogue
-    // directly in `msg`. This is the same envelope used by the working
-    // Gift Card configuration. Keep the other documented/common envelopes
-    // as fallbacks.
-    body?.msg,
-    body?.data?.msg,
-    body?.content,
-    body?.data?.content,
-    body?.response?.content,
-    body?.result?.content,
-    body?.products,
-    body?.data?.products,
-  ];
+function giftRows(body: any, depth = 0): any[] {
+  // Topupmate's Gift Card endpoint can return the catalogue directly in
+  // `msg`, or inside a nested object such as msg.content/msg.data.  The
+  // catalogue must be extracted before mapping products; otherwise the Edge
+  // Function can legitimately return success:true with empty arrays.
+  if (Array.isArray(body)) {
+    return body.filter((x: any) => x && typeof x === "object");
+  }
 
-  for (const candidate of direct) {
-    if (Array.isArray(candidate)) {
-      return candidate.filter((x: any) => x && typeof x === "object");
+  if (!body || depth > 6) return [];
+
+  // Some responses can contain a JSON-encoded catalogue in msg.
+  if (typeof body === "string") {
+    try {
+      const parsed = JSON.parse(body);
+      return giftRows(parsed, depth + 1);
+    } catch {
+      return [];
     }
   }
 
-  const found = rows(body);
-  return found.filter((x: any) => x && typeof x === "object");
+  if (typeof body !== "object") return [];
+
+  const keys = [
+    "msg",
+    "content",
+    "data",
+    "response",
+    "result",
+    "products",
+    "items",
+    "giftcards",
+    "catalog",
+    "catalogue",
+    "list",
+    "rows",
+    "records",
+  ];
+
+  // First pass: look for an array at any of the known catalogue keys.
+  for (const key of keys) {
+    const value = body[key];
+    if (Array.isArray(value)) {
+      const records = value.filter(
+        (x: any) => x && typeof x === "object",
+      );
+      if (records.length) return records;
+    }
+  }
+
+  // Second pass: recursively inspect nested envelopes, including msg.
+  for (const key of keys) {
+    const value = body[key];
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      const nested = giftRows(value, depth + 1);
+      if (nested.length) return nested;
+    }
+  }
+
+  return [];
 }
 
 function giftKey(r: any): string {

@@ -28,6 +28,7 @@ import { useToast } from "@/hooks/use-toast";
 import { getFunctionErrorMessage, getSafeErrorMessage } from "@/lib/errorHandling";
 import { supabase } from "@/integrations/supabase/client";
 import { useCustomerAppSettings } from "@/hooks/useCustomerAppSettings";
+import PaymentPinModal from "@/components/security/PaymentPinModal";
 
 interface ServicePaymentProps {
   service: { title: string; type: string } | null;
@@ -580,7 +581,7 @@ function canonicalNetworkName(
   if (label.includes("mtn")) return "MTN";
   if (/\bglo\b|globacom/.test(label)) return "Glo";
 
-  // Topupmate network ids: 1 = MTN, 2 = Airtel, 3 = Glo, 4 = 9mobile.
+  // Network IDs: 1 = MTN, 2 = Airtel, 3 = Glo, 4 = 9mobile.
   const byId: Record<string, string> = {
     "1": "MTN", "01": "MTN",
     "2": "Airtel", "02": "Airtel",
@@ -1545,6 +1546,7 @@ function ServiceTransactionProcessing({
             </div>
           </section>
         </main>
+
       </div>
     </>
   );
@@ -1674,7 +1676,7 @@ export default function ServicePayment({
   const [giftCountry, setGiftCountry] = useState("ALL");
   const [giftSearch, setGiftSearch] = useState("");
 
-  // Gift Card has two modes: Buy uses the existing Topupmate flow; Sell is Coming Soon.
+  // Gift Card has two modes: Buy and Sell (Sell is Coming Soon).
   const [giftCardMode, setGiftCardMode] = useState<"buy" | "sell">("buy");
 
   const [meterType, setMeterType] =
@@ -1705,9 +1707,6 @@ export default function ServicePayment({
 
   const [showPin, setShowPin] =
     useState(false);
-
-  const [paymentPin, setPaymentPin] =
-    useState("");
 
   const [verifyingPin, setVerifyingPin] =
     useState(false);
@@ -1867,8 +1866,7 @@ export default function ServicePayment({
             display_name: getName(option),
           }));
         } else if (isGiftCard) {
-          // Gift Card catalogue: use the Topupmate gift-card catalogue
-          // endpoint through the Edge Function with NO country filter.
+          // Gift Card catalogue: load the complete catalogue with NO country filter.
           // Filtering by category/country happens locally in this page.
           const data = await invoke({
             action: "catalog",
@@ -2007,6 +2005,14 @@ export default function ServicePayment({
             ...(isGiftCard
               ? { product_id: billerCode }
               : { country: "NG" }),
+            ...(isData
+              ? {
+                  network_id:
+                    billerForCode?.network_id ??
+                    billerForCode?.networkId ??
+                    billerCode,
+                }
+              : {}),
 
             ...(isElectricity
               ? {
@@ -2720,89 +2726,37 @@ export default function ServicePayment({
       return;
     }
 
-    setPaymentPin("");
     setError("");
     setShowPin(true);
   };
 
-  const confirmPurchase =
-    async () => {
-      if (!/^\d{4}$/.test(paymentPin)) {
-        toast({
-          title: "Invalid PIN",
-          description:
-            "Enter your 4-digit payment PIN.",
-          variant: "destructive",
-        });
+  const confirmPurchase = async () => {
+    setVerifyingPin(true);
+    setError("");
 
-        return;
-      }
+    try {
+      const idempotencyKey = createIdempotencyKey();
+      const details = {
+        ...buildDetails(),
+        idempotency_key: idempotencyKey,
+        idempotencyKey,
+        service_title: serviceTitle,
+      };
 
-      setVerifyingPin(true);
-      setError("");
-
-      try {
-        const {
-          data,
-          error: pinError,
-        } =
-          await supabase.rpc(
-            "verify_payment_pin",
-            {
-              _pin: paymentPin,
-            }
-          );
-
-        if (pinError) {
-          throw new Error(
-            "Unable to verify payment PIN."
-          );
-        }
-
-        if (!data?.success) {
-          throw new Error(
-            data?.message ||
-              "Invalid payment PIN."
-          );
-        }
-
-        const idempotencyKey =
-          createIdempotencyKey();
-
-        const details = {
-          ...buildDetails(),
-          idempotency_key:
-            idempotencyKey,
-          idempotencyKey,
-          service_title:
-            serviceTitle,
-        };
-
-        setShowPin(false);
-        setPaymentPin("");
-
-        setProcessingSession({
-          amount: customerPayAmount,
-          details,
-          idempotencyKey,
-        });
-      } catch (e: any) {
-        const message =
-          getSafeErrorMessage(e) ||
-          "Unable to complete this payment.";
-
-        setError(message);
-
-        toast({
-          title:
-            "Payment failed",
-          description: message,
-          variant: "destructive",
-        });
-      } finally {
-        setVerifyingPin(false);
-      }
-    };
+      setShowPin(false);
+      setProcessingSession({
+        amount: customerPayAmount,
+        details,
+        idempotencyKey,
+      });
+    } catch (e: any) {
+      const message = getSafeErrorMessage(e) || "Unable to complete this payment.";
+      setError(message);
+      toast({ title: "Payment failed", description: message, variant: "destructive" });
+    } finally {
+      setVerifyingPin(false);
+    }
+  };
 
   const renderBillerCard = (
     biller: Biller
@@ -3144,110 +3098,8 @@ export default function ServicePayment({
         </header>
 
         <main className="mx-auto max-w-5xl space-y-3 px-3 py-4 pb-8 sm:px-4">
-          {showPin ? (
-            /*
-             * ==================================================
-             * PAYMENT PIN SCREEN
-             * ==================================================
-             */
-            <section className="iyanjupay-payment-pin-card rounded-3xl border p-6 shadow-sm">
-              <div className="mx-auto max-w-sm text-center">
-                <div className="iyanjupay-payment-pin-icon mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full">
-                  <ShieldCheck className="h-7 w-7" />
-                </div>
-
-                <h2 className="text-xl font-bold">
-                  Confirm payment
-                </h2>
-
-                <p className="iyanjupay-payment-pin-description mt-1 text-sm">
-                  Enter your 4-digit payment PIN to
-                  continue.
-                </p>
-
-                <div className="mt-6">
-                  <Input
-                    autoFocus
-                    inputMode="numeric"
-                    maxLength={4}
-                    type="password"
-                    value={paymentPin}
-                    onChange={(e) =>
-                      setPaymentPin(
-                        e.target.value
-                          .replace(
-                            /\D/g,
-                            ""
-                          )
-                          .slice(
-                            0,
-                            4
-                          )
-                      )
-                    }
-                    onKeyDown={(e) => {
-                      if (
-                        e.key ===
-                        "Enter"
-                      ) {
-                        void confirmPurchase();
-                      }
-                    }}
-                    placeholder="••••"
-                    className="iyanjupay-payment-pin-input h-14 text-center text-2xl tracking-[0.5em]"
-                    disabled={
-                      verifyingPin
-                    }
-                    aria-label="Payment PIN"
-                  />
-                </div>
-
-                {error && (
-                  <div className="iyanjupay-payment-pin-error mt-4 rounded-xl border p-3 text-sm">
-                    {error}
-                  </div>
-                )}
-
-                <div className="mt-5 space-y-2">
-                  <Button
-                    className="iyanjupay-service-primary h-12 w-full bg-gradient-to-r from-[#4C1D95] via-[#6D28D9] to-[#2563EB] font-bold text-white shadow-sm hover:brightness-105"
-                    onClick={() =>
-                      void confirmPurchase()
-                    }
-                    disabled={
-                      verifyingPin ||
-                      paymentPin.length !==
-                        4
-                    }
-                  >
-                    {verifyingPin ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Verifying PIN...
-                      </>
-                    ) : (
-                      "Confirm Payment"
-                    )}
-                  </Button>
-
-                  <Button
-                    variant="outline"
-                    className="iyanjupay-payment-pin-back h-12 w-full"
-                    onClick={() =>
-                      setShowPin(false)
-                    }
-                    disabled={
-                      verifyingPin
-                    }
-                  >
-                    Back
-                  </Button>
-                </div>
-              </div>
-            </section>
-          ) : (
-            <>
-              {isGiftCard && (
+          {showPin ? null : (
+            <>              {isGiftCard && (
                 <section className="rounded-2xl border bg-white p-3 shadow-sm sm:p-4">
                   <div className="mb-3">
                     <h2 className="text-sm font-bold text-gray-900">Gift Card</h2>
@@ -3740,7 +3592,7 @@ export default function ServicePayment({
                         : `Continue${hasAmount ? ` to Pay ${naira(customerPayAmount)}` : ""}`}
                 </Button>
                 <p className="mt-2 text-center text-[10px] text-gray-500">
-                  Your payment PIN is required to complete this purchase.
+                  Biometric authentication is used when enabled; otherwise your payment PIN is required.
                 </p>
               </section>
                 </>
@@ -3751,7 +3603,7 @@ export default function ServicePayment({
                   </div>
                   <h2 className="mt-4 text-base font-bold text-gray-900">Sell Gift Card</h2>
                   <p className="mx-auto mt-1 max-w-sm text-sm text-gray-500">
-                    Selling gift cards is coming soon. This service will be enabled when the required Topupmate selling integration is ready.
+                    Selling gift cards is coming soon. This service will be enabled when the required selling service is ready.
                   </p>
                   <Button
                     type="button"
@@ -3770,6 +3622,14 @@ export default function ServicePayment({
             </>
           )}
         </main>
+
+        <PaymentPinModal
+          open={showPin}
+          onCancel={() => setShowPin(false)}
+          onVerified={() => void confirmPurchase()}
+          title="Authorize Payment"
+          description="Use your enabled biometric authentication to authorize this transaction, or enter your Payment PIN when biometric authentication is disabled."
+        />
       </div>
     </>
   );

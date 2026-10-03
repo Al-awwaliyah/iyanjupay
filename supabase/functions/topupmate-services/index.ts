@@ -772,6 +772,12 @@ function giftRows(body: any): any[] {
   // documented envelope first so an unrelated `response`/`data` field can
   // never cause the product list to be dropped.
   const direct = [
+    // Topupmate's live gift-card endpoint commonly returns the catalogue
+    // directly in `msg`. This is the same envelope used by the working
+    // Gift Card configuration. Keep the other documented/common envelopes
+    // as fallbacks.
+    body?.msg,
+    body?.data?.msg,
     body?.content,
     body?.data?.content,
     body?.response?.content,

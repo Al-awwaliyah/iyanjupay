@@ -1870,7 +1870,11 @@ export default function ServicePayment({
             data.providers,
             data.cableProviders,
             data.electricityCompanies,
-            data.examTypes
+            data.examTypes,
+            data.items,
+            data.products,
+            data.response,
+            data.content,
           );
 
           merged = mergeBillers(
@@ -1988,7 +1992,11 @@ export default function ServicePayment({
           const loadedRaw = firstArray(
             data.items,
             data.plans,
-            data.packages
+            data.packages,
+            data.billers,
+            data.products,
+            data.response,
+            data.content,
           );
 
           const loaded = isCable
@@ -2417,7 +2425,8 @@ export default function ServicePayment({
         : !!customer.trim();
 
   const hasAmount =
-    customerPayAmount > 0;
+    customerPayAmount > 0 ||
+    ((isPinService || isGiftCard) && !!selectedItemCode && num(amount) > 0);
 
   const hasItem =
     !needsItem ||
@@ -3458,9 +3467,10 @@ export default function ServicePayment({
                           .sort(([a], [b]) => Number(a) - Number(b))
                           .map(([value, item]) => {
                             const itemCode = getItemCode(item);
+                            const itemPrice = getItemPrice(item) || num(item.value ?? item.denomination ?? item.amount);
                             const selected =
                               selectedItemCode === itemCode &&
-                              amount === String(getItemPrice(item));
+                              amount === String(itemPrice);
 
                             return (
                               <button
@@ -3469,7 +3479,7 @@ export default function ServicePayment({
                                 disabled={!!processingSession || verifyingPin}
                                 onClick={() => {
                                   setSelectedItemCode(itemCode);
-                                  setAmount(String(getItemPrice(item)));
+                                  setAmount(String(itemPrice));
                                   setQuantity(1);
                                   setCustomAmount(false);
                                   setError("");

@@ -1674,6 +1674,9 @@ export default function ServicePayment({
   const [giftCountry, setGiftCountry] = useState("ALL");
   const [giftSearch, setGiftSearch] = useState("");
 
+  // Gift Card has two modes: Buy uses the existing Topupmate flow; Sell is Coming Soon.
+  const [giftCardMode, setGiftCardMode] = useState<"buy" | "sell">("buy");
+
   const [meterType, setMeterType] =
     useState("");
 
@@ -1797,7 +1800,8 @@ export default function ServicePayment({
 
   useEffect(() => {
     resetForm();
-  }, [serviceType, resetForm]);
+    if (isGiftCard) setGiftCardMode("buy");
+  }, [serviceType, resetForm, isGiftCard]);
 
   const invoke = useCallback(
     async (body: Record<string, any>) => {
@@ -1838,6 +1842,11 @@ export default function ServicePayment({
   const loadBillers =
     useCallback(async () => {
       if (!serviceType) return;
+      if (isGiftCard && giftCardMode === "sell") {
+        setBillers([]);
+        setItems([]);
+        return;
+      }
       setLoadingBillers(true);
       setError("");
 
@@ -1947,6 +1956,7 @@ export default function ServicePayment({
       isAirtimeCard,
       isRechargeCard,
       isGiftCard,
+      giftCardMode,
       giftCountry,
       toast,
     ]);
@@ -3237,6 +3247,50 @@ export default function ServicePayment({
             </section>
           ) : (
             <>
+              {isGiftCard && (
+                <section className="rounded-2xl border bg-white p-3 shadow-sm sm:p-4">
+                  <div className="mb-3">
+                    <h2 className="text-sm font-bold text-gray-900">Gift Card</h2>
+                    <p className="mt-0.5 text-[11px] text-gray-500">Choose what you want to do with gift cards.</p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => {
+                        setGiftCardMode("buy");
+                        setError("");
+                        setSelectedBillerCode("");
+                        setSelectedItemCode("");
+                        setItems([]);
+                        void loadBillers();
+                      }}
+                      className={`h-12 rounded-xl text-sm font-bold ${giftCardMode === "buy" ? "border-[#082A63] bg-[#082A63] text-white hover:bg-[#082A63] hover:text-white" : ""}`}
+                    >
+                      Buy Gift Card
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => {
+                        setGiftCardMode("sell");
+                        setBillers([]);
+                        setItems([]);
+                        setSelectedBillerCode("");
+                        setSelectedItemCode("");
+                        setAmount("");
+                        setError("");
+                      }}
+                      className={`h-12 rounded-xl text-sm font-bold ${giftCardMode === "sell" ? "border-gray-300 bg-gray-100 text-gray-500" : ""}`}
+                    >
+                      Sell Gift Card
+                    </Button>
+                  </div>
+                </section>
+              )}
+
+              {(!isGiftCard || giftCardMode === "buy") ? (
+                <>
               {/* Compact service selector — intentionally kept separate from the purchase logic. */}
               <section className="rounded-2xl border bg-white p-3 shadow-sm sm:p-4">
                 <div className="mb-3 flex items-center justify-between gap-3">
@@ -3689,6 +3743,30 @@ export default function ServicePayment({
                   Your payment PIN is required to complete this purchase.
                 </p>
               </section>
+                </>
+              ) : (
+                <section className="rounded-2xl border border-dashed bg-white p-8 text-center shadow-sm">
+                  <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-gray-100 text-gray-500">
+                    <Clock3 className="h-7 w-7" />
+                  </div>
+                  <h2 className="mt-4 text-base font-bold text-gray-900">Sell Gift Card</h2>
+                  <p className="mx-auto mt-1 max-w-sm text-sm text-gray-500">
+                    Selling gift cards is coming soon. This service will be enabled when the required Topupmate selling integration is ready.
+                  </p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="mt-5 h-11 rounded-xl font-bold"
+                    onClick={() => {
+                      setGiftCardMode("buy");
+                      setError("");
+                      void loadBillers();
+                    }}
+                  >
+                    Buy Gift Card
+                  </Button>
+                </section>
+              )}
             </>
           )}
         </main>

@@ -461,17 +461,20 @@ function providerMatches(raw: any, wanted: string) {
 }
 
 function dataPlanId(raw: any): string {
-  // Topupmate data catalogues use `planid` as the actual purchase identifier.
-  // Some responses may also contain a generic `id`; never substitute that
-  // value for `planid` when both are present.
+  // Data purchases require the actual plan identifier returned by the
+  // catalogue. Never use a generic row id as a plan id.
   return s(
     raw?.planid ??
       raw?.plan_id ??
       raw?.planId ??
+      raw?.plan?.planid ??
+      raw?.plan?.plan_id ??
+      raw?.plan?.planId ??
       raw?.data_plan ??
       raw?.dataplan ??
-      raw?.code ??
-      raw?.id ??
+      raw?.data?.planid ??
+      raw?.data?.plan_id ??
+      raw?.data?.planId ??
       "",
   );
 }
@@ -498,6 +501,14 @@ function dataPlanMatchesNetwork(raw: any, requestedNetwork: string) {
     raw?.telco_name,
     raw?.plan_network,
     raw?.planNetwork,
+    raw?.plan?.networkid,
+    raw?.plan?.network_id,
+    raw?.plan?.networkId,
+    raw?.plan?.network,
+    raw?.data?.networkid,
+    raw?.data?.network_id,
+    raw?.data?.networkId,
+    raw?.data?.network,
   ];
 
   for (const value of values) {
@@ -766,66 +777,34 @@ const GIFT_COUNTRIES = [
   { code: "AE", name: "UAE" },
 ];
 
-function giftRows(body: any, depth = 0): any[] {
-  // Topupmate's Gift Card endpoint can return the catalogue directly in
-  // `msg`, or inside a nested object such as msg.content/msg.data.  The
-  // catalogue must be extracted before mapping products; otherwise the Edge
-  // Function can legitimately return success:true with empty arrays.
-  if (Array.isArray(body)) {
-    return body.filter((x: any) => x && typeof x === "object");
-  }
-
-  if (!body || depth > 6) return [];
-
-  // Some responses can contain a JSON-encoded catalogue in msg.
-  if (typeof body === "string") {
-    try {
-      const parsed = JSON.parse(body);
-      return giftRows(parsed, depth + 1);
-    } catch {
-      return [];
-    }
-  }
-
-  if (typeof body !== "object") return [];
-
-  const keys = [
-    "msg",
-    "content",
-    "data",
-    "response",
-    "result",
-    "products",
-    "items",
-    "giftcards",
-    "catalog",
-    "catalogue",
-    "list",
-    "rows",
-    "records",
+function giftRows(body: any): any[] {
+  // Topupmate live returns the catalogue in a paginated `content` array.
+  // Keep the generic extractor as a fallback, but explicitly inspect the
+  // documented envelope first so an unrelated `response`/`data` field can
+  // never cause the product list to be dropped.
+  const direct = [
+    // Topupmate's live gift-card endpoint commonly returns the catalogue
+    // directly in `msg`. This is the same envelope used by the working
+    // Gift Card configuration. Keep the other documented/common envelopes
+    // as fallbacks.
+    body?.msg,
+    body?.data?.msg,
+    body?.content,
+    body?.data?.content,
+    body?.response?.content,
+    body?.result?.content,
+    body?.products,
+    body?.data?.products,
   ];
 
-  // First pass: look for an array at any of the known catalogue keys.
-  for (const key of keys) {
-    const value = body[key];
-    if (Array.isArray(value)) {
-      const records = value.filter(
-        (x: any) => x && typeof x === "object",
-      );
-      if (records.length) return records;
+  for (const candidate of direct) {
+    if (Array.isArray(candidate)) {
+      return candidate.filter((x: any) => x && typeof x === "object");
     }
   }
 
-  // Second pass: recursively inspect nested envelopes, including msg.
-  for (const key of keys) {
-    const value = body[key];
-    if (value && typeof value === "object" && !Array.isArray(value)) {
-      const nested = giftRows(value, depth + 1);
-      if (nested.length) return nested;
-    }
-  }
-
-  return [];
+  const found = rows(body);
+  return found.filter((x: any) => x && typeof x === "object");
 }
 
 function giftKey(r: any): string {
@@ -1105,11 +1084,10 @@ async function catalog(service: string, b: O) {
     const a = await getDataPlans(requestedNetwork);
 
     const items = a
-      .filter((r: any) =>
-        dataPlanMatchesNetwork(r, requestedNetwork),
-      )
+        .filter((r: any) => dataPlanMatchesNetwork(r, requestedNetwork))
+      .filter((r: any) => !!dataPlanId(r))
       .map((r: any) => norm(service, r))
-      .filter((x: any) => x.providerPrice > 0);
+      .filter((x: any) => x.providerPrice > 0 && !!x.plan_id);
 
     return {
       success: true,
@@ -1782,7 +1760,9 @@ async function purchase(
       });
 
       const f = rows(c.body).find(
-        (x: any) => dataPlanId(x) === plan,
+        (x: any) =>
+          dataPlanId(x) === plan &&
+          dataPlanMatchesNetwork(x, net),
       );
 
       pAmt = price(f);

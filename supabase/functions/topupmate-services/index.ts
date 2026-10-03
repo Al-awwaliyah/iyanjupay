@@ -1283,7 +1283,15 @@ async function catalog(service: string, b: O) {
     ];
 
     let source: any[] = [];
-    for (const params of candidates) {
+    const attempts = [
+      ...candidates,
+      // Some Topupmate live accounts ignore the network query parameter and
+      // return the complete recharge-card catalogue. In that case we must
+      // fetch the unfiltered catalogue and filter it locally.
+      { service: "recharge-card" },
+      { service: "rechargepin" },
+    ];
+    for (const params of attempts) {
       const r = await get("/services/", params);
       if (!r.ok) continue;
       // Do not prefer `msg`/`data` here: Topupmate may put a human-readable
@@ -1291,7 +1299,6 @@ async function catalog(service: string, b: O) {
       // extractor against the complete body preserves the real plan list.
       const a = rows(r.body);
       if (!a.length) continue;
-      if (!source.length) source = a;
 
       const matching = a.filter((item: any) =>
         dataPlanMatchesNetwork(item, requestedNetwork),
@@ -1300,6 +1307,11 @@ async function catalog(service: string, b: O) {
         source = matching;
         break;
       }
+
+      // Preserve an unfiltered catalogue only when it has no explicit network
+      // metadata. We never put another network's plans under the selected one
+      // when the provider has told us which network a plan belongs to.
+      if (!source.length) source = a;
     }
 
     const hasNetworkMetadata = source.some((r: any) => [

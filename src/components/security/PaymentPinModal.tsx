@@ -37,22 +37,72 @@ const PaymentPinModal: React.FC<PaymentPinModalProps> = ({
   const [lockedUntil, setLockedUntil] = useState<string | null>(null);
 
   const inputRef = useRef<HTMLInputElement>(null);
+  const biometricAttemptRef = useRef(false);
 
   /*
-   * Reset the modal whenever it opens.
+   * Reset the modal whenever it opens. If biometric authentication is
+   * enabled, start the device authentication automatically so transactions
+   * do not require the user to enter a Payment PIN.
    */
   useEffect(() => {
-    if (open) {
-      setPin("");
-      setError("");
-      setLoading(false);
-      setLockedUntil(null);
-
-      setTimeout(() => {
-        inputRef.current?.focus();
-      }, 100);
+    if (!open) {
+      biometricAttemptRef.current = false;
+      return;
     }
-  }, [open]);
+
+    setPin("");
+    setError("");
+    setLoading(false);
+    setLockedUntil(null);
+
+    if (isBiometricEnabled() && !biometricAttemptRef.current) {
+      biometricAttemptRef.current = true;
+      let cancelled = false;
+
+      const timer = window.setTimeout(async () => {
+        if (cancelled) return;
+
+        setLoading(true);
+        setError("");
+
+        try {
+          await authenticateWithBiometric(
+            "Authorize IyanjuPay transaction",
+          );
+
+          if (!cancelled) {
+            setPin("");
+            setLockedUntil(null);
+            onVerified();
+          }
+        } catch (error) {
+          console.error(
+            "Biometric transaction authorization failed:",
+            error,
+          );
+
+          if (!cancelled) {
+            setError(
+              "Biometric verification failed. You can try again.",
+            );
+          }
+        } finally {
+          if (!cancelled) setLoading(false);
+        }
+      }, 150);
+
+      return () => {
+        cancelled = true;
+        window.clearTimeout(timer);
+      };
+    }
+
+    const timer = window.setTimeout(() => {
+      inputRef.current?.focus();
+    }, 100);
+
+    return () => window.clearTimeout(timer);
+  }, [open, onVerified]);
 
   /*
    * Keep PIN numeric and limited to 4 digits.

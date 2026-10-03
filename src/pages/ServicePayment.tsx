@@ -1857,11 +1857,30 @@ export default function ServicePayment({
             biller_code: getCode(option),
             display_name: getName(option),
           }));
+        } else if (isGiftCard) {
+          // Gift Card catalogue: use the Topupmate gift-card catalogue
+          // endpoint through the Edge Function with NO country filter.
+          // Filtering by category/country happens locally in this page.
+          const data = await invoke({
+            action: "catalog",
+            service: "gift-card",
+          });
+
+          const loaded = firstArray(
+            data.billers,
+            data.items,
+            data.plans,
+            data.packages,
+            data.products,
+            data.content,
+          );
+
+          merged = mergeBillers(serviceType, loaded);
         } else {
           const data = await invoke({
             action: "billers",
             service: backendServiceType(),
-            ...(isGiftCard ? {} : { country: "NG" }),
+            country: "NG",
           });
 
           const loaded = firstArray(

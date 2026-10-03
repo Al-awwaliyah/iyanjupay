@@ -767,6 +767,25 @@ const GIFT_COUNTRIES = [
 ];
 
 function giftRows(body: any): any[] {
+  // Topupmate live returns the catalogue in a paginated `content` array.
+  // Keep the generic extractor as a fallback, but explicitly inspect the
+  // documented envelope first so an unrelated `response`/`data` field can
+  // never cause the product list to be dropped.
+  const direct = [
+    body?.content,
+    body?.data?.content,
+    body?.response?.content,
+    body?.result?.content,
+    body?.products,
+    body?.data?.products,
+  ];
+
+  for (const candidate of direct) {
+    if (Array.isArray(candidate)) {
+      return candidate.filter((x: any) => x && typeof x === "object");
+    }
+  }
+
   const found = rows(body);
   return found.filter((x: any) => x && typeof x === "object");
 }
@@ -1267,7 +1286,10 @@ async function catalog(service: string, b: O) {
     for (const params of candidates) {
       const r = await get("/services/", params);
       if (!r.ok) continue;
-      const a = rows(r.body?.msg ?? r.body?.data ?? r.body);
+      // Do not prefer `msg`/`data` here: Topupmate may put a human-readable
+      // message beside the actual `response`/`content` catalogue. Running the
+      // extractor against the complete body preserves the real plan list.
+      const a = rows(r.body);
       if (!a.length) continue;
       if (!source.length) source = a;
 

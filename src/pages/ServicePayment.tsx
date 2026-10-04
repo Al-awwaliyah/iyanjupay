@@ -1062,7 +1062,6 @@ type ProcessingSession = {
 };
 
 type TransactionStatus =
-  | "processing"
   | "success"
   | "pending"
   | "failed";
@@ -1082,7 +1081,7 @@ function createIdempotencyKey(): string {
 
 function transactionStatusFromResult(
   result: any
-): Exclude<TransactionStatus, "processing"> {
+): TransactionStatus {
   const explicitSuccess =
     result?.success === true ||
     result?.data?.success === true;
@@ -1146,7 +1145,7 @@ function transactionStatusFromResult(
     return "success";
   }
 
-  return "success";
+  return "failed";
 }
 
 function transactionReferenceFromResult(
@@ -1185,15 +1184,19 @@ function ServiceTransactionProcessing({
   onBack: () => void;
 }) {
   const [status, setStatus] =
-    useState<TransactionStatus>("processing");
+    useState<TransactionStatus | null>(null);
+
+  const [isExecuting, setIsExecuting] =
+    useState(true);
+
+  const [technicalError, setTechnicalError] =
+    useState(false);
 
   const [reference, setReference] =
     useState("");
 
   const [message, setMessage] =
-    useState(
-      "Your payment is being processed securely."
-    );
+    useState("Please wait");
 
   const [copied, setCopied] =
     useState(false);
@@ -1230,10 +1233,10 @@ function ServiceTransactionProcessing({
   );
 
   const run = useCallback(async () => {
-    setStatus("processing");
-    setMessage(
-      "Your payment is being processed securely."
-    );
+    setIsExecuting(true);
+    setTechnicalError(false);
+    setStatus(null);
+    setMessage("Please wait");
 
     try {
       const result = await execute();
@@ -1254,20 +1257,19 @@ function ServiceTransactionProcessing({
 
       setMessage(
         nextStatus === "pending"
-          ? "Your payment has been received and is still being processed."
+          ? "Your transaction is pending. Please check your transaction history before trying again."
           : nextStatus === "failed"
             ? "We could not complete this transaction."
-            : "Your service purchase was completed successfully."
+            : "Your transaction was completed successfully."
       );
 
       setStatus(nextStatus);
-    } catch (error: any) {
-      setMessage(
-        getSafeErrorMessage(error) ||
-          "We could not complete this transaction."
-      );
-
+    } catch {
+      setTechnicalError(true);
+      setMessage("Technical issue. We're working to resolve it shortly.");
       setStatus("failed");
+    } finally {
+      setIsExecuting(false);
     }
   }, [execute]);
 
@@ -1295,8 +1297,6 @@ function ServiceTransactionProcessing({
     } catch {}
   };
 
-  const isProcessing =
-    status === "processing";
   const isSuccess =
     status === "success";
   const isPending =
@@ -1315,7 +1315,7 @@ function ServiceTransactionProcessing({
               variant="ghost"
               size="icon"
               onClick={onBack}
-              disabled={isProcessing}
+              disabled={isExecuting}
               aria-label="Back"
               className="text-white hover:bg-white/15 hover:text-white"
             >
@@ -1342,7 +1342,7 @@ function ServiceTransactionProcessing({
                       : "bg-green-50 text-green-600"
                 }`}
               >
-                {isProcessing ? (
+                {isExecuting ? (
                   <Loader2 className="h-9 w-9 animate-spin" />
                 ) : isSuccess ? (
                   <Check className="h-10 w-10" />
@@ -1354,35 +1354,28 @@ function ServiceTransactionProcessing({
               </div>
 
               <p className="mt-5 text-sm font-semibold text-gray-500">
-                {isProcessing
-                  ? "Processing payment"
+                {isExecuting
+                  ? "Please wait"
                   : isSuccess
-                    ? "Payment successful"
+                    ? "Transaction successful"
                     : isPending
-                      ? "Payment pending"
-                      : "Payment failed"}
+                      ? "Transaction pending"
+                      : "Transaction failed"}
               </p>
 
               <h2 className="mt-1 text-2xl font-extrabold tracking-tight">
-                {isProcessing
+                {isExecuting
                   ? "Please wait..."
                   : isSuccess
-                    ? "Purchase completed"
+                    ? `${serviceName} Successful`
                     : isPending
-                      ? "We're still processing it"
-                      : "We couldn't complete it"}
+                      ? `${serviceName} Pending`
+                      : `${serviceName} Failed`}
               </h2>
 
               <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-gray-500">
                 {message}
               </p>
-
-              {isProcessing && (
-                <div className="iyanjupay-processing-status mx-auto mt-6 flex max-w-sm items-center justify-center gap-2 rounded-2xl border px-4 py-3 text-sm font-medium">
-                  <LockKeyhole className="h-4 w-4" />
-                  Securing your transaction...
-                </div>
-              )}
             </div>
 
             <div className="space-y-4 p-5 sm:p-7">
@@ -1555,12 +1548,12 @@ function ServiceTransactionProcessing({
                 <div className="iyanjupay-processing-failed rounded-2xl border p-4 text-sm">
                   <div className="flex items-start gap-3">
                     <XCircle className="mt-0.5 h-5 w-5 shrink-0" />
-
                     <div>
                       <p className="font-bold">
-                        No successful purchase was confirmed
+                        {technicalError
+                          ? "Technical issue. We're working to resolve it shortly."
+                          : "The transaction could not be completed."}
                       </p>
-
                     </div>
                   </div>
                 </div>
@@ -1577,7 +1570,7 @@ function ServiceTransactionProcessing({
                   </Button>
                 )}
 
-                {!isProcessing && (
+                {!isExecuting && (
                   <Button
                     variant={
                       isFailed

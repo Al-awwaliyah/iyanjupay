@@ -1206,9 +1206,13 @@ function ServiceTransactionProcessing({
 
       setStatus(nextStatus);
     } catch (error: any) {
+      // Keep the complete error object in the browser console for debugging.
+      // Do not surface provider-specific/raw failure text as a customer-facing
+      // transaction message (for example, a provider daily-limit response).
+      console.error("IyanjuPay raw service purchase error:", error);
+
       setMessage(
-        getSafeErrorMessage(error) ||
-          "We could not complete this transaction."
+        "We could not complete this transaction. Please check the console for the raw error details."
       );
 
       setStatus("failed");

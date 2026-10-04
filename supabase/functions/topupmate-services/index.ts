@@ -2216,11 +2216,11 @@ async function purchase(
         },
       });
 
-      const providerMessage = msg(pr);
+      console.error("Topupmate raw purchase failure response", pr);
       throw new UserError(
         rr.error
-          ? `Purchase failed: ${providerMessage}. Please contact support if your wallet was debited.`
-          : `Purchase failed: ${providerMessage}. Your wallet has been refunded.`,
+          ? "Purchase failed. Please check the console for the raw provider response and contact support if your wallet was debited."
+          : "Purchase failed. Please check the console for the raw provider response. Your wallet has been refunded.",
       );
     }
   } catch (e) {

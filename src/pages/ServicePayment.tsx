@@ -653,6 +653,62 @@ function providerLogo(
   return matched ? `/providers/${matched[1]}.svg` : null;
 }
 
+/**
+ * Education providers must use their examination-body identity, never a
+ * mobile-network identity that may also be present in the catalogue row.
+ * Some live catalogue rows contain network_code/network_name alongside the
+ * exam provider, so providerLogo(name, code) can otherwise select MTN/Airtel
+ * when the provider name is not the first usable field.
+ */
+function educationProviderLogo(biller: Biller): string | null {
+  const raw = biller?.raw ?? {};
+  const value = [
+    biller?.provider_name,
+    biller?.providerName,
+    biller?.provider,
+    biller?.provider_service,
+    biller?.exam,
+    biller?.exam_type,
+    biller?.examType,
+    biller?.biller_name,
+    biller?.billerName,
+    biller?.display_name,
+    biller?.name,
+    raw?.provider_name,
+    raw?.providerName,
+    raw?.provider,
+    raw?.provider_service,
+    raw?.exam,
+    raw?.exam_type,
+    raw?.examType,
+    raw?.biller_name,
+    raw?.billerName,
+    raw?.name,
+    raw?.title,
+    raw?.description,
+  ]
+    .map(clean)
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ");
+
+  if (/\bjamb\b|joint admissions and matriculation/.test(value)) {
+    return "/providers/jamb.svg";
+  }
+  if (/\bwaec\b|west african examinations council/.test(value)) {
+    return "/providers/waec.svg";
+  }
+  if (/\bneco\b|national examinations council/.test(value)) {
+    return "/providers/neco.svg";
+  }
+  if (/\bnabteb\b|national business and technical examinations board/.test(value)) {
+    return "/providers/nabteb.svg";
+  }
+
+  return null;
+}
+
 const OFFLINE_BILLERS: Record<string, Biller[]> = {
   airtime: [
     { biller_code: "1", name: "MTN" },
@@ -1206,13 +1262,9 @@ function ServiceTransactionProcessing({
 
       setStatus(nextStatus);
     } catch (error: any) {
-      // Keep the complete error object in the browser console for debugging.
-      // Do not surface provider-specific/raw failure text as a customer-facing
-      // transaction message (for example, a provider daily-limit response).
-      console.error("IyanjuPay raw service purchase error:", error);
-
       setMessage(
-        "We could not complete this transaction. Please check the console for the raw error details."
+        getSafeErrorMessage(error) ||
+          "We could not complete this transaction."
       );
 
       setStatus("failed");
@@ -2884,7 +2936,10 @@ export default function ServicePayment({
         biller.raw?.logoUrls?.[0] ??
         biller.raw?.logo_urls?.[0]
     );
-    const logo = topupmateLogo || providerLogo(name, code);
+    const logo =
+      serviceType === "education"
+        ? educationProviderLogo(biller) || providerLogo(name, code)
+        : topupmateLogo || providerLogo(name, code);
 
     return (
       <button

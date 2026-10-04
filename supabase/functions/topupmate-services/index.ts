@@ -778,33 +778,70 @@ const GIFT_COUNTRIES = [
 ];
 
 function giftRows(body: any): any[] {
-  // Topupmate live returns the catalogue in a paginated `content` array.
-  // Keep the generic extractor as a fallback, but explicitly inspect the
-  // documented envelope first so an unrelated `response`/`data` field can
-  // never cause the product list to be dropped.
-  const direct = [
-    // Topupmate's live gift-card endpoint commonly returns the catalogue
-    // directly in `msg`. This is the same envelope used by the working
-    // Gift Card configuration. Keep the other documented/common envelopes
-    // as fallbacks.
-    body?.msg,
-    body?.data?.msg,
-    body?.content,
-    body?.data?.content,
-    body?.response?.content,
-    body?.result?.content,
-    body?.products,
-    body?.data?.products,
-  ];
+  // Gift-card catalogues can be wrapped in several response envelopes.
+  // Resolve the first real product array without relying on a single shape.
+  const seen = new Set<any>();
+  const productKeys = new Set([
+    "content",
+    "products",
+    "items",
+    "plans",
+    "packages",
+    "billers",
+    "results",
+    "data",
+    "msg",
+    "response",
+    "result",
+  ]);
 
-  for (const candidate of direct) {
-    if (Array.isArray(candidate)) {
-      return candidate.filter((x: any) => x && typeof x === "object");
+  const isObject = (v: any) => v && typeof v === "object";
+  const looksLikeProduct = (v: any) => {
+    if (!isObject(v) || Array.isArray(v)) return false;
+    return [
+      "productid", "product_id", "productId", "id",
+      "productname", "product_name", "productName", "name",
+      "countryCode", "country_code", "category",
+    ].some((k) => v[k] !== undefined && v[k] !== null);
+  };
+
+  const walk = (value: any, depth = 0): any[] => {
+    if (!value || depth > 8) return [];
+
+    if (Array.isArray(value)) {
+      const objects = value.filter(isObject);
+      if (objects.length && objects.some(looksLikeProduct)) return objects;
+      for (const item of objects) {
+        const nested = walk(item, depth + 1);
+        if (nested.length) return nested;
+      }
+      return [];
     }
-  }
 
-  const found = rows(body);
-  return found.filter((x: any) => x && typeof x === "object");
+    if (!isObject(value) || seen.has(value)) return [];
+    seen.add(value);
+
+    // Prefer known catalogue fields before traversing arbitrary response fields.
+    for (const key of productKeys) {
+      if (value[key] !== undefined) {
+        const nested = walk(value[key], depth + 1);
+        if (nested.length) return nested;
+      }
+    }
+
+    for (const [key, child] of Object.entries(value)) {
+      if (productKeys.has(key)) continue;
+      const nested = walk(child, depth + 1);
+      if (nested.length) return nested;
+    }
+
+    return looksLikeProduct(value) ? [value] : [];
+  };
+
+  const found = walk(body);
+  if (found.length) return found;
+
+  return rows(body).filter((x: any) => x && typeof x === "object");
 }
 
 function giftKey(r: any): string {
@@ -815,13 +852,13 @@ function giftKey(r: any): string {
 }
 
 async function giftCatalog(productId?: string) {
-  // Topupmate's live Gift Card catalogue is loaded without a country filter.
+  // the live Gift Card catalogue is loaded without a country filter.
   // Category/country filtering is performed locally in the app after the
   // complete catalogue has been returned.
   const r = await get("/giftcard/available/", productId ? { productId } : {});
 
   if (!r.ok || String(r.body?.status).toLowerCase() === "fail") {
-    console.error("Topupmate gift catalogue request failed", {
+    console.error("Gift catalogue request failed", {
       productId: productId ?? null,
       http_status: r.httpStatus,
       body: r.body,
@@ -1514,10 +1551,10 @@ async function verify(service: string, b: O) {
       throw new UserError("Enter a valid IUC / SmartCard number (8–20 digits).");
     }
 
-    let r = await post("/cable/verify/", { provider: p, iucnumber: i });
+    let r = await post("/cabletv/verify/", { provider: p, iucnumber: i });
 
     if (r.httpStatus === 404) {
-      r = await post("/cable/verify", { provider: p, iucnumber: i });
+      r = await post("/cabletv/verify/", { provider: p, iucnumber: i });
     }
 
     if (!r.ok || status(r.body) === "fail") {

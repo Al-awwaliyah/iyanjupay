@@ -1904,7 +1904,7 @@ async function purchase(
     if (!providerId) fail("Please select an examination body.");
 
     const q = Math.max(1, Math.floor(n(d.quantity ?? 1)));
-    path = "/exampin/";
+    path = "/exam/";
     body = { provider: providerId, quantity: q, ref: r };
 
     const c = await get("/services/", { service: "exampin" });
@@ -2171,18 +2171,6 @@ async function purchase(
   try {
     let q = await post(path, body);
 
-    // Topupmate documents /exampin/ with a trailing slash, but some live
-    // LiteSpeed deployments expose the same route without it. Retry only on
-    // an actual HTTP 404; never send a second purchase for another status.
-    if (service === "education" && q.httpStatus === 404) {
-      const retryPath = "/exampin";
-      const retry = await post(retryPath, body);
-      if (retry.ok || retry.httpStatus !== 404) {
-        path = retryPath;
-        q = retry;
-      }
-    }
-
     pr = q.body;
 
     if (!q.ok || status(pr) === "fail") {
@@ -2218,7 +2206,9 @@ async function purchase(
 
       console.error("Topupmate raw purchase failure response", pr);
       throw new UserError(
-        "We could not complete this transaction. Please try again shortly.",
+        rr.error
+          ? "Purchase failed. Please contact support if your wallet was debited."
+          : "Purchase failed. Your wallet has been refunded.",
       );
     }
   } catch (e) {
@@ -2285,7 +2275,9 @@ async function purchase(
     });
 
     throw new UserError(
-      "We could not complete this transaction. Please try again shortly.",
+      rr.error
+        ? "Purchase failed. Please contact support if your wallet was debited."
+        : "Purchase failed. Your wallet has been refunded.",
     );
   }
 
@@ -2309,7 +2301,7 @@ async function purchase(
       transaction_reference: r,
       transaction_id: tx,
       provider_reference: pRef,
-      message: "Your transaction is pending.",
+      message: "Your payment is being processed.",
     };
   }
 

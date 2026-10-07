@@ -298,6 +298,22 @@ function getItemCode(item: Item | null | undefined): string {
   );
 }
 
+function getRechargePinPlanCode(item: Item | null | undefined): string {
+  // Topupmate /rechargepin/ requires `plan` = Airtime Pin Id Code.
+  // Prefer the provider's documented `plan` field from the raw catalogue row.
+  return clean(
+    item?.plan ??
+      item?.airtime_pin_id_code ??
+      item?.airtimePinIdCode ??
+      item?.raw?.plan ??
+      item?.raw?.airtime_pin_id_code ??
+      item?.raw?.airtimePinIdCode ??
+      item?.plan_code ??
+      item?.planCode ??
+      getItemCode(item)
+  );
+}
+
 function canonicalCableProvider(value: unknown): string {
   const raw = clean(value).toLowerCase().replace(/[^a-z0-9]+/g, " ");
   if (raw.includes("dstv") || raw.includes("digital satellite")) return "dstv";
@@ -1470,8 +1486,7 @@ function ServiceTransactionProcessing({
               )}
 
               {isSuccess &&
-                (details?.service === "airtime-card" ||
-                  details?.service === "recharge-card") &&
+                details?.service === "recharge-card" &&
                 fulfillment &&
                 Object.keys(fulfillment).length > 0 && (
                   <div className="rounded-2xl border border-emerald-200 bg-emerald-50/80 p-4 text-sm text-emerald-950">
@@ -2654,6 +2669,18 @@ export default function ServicePayment({
       itemCode:
         selectedItemCode,
 
+      // Topupmate /rechargepin/ source-of-truth request field.
+      ...(isRechargeCard
+        ? {
+            plan:
+              getRechargePinPlanCode(selectedItem) ||
+              selectedItemCode,
+            airtime_pin_id_code:
+              getRechargePinPlanCode(selectedItem) ||
+              selectedItemCode,
+          }
+        : {}),
+
       phoneNumber: phone,
       phone,
 
@@ -3664,7 +3691,9 @@ export default function ServicePayment({
                         )
                           .sort(([a], [b]) => Number(a) - Number(b))
                           .map(([value, item]) => {
-                            const itemCode = getItemCode(item);
+                            const itemCode = isRechargeCard
+                              ? getRechargePinPlanCode(item)
+                              : getItemCode(item);
                             const itemPrice = getItemPrice(item) || num(item.value ?? item.denomination ?? item.amount);
                             const selected =
                               selectedItemCode === itemCode &&

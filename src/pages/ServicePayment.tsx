@@ -1470,7 +1470,8 @@ function ServiceTransactionProcessing({
               )}
 
               {isSuccess &&
-                details?.service === "airtime-card" &&
+                (details?.service === "airtime-card" ||
+                  details?.service === "recharge-card") &&
                 fulfillment &&
                 Object.keys(fulfillment).length > 0 && (
                   <div className="rounded-2xl border border-emerald-200 bg-emerald-50/80 p-4 text-sm text-emerald-950">

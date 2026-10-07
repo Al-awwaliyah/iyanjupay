@@ -1702,6 +1702,9 @@ async function contactPhone(a: any, u: any, d: O): Promise<string> {
 }
 
 function rechargePinPlanCode(value: any): string {
+  // Topupmate /rechargepin/ documents `plan` as the Airtime Pin Id Code.
+  // Treat that field as the authoritative code and only use legacy aliases
+  // when a live catalogue response uses a different field name.
   return first(
     value?.plan,
     value?.airtime_pin_id_code,
@@ -2436,6 +2439,16 @@ async function purchase(
         error: voucherError,
       });
     }
+  } else if (service === "recharge-card" || service === "airtime-card") {
+    // /rechargepin/ returns the generated PIN data in the purchase response.
+    // Expose that provider result through the same fulfillment field used by
+    // the ServicePayment success screen so the customer can actually see the
+    // generated PIN after a successful purchase.
+    fulfillment =
+      pr?.response ??
+      pr?.data ??
+      pr?.result ??
+      null;
   }
 
   return {

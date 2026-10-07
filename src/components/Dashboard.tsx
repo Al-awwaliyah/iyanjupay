@@ -147,6 +147,7 @@ const SUPPORTED_BILL_SERVICES: BillService[] = [
 ];
 
 const COMING_SOON_SERVICES: BillService[] = [
+  "recharge-card",
   "airtime-cash",
   "tech-store",
   "esim",
@@ -770,7 +771,7 @@ const Dashboard = () => {
     { title: "Cable TV", description: "", icon: CreditCard, color: "bg-red-500", type: "cable" as BillService, available: true },
     { title: "Electricity", description: "", icon: Zap, color: "bg-yellow-500", type: "electricity" as BillService, available: true },
     { title: "Education", description: "", icon: GraduationCap, color: "bg-orange-500", type: "education" as BillService, available: true },
-    { title: "Recharge PIN", description: "", icon: Receipt, color: "bg-slate-500", type: "recharge-card" as BillService, available: true },
+    { title: "Recharge PIN", description: "", icon: Receipt, color: "bg-slate-500", type: "recharge-card" as BillService, available: false },
     { title: "Airtime to Cash", description: "", icon: Banknote, color: "bg-emerald-500", type: "airtime-cash" as BillService, available: false },
     { title: "Gift Cards", description: "", icon: Gift, color: "bg-pink-500", type: "gift-card" as BillService, available: true },
     { title: "Internet Service", description: "", icon: Wifi, color: "bg-indigo-500", type: "internet" as BillService, available: true },
@@ -2371,7 +2372,7 @@ const Dashboard = () => {
               </div>
 
               <span className="hidden rounded-full bg-purple-50 px-3 py-1 text-xs font-bold text-purple-700 sm:block">
-                4 live
+                {services.filter((service) => service.available && !COMING_SOON_SERVICES.includes(service.type)).length} live
               </span>
 
             </div>
@@ -2404,6 +2405,7 @@ const Dashboard = () => {
                       available={
                         service.available
                       }
+                      comingSoon={COMING_SOON_SERVICES.includes(service.type)}
                       onClick={() =>
                         handleServiceClick(
                           service

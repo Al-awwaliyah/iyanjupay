@@ -11,6 +11,7 @@ interface ServiceCardProps {
   onClick: () => void;
   color: string;
   available?: boolean;
+  comingSoon?: boolean;
 }
 
 const ServiceCard = ({
@@ -19,8 +20,9 @@ const ServiceCard = ({
   onClick,
   color,
   available = true,
+  comingSoon = false,
 }: ServiceCardProps) => {
-  const isUnavailable = !available;
+  const isUnavailable = !available || comingSoon;
 
   const handleKeyDown = (
     event: React.KeyboardEvent<HTMLDivElement>,
@@ -48,13 +50,20 @@ const ServiceCard = ({
       }
       onKeyDown={handleKeyDown}
     >
-      <CardContent className="flex h-full flex-col items-center justify-center p-0 text-center">
+      <CardContent className="relative flex h-full flex-col items-center justify-center p-0 text-center">
+        {comingSoon && (
+          <span className="absolute right-1.5 top-1.5 z-10 rounded-full bg-slate-100 px-1.5 py-0.5 text-[8px] font-extrabold uppercase tracking-wider text-slate-500 sm:right-2 sm:top-2 sm:text-[9px]">
+            Coming Soon
+          </span>
+        )}
+
         {/* Service Icon */}
 
         <div
           className={[
             "mx-auto flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl transition group-hover:scale-105",
             color,
+            comingSoon && "grayscale opacity-70",
           ].join(" ")}
         >
           <Icon

@@ -266,7 +266,7 @@ function disco(v: any) {
 
     "6": "6",
     ibadan: "6",
-    ibadanelectric: "6",
+    ibedc: "6",
     ibedc: "6",
 
     "7": "7",
@@ -337,12 +337,195 @@ const MOBILE_NETWORKS = [
 ];
 
 const PIN_SERVICE_KEYS: Record<string, string[]> = {
-  "recharge-card": ["rechargepin", "recharge-pin", "recharge-card", "airtimepin", "airtime-pin"],
-  "airtime-card": ["rechargepin", "recharge-pin", "recharge-card", "airtimepin", "airtime-pin"],
+  "recharge-card": [
+    "rechargepin",
+    "recharge-pin",
+    "recharge-card",
+    "airtimepin",
+    "airtime-pin",
+  ],
+  "airtime-card": [
+    "rechargepin",
+    "recharge-pin",
+    "recharge-card",
+    "airtimepin",
+    "airtime-pin",
+  ],
   "data-card": ["datapin", "data-pin", "data-card"],
 };
 
 const isPinService = (service: string) => service in PIN_SERVICE_KEYS;
+
+/*
+ * AUTHORITATIVE TOPUPMATE RECHARGE PIN CATALOGUE
+ *
+ * The `id` field is the actual Airtime Pin Id Code required by
+ * POST /rechargepin/ in the `plan` field.
+ *
+ * IMPORTANT:
+ * The plan ID is NOT the denomination.
+ *
+ * Example:
+ *   Glo ₦200  -> plan "8"
+ *   Glo ₦500  -> plan "9"
+ *   MTN ₦200  -> plan "2"
+ *   Airtel ₦200 -> plan "5"
+ */
+const RECHARGE_PIN_PLANS = [
+  {
+    id: "1",
+    network: "1",
+    networkName: "MTN",
+    value: 100,
+    providerPrice: 98,
+  },
+  {
+    id: "2",
+    network: "1",
+    networkName: "MTN",
+    value: 200,
+    providerPrice: 196,
+  },
+  {
+    id: "3",
+    network: "1",
+    networkName: "MTN",
+    value: 500,
+    providerPrice: 499.5,
+  },
+  {
+    id: "11",
+    network: "1",
+    networkName: "MTN",
+    value: 1000,
+    providerPrice: 980,
+  },
+
+  {
+    id: "4",
+    network: "2",
+    networkName: "Airtel",
+    value: 100,
+    providerPrice: 98,
+  },
+  {
+    id: "5",
+    network: "2",
+    networkName: "Airtel",
+    value: 200,
+    providerPrice: 196,
+  },
+  {
+    id: "6",
+    network: "2",
+    networkName: "Airtel",
+    value: 500,
+    providerPrice: 490,
+  },
+  {
+    id: "12",
+    network: "2",
+    networkName: "Airtel",
+    value: 1000,
+    providerPrice: 980,
+  },
+
+  {
+    id: "7",
+    network: "3",
+    networkName: "Glo",
+    value: 100,
+    providerPrice: 98,
+  },
+  {
+    id: "8",
+    network: "3",
+    networkName: "Glo",
+    value: 200,
+    providerPrice: 198,
+  },
+  {
+    id: "9",
+    network: "3",
+    networkName: "Glo",
+    value: 500,
+    providerPrice: 485,
+  },
+  {
+    id: "13",
+    network: "3",
+    networkName: "Glo",
+    value: 1000,
+    providerPrice: 970,
+  },
+
+  {
+    id: "14",
+    network: "4",
+    networkName: "9mobile",
+    value: 100,
+    providerPrice: 97.5,
+  },
+  {
+    id: "15",
+    network: "4",
+    networkName: "9mobile",
+    value: 200,
+    providerPrice: 195.5,
+  },
+] as const;
+
+/*
+ * Customer selling price for Recharge PINs.
+ *
+ * Provider prices are:
+ *   ₦97.50 -> ₦100
+ *   ₦98    -> ₦100
+ *   ₦195.50 -> ₦200
+ *   ₦196   -> ₦200
+ *   ₦198   -> ₦200
+ *   ₦485   -> ₦500
+ *   ₦490   -> ₦500
+ *   ₦499.50 -> ₦500
+ *   ₦970   -> ₦1000
+ *   ₦980   -> ₦1000
+ */
+function rechargePinSellingPrice(providerPrice: number): number {
+  return Math.ceil(providerPrice / 50) * 50;
+}
+
+/*
+ * Resolve a Recharge PIN from the authoritative server-side catalogue.
+ *
+ * If a valid plan ID is supplied, it is preferred.
+ * Otherwise the selected network + denomination determines the plan.
+ */
+function rechargePinPlanFor(
+  networkId: string,
+  value: number,
+  planId = "",
+) {
+  const wantedNetwork = network(networkId);
+  const exactPlan = s(planId);
+
+  if (exactPlan) {
+    const exact = RECHARGE_PIN_PLANS.find(
+      (x) =>
+        x.id === exactPlan &&
+        x.network === wantedNetwork,
+    );
+
+    if (exact) return exact;
+  }
+
+  return (
+    RECHARGE_PIN_PLANS.find(
+      (x) =>
+        x.network === wantedNetwork &&
+        x.value === value,
+    ) ?? null
+  );
+}
 
 /** Try each catalogue key in turn and return the first non-empty result. */
 async function catalogueRows(keys: string[], extra: O = {}) {
@@ -390,7 +573,6 @@ async function getEducationProviders() {
     })
     .filter((x: any) => x.id && x.providerPrice > 0);
 }
-
 
 function publicBiller(r: any) {
   const code = String(
@@ -1150,7 +1332,7 @@ async function catalog(service: string, b: O) {
     const a = await getDataPlans(requestedNetwork);
 
     const items = a
-        .filter((r: any) => dataPlanMatchesNetwork(r, requestedNetwork))
+      .filter((r: any) => dataPlanMatchesNetwork(r, requestedNetwork))
       .filter((r: any) => !!dataPlanId(r))
       .map((r: any) => norm(service, r))
       .filter((x: any) => x.providerPrice > 0 && !!x.plan_id);
@@ -1212,28 +1394,48 @@ async function catalog(service: string, b: O) {
       b.biller_code,
       service,
     ).toLowerCase();
+
     const wantedNorm = wanted.replace(/[^a-z0-9]+/g, "");
     const providers = await getEducationProviders();
+
     const selected = providers.find((x: any) => {
       const code = s(x.id).toLowerCase();
       const name = s(x.name).toLowerCase().replace(/[^a-z0-9]+/g, "");
-      return code === wanted || name === wantedNorm || name.includes(wantedNorm);
+      return (
+        code === wanted ||
+        name === wantedNorm ||
+        name.includes(wantedNorm)
+      );
     });
 
     if (!selected) fail("The selected examination body is unavailable.");
 
-    const catalogue = await get("/services/", { service: "exampin" });
+    const catalogue = await get("/services/", {
+      service: "exampin",
+    });
+
     const raw = rows(catalogue.body);
+
     const selectedId = s(selected.id);
+
     const matching = raw.filter((x: any) =>
       s(x?.id ?? x?.provider_id ?? x?.provider) === selectedId ||
-      s(x?.provider ?? x?.name).toLowerCase().replace(/[^a-z0-9]+/g, "") ===
-        s(selected.name).toLowerCase().replace(/[^a-z0-9]+/g, ""),
+      s(x?.provider ?? x?.name)
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "") ===
+        s(selected.name)
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, ""),
     );
-    const source = matching.length ? matching : [selected.raw];
+
+    const source = matching.length
+      ? matching
+      : [selected.raw];
+
     const items = source
       .map((r: any) => {
         const providerPrice = price(r) || selected.providerPrice;
+
         return {
           ...norm("education", r),
           id: selectedId,
@@ -1261,7 +1463,10 @@ async function catalog(service: string, b: O) {
 
   if (service === "gift-card") {
     const productId = s(
-      b.product_id ?? b.productId ?? b.biller_code ?? b.provider,
+      b.product_id ??
+        b.productId ??
+        b.biller_code ??
+        b.provider,
     );
 
     // Do not group/filter the gift-card catalogue by country.
@@ -1296,7 +1501,10 @@ async function catalog(service: string, b: O) {
           .filter(Boolean)
           .slice(0, 50),
       });
-      throw new UserError("This gift card is not available right now.");
+
+      throw new UserError(
+        "This gift card is not available right now.",
+      );
     }
 
     const gp = giftProduct(product);
@@ -1304,14 +1512,22 @@ async function catalog(service: string, b: O) {
 
     const items: any[] = [];
 
-    const pushItem = (recipient: number, senderPrice: number) => {
+    const pushItem = (
+      recipient: number,
+      senderPrice: number,
+    ) => {
       if (!(recipient > 0) || !(senderPrice > 0)) return;
-      const customerPrice = Number((senderPrice + GIFT_CARD_MARKUP_USD).toFixed(2));
+
+      const customerPrice = Number(
+        (senderPrice + GIFT_CARD_MARKUP_USD).toFixed(2),
+      );
 
       const effectiveFxRate =
         recipient > 0
           ? Number((senderPrice / recipient).toFixed(6))
-          : Number(gp.recipientCurrencyToSenderCurrencyExchangeRate || 0);
+          : Number(
+              gp.recipientCurrencyToSenderCurrencyExchangeRate || 0,
+            );
 
       items.push({
         id: `${gp.id}:${recipient}`,
@@ -1332,7 +1548,8 @@ async function catalog(service: string, b: O) {
         recipient_amount: recipient,
         recipient_currency: cur,
         fx_rate: effectiveFxRate,
-        fx_rate_usd_ngn: cur === "USD" ? effectiveFxRate : 0,
+        fx_rate_usd_ngn:
+          cur === "USD" ? effectiveFxRate : 0,
         product_id: gp.id,
         productId: gp.id,
         denomination: recipient,
@@ -1340,14 +1557,30 @@ async function catalog(service: string, b: O) {
     };
 
     if (gp.fixedRecipientDenominations.length) {
-      gp.fixedRecipientDenominations.forEach((d: number, i: number) =>
-        pushItem(d, Number(gp.fixedSenderDenominations[i] ?? 0)),
+      gp.fixedRecipientDenominations.forEach(
+        (d: number, i: number) =>
+          pushItem(
+            d,
+            Number(
+              gp.fixedSenderDenominations[i] ?? 0,
+            ),
+          ),
       );
     } else {
       // Range products: offer the bounds when the provider prices them.
-      pushItem(gp.minRecipientDenomination, gp.minSenderDenomination);
-      if (gp.maxRecipientDenomination !== gp.minRecipientDenomination) {
-        pushItem(gp.maxRecipientDenomination, gp.maxSenderDenomination);
+      pushItem(
+        gp.minRecipientDenomination,
+        gp.minSenderDenomination,
+      );
+
+      if (
+        gp.maxRecipientDenomination !==
+        gp.minRecipientDenomination
+      ) {
+        pushItem(
+          gp.maxRecipientDenomination,
+          gp.maxSenderDenomination,
+        );
       }
     }
 
@@ -1363,120 +1596,99 @@ async function catalog(service: string, b: O) {
     };
   }
 
-  // Recharge / airtime PINs are network-specific. Query Topupmate with the
-  // selected network first, then filter the returned catalogue by explicit
-  // network metadata. Never display the complete multi-network catalogue
-  // under every network when the provider supplied network metadata.
-  if (service === "airtime-card" || service === "recharge-card") {
+  /*
+   * Recharge / Airtime PIN catalogue.
+   *
+   * We intentionally use the authoritative Topupmate plan table above
+   * instead of treating the denomination (e.g. "200") as the plan ID.
+   *
+   * Topupmate requires:
+   *   Glo ₦200 -> plan "8"
+   *   NOT       -> plan "200"
+   */
+  if (
+    service === "airtime-card" ||
+    service === "recharge-card"
+  ) {
     const requestedNetwork = network(
-      b.provider_name ?? b.provider ?? b.network_name ?? b.network ?? b.biller_code,
+      b.provider_name ??
+        b.provider ??
+        b.network_name ??
+        b.network ??
+        b.biller_code,
     );
 
-    if (!requestedNetwork) fail("Please select a mobile network.");
-
-    const candidates = [
-      { service: "recharge-card", network: requestedNetwork },
-      { service: "recharge-card", networkid: requestedNetwork },
-      { service: "recharge-card", network_id: requestedNetwork },
-      { service: "recharge-card", provider: requestedNetwork },
-    ];
-
-    let source: any[] = [];
-    const attempts = [
-      ...candidates,
-      // Some Topupmate live accounts ignore the network query parameter and
-      // return the complete recharge-card catalogue. In that case we must
-      // fetch the unfiltered catalogue and filter it locally.
-      { service: "recharge-card" },
-      { service: "rechargepin" },
-    ];
-    for (const params of attempts) {
-      const r = await get("/services/", params);
-      if (!r.ok) continue;
-      // Do not prefer `msg`/`data` here: Topupmate may put a human-readable
-      // message beside the actual `response`/`content` catalogue. Running the
-      // extractor against the complete body preserves the real plan list.
-      const a = rows(r.body);
-      if (!a.length) continue;
-
-      const matching = a.filter((item: any) =>
-        dataPlanMatchesNetwork(item, requestedNetwork),
-      );
-      if (matching.length) {
-        source = matching;
-        break;
-      }
-
-      // Preserve an unfiltered catalogue only when it has no explicit network
-      // metadata. We never put another network's plans under the selected one
-      // when the provider has told us which network a plan belongs to.
-      if (!source.length) source = a;
+    if (!requestedNetwork) {
+      fail("Please select a mobile network.");
     }
 
-    const hasNetworkMetadata = source.some((r: any) => [
-      r?.networkid, r?.network_id, r?.networkId, r?.network_code,
-      r?.networkCode, r?.network, r?.network_name, r?.networkName,
-      r?.provider, r?.provider_name, r?.providerName, r?.operator,
-    ].some((v: any) => s(v)));
+    const plans = RECHARGE_PIN_PLANS.filter(
+      (x) => x.network === requestedNetwork,
+    );
 
-    if (hasNetworkMetadata) {
-      source = source.filter((r: any) => dataPlanMatchesNetwork(r, requestedNetwork));
-    }
+    const items = plans.map((x) => {
+      const sellingPrice =
+        rechargePinSellingPrice(x.providerPrice);
 
-    const items = source
-      .map((r: any, index: number) => {
-        const denomination = n(
-          r?.denomination ?? r?.value ?? r?.amount ?? r?.face_value ??
-          r?.faceValue ?? r?.plan ?? r?.plan_amount ?? r?.planAmount,
-        );
-        const planCode = s(
-          r?.plan ?? r?.plan_code ?? r?.planCode ?? r?.item_code ??
-          r?.itemCode ?? r?.id ?? r?.code ??
-          (denomination > 0 ? String(denomination) : ""),
-        );
-        const providerPrice = n(
-          r?.price ?? r?.selling_price ?? r?.sellingPrice ??
-          r?.provider_price ?? r?.providerPrice ?? r?.cost ??
-          r?.amount ?? denomination,
-        );
-        const displayValue = denomination > 0 ? denomination : providerPrice;
-        return {
-          id: planCode || `${requestedNetwork}-${displayValue || index}`,
-          code: planCode || `${requestedNetwork}-${displayValue || index}`,
-          plan_id: planCode || `${requestedNetwork}-${displayValue || index}`,
-          name: `${networkName(requestedNetwork) || "Airtime"} ₦${displayValue.toLocaleString("en-NG")}`,
-          display_name: `₦${displayValue.toLocaleString("en-NG")}`,
-          provider: networkName(requestedNetwork),
-          provider_name: networkName(requestedNetwork),
-          network: networkName(requestedNetwork),
-          network_name: networkName(requestedNetwork),
-          network_id: requestedNetwork,
-          networkId: requestedNetwork,
-          value: displayValue,
-          denomination: displayValue,
-          providerPrice,
-          provider_price: providerPrice,
-          price: providerPrice,
-          selling_price: providerPrice,
-          amount: providerPrice,
-          service,
-          raw: r,
-        };
-      })
-      .filter((item: any) => item.value > 0 && item.code);
+      return {
+        id: x.id,
+        code: x.id,
+        plan_id: x.id,
 
-    const unique = Array.from(new Map(items.map((item: any) => [
-      `${item.network_id}:${item.value}:${item.code}`, item,
-    ])).values()).sort((a: any, b: any) => a.value - b.value);
+        // Topupmate /rechargepin/ expects the Airtime Pin Id Code.
+        plan: x.id,
+        airtime_pin_id_code: x.id,
+
+        name: `${x.networkName} ₦${x.value.toLocaleString(
+          "en-NG",
+        )}`,
+        display_name: `₦${x.value.toLocaleString(
+          "en-NG",
+        )}`,
+
+        provider: x.networkName,
+        provider_name: x.networkName,
+
+        network: x.networkName,
+        network_name: x.networkName,
+        network_id: x.network,
+        networkId: x.network,
+
+        value: x.value,
+        denomination: x.value,
+        face_value: x.value,
+
+        providerPrice: x.providerPrice,
+        provider_price: x.providerPrice,
+        provider_amount: x.providerPrice,
+
+        // Customer selling price.
+        price: sellingPrice,
+        selling_price: sellingPrice,
+        amount: sellingPrice,
+
+        service,
+
+        raw: {
+          id: x.id,
+          plan: x.id,
+          airtime_pin_id_code: x.id,
+          network: x.network,
+          denomination: x.value,
+          value: x.value,
+          price: x.providerPrice,
+        },
+      };
+    });
 
     return {
       success: true,
       service,
       selected_network: requestedNetwork,
       billers: [],
-      items: unique,
-      plans: unique,
-      packages: unique,
+      items,
+      plans: items,
+      packages: items,
     };
   }
 
@@ -1493,6 +1705,7 @@ async function catalog(service: string, b: O) {
       http_status: c.httpStatus,
       body: c.body,
     });
+
     throw new UserError(SERVICE_DOWN);
   }
 
@@ -1588,27 +1801,54 @@ async function catalog(service: string, b: O) {
 async function verify(service: string, b: O) {
   if (service === "cable") {
     const p = cable(
-      first(b.provider_name, b.provider, b.biller_code, b.cable_tv),
+      first(
+        b.provider_name,
+        b.provider,
+        b.biller_code,
+        b.cable_tv,
+      ),
     );
 
-    const i = first(b.iuc, b.smartcard_number, b.smartcard_no, b.customer).replace(/\s+/g, "");
+    const i = first(
+      b.iuc,
+      b.smartcard_number,
+      b.smartcard_no,
+      b.customer,
+    ).replace(/\s+/g, "");
 
     if (!p || !/^[0-9]{8,20}$/.test(i)) {
-      throw new UserError("Enter a valid IUC / SmartCard number (8–20 digits).");
+      throw new UserError(
+        "Enter a valid IUC / SmartCard number (8–20 digits).",
+      );
     }
 
-    let r = await post("/cabletv/verify/", { provider: p, iucnumber: i });
+    let r = await post(
+      "/cabletv/verify/",
+      {
+        provider: p,
+        iucnumber: i,
+      },
+    );
 
     if (r.httpStatus === 404) {
-      r = await post("/cabletv/verify/", { provider: p, iucnumber: i });
+      r = await post(
+        "/cabletv/verify/",
+        {
+          provider: p,
+          iucnumber: i,
+        },
+      );
     }
 
     if (!r.ok || status(r.body) === "fail") {
-      console.error("Topupmate cable verification failed", {
-        http_status: r.httpStatus,
-        provider: p,
-        body: r.body,
-      });
+      console.error(
+        "Topupmate cable verification failed",
+        {
+          http_status: r.httpStatus,
+          provider: p,
+          body: r.body,
+        },
+      );
 
       throw new UserError(
         "We could not verify this SmartCard / IUC number. Check the number and provider, then try again.",
@@ -1619,14 +1859,30 @@ async function verify(service: string, b: O) {
     const d = r.body ?? {};
 
     const nm = first(
-      pick(d, ["name", "customer_name", "customername", "subscriber_name", "subscribername"]),
-      pick(d?.response, ["name", "customer_name", "customername"]),
-      pick(d?.data, ["name", "customer_name", "customername"]),
+      pick(d, [
+        "name",
+        "customer_name",
+        "customername",
+        "subscriber_name",
+        "subscribername",
+      ]),
+      pick(d?.response, [
+        "name",
+        "customer_name",
+        "customername",
+      ]),
+      pick(d?.data, [
+        "name",
+        "customer_name",
+        "customername",
+      ]),
       status(d) === "success" ? d?.msg : "",
     );
 
     if (!nm) {
-      throw new UserError("We could not verify this SmartCard / IUC number.");
+      throw new UserError(
+        "We could not verify this SmartCard / IUC number.",
+      );
     }
 
     return {
@@ -1638,39 +1894,77 @@ async function verify(service: string, b: O) {
   }
 
   if (service === "electricity") {
-    const p = disco(first(b.biller_code, b.provider, b.disco));
+    const p = disco(
+      first(
+        b.biller_code,
+        b.provider,
+        b.disco,
+      ),
+    );
 
-    const m = first(b.meter, b.meter_number, b.customer).replace(/\s+/g, "");
+    const m = first(
+      b.meter,
+      b.meter_number,
+      b.customer,
+    ).replace(/\s+/g, "");
 
-    const tp = first(b.meter_type, b.meterType, "prepaid").toLowerCase();
+    const tp = first(
+      b.meter_type,
+      b.meterType,
+      "prepaid",
+    ).toLowerCase();
 
-    if (!p || !m || !["prepaid", "postpaid"].includes(tp)) {
-      throw new UserError("Select a provider, meter type and enter your meter number.");
+    if (
+      !p ||
+      !m ||
+      !["prepaid", "postpaid"].includes(tp)
+    ) {
+      throw new UserError(
+        "Select a provider, meter type and enter your meter number.",
+      );
     }
 
-    const r = await post("/electricity/verify/", {
-      provider: p,
-      meternumber: m,
-      metertype: tp,
-    });
+    const r = await post(
+      "/electricity/verify/",
+      {
+        provider: p,
+        meternumber: m,
+        metertype: tp,
+      },
+    );
 
     if (!r.ok || status(r.body) === "fail") {
-      console.error("Topupmate meter verification failed", {
-        http_status: r.httpStatus,
-        provider: p,
-        body: r.body,
-      });
+      console.error(
+        "Topupmate meter verification failed",
+        {
+          http_status: r.httpStatus,
+          provider: p,
+          body: r.body,
+        },
+      );
 
       throw new UserError(
         "We could not verify this meter number. Check the number, provider and meter type, then try again.",
       );
     }
 
-    const d = r.body?.response ?? r.body?.data ?? r.body;
+    const d =
+      r.body?.response ??
+      r.body?.data ??
+      r.body;
 
     const nm = first(
-      pick(d, ["name", "customer_name", "customername", "customer_name_on_meter"]),
-      pick(r.body, ["name", "customer_name", "customername"]),
+      pick(d, [
+        "name",
+        "customer_name",
+        "customername",
+        "customer_name_on_meter",
+      ]),
+      pick(r.body, [
+        "name",
+        "customer_name",
+        "customername",
+      ]),
     );
 
     return {
@@ -1681,7 +1975,9 @@ async function verify(service: string, b: O) {
     };
   }
 
-  throw new UserError("Verification is not required for this service.");
+  throw new UserError(
+    "Verification is not required for this service.",
+  );
 }
 
 async function update(
@@ -1726,9 +2022,19 @@ async function refund(
  * (cable, electricity). Uses an explicit phone when the client sent one,
  * otherwise the customer's profile phone. Never the meter / smartcard number.
  */
-async function contactPhone(a: any, u: any, d: O): Promise<string> {
+async function contactPhone(
+  a: any,
+  u: any,
+  d: O,
+): Promise<string> {
   const explicit = localPhone(
-    first(d.contact_phone, d.contactPhone, d.phone, d.phoneNumber, d.mobile_number),
+    first(
+      d.contact_phone,
+      d.contactPhone,
+      d.phone,
+      d.phoneNumber,
+      d.mobile_number,
+    ),
   );
 
   if (/^0\d{10}$/.test(explicit)) return explicit;
@@ -1740,8 +2046,13 @@ async function contactPhone(a: any, u: any, d: O): Promise<string> {
       .eq("id", u.id)
       .maybeSingle();
 
-    const fromProfile = localPhone(data?.phone_number);
-    return /^0\d{10}$/.test(fromProfile) ? fromProfile : "";
+    const fromProfile = localPhone(
+      data?.phone_number,
+    );
+
+    return /^0\d{10}$/.test(fromProfile)
+      ? fromProfile
+      : "";
   } catch {
     return "";
   }
@@ -1768,7 +2079,9 @@ function rechargePinPlanCode(value: any): string {
   );
 }
 
-function rechargePinProviderPrice(value: any): number {
+function rechargePinProviderPrice(
+  value: any,
+): number {
   return n(
     value?.price ??
       value?.selling_price ??
@@ -1792,6 +2105,7 @@ async function purchase(
   ).toLowerCase();
 
   const d = b.details ?? b;
+
   const r =
     s(
       b.idempotency_key ??
@@ -1800,15 +2114,30 @@ async function purchase(
 
   const item = d.item ?? {};
 
-  const isMobileService = ["airtime", "data"].includes(service);
+  const isMobileService = [
+    "airtime",
+    "data",
+  ].includes(service);
 
   // Mobile numbers are always normalised to the local 11-digit format
   // (the app may send +234XXXXXXXXXX). Other services keep their identifier.
   const customer = isMobileService
     ? localPhone(
-        first(d.phone, d.mobile_number, d.phoneNumber, d.customer, d.account_id),
+        first(
+          d.phone,
+          d.mobile_number,
+          d.phoneNumber,
+          d.customer,
+          d.account_id,
+        ),
       )
-    : first(d.customer, d.phone, d.mobile_number, d.phoneNumber, d.account_id);
+    : first(
+        d.customer,
+        d.phone,
+        d.mobile_number,
+        d.phoneNumber,
+        d.account_id,
+      );
 
   let pAmt = 0;
   let sAmt = 0;
@@ -1817,18 +2146,36 @@ async function purchase(
 
   if (service === "airtime") {
     const net = network(
-      first(d.network_code, d.networkId, d.biller_code, d.network),
+      first(
+        d.network_code,
+        d.networkId,
+        d.biller_code,
+        d.network,
+      ),
     );
 
-    pAmt = n(d.amount ?? b.amount);
+    pAmt = n(
+      d.amount ?? b.amount,
+    );
 
-    if (!net) fail("Please select a mobile network.");
-    if (!/^[0-9]{11}$/.test(customer)) {
-      fail("Enter a valid 11-digit Nigerian phone number.");
+    if (!net) {
+      fail("Please select a mobile network.");
     }
-    if (pAmt < 50) fail("The minimum airtime amount is ₦50.");
+
+    if (!/^[0-9]{11}$/.test(customer)) {
+      fail(
+        "Enter a valid 11-digit Nigerian phone number.",
+      );
+    }
+
+    if (pAmt < 50) {
+      fail(
+        "The minimum airtime amount is ₦50.",
+      );
+    }
 
     path = "/airtime/";
+
     body = {
       network: net,
       phone: customer,
@@ -1836,10 +2183,16 @@ async function purchase(
       airtime_type: "VTU",
       ref: r,
     };
+
     sAmt = pAmt;
   } else if (service === "data") {
     const net = network(
-      first(d.network_code, d.networkId, d.biller_code, d.network),
+      first(
+        d.network_code,
+        d.networkId,
+        d.biller_code,
+        d.network,
+      ),
     );
 
     const plan = first(
@@ -1853,13 +2206,22 @@ async function purchase(
       item.code,
     );
 
-    if (!net) fail("Please select a mobile network.");
-    if (!/^[0-9]{11}$/.test(customer)) {
-      fail("Enter a valid 11-digit Nigerian phone number.");
+    if (!net) {
+      fail("Please select a mobile network.");
     }
-    if (!plan) fail("Please select a data plan.");
+
+    if (!/^[0-9]{11}$/.test(customer)) {
+      fail(
+        "Enter a valid 11-digit Nigerian phone number.",
+      );
+    }
+
+    if (!plan) {
+      fail("Please select a data plan.");
+    }
 
     path = "/data/";
+
     body = {
       network: net,
       phone: customer,
@@ -1872,10 +2234,13 @@ async function purchase(
     pAmt = 0;
 
     if (!pAmt) {
-      const c = await get("/services/", {
-        service: "data",
-        network: net,
-      });
+      const c = await get(
+        "/services/",
+        {
+          service: "data",
+          network: net,
+        },
+      );
 
       const f = rows(c.body).find(
         (x: any) =>
@@ -1886,7 +2251,11 @@ async function purchase(
       pAmt = price(f);
     }
 
-    if (!pAmt) fail("The selected data plan is unavailable.");
+    if (!pAmt) {
+      fail(
+        "The selected data plan is unavailable.",
+      );
+    }
 
     sAmt = sell(pAmt, MARKUP);
   } else if (service === "cable") {
@@ -1912,20 +2281,39 @@ async function purchase(
       d.customer,
     ).replace(/\s+/g, "");
 
-    const plan = first(d.item_code, d.plan_code, item.id, item.code);
+    const plan = first(
+      d.item_code,
+      d.plan_code,
+      item.id,
+      item.code,
+    );
 
-    if (!pr) fail("Please select a cable provider.");
-    if (!/^[0-9]{8,20}$/.test(i)) fail("Enter a valid SmartCard / IUC number.");
-    if (!plan) fail("Please select a package.");
+    if (!pr) {
+      fail("Please select a cable provider.");
+    }
+
+    if (!/^[0-9]{8,20}$/.test(i)) {
+      fail(
+        "Enter a valid SmartCard / IUC number.",
+      );
+    }
+
+    if (!plan) {
+      fail("Please select a package.");
+    }
 
     path = "/cabletv/";
+
     body = {
       provider: pr,
       iucnumber: i,
       plan,
       ref: r,
-      subtype: first(d.subtype) || "renew",
-      phone: (await contactPhone(a, u, d)) || undefined,
+      subtype:
+        first(d.subtype) || "renew",
+      phone:
+        (await contactPhone(a, u, d)) ||
+        undefined,
     };
 
     // Provider prices are always resolved server-side; a price sent by the
@@ -1933,9 +2321,12 @@ async function purchase(
     pAmt = 0;
 
     if (!pAmt) {
-      const c = await get("/services/", {
-        service: "cabletv",
-      });
+      const c = await get(
+        "/services/",
+        {
+          service: "cabletv",
+        },
+      );
 
       pAmt = price(
         rows(c.body).find(
@@ -1944,35 +2335,85 @@ async function purchase(
       );
     }
 
-    if (!pAmt) fail("The selected cable package is unavailable.");
+    if (!pAmt) {
+      fail(
+        "The selected cable package is unavailable.",
+      );
+    }
 
     sAmt = sell(pAmt, MARKUP);
   } else if (service === "electricity") {
-    const pr = disco(first(d.biller_code, d.provider, d.disco));
+    const pr = disco(
+      first(
+        d.biller_code,
+        d.provider,
+        d.disco,
+      ),
+    );
 
-    const m = first(d.meter_number, d.meterNumber, d.meter, d.customer).replace(/\s+/g, "");
+    const m = first(
+      d.meter_number,
+      d.meterNumber,
+      d.meter,
+      d.customer,
+    ).replace(/\s+/g, "");
 
-    const tp = first(d.meter_type, d.meterType, "prepaid").toLowerCase();
+    const tp = first(
+      d.meter_type,
+      d.meterType,
+      "prepaid",
+    ).toLowerCase();
 
-    pAmt = n(d.provider_amount ?? d.amount ?? b.amount);
+    pAmt = n(
+      d.provider_amount ??
+        d.amount ??
+        b.amount,
+    );
 
-    if (!pr) fail("Please select an electricity provider.");
-    if (!m) fail("Enter a valid meter number.");
-    if (!["prepaid", "postpaid"].includes(tp)) fail("Please select a meter type.");
-    if (pAmt <= 0) fail("Enter a valid amount.");
+    if (!pr) {
+      fail(
+        "Please select an electricity provider.",
+      );
+    }
+
+    if (!m) {
+      fail("Enter a valid meter number.");
+    }
+
+    if (
+      !["prepaid", "postpaid"].includes(tp)
+    ) {
+      fail(
+        "Please select a meter type.",
+      );
+    }
+
+    if (pAmt <= 0) {
+      fail("Enter a valid amount.");
+    }
 
     path = "/electricity/";
+
     body = {
       provider: pr,
       meternumber: m,
       amount: pAmt,
       metertype: tp,
-      phone: (await contactPhone(a, u, d)) || undefined,
+      phone:
+        (await contactPhone(a, u, d)) ||
+        undefined,
       ref: r,
     };
+
     sAmt = pAmt;
   } else if (
-    ["education", "jamb", "waec", "neco", "nabteb"].includes(service)
+    [
+      "education",
+      "jamb",
+      "waec",
+      "neco",
+      "nabteb",
+    ].includes(service)
   ) {
     const providerId = first(
       d.biller_code,
@@ -1982,111 +2423,237 @@ async function purchase(
       item.id,
       item.code,
     );
-    if (!providerId) fail("Please select an examination body.");
 
-    const q = Math.max(1, Math.floor(n(d.quantity ?? 1)));
+    if (!providerId) {
+      fail(
+        "Please select an examination body.",
+      );
+    }
+
+    const q = Math.max(
+      1,
+      Math.floor(n(d.quantity ?? 1)),
+    );
+
     path = "/exam/";
-    body = { provider: providerId, quantity: q, ref: r };
 
-    const c = await get("/services/", { service: "exampin" });
-    const found = rows(c.body).find((x: any) =>
-      s(x?.id ?? x?.provider_id ?? x?.provider) === providerId,
+    body = {
+      provider: providerId,
+      quantity: q,
+      ref: r,
+    };
+
+    const c = await get(
+      "/services/",
+      {
+        service: "exampin",
+      },
     );
-    pAmt = price(found) || n(item.providerPrice ?? item.provider_price ?? item.price);
-    if (!pAmt) fail("The selected education PIN is unavailable.");
+
+    const found = rows(c.body).find(
+      (x: any) =>
+        s(
+          x?.id ??
+            x?.provider_id ??
+            x?.provider,
+        ) === providerId,
+    );
+
+    pAmt =
+      price(found) ||
+      n(
+        item.providerPrice ??
+          item.provider_price ??
+          item.price,
+      );
+
+    if (!pAmt) {
+      fail(
+        "The selected education PIN is unavailable.",
+      );
+    }
+
     sAmt = sell(pAmt, MARKUP) * q;
-  } else if (isPinService(service) && service !== "data-card") {
+  } else if (
+    isPinService(service) &&
+    service !== "data-card"
+  ) {
     const net = network(
-      first(d.network_code, d.networkId, d.biller_code, d.network),
+      first(
+        d.network_code,
+        d.networkId,
+        d.biller_code,
+        d.network,
+      ),
     );
 
-    // Topupmate /rechargepin/ requires the provider's Airtime Pin Id Code
-    // in the `plan` field. Do not assume that Topupmate exposes that code
-    // through the generic `id()` helper; live catalogues commonly return it
-    // as `plan` or `airtime_pin_id_code`.
+    /*
+     * IMPORTANT:
+     * Topupmate /rechargepin/ requires the Airtime Pin Id Code.
+     *
+     * The denomination is NOT the plan ID.
+     *
+     * Example:
+     *   Glo ₦200 -> plan "8"
+     *   MTN ₦200 -> plan "2"
+     *   Airtel ₦200 -> plan "5"
+     */
+    const requestedPlanId =
+      rechargePinPlanCode(
+        d.plan ??
+          d.item_code ??
+          item,
+      );
+
+    const requestedValue = n(
+      d.denomination ??
+        d.value ??
+        d.amount ??
+        item.denomination ??
+        item.value ??
+        item.amount,
+    );
+
+    /*
+     * Resolve the actual plan from the server-side authoritative table.
+     * This prevents a client from accidentally sending:
+     *
+     *     plan: "200"
+     *
+     * when Topupmate actually requires:
+     *
+     *     plan: "8"
+     */
+    const selectedPlan =
+      rechargePinPlanFor(
+        net,
+        requestedValue,
+        requestedPlanId,
+      );
+
+    const plan =
+      selectedPlan?.id ?? "";
+
+    const q = Math.max(
+      1,
+      Math.floor(n(d.quantity ?? 1)),
+    );
+
+    if (!net) {
+      fail(
+        "Please select a mobile network.",
+      );
+    }
+
+    if (!selectedPlan || !plan) {
+      fail(
+        "The selected recharge PIN is unavailable.",
+      );
+    }
+
+    if (q < 1 || q > 100) {
+      fail(
+        "PIN quantity must be between 1 and 100.",
+      );
+    }
+
+    path = "/rechargepin/";
+
+    body = {
+      network: net,
+      quantity: q,
+      plan,
+      businessname:
+        first(d.businessname) ||
+        "IyanjuPay",
+      ref: r,
+    };
+
+    /*
+     * Provider cost comes from the authoritative plan table.
+     * Never trust a client-supplied price.
+     */
+    pAmt =
+      selectedPlan.providerPrice;
+
+    /*
+     * Customer selling price:
+     *
+     * Provider ₦98      -> ₦100
+     * Provider ₦196     -> ₦200
+     * Provider ₦198     -> ₦200
+     * Provider ₦485     -> ₦500
+     * Provider ₦490     -> ₦500
+     * Provider ₦499.50  -> ₦500
+     * Provider ₦970     -> ₦1000
+     * Provider ₦980     -> ₦1000
+     */
+    sAmt =
+      rechargePinSellingPrice(pAmt) * q;
+  } else if (service === "data-card") {
+    const net = network(
+      first(
+        d.network_code,
+        d.networkId,
+        d.biller_code,
+        d.network,
+      ),
+    );
+
     const plan = first(
-      d.plan,
-      d.airtime_pin_id_code,
-      d.airtimePinIdCode,
-      item.plan,
-      item.airtime_pin_id_code,
-      item.airtimePinIdCode,
-      item.raw?.plan,
-      item.raw?.airtime_pin_id_code,
       d.item_code,
       item.id,
       item.code,
     );
 
-    const q = Math.max(1, Math.floor(n(d.quantity ?? 1)));
-
-    if (!net) fail("Please select a mobile network.");
-    if (!plan) fail("Please select the PIN value.");
-    if (q < 1 || q > 100) fail("PIN quantity must be between 1 and 100.");
-
-    path = "/rechargepin/";
-    body = {
-      network: net,
-      quantity: q,
-      plan,
-      businessname: first(d.businessname) || "IyanjuPay",
-      ref: r,
-    };
-
-    // Validate the selected plan against Topupmate's live catalogue before
-    // debiting the wallet. Match the documented Airtime Pin Id Code first,
-    // then fall back to the normalized catalogue fields used by older live
-    // responses. The network is included in the catalogue request, but the
-    // lookup also works when the provider ignores that query parameter.
-    const catalogue = await catalogueRows(
-      PIN_SERVICE_KEYS[service],
-      { network: net },
+    const q = Math.max(
+      1,
+      Math.floor(n(d.quantity ?? 1)),
     );
 
-    const found = catalogue.find((x: any) =>
-      rechargePinPlanCode(x) === plan
-      || rechargePinPlanCode(x?.raw) === plan
-    );
-
-    pAmt = rechargePinProviderPrice(found);
-
-    // The selected catalogue item was produced by this same Edge Function,
-    // so its normalized provider price is a safe fallback when the provider
-    // catalogue uses a different price field on the purchase lookup.
-    if (!pAmt) {
-      pAmt = rechargePinProviderPrice(item);
+    if (!net) {
+      fail(
+        "Please select a mobile network.",
+      );
     }
 
-    if (!pAmt) fail("The selected recharge PIN is unavailable.");
-
-    sAmt = pAmt * q;
-  } else if (service === "data-card") {
-    const net = network(
-      first(d.network_code, d.networkId, d.biller_code, d.network),
-    );
-
-    const plan = first(d.item_code, item.id, item.code);
-
-    const q = Math.max(1, Math.floor(n(d.quantity ?? 1)));
-
-    if (!net) fail("Please select a mobile network.");
-    if (!plan) fail("Please select a data PIN plan.");
+    if (!plan) {
+      fail(
+        "Please select a data PIN plan.",
+      );
+    }
 
     path = "/datapin/";
+
     body = {
       network: net,
       quantity: q,
       data_plan: plan,
-      businessname: first(d.businessname) || "IyanjuPay",
+      businessname:
+        first(d.businessname) ||
+        "IyanjuPay",
       ref: r,
     };
 
-    const catalogue = await catalogueRows(PIN_SERVICE_KEYS[service]);
-    pAmt = price(catalogue.find((x: any) => id(x) === plan));
+    const catalogue =
+      await catalogueRows(
+        PIN_SERVICE_KEYS[service],
+      );
 
-    if (!pAmt) fail("The selected data PIN is unavailable.");
+    pAmt = price(
+      catalogue.find(
+        (x: any) => id(x) === plan,
+      ),
+    );
 
-    sAmt = sell(pAmt, MARKUP) * q;
+    if (!pAmt) {
+      fail(
+        "The selected data PIN is unavailable.",
+      );
+    }
+
+    sAmt =
+      sell(pAmt, MARKUP) * q;
   } else if (service === "gift-card") {
     const productId = first(
       d.product_id,
@@ -2110,20 +2677,37 @@ async function purchase(
         d.amount,
     );
 
-    const sender = first(d.sender) || "IyanjuPay Customer";
+    const sender =
+      first(d.sender) ||
+      "IyanjuPay Customer";
 
     const units = Math.max(
       1,
-      Math.floor(n(d.units ?? d.quantity ?? 1)),
+      Math.floor(
+        n(d.units ?? d.quantity ?? 1),
+      ),
     );
 
-    if (!productId) fail("Please select a gift card.");
-    if (!/^\S+@\S+\.\S+$/.test(recipientEmail)) {
-      fail("Enter a valid email address for delivery.");
+    if (!productId) {
+      fail("Please select a gift card.");
     }
-    if (amount <= 0) fail("Please select a gift card amount.");
+
+    if (!/^\S+@\S+\.\S+$/.test(
+      recipientEmail,
+    )) {
+      fail(
+        "Enter a valid email address for delivery.",
+      );
+    }
+
+    if (amount <= 0) {
+      fail(
+        "Please select a gift card amount.",
+      );
+    }
 
     path = "/giftcard/";
+
     body = {
       // Topupmate documents product as a string Product ID.
       product: productId,
@@ -2134,47 +2718,79 @@ async function purchase(
       ref: r,
     };
 
-    const products = await giftCatalog();
+    const products =
+      await giftCatalog();
 
-    const found = findGiftProduct(products, productId);
-    const gp = found ? giftProduct(found) : null;
+    const found =
+      findGiftProduct(
+        products,
+        productId,
+      );
+
+    const gp = found
+      ? giftProduct(found)
+      : null;
 
     const idx = gp
-      ? gp.fixedRecipientDenominations.findIndex((x: number) => x === amount)
+      ? gp.fixedRecipientDenominations.findIndex(
+          (x: number) => x === amount,
+        )
       : -1;
 
     pAmt = gp
       ? idx >= 0
-        ? Number(gp.fixedSenderDenominations[idx] ?? 0)
-        : amount === gp.minRecipientDenomination
+        ? Number(
+            gp.fixedSenderDenominations[
+              idx
+            ] ?? 0,
+          )
+        : amount ===
+            gp.minRecipientDenomination
           ? gp.minSenderDenomination
-          : amount === gp.maxRecipientDenomination
+          : amount ===
+              gp.maxRecipientDenomination
             ? gp.maxSenderDenomination
             : 0
       : 0;
 
     if (!pAmt && gp) {
-      const fx = n(gp.recipientCurrencyToSenderCurrencyExchangeRate);
-      if (fx > 0) pAmt = amount * fx;
+      const fx = n(
+        gp.recipientCurrencyToSenderCurrencyExchangeRate,
+      );
+
+      if (fx > 0) {
+        pAmt = amount * fx;
+      }
     }
 
-    if (!pAmt) fail("The selected gift card amount is unavailable.");
+    if (!pAmt) {
+      fail(
+        "The selected gift card amount is unavailable.",
+      );
+    }
 
-    sAmt = Number((pAmt + GIFT_CARD_MARKUP_USD).toFixed(2)) * units;
+    sAmt =
+      Number(
+        (
+          pAmt +
+          GIFT_CARD_MARKUP_USD
+        ).toFixed(2),
+      ) * units;
   } else if (
     service === "internet" ||
     service === "smile"
   ) {
-    const providerKey = internetProvider(
-      first(
-        d.provider_name,
-        d.provider,
-        d.biller_code,
-        d.internet_provider,
-        item.provider_name,
-        item.provider,
-      ),
-    ) || "smile";
+    const providerKey =
+      internetProvider(
+        first(
+          d.provider_name,
+          d.provider,
+          d.biller_code,
+          d.internet_provider,
+          item.provider_name,
+          item.provider,
+        ),
+      ) || "smile";
 
     const acct = first(
       d.account_number,
@@ -2184,53 +2800,138 @@ async function purchase(
       d.phone,
       d.customer,
     );
-    if (!acct) fail(`Enter your ${internetProviderName(providerKey)} account or phone number.`);
+
+    if (!acct) {
+      fail(
+        `Enter your ${internetProviderName(
+          providerKey,
+        )} account or phone number.`,
+      );
+    }
 
     if (providerKey === "smile") {
-      const compact = acct.replace(/[\s+()-]/g, "");
-      let smileIdentifier = compact;
-      let actype = first(d.account_type, d.accountType).trim();
+      const compact =
+        acct.replace(
+          /[\s+()-]/g,
+          "",
+        );
 
-      if (/^234\d{10}$/.test(compact)) {
-        smileIdentifier = compact;
+      let smileIdentifier =
+        compact;
+
+      let actype = first(
+        d.account_type,
+        d.accountType,
+      ).trim();
+
+      if (/^234\d{10}$/.test(
+        compact,
+      )) {
+        smileIdentifier =
+          compact;
         actype = "PhoneNumber";
-      } else if (/^0\d{10}$/.test(compact)) {
-        smileIdentifier = `234${compact.slice(1)}`;
+      } else if (/^0\d{10}$/.test(
+        compact,
+      )) {
+        smileIdentifier =
+          `234${compact.slice(1)}`;
         actype = "PhoneNumber";
-      } else if (/^\d{10}$/.test(compact)) {
-        smileIdentifier = compact;
+      } else if (/^\d{10}$/.test(
+        compact,
+      )) {
+        smileIdentifier =
+          compact;
         actype = "AccountNumber";
       }
 
-      if (!actype || !["PhoneNumber", "AccountNumber"].includes(actype)) {
-        fail("Enter a valid Smile phone number or 10-digit account number.");
+      if (
+        !actype ||
+        ![
+          "PhoneNumber",
+          "AccountNumber",
+        ].includes(actype)
+      ) {
+        fail(
+          "Enter a valid Smile phone number or 10-digit account number.",
+        );
       }
 
-      const plan = first(d.item_code, d.plan_code, item.id, item.code);
-      if (!plan) fail("Please select a Smile bundle.");
-      const selectedPlan = smilePlans().find((x: any) => s(x.id) === plan);
-      if (!selectedPlan) fail("The selected Smile bundle is unavailable.");
+      const plan = first(
+        d.item_code,
+        d.plan_code,
+        item.id,
+        item.code,
+      );
+
+      if (!plan) {
+        fail(
+          "Please select a Smile bundle.",
+        );
+      }
+
+      const selectedPlan =
+        smilePlans().find(
+          (x: any) =>
+            s(x.id) === plan,
+        );
+
+      if (!selectedPlan) {
+        fail(
+          "The selected Smile bundle is unavailable.",
+        );
+      }
 
       path = "/smile-data/";
+
       body = {
-        PhoneNumber: smileIdentifier,
-        BundleTypeCode: Number(plan),
+        PhoneNumber:
+          smileIdentifier,
+        BundleTypeCode:
+          Number(plan),
         actype,
         ref: r,
       };
-      pAmt = selectedPlan.providerPrice;
-      sAmt = sell(pAmt, MARKUP);
-    } else {
-      const amount = n(d.provider_amount ?? d.providerAmount ?? d.amount ?? b.amount);
-      if (amount <= 0) fail("Enter a valid amount.");
-      path = providerKey === "alpha" ? "/alphatopup/" : providerKey === "kirani" ? "/kirani/" : "/ratel/";
-      body = { phone: acct, amount, ref: r };
-      pAmt = amount;
-      sAmt = sell(pAmt, MARKUP);
-    }
 
+      pAmt =
+        selectedPlan.providerPrice;
+
+      sAmt =
+        sell(pAmt, MARKUP);
+    } else {
+      const amount = n(
+        d.provider_amount ??
+          d.providerAmount ??
+          d.amount ??
+          b.amount,
+      );
+
+      if (amount <= 0) {
+        fail("Enter a valid amount.");
+      }
+
+      path =
+        providerKey === "alpha"
+          ? "/alphatopup/"
+          : providerKey === "kirani"
+            ? "/kirani/"
+            : "/ratel/";
+
+      body = {
+        phone: acct,
+        amount,
+        ref: r,
+      };
+
+      pAmt = amount;
+      sAmt = sell(
+        pAmt,
+        MARKUP,
+      );
+    }
   } else {
-    fail("This service is not available right now.");
+    fail(
+      "This service is not available right now.",
+    );
   }
 
   const meta = {
@@ -2240,102 +2941,175 @@ async function purchase(
     selling_amount: sAmt,
     service,
     request_id: r,
-    customer: customer || null,
+    customer:
+      customer || null,
     provider_catalog_id:
-      s(item.id ?? d.item_code) || null,
+      s(
+        item.id ??
+          d.item_code,
+      ) || null,
   };
 
-  const debit = await a.rpc("debit_wallet", {
-    _user_id: u.id,
-    _amount: sAmt,
-    _description: `${service} purchase`,
-    _idempotency_key: r,
-    _reference: r,
-    _category: "bill_payment",
-    _metadata: meta,
-  });
+  const debit = await a.rpc(
+    "debit_wallet",
+    {
+      _user_id: u.id,
+      _amount: sAmt,
+      _description:
+        `${service} purchase`,
+      _idempotency_key: r,
+      _reference: r,
+      _category:
+        "bill_payment",
+      _metadata: meta,
+    },
+  );
 
   if (debit.error) {
-    console.error("Topupmate wallet debit failed", {
-      user_id: u.id,
-      service,
-      error: debit.error,
-    });
+    console.error(
+      "Topupmate wallet debit failed",
+      {
+        user_id: u.id,
+        service,
+        error: debit.error,
+      },
+    );
 
-    const debitMessage = s(debit.error?.message).toLowerCase();
+    const debitMessage =
+      s(
+        debit.error?.message,
+      ).toLowerCase();
 
     throw new UserError(
-      /insufficient|balance|funds/.test(debitMessage)
+      /insufficient|balance|funds/.test(
+        debitMessage,
+      )
         ? "Insufficient wallet balance. Please fund your wallet and try again."
-        : /limit/.test(debitMessage)
+        : /limit/.test(
+            debitMessage,
+          )
           ? "This payment is above your transaction limit."
-          : /pin|lock|disabled|suspend|restrict/.test(debitMessage)
+          : /pin|lock|disabled|suspend|restrict/.test(
+              debitMessage,
+            )
             ? "Payments are currently unavailable on your account."
             : "We could not take the payment from your wallet. Please try again.",
     );
   }
 
-  const tx = debit.data?.id ?? null;
+  const tx =
+    debit.data?.id ??
+    null;
 
-  await update(a, u.id, r, {
-    status: "pending",
-    provider: "topupmate",
-    provider_reference: r,
-    transaction_type: service,
-    metadata: meta,
-  });
+  await update(
+    a,
+    u.id,
+    r,
+    {
+      status: "pending",
+      provider: "topupmate",
+      provider_reference: r,
+      transaction_type:
+        service,
+      metadata: meta,
+    },
+  );
 
   let pr;
 
   try {
-    let q = await post(path, body);
+    let q =
+      await post(
+        path,
+        body,
+      );
 
     // Topupmate documents /exampin/ with a trailing slash, but some live
     // LiteSpeed deployments expose the same route without it. Retry only on
     // an actual HTTP 404; never send a second purchase for another status.
-    if (service === "education" && q.httpStatus === 404) {
-      const retryPath = "/exampin";
-      const retry = await post(retryPath, body);
-      if (retry.ok || retry.httpStatus !== 404) {
-        path = retryPath;
+    if (
+      service === "education" &&
+      q.httpStatus === 404
+    ) {
+      const retryPath =
+        "/exampin";
+
+      const retry =
+        await post(
+          retryPath,
+          body,
+        );
+
+      if (
+        retry.ok ||
+        retry.httpStatus !== 404
+      ) {
+        path =
+          retryPath;
         q = retry;
       }
     }
 
     pr = q.body;
 
-    if (!q.ok || status(pr) === "fail") {
-      console.error("Topupmate purchase rejected", {
-        service,
-        path,
-        http_status: q.httpStatus,
-        provider_response: pr,
-        request: { ...body, ref: r },
-      });
-
-      const rr = await refund(
-        a,
-        u.id,
-        sAmt,
-        r,
+    if (
+      !q.ok ||
+      status(pr) === "fail"
+    ) {
+      console.error(
+        "Topupmate purchase rejected",
         {
-          ...meta,
-          provider_response: pr,
+          service,
+          path,
+          http_status:
+            q.httpStatus,
+          provider_response:
+            pr,
+          request: {
+            ...body,
+            ref: r,
+          },
         },
       );
 
-      await update(a, u.id, r, {
-        status: "failed",
-        provider: "topupmate",
-        provider_reference: pref(pr) ?? r,
-        metadata: {
-          ...meta,
-          provider_response: pr,
-          refunded: !rr.error,
-        },
-      });
+      const rr =
+        await refund(
+          a,
+          u.id,
+          sAmt,
+          r,
+          {
+            ...meta,
+            provider_response:
+              pr,
+          },
+        );
 
-      console.error("Topupmate raw purchase failure response", pr);
+      await update(
+        a,
+        u.id,
+        r,
+        {
+          status: "failed",
+          provider:
+            "topupmate",
+          provider_reference:
+            pref(pr) ?? r,
+          metadata: {
+            ...meta,
+            provider_response:
+              pr,
+            refunded:
+              !rr.error,
+          },
+        },
+      );
+
+      console.error(
+        "Topupmate raw purchase failure response",
+        pr,
+      );
+
       throw new UserError(
         rr.error
           ? "Purchase failed. Please contact support if your wallet was debited."
@@ -2347,19 +3121,32 @@ async function purchase(
       throw e;
     }
 
-    console.error("Topupmate transport error", { service, path, error: e });
-
-    await update(a, u.id, r, {
-      status: "pending",
-      provider: "topupmate",
-      provider_reference: r,
-      metadata: {
-        ...meta,
-        reconciliation_required: true,
-        pending_reason:
-          "provider_transport_failure",
+    console.error(
+      "Topupmate transport error",
+      {
+        service,
+        path,
+        error: e,
       },
-    });
+    );
+
+    await update(
+      a,
+      u.id,
+      r,
+      {
+        status: "pending",
+        provider: "topupmate",
+        provider_reference: r,
+        metadata: {
+          ...meta,
+          reconciliation_required:
+            true,
+          pending_reason:
+            "provider_transport_failure",
+        },
+      },
+    );
 
     return {
       success: true,

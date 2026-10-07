@@ -1236,7 +1236,7 @@ async function catalog(service: string, b: O) {
     );
 
     // Do not group/filter the gift-card catalogue by country.
-    const products = await giftCatalog(productId || undefined);
+    const products = await giftCatalog();
 
     if (!productId) {
       const allProducts = products

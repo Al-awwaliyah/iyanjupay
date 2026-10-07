@@ -1818,12 +1818,12 @@ export default function ServicePayment({
 
   const selectedItem = useMemo(
     () =>
-      items.find(
-        (i) =>
-          getItemCode(i) ===
-          selectedItemCode
+      items.find((i) =>
+        (isRechargeCard
+          ? getRechargePinPlanCode(i)
+          : getItemCode(i)) === selectedItemCode
       ) ?? null,
-    [items, selectedItemCode]
+    [items, selectedItemCode, isRechargeCard]
   );
 
   const isInternetAmount =
@@ -2393,10 +2393,14 @@ export default function ServicePayment({
     item: Item
   ) => {
     const code =
-      getItemCode(item);
+      isRechargeCard
+        ? getRechargePinPlanCode(item)
+        : getItemCode(item);
 
     const price =
-      getItemPrice(item);
+      isRechargeCard
+        ? num(item?.selling_price ?? item?.sellingPrice ?? item?.price ?? item?.amount)
+        : getItemPrice(item);
 
     if (!code) return;
 
@@ -2434,26 +2438,16 @@ export default function ServicePayment({
   const customerPayAmount =
     isGiftCard
       ? getGiftCardCustomerPriceNgn(selectedItem) * quantity
-      : (isPinService && num(amount) > 0
-          ? num(amount) * quantity
-          : isInternetAmount && num(amount) > 0
-            ? Math.ceil((num(amount) * (1 + TOPUPMATE_MARKUP_PERCENT / 100)) / 10) * 10
-            : isAmountOnly && num(amount) > 0
-              ? roundUpTo50(
-                  num(amount) *
-                    (1 + variableMarkupPercent / 100)
-                )
-              : num(amount));
-    (isPinService || isGiftCard) && num(amount) > 0
-      ? num(amount) * quantity
-      : isInternetAmount && num(amount) > 0
-        ? Math.ceil((num(amount) * (1 + TOPUPMATE_MARKUP_PERCENT / 100)) / 10) * 10
-        : isAmountOnly && num(amount) > 0
-          ? roundUpTo50(
-              num(amount) *
-                (1 + variableMarkupPercent / 100)
-            )
-          : num(amount);
+      : isPinService && num(amount) > 0
+        ? num(amount) * quantity
+        : isInternetAmount && num(amount) > 0
+          ? Math.ceil((num(amount) * (1 + TOPUPMATE_MARKUP_PERCENT / 100)) / 10) * 10
+          : isAmountOnly && num(amount) > 0
+            ? roundUpTo50(
+                num(amount) *
+                  (1 + variableMarkupPercent / 100)
+              )
+            : num(amount);
 
   const providerVariableAmount =
     isAmountOnly && num(amount) > 0
@@ -2597,7 +2591,7 @@ export default function ServicePayment({
 
   const hasPinValue =
     isRechargeCard
-      ? num(amount) > 0
+      ? !!selectedItemCode && num(amount) > 0
       : !!selectedItemCode && num(amount) > 0;
 
   const hasAmount =
@@ -2607,7 +2601,7 @@ export default function ServicePayment({
 
   const hasItem =
     isRechargeCard
-      ? hasPinValue
+      ? !!selectedItemCode
       : !needsItem || !!selectedItemCode;
 
   const canPurchase =
@@ -2643,7 +2637,7 @@ export default function ServicePayment({
       return "Please select a package.";
     }
 
-    if (isRechargeCard && num(amount) <= 0) {
+    if (isRechargeCard && (!selectedItemCode || num(amount) <= 0)) {
       return "Please select a PIN value.";
     }
 
@@ -2746,6 +2740,10 @@ export default function ServicePayment({
             airtime_pin_id_code:
               getRechargePinPlanCode(selectedItem) ||
               selectedItemCode,
+            pin_value:
+              num(selectedItem?.value ?? selectedItem?.denomination ?? selectedItem?.face_value),
+            denomination:
+              num(selectedItem?.value ?? selectedItem?.denomination ?? selectedItem?.face_value),
           }
         : {}),
 
@@ -3759,7 +3757,12 @@ export default function ServicePayment({
                                 num(item.value ?? item.denomination),
                                 item,
                               ] as const)
-                              .filter(([value, item]) => value > 0 && !!getItemCode(item))
+                              .filter(([value, item]) =>
+                                value > 0 &&
+                                !!(isRechargeCard
+                                  ? getRechargePinPlanCode(item)
+                                  : getItemCode(item))
+                              )
                           ).entries()
                         )
                           .sort(([a], [b]) => Number(a) - Number(b))
@@ -3767,7 +3770,9 @@ export default function ServicePayment({
                             const itemCode = isRechargeCard
                               ? getRechargePinPlanCode(item)
                               : getItemCode(item);
-                            const itemPrice = getItemPrice(item) || num(item.value ?? item.denomination ?? item.amount);
+                            const itemPrice = isRechargeCard
+                              ? num(item.selling_price ?? item.sellingPrice ?? item.price ?? item.amount)
+                              : (getItemPrice(item) || num(item.value ?? item.denomination ?? item.amount));
                             const selected =
                               selectedItemCode === itemCode &&
                               amount === String(itemPrice);

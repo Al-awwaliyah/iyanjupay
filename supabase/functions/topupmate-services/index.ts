@@ -851,6 +851,31 @@ function giftKey(r: any): string {
   );
 }
 
+function normalizeGiftProductKey(value: any): string {
+  return s(value)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "");
+}
+
+function findGiftProduct(products: any[], requestedId: string): any | null {
+  const requested = normalizeGiftProductKey(requestedId);
+  if (!requested) return null;
+
+  return (
+    products.find(
+      (product: any) =>
+        normalizeGiftProductKey(giftKey(product)) === requested,
+    ) ??
+    products.find(
+      (product: any) =>
+        normalizeGiftProductKey(
+          pick(product, ["productname", "product_name", "name"]),
+        ) === requested,
+    ) ??
+    null
+  );
+}
+
 async function giftCatalog(productId?: string) {
   // the live Gift Card catalogue is loaded without a country filter.
   // Category/country filtering is performed locally in the app after the
@@ -965,9 +990,13 @@ function giftProduct(r: any) {
         }
       : { concise: s(redeem), verbose: "" },
     providerPrice: firstPrice,
+    provider_price_ngn: firstPrice,
     price: firstPrice,
     markup_usd: GIFT_CARD_MARKUP_USD,
     selling_price: firstPrice
+      ? Number((firstPrice + GIFT_CARD_MARKUP_USD).toFixed(2))
+      : 0,
+    selling_price_ngn: firstPrice
       ? Number((firstPrice + GIFT_CARD_MARKUP_USD).toFixed(2))
       : 0,
     recipientCurrencyToSenderCurrencyExchangeRate: n(pick(r, [
@@ -1257,9 +1286,16 @@ async function catalog(service: string, b: O) {
       };
     }
 
-    const product = products.find((x: any) => giftKey(x) === productId);
+    const product = findGiftProduct(products, productId);
 
     if (!product) {
+      console.error("Gift-card product lookup failed", {
+        requested_product_id: productId,
+        available_product_ids: products
+          .map((x: any) => giftKey(x))
+          .filter(Boolean)
+          .slice(0, 50),
+      });
       throw new UserError("This gift card is not available right now.");
     }
 
@@ -1272,6 +1308,11 @@ async function catalog(service: string, b: O) {
       if (!(recipient > 0) || !(senderPrice > 0)) return;
       const customerPrice = Number((senderPrice + GIFT_CARD_MARKUP_USD).toFixed(2));
 
+      const effectiveFxRate =
+        recipient > 0
+          ? Number((senderPrice / recipient).toFixed(6))
+          : Number(gp.recipientCurrencyToSenderCurrencyExchangeRate || 0);
+
       items.push({
         id: `${gp.id}:${recipient}`,
         code: `${gp.id}:${recipient}`,
@@ -1282,11 +1323,16 @@ async function catalog(service: string, b: O) {
         provider_name: "Gift Card",
         providerPrice: senderPrice,
         provider_price: senderPrice,
+        provider_price_ngn: senderPrice,
         selling_price: customerPrice,
+        selling_price_ngn: customerPrice,
+        customer_price_ngn: customerPrice,
         price: customerPrice,
         amount: customerPrice,
         recipient_amount: recipient,
         recipient_currency: cur,
+        fx_rate: effectiveFxRate,
+        fx_rate_usd_ngn: cur === "USD" ? effectiveFxRate : 0,
         product_id: gp.id,
         productId: gp.id,
         denomination: recipient,
@@ -2088,9 +2134,9 @@ async function purchase(
       ref: r,
     };
 
-    const products = await giftCatalog(productId);
+    const products = await giftCatalog();
 
-    const found = products.find((x: any) => giftKey(x) === productId);
+    const found = findGiftProduct(products, productId);
     const gp = found ? giftProduct(found) : null;
 
     const idx = gp

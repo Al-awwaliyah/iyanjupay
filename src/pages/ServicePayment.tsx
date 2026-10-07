@@ -2351,6 +2351,40 @@ export default function ServicePayment({
     return v;
   }
 
+  const getGiftCardRecipientAmount = (item: Item | null | undefined): number =>
+    num(
+      item?.recipient_amount ??
+        item?.recipientAmount ??
+        item?.denomination ??
+        item?.face_value
+    );
+
+  const getGiftCardCustomerPriceNgn = (item: Item | null | undefined): number =>
+    num(
+      item?.customer_price_ngn ??
+        item?.selling_price_ngn ??
+        item?.selling_price ??
+        item?.price ??
+        item?.amount
+    );
+
+  const getGiftCardFxRate = (item: Item | null | undefined): number => {
+    const explicitRate = num(
+      item?.fx_rate_usd_ngn ??
+        item?.fx_rate ??
+        item?.recipientCurrencyToSenderCurrencyExchangeRate
+    );
+
+    if (explicitRate > 0) return explicitRate;
+
+    const recipient = getGiftCardRecipientAmount(item);
+    const ngnPrice = num(item?.provider_price_ngn ?? item?.providerPrice);
+
+    return recipient > 0 && ngnPrice > 0
+      ? ngnPrice / recipient
+      : 0;
+  };
+
   const handleItemSelect = (
     item: Item
   ) => {
@@ -2375,7 +2409,13 @@ export default function ServicePayment({
     }
 
     setSelectedItemCode(code);
-    setAmount(String(price));
+    setAmount(
+      String(
+        isGiftCard
+          ? getGiftCardRecipientAmount(item)
+          : price
+      )
+    );
     setCustomAmount(false);
     setError("");
   };
@@ -2388,6 +2428,18 @@ export default function ServicePayment({
   );
 
   const customerPayAmount =
+    isGiftCard
+      ? getGiftCardCustomerPriceNgn(selectedItem) * quantity
+      : (isPinService && num(amount) > 0
+          ? num(amount) * quantity
+          : isInternetAmount && num(amount) > 0
+            ? Math.ceil((num(amount) * (1 + TOPUPMATE_MARKUP_PERCENT / 100)) / 10) * 10
+            : isAmountOnly && num(amount) > 0
+              ? roundUpTo50(
+                  num(amount) *
+                    (1 + variableMarkupPercent / 100)
+                )
+              : num(amount));
     (isPinService || isGiftCard) && num(amount) > 0
       ? num(amount) * quantity
       : isInternetAmount && num(amount) > 0
@@ -2535,7 +2587,7 @@ export default function ServicePayment({
   const hasRequiredIdentifier =
     isCable || isElectricity
       ? verified
-      : isEpin || serviceType === "education"
+      : isEpin || isRechargeCard || serviceType === "education"
         ? true
         : !!customer.trim();
 
@@ -2597,6 +2649,18 @@ export default function ServicePayment({
 
     if (!hasAmount) {
       return "Please select or enter a valid amount.";
+    }
+
+    if (isGiftCard && selectedItem) {
+      const selectedRecipientAmount =
+        getGiftCardRecipientAmount(selectedItem);
+
+      if (
+        selectedRecipientAmount <= 0 ||
+        Math.abs(num(amount) - selectedRecipientAmount) > 0.01
+      ) {
+        return "The selected gift card price is no longer valid.";
+      }
     }
 
     if (
@@ -3145,6 +3209,22 @@ export default function ServicePayment({
       code ===
       selectedItemCode;
 
+    const giftRecipientAmount =
+      getGiftCardRecipientAmount(item);
+
+    const giftCustomerPriceNgn =
+      getGiftCardCustomerPriceNgn(item);
+
+    const giftFxRate =
+      getGiftCardFxRate(item);
+
+    const giftCurrency =
+      clean(
+        item?.recipient_currency ??
+          item?.recipientCurrency ??
+          selectedBiller?.recipientCurrencyCode
+      ) || "USD";
+
     return (
       <button
         key={code}
@@ -3152,105 +3232,72 @@ export default function ServicePayment({
         onClick={() =>
           handleItemSelect(item)
         }
+        disabled={
+          !!processingSession ||
+          verifyingPin ||
+          (isGiftCard && giftCustomerPriceNgn <= 0) ||
+          (!isGiftCard && price <= 0)
+        }
         className={`relative min-w-0 rounded-xl border bg-white p-3 text-left transition active:scale-[0.99] ${
           selected
             ? "iyanjupay-service-selected border-[#6D28D9] ring-2 ring-violet-100"
             : "border-gray-200 hover:border-violet-300"
         }`}
       >
-        <div className="truncate text-xs font-bold text-gray-900 sm:text-sm">
-          {getPlanName(item)}
-        </div>
+        {isGiftCard ? (
+          <>
+            <div className="truncate text-xs font-extrabold text-gray-900 sm:text-sm">
+              {getPlanName(item)}
+            </div>
 
-        <div className="mt-1.5 text-sm font-extrabold text-[#4C1D95] sm:text-base">
-          {isGiftCard ? `$${Number(price).toFixed(2)}` : naira(price)}
-        </div>
+            <div className="mt-2 text-sm font-extrabold text-[#082A63] sm:text-base">
+              {giftCurrency === "USD" ? "$" : `${giftCurrency} `}
+              {giftRecipientAmount.toLocaleString("en-US", {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              })}
+            </div>
 
-        {(serviceType === "cable" || item.validity_days || item.validity || item.duration || getProviderPeriod(item)) ? (
-          <div className="mt-1 truncate text-[10px] font-medium text-gray-500 sm:text-xs">
-            {getProviderPeriod(item) ||
-              clean(
-                item.validity ??
-                  item.duration ??
-                  (item.validity_days ? `${item.validity_days} days` : "")
-              ) ||
-              "Period not specified"}
-          </div>
-        ) : null}
+            <div className="mt-1 text-sm font-black text-emerald-700 sm:text-base">
+              ≈ ₦{giftCustomerPriceNgn.toLocaleString("en-NG", {
+                maximumFractionDigits: 2,
+              })}
+            </div>
+
+            {giftFxRate > 0 && (
+              <div className="mt-1 truncate text-[9px] font-semibold leading-tight text-gray-500 sm:text-[10px]">
+                1 {giftCurrency} ≈ ₦{giftFxRate.toLocaleString("en-NG", {
+                  maximumFractionDigits: 2,
+                })}
+              </div>
+            )}
+          </>
+        ) : (
+          <>
+            <div className="truncate text-xs font-bold text-gray-900 sm:text-sm">
+              {getPlanName(item)}
+            </div>
+
+            <div className="mt-1.5 text-sm font-extrabold text-[#4C1D95] sm:text-base">
+              {naira(price)}
+            </div>
+
+            {(serviceType === "cable" || item.validity_days || item.validity || item.duration || getProviderPeriod(item)) ? (
+              <div className="mt-1 truncate text-[10px] font-medium text-gray-500 sm:text-xs">
+                {getProviderPeriod(item) ||
+                  clean(
+                    item.validity ??
+                      item.duration ??
+                      (item.validity_days ? `${item.validity_days} days` : "")
+                  ) ||
+                  "Period not specified"}
+              </div>
+            ) : null}
+          </>
+        )}
       </button>
     );
   };
-
-  if (!service) {
-    return null;
-  }
-
-  if (serviceType === "tech-store" || serviceType === "esim") {
-    const comingSoonTitle =
-      serviceType === "tech-store" ? "Tech Store" : "Internet eSIM";
-    const comingSoonText =
-      serviceType === "tech-store"
-        ? "Genuine phones, laptops, gadgets and other hardware will be available here soon."
-        : "International eSIM profiles and global travel data will be available here soon.";
-
-    return (
-      <div className="iyanjupay-service-payment-page min-h-full">
-        <header className="sticky top-0 z-20 border-b bg-white/95 shadow-sm backdrop-blur">
-          <div className="mx-auto flex max-w-3xl items-center justify-between px-4 py-3.5">
-            <Button variant="ghost" size="icon" onClick={onBack} aria-label="Back">
-              <ArrowLeft className="h-5 w-5" />
-            </Button>
-            <h1 className="text-base font-bold">{comingSoonTitle}</h1>
-            <span className="w-9" />
-          </div>
-        </header>
-        <main className="mx-auto flex max-w-3xl items-center justify-center px-4 py-16">
-          <section className="w-full rounded-3xl border bg-white p-8 text-center shadow-sm">
-            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-blue-50 text-[#082A63]">
-              <Sparkles className="h-7 w-7" />
-            </div>
-            <h2 className="mt-5 text-xl font-extrabold text-gray-900">{comingSoonTitle}</h2>
-            <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-gray-500">{comingSoonText}</p>
-            <div className="mt-5 inline-flex rounded-full bg-gray-100 px-4 py-2 text-xs font-bold text-gray-600">
-              Coming soon
-            </div>
-          </section>
-        </main>
-      </div>
-    );
-  }
-
-  /*
-   * ============================================================
-   * PROCESSING STATE
-   * ============================================================
-   */
-
-  if (processingSession) {
-    return (
-      <ServiceTransactionProcessing
-        amount={
-          processingSession.amount
-        }
-        details={
-          processingSession.details
-        }
-        execute={() =>
-          onPurchase(
-            processingSession.amount,
-            processingSession.details
-          )
-        }
-        onBack={() =>
-          setProcessingSession(null)
-        }
-        onDone={() => {
-          setProcessingSession(null);
-          resetForm();
-        }}
-      />
-    );
-  }
 
   return (
     <>

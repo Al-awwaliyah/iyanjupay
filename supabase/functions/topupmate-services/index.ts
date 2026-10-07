@@ -851,15 +851,15 @@ function giftKey(r: any): string {
   );
 }
 
-async function giftCatalog() {
-  // The working Topupmate Live Gift Card catalogue endpoint is called with
-  // no query parameters. Product selection/filtering is performed locally
-  // after the complete catalogue has been returned.
-  const r = await get("/giftcard/available/", {});
+async function giftCatalog(productId?: string) {
+  // the live Gift Card catalogue is loaded without a country filter.
+  // Category/country filtering is performed locally in the app after the
+  // complete catalogue has been returned.
+  const r = await get("/giftcard/available/", productId ? { productId } : {});
 
   if (!r.ok || String(r.body?.status).toLowerCase() === "fail") {
     console.error("Gift catalogue request failed", {
-      productId: null,
+      productId: productId ?? null,
       http_status: r.httpStatus,
       body: r.body,
     });
@@ -1236,7 +1236,7 @@ async function catalog(service: string, b: O) {
     );
 
     // Do not group/filter the gift-card catalogue by country.
-    const products = await giftCatalog();
+    const products = await giftCatalog(productId || undefined);
 
     if (!productId) {
       const allProducts = products
@@ -1551,10 +1551,10 @@ async function verify(service: string, b: O) {
       throw new UserError("Enter a valid IUC / SmartCard number (8–20 digits).");
     }
 
-    let r = await post("/cable/verify/", { provider: p, iucnumber: i });
+    let r = await post("/cabletv/verify/", { provider: p, iucnumber: i });
 
     if (r.httpStatus === 404) {
-      r = await post("/cable/verify", { provider: p, iucnumber: i });
+      r = await post("/cabletv/verify/", { provider: p, iucnumber: i });
     }
 
     if (!r.ok || status(r.body) === "fail") {
@@ -1904,7 +1904,7 @@ async function purchase(
     if (!providerId) fail("Please select an examination body.");
 
     const q = Math.max(1, Math.floor(n(d.quantity ?? 1)));
-    path = "/exampin/";
+    path = "/exam/";
     body = { provider: providerId, quantity: q, ref: r };
 
     const c = await get("/services/", { service: "exampin" });
@@ -2015,7 +2015,7 @@ async function purchase(
       ref: r,
     };
 
-    const products = await giftCatalog();
+    const products = await giftCatalog(productId);
 
     const found = products.find((x: any) => giftKey(x) === productId);
     const gp = found ? giftProduct(found) : null;
@@ -2216,11 +2216,11 @@ async function purchase(
         },
       });
 
-      const providerMessage = msg(pr);
+      console.error("Topupmate raw purchase failure response", pr);
       throw new UserError(
         rr.error
-          ? `Purchase failed: ${providerMessage}. Please contact support if your wallet was debited.`
-          : `Purchase failed: ${providerMessage}. Your wallet has been refunded.`,
+          ? "Purchase failed. Please contact support if your wallet was debited."
+          : "Purchase failed. Your wallet has been refunded.",
       );
     }
   } catch (e) {

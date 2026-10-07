@@ -851,15 +851,15 @@ function giftKey(r: any): string {
   );
 }
 
-async function giftCatalog(productId?: string) {
-  // the live Gift Card catalogue is loaded without a country filter.
-  // Category/country filtering is performed locally in the app after the
-  // complete catalogue has been returned.
-  const r = await get("/giftcard/available/", productId ? { productId } : {});
+async function giftCatalog() {
+  // The working Topupmate Live Gift Card catalogue endpoint is called with
+  // no query parameters. Product selection/filtering is performed locally
+  // after the complete catalogue has been returned.
+  const r = await get("/giftcard/available/", {});
 
   if (!r.ok || String(r.body?.status).toLowerCase() === "fail") {
     console.error("Gift catalogue request failed", {
-      productId: productId ?? null,
+      productId: null,
       http_status: r.httpStatus,
       body: r.body,
     });
@@ -1236,7 +1236,7 @@ async function catalog(service: string, b: O) {
     );
 
     // Do not group/filter the gift-card catalogue by country.
-    const products = await giftCatalog(productId || undefined);
+    const products = await giftCatalog();
 
     if (!productId) {
       const allProducts = products
@@ -2015,7 +2015,7 @@ async function purchase(
       ref: r,
     };
 
-    const products = await giftCatalog(productId);
+    const products = await giftCatalog();
 
     const found = products.find((x: any) => giftKey(x) === productId);
     const gp = found ? giftProduct(found) : null;
@@ -2216,11 +2216,11 @@ async function purchase(
         },
       });
 
-      console.error("Topupmate raw purchase failure response", pr);
+      const providerMessage = msg(pr);
       throw new UserError(
         rr.error
-          ? "Purchase failed. Please contact support if your wallet was debited."
-          : "Purchase failed. Your wallet has been refunded.",
+          ? `Purchase failed: ${providerMessage}. Please contact support if your wallet was debited.`
+          : `Purchase failed: ${providerMessage}. Your wallet has been refunded.`,
       );
     }
   } catch (e) {

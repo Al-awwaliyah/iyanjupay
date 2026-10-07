@@ -2378,7 +2378,16 @@ const Dashboard = () => {
 
             <div className="grid grid-cols-4 gap-2 sm:gap-3">
 
-              {services.map(
+              {[
+                ...services.filter(
+                  (service) =>
+                    !COMING_SOON_SERVICES.includes(service.type)
+                ),
+                ...services.filter(
+                  (service) =>
+                    COMING_SOON_SERVICES.includes(service.type)
+                ),
+              ].map(
                 (
                   service,
                   index

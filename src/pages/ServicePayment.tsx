@@ -2519,7 +2519,9 @@ export default function ServicePayment({
   const hasRequiredIdentifier =
     isCable || isElectricity
       ? verified
-      : isEpin || serviceType === "education"
+      : isEpin ||
+          isRechargeCard ||
+          serviceType === "education"
         ? true
         : !!customer.trim();
 

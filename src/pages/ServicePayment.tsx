@@ -1062,6 +1062,7 @@ type ProcessingSession = {
 };
 
 type TransactionStatus =
+  | "processing"
   | "success"
   | "pending"
   | "failed";
@@ -1081,7 +1082,7 @@ function createIdempotencyKey(): string {
 
 function transactionStatusFromResult(
   result: any
-): TransactionStatus {
+): Exclude<TransactionStatus, "processing"> {
   const explicitSuccess =
     result?.success === true ||
     result?.data?.success === true;
@@ -1145,7 +1146,7 @@ function transactionStatusFromResult(
     return "success";
   }
 
-  return "failed";
+  return "success";
 }
 
 function transactionReferenceFromResult(
@@ -1184,19 +1185,15 @@ function ServiceTransactionProcessing({
   onBack: () => void;
 }) {
   const [status, setStatus] =
-    useState<TransactionStatus | null>(null);
-
-  const [isExecuting, setIsExecuting] =
-    useState(true);
-
-  const [technicalError, setTechnicalError] =
-    useState(false);
+    useState<TransactionStatus>("processing");
 
   const [reference, setReference] =
     useState("");
 
   const [message, setMessage] =
-    useState("Please wait");
+    useState(
+      "Your payment is being processed securely."
+    );
 
   const [copied, setCopied] =
     useState(false);
@@ -1233,10 +1230,10 @@ function ServiceTransactionProcessing({
   );
 
   const run = useCallback(async () => {
-    setIsExecuting(true);
-    setTechnicalError(false);
-    setStatus(null);
-    setMessage("Please wait");
+    setStatus("processing");
+    setMessage(
+      "Your payment is being processed securely."
+    );
 
     try {
       const result = await execute();
@@ -1257,19 +1254,20 @@ function ServiceTransactionProcessing({
 
       setMessage(
         nextStatus === "pending"
-          ? "Your transaction is pending. Please check your transaction history before trying again."
+          ? "Your payment has been received and is still being processed."
           : nextStatus === "failed"
             ? "We could not complete this transaction."
-            : "Your transaction was completed successfully."
+            : "Your service purchase was completed successfully."
       );
 
       setStatus(nextStatus);
-    } catch {
-      setTechnicalError(true);
-      setMessage("Technical issue. We're working to resolve it shortly.");
+    } catch (error: any) {
+      setMessage(
+        getSafeErrorMessage(error) ||
+          "We could not complete this transaction."
+      );
+
       setStatus("failed");
-    } finally {
-      setIsExecuting(false);
     }
   }, [execute]);
 
@@ -1297,6 +1295,8 @@ function ServiceTransactionProcessing({
     } catch {}
   };
 
+  const isProcessing =
+    status === "processing";
   const isSuccess =
     status === "success";
   const isPending =
@@ -1315,7 +1315,7 @@ function ServiceTransactionProcessing({
               variant="ghost"
               size="icon"
               onClick={onBack}
-              disabled={isExecuting}
+              disabled={isProcessing}
               aria-label="Back"
               className="text-white hover:bg-white/15 hover:text-white"
             >
@@ -1342,7 +1342,7 @@ function ServiceTransactionProcessing({
                       : "bg-green-50 text-green-600"
                 }`}
               >
-                {isExecuting ? (
+                {isProcessing ? (
                   <Loader2 className="h-9 w-9 animate-spin" />
                 ) : isSuccess ? (
                   <Check className="h-10 w-10" />
@@ -1354,28 +1354,35 @@ function ServiceTransactionProcessing({
               </div>
 
               <p className="mt-5 text-sm font-semibold text-gray-500">
-                {isExecuting
-                  ? "Please wait"
+                {isProcessing
+                  ? "Processing payment"
                   : isSuccess
-                    ? "Transaction successful"
+                    ? "Payment successful"
                     : isPending
-                      ? "Transaction pending"
-                      : "Transaction failed"}
+                      ? "Payment pending"
+                      : "Payment failed"}
               </p>
 
               <h2 className="mt-1 text-2xl font-extrabold tracking-tight">
-                {isExecuting
+                {isProcessing
                   ? "Please wait..."
                   : isSuccess
-                    ? `${serviceName} Successful`
+                    ? "Purchase completed"
                     : isPending
-                      ? `${serviceName} Pending`
-                      : `${serviceName} Failed`}
+                      ? "We're still processing it"
+                      : "We couldn't complete it"}
               </h2>
 
               <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-gray-500">
                 {message}
               </p>
+
+              {isProcessing && (
+                <div className="iyanjupay-processing-status mx-auto mt-6 flex max-w-sm items-center justify-center gap-2 rounded-2xl border px-4 py-3 text-sm font-medium">
+                  <LockKeyhole className="h-4 w-4" />
+                  Securing your transaction...
+                </div>
+              )}
             </div>
 
             <div className="space-y-4 p-5 sm:p-7">
@@ -1548,12 +1555,12 @@ function ServiceTransactionProcessing({
                 <div className="iyanjupay-processing-failed rounded-2xl border p-4 text-sm">
                   <div className="flex items-start gap-3">
                     <XCircle className="mt-0.5 h-5 w-5 shrink-0" />
+
                     <div>
                       <p className="font-bold">
-                        {technicalError
-                          ? "Technical issue. We're working to resolve it shortly."
-                          : "The transaction could not be completed."}
+                        No successful purchase was confirmed
                       </p>
+
                     </div>
                   </div>
                 </div>
@@ -1570,7 +1577,7 @@ function ServiceTransactionProcessing({
                   </Button>
                 )}
 
-                {!isExecuting && (
+                {!isProcessing && (
                   <Button
                     variant={
                       isFailed
@@ -2516,13 +2523,20 @@ export default function ServicePayment({
         ? true
         : !!customer.trim();
 
+  const hasPinValue =
+    isRechargeCard
+      ? num(amount) > 0
+      : !!selectedItemCode && num(amount) > 0;
+
   const hasAmount =
     customerPayAmount > 0 ||
-    ((isPinService || isGiftCard) && !!selectedItemCode && num(amount) > 0);
+    (isPinService && hasPinValue) ||
+    (isGiftCard && !!selectedItemCode && num(amount) > 0);
 
   const hasItem =
-    !needsItem ||
-    !!selectedItemCode;
+    isRechargeCard
+      ? hasPinValue
+      : !needsItem || !!selectedItemCode;
 
   const canPurchase =
     !!selectedBillerCode &&
@@ -2551,9 +2565,14 @@ export default function ServicePayment({
 
     if (
       needsItem &&
-      !selectedItemCode
+      !selectedItemCode &&
+      !isRechargeCard
     ) {
       return "Please select a package.";
+    }
+
+    if (isRechargeCard && num(amount) <= 0) {
+      return "Please select a PIN value.";
     }
 
     if ((isPinService || isGiftCard) && (!Number.isInteger(quantity) || quantity < 1 || quantity > 100)) {

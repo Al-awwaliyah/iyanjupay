@@ -1099,14 +1099,6 @@ function createIdempotencyKey(): string {
 function transactionStatusFromResult(
   result: any
 ): Exclude<TransactionStatus, "processing"> {
-  const explicitSuccess =
-    result?.success === true ||
-    result?.data?.success === true;
-
-  const explicitFailure =
-    result?.success === false ||
-    result?.data?.success === false;
-
   const status = clean(
     result?.status ??
       result?.transaction_status ??
@@ -1116,14 +1108,9 @@ function transactionStatusFromResult(
       result?.data?.transactionStatus
   ).toLowerCase();
 
-  if (explicitSuccess) {
-    return "success";
-  }
-
-  if (explicitFailure) {
-    return "failed";
-  }
-
+  // Prefer the provider's explicit transaction status over a generic
+  // success flag. Some providers return success=true while the order is
+  // still pending/processing.
   if (
     [
       "failed",
@@ -1145,6 +1132,12 @@ function transactionStatusFromResult(
       "initiated",
       "in_progress",
       "in-progress",
+      "order_received",
+      "order_processed",
+      "on_hold",
+      "300",
+      "399",
+      "201",
     ].includes(status)
   ) {
     return "pending";
@@ -1162,7 +1155,18 @@ function transactionStatusFromResult(
     return "success";
   }
 
-  return "success";
+  if (result?.success === false || result?.data?.success === false) {
+    return "failed";
+  }
+
+  if (result?.success === true || result?.data?.success === true) {
+    return "success";
+  }
+
+  // Never show a transaction as successful when the provider has not
+  // supplied a conclusive status. Keep it pending so the user can check
+  // transaction history rather than being falsely told it succeeded.
+  return "pending";
 }
 
 function transactionReferenceFromResult(
@@ -3298,6 +3302,28 @@ export default function ServicePayment({
       </button>
     );
   };
+
+  if (processingSession) {
+    return (
+      <ServiceTransactionProcessing
+        amount={processingSession.amount}
+        details={processingSession.details}
+        execute={() =>
+          onPurchase(
+            processingSession.amount,
+            processingSession.details
+          )
+        }
+        onDone={() => {
+          setProcessingSession(null);
+          setShowPin(false);
+          setPaymentPin("");
+          setError("");
+        }}
+        onBack={onBack}
+      />
+    );
+  }
 
   return (
     <>

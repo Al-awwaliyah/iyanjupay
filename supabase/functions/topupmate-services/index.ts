@@ -851,15 +851,15 @@ function giftKey(r: any): string {
   );
 }
 
-async function giftCatalog() {
-  // The working Topupmate Live Gift Card catalogue endpoint is called with
-  // no query parameters. Product selection/filtering is performed locally
-  // after the complete catalogue has been returned.
-  const r = await get("/giftcard/available/", {});
+async function giftCatalog(productId?: string) {
+  // the live Gift Card catalogue is loaded without a country filter.
+  // Category/country filtering is performed locally in the app after the
+  // complete catalogue has been returned.
+  const r = await get("/giftcard/available/", productId ? { productId } : {});
 
   if (!r.ok || String(r.body?.status).toLowerCase() === "fail") {
     console.error("Gift catalogue request failed", {
-      productId: null,
+      productId: productId ?? null,
       http_status: r.httpStatus,
       body: r.body,
     });
@@ -1236,7 +1236,7 @@ async function catalog(service: string, b: O) {
     );
 
     // Do not group/filter the gift-card catalogue by country.
-    const products = await giftCatalog();
+    const products = await giftCatalog(productId || undefined);
 
     if (!productId) {
       const allProducts = products
@@ -1701,6 +1701,38 @@ async function contactPhone(a: any, u: any, d: O): Promise<string> {
   }
 }
 
+function rechargePinPlanCode(value: any): string {
+  return first(
+    value?.plan,
+    value?.airtime_pin_id_code,
+    value?.airtimePinIdCode,
+    value?.airtime_pin_id,
+    value?.airtimePinId,
+    value?.pin_id_code,
+    value?.pinIdCode,
+    value?.item_code,
+    value?.itemCode,
+    value?.plan_code,
+    value?.planCode,
+    value?.code,
+    value?.id,
+  );
+}
+
+function rechargePinProviderPrice(value: any): number {
+  return n(
+    value?.price ??
+      value?.selling_price ??
+      value?.sellingPrice ??
+      value?.provider_price ??
+      value?.providerPrice ??
+      value?.cost ??
+      value?.amount ??
+      value?.denomination ??
+      value?.value,
+  );
+}
+
 async function purchase(
   a: any,
   u: any,
@@ -1919,12 +1951,29 @@ async function purchase(
       first(d.network_code, d.networkId, d.biller_code, d.network),
     );
 
-    const plan = first(d.item_code, item.id, item.code);
+    // Topupmate /rechargepin/ requires the provider's Airtime Pin Id Code
+    // in the `plan` field. Do not assume that Topupmate exposes that code
+    // through the generic `id()` helper; live catalogues commonly return it
+    // as `plan` or `airtime_pin_id_code`.
+    const plan = first(
+      d.plan,
+      d.airtime_pin_id_code,
+      d.airtimePinIdCode,
+      item.plan,
+      item.airtime_pin_id_code,
+      item.airtimePinIdCode,
+      item.raw?.plan,
+      item.raw?.airtime_pin_id_code,
+      d.item_code,
+      item.id,
+      item.code,
+    );
 
     const q = Math.max(1, Math.floor(n(d.quantity ?? 1)));
 
     if (!net) fail("Please select a mobile network.");
     if (!plan) fail("Please select the PIN value.");
+    if (q < 1 || q > 100) fail("PIN quantity must be between 1 and 100.");
 
     path = "/rechargepin/";
     body = {
@@ -1935,8 +1984,29 @@ async function purchase(
       ref: r,
     };
 
-    const catalogue = await catalogueRows(PIN_SERVICE_KEYS[service]);
-    pAmt = price(catalogue.find((x: any) => id(x) === plan));
+    // Validate the selected plan against Topupmate's live catalogue before
+    // debiting the wallet. Match the documented Airtime Pin Id Code first,
+    // then fall back to the normalized catalogue fields used by older live
+    // responses. The network is included in the catalogue request, but the
+    // lookup also works when the provider ignores that query parameter.
+    const catalogue = await catalogueRows(
+      PIN_SERVICE_KEYS[service],
+      { network: net },
+    );
+
+    const found = catalogue.find((x: any) =>
+      rechargePinPlanCode(x) === plan
+      || rechargePinPlanCode(x?.raw) === plan
+    );
+
+    pAmt = rechargePinProviderPrice(found);
+
+    // The selected catalogue item was produced by this same Edge Function,
+    // so its normalized provider price is a safe fallback when the provider
+    // catalogue uses a different price field on the purchase lookup.
+    if (!pAmt) {
+      pAmt = rechargePinProviderPrice(item);
+    }
 
     if (!pAmt) fail("The selected recharge PIN is unavailable.");
 
@@ -2015,7 +2085,7 @@ async function purchase(
       ref: r,
     };
 
-    const products = await giftCatalog();
+    const products = await giftCatalog(productId);
 
     const found = products.find((x: any) => giftKey(x) === productId);
     const gp = found ? giftProduct(found) : null;
@@ -2216,11 +2286,11 @@ async function purchase(
         },
       });
 
-      const providerMessage = msg(pr);
+      console.error("Topupmate raw purchase failure response", pr);
       throw new UserError(
         rr.error
-          ? `Purchase failed: ${providerMessage}. Please contact support if your wallet was debited.`
-          : `Purchase failed: ${providerMessage}. Your wallet has been refunded.`,
+          ? "Purchase failed. Please contact support if your wallet was debited."
+          : "Purchase failed. Your wallet has been refunded.",
       );
     }
   } catch (e) {
@@ -2328,6 +2398,19 @@ async function purchase(
   });
 
   let fulfillment: any = null;
+
+  // Recharge PIN generation returns the generated PIN data directly from
+  // POST /rechargepin/. Preserve that response as fulfillment so the client
+  // can display the generated PIN(s) after a successful transaction.
+  if (service === "airtime-card" || service === "recharge-card") {
+    fulfillment =
+      pr?.response ??
+      pr?.data ??
+      pr?.content ??
+      pr?.pins ??
+      pr?.pin ??
+      null;
+  }
 
   // Topupmate requires a separate GET /giftcard/redeem/ call to retrieve
   // the voucher/code after a successful gift-card purchase.

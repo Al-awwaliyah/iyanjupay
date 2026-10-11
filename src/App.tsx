@@ -35,6 +35,7 @@ import AdminSupportPage from "@/pages/admin/AdminSupportPage";
 import AdminDashboardPage from "@/pages/admin/AdminDashboardPage";
 import AdminCustomersPage from "@/pages/admin/AdminCustomersPage";
 import AdminCustomerInspectionPage from "@/pages/admin/AdminCustomerInspectionPage";
+import AdminReadOnlyImpersonationPage from "@/pages/admin/AdminReadOnlyImpersonationPage";
 import AdminTransactionsPage from "@/pages/admin/AdminTransactionsPage";
 import AdminDisputesPage from "@/pages/admin/AdminDisputesPage";
 import ReconciliationPage from "@/pages/admin/ReconciliationPage";

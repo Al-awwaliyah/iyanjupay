@@ -871,7 +871,7 @@ const Dashboard = ({
    */
 
   const services = [
-    { title: "Buy Airtime", description: "", icon: Smartphone, color: "bg-blue-500", type: "airtime" as BillService, available: true },
+    { title: "Airtime", description: "", icon: Smartphone, color: "bg-blue-500", type: "airtime" as BillService, available: true },
     { title: "Buy Data", description: "", icon: Wifi, color: "bg-purple-500", type: "data" as BillService, available: true },
     { title: "Cable TV", description: "", icon: CreditCard, color: "bg-red-500", type: "cable" as BillService, available: true },
     { title: "Electricity", description: "", icon: Zap, color: "bg-yellow-500", type: "electricity" as BillService, available: true },

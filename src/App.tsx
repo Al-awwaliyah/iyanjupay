@@ -431,7 +431,7 @@ const App = () => {
               />
 
               <Route
-                path="/admin/impersonation/:customerId/inspect"
+                path="/admin/impersonation/:customerId"
                 element={
                   <AdminRouteGuard>
                     <ThemeProvider>

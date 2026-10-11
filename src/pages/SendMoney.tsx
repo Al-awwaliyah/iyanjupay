@@ -6,6 +6,7 @@ import React, {
   useRef,
   useState,
 } from "react";
+import { useNavigate } from "react-router-dom";
 
 import {
   ArrowLeft,
@@ -46,7 +47,6 @@ import { supabase } from "@/integrations/supabase/client";
 import { useCustomerAppSettings } from "@/hooks/useCustomerAppSettings";
 
 import PaymentPinModal from "@/components/security/PaymentPinModal";
-import TransactionProcessingPage from "@/pages/TransactionProcessing";
 
 interface SendMoneyPageProps {
   onBack: () => void;
@@ -86,13 +86,6 @@ interface PendingBankTransfer {
   details: any;
 }
 
-interface ProcessingTransfer {
-  transferType: "iyanjupay" | "bank";
-  amount: number;
-  details: any;
-  idempotencyKey: string;
-}
-
 type TransferType =
   | "iyanjupay"
   | "bank";
@@ -120,6 +113,7 @@ const SendMoneyPage = ({
 }: SendMoneyPageProps) => {
   const { allowTransfers } = useCustomerAppSettings();
   const { toast } = useToast();
+  const navigate = useNavigate();
 
   // ==========================================================
   // CONNECTION
@@ -131,13 +125,6 @@ const SendMoneyPage = ({
         ? navigator.onLine
         : true
     );
-
-  // ==========================================================
-  // PROCESSING PAGE
-  // ==========================================================
-
-  const [processingTransfer, setProcessingTransfer] =
-    useState<ProcessingTransfer | null>(null);
 
   // ==========================================================
   // TRANSFER TYPE
@@ -991,7 +978,6 @@ const SendMoneyPage = ({
       null
     );
 
-    setProcessingTransfer(null);
   };
 
   // ==========================================================
@@ -1377,10 +1363,6 @@ const SendMoneyPage = ({
     async () => {
       setPaymentPinOpen(false);
 
-      if (processingTransfer) {
-        return;
-      }
-
       if (!isOnline) {
         toast({
           title:
@@ -1453,16 +1435,14 @@ const SendMoneyPage = ({
             transferAmountValue,
         };
 
-        setProcessingTransfer({
-          transferType:
-            "iyanjupay",
-
-          amount:
-            transferAmountValue,
-
-          details,
-
-          idempotencyKey,
+        navigate("/transaction-processing", {
+          state: {
+            transactionType: "iyanjupay",
+            transferType: "iyanjupay",
+            amount: transferAmountValue,
+            details,
+            idempotencyKey,
+          },
         });
 
         return;
@@ -1490,16 +1470,14 @@ const SendMoneyPage = ({
           null
         );
 
-        setProcessingTransfer({
-          transferType:
-            "bank",
-
-          amount:
-            transferAmountValue,
-
-          details,
-
-          idempotencyKey,
+        navigate("/transaction-processing", {
+          state: {
+            transactionType: "bank",
+            transferType: "bank",
+            amount: transferAmountValue,
+            details,
+            idempotencyKey,
+          },
         });
       }
     };
@@ -1518,41 +1496,6 @@ const SendMoneyPage = ({
     };
 
   // ==========================================================
-  // PROCESSING DONE
-  // ==========================================================
-
-  const handleProcessingDone =
-    async () => {
-      setProcessingTransfer(
-        null
-      );
-
-      if (onTransferSuccess) {
-        try {
-          await onTransferSuccess();
-        } catch (error) {
-          console.error(
-            "Wallet refresh after transfer:",
-            error
-          );
-        }
-      }
-
-      handleBack();
-    };
-
-  // ==========================================================
-  // PROCESSING BACK
-  // ==========================================================
-
-  const handleProcessingBack =
-    () => {
-      setProcessingTransfer(
-        null
-      );
-    };
-
-  // ==========================================================
   // BACK
   // ==========================================================
 
@@ -1568,10 +1511,6 @@ const SendMoneyPage = ({
     );
 
     setPendingPinAction(false);
-
-    setProcessingTransfer(
-      null
-    );
 
     setTransferType(
       "iyanjupay"
@@ -1627,35 +1566,6 @@ const SendMoneyPage = ({
           </div>
         </div>
       </div>
-    );
-  }
-
-  // ==========================================================
-  // PROCESSING SCREEN
-  // ==========================================================
-
-  if (processingTransfer) {
-  return (
-      <TransactionProcessingPage
-        transferType={
-          processingTransfer.transferType
-        }
-        amount={
-          processingTransfer.amount
-        }
-        details={
-          processingTransfer.details
-        }
-        idempotencyKey={
-          processingTransfer.idempotencyKey
-        }
-        onDone={
-          handleProcessingDone
-        }
-        onBack={
-          handleProcessingBack
-        }
-      />
     );
   }
 

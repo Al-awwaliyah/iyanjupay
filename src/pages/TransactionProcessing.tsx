@@ -1,5 +1,6 @@
 import { getFunctionErrorMessage } from "@/lib/errorHandling";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import {
   ArrowLeft, ArrowUpRight, Check, CheckCircle2, Clock3, Copy,
   Loader2, Receipt, RefreshCw, Send, ShieldCheck, Sparkles, XCircle,
@@ -15,11 +16,19 @@ type TransactionStatus = "success" | "pending" | "failed";
 type TransactionProcessingPageProps = {
   transactionType?: TransactionType;
   transferType?: LegacyTransferType;
-  amount: number;
-  details: any;
-  idempotencyKey: string;
-  onDone: () => Promise<void> | void;
-  onBack: () => Promise<void> | void;
+  amount?: number;
+  details?: any;
+  idempotencyKey?: string;
+  onDone?: () => Promise<void> | void;
+  onBack?: () => Promise<void> | void;
+};
+
+type TransactionProcessingRouteState = {
+  transactionType?: TransactionType;
+  transferType?: LegacyTransferType;
+  amount?: number;
+  details?: any;
+  idempotencyKey?: string;
 };
 
 type TransactionResult = {
@@ -174,8 +183,19 @@ const CompactBillIdentity = ({ service, customer, customerLabel, packageName }: 
   </div>
 );
 
-const TransactionProcessingPage = ({ transactionType, transferType, amount, details, idempotencyKey, onDone, onBack }: TransactionProcessingPageProps) => {
+const TransactionProcessingPage = (props: TransactionProcessingPageProps) => {
   const { toast } = useToast();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const routeState = (location.state ?? {}) as TransactionProcessingRouteState;
+  const transactionType = props.transactionType ?? routeState.transactionType;
+  const transferType = props.transferType ?? routeState.transferType;
+  const amount = Number(props.amount ?? routeState.amount ?? 0);
+  const details = props.details ?? routeState.details ?? {};
+  const idempotencyKey = props.idempotencyKey ?? routeState.idempotencyKey ?? "";
+  const onDone = props.onDone ?? (() => navigate("/dashboard", { replace: true }));
+  const onBack = props.onBack ?? (() => navigate("/dashboard", { replace: true }));
+  const hasTransactionPayload = Number.isFinite(amount) && amount > 0 && Boolean(idempotencyKey) && Boolean(transactionType ?? transferType);
   const resolvedTransactionType: TransactionType = transactionType ?? transferType ?? "bank";
   const isBill = resolvedTransactionType === "bill";
   const isIyanjuPay = resolvedTransactionType === "iyanjupay";
@@ -392,9 +412,13 @@ const TransactionProcessingPage = ({ transactionType, transferType, amount, deta
   }, [amount, details, idempotencyKey, isBank, isBill, isIyanjuPay, resolvedTransactionType, billServiceName, toast, checkBankTransferStatus]);
 
   useEffect(() => {
+    if (!hasTransactionPayload) {
+      navigate("/dashboard", { replace: true });
+      return;
+    }
     if (executionStartedRef.current) return;
     void executeTransaction();
-  }, [executeTransaction]);
+  }, [executeTransaction, hasTransactionPayload, navigate]);
 
   const handleRetry = async () => {
     if (retrying) return;
@@ -450,6 +474,8 @@ const TransactionProcessingPage = ({ transactionType, transferType, amount, deta
     if (status === "pending") return <div className="relative flex h-[76px] w-[76px] items-center justify-center"><div className="absolute inset-0 rounded-full bg-amber-50" /><div className="relative flex h-[54px] w-[54px] items-center justify-center rounded-full bg-amber-500 shadow-lg shadow-amber-500/20"><Clock3 className="h-7 w-7 text-white" /></div></div>;
     return <div className="relative flex h-[76px] w-[76px] items-center justify-center"><div className="absolute inset-0 rounded-full bg-red-50" /><div className="relative flex h-[54px] w-[54px] items-center justify-center rounded-full bg-red-600 shadow-lg shadow-red-600/20"><XCircle className="h-7 w-7 text-white" /></div></div>;
   };
+
+  if (!hasTransactionPayload) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex h-[100dvh] w-full flex-col overflow-hidden bg-[#F6F8FC] text-slate-900">

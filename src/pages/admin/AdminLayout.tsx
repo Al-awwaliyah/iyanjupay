@@ -151,6 +151,12 @@ const Navigation = ({
       roles: ALL_ROLES,
     },
     {
+      label: "Read-only Impersonation",
+      path: "/admin/impersonation",
+      icon: ShieldCheck,
+      roles: ALL_ROLES,
+    },
+    {
       label: "Transactions",
       path: "/admin/transactions",
       icon: Activity,

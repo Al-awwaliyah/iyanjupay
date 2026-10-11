@@ -2,6 +2,7 @@ import { getSafeErrorMessage } from "@/lib/errorHandling";
 import React, {
   useCallback,
   useEffect,
+  useMemo,
   useState,
 } from "react";
 
@@ -81,6 +82,9 @@ interface KycState {
 
 interface ProfilePageProps {
   onBack: () => void;
+  inspectionUserId?: string;
+  inspectionUserEmail?: string | null;
+  inspectionMode?: boolean;
 }
 
 // ============================================================
@@ -89,8 +93,14 @@ interface ProfilePageProps {
 
 const ProfilePage = ({
   onBack,
+  inspectionUserId,
+  inspectionUserEmail,
+  inspectionMode = false,
 }: ProfilePageProps) => {
-  const { user } = useAuth();
+  const { user: authenticatedUser } = useAuth();
+  const user = useMemo(() => inspectionUserId && authenticatedUser
+    ? { ...authenticatedUser, id: inspectionUserId, email: inspectionUserEmail ?? null }
+    : authenticatedUser, [inspectionUserId, inspectionUserEmail, authenticatedUser]);
 
   const { toast } =
     useToast();
@@ -163,11 +173,9 @@ const ProfilePage = ({
   const invokeBvn =
     useCallback(
       async (
-        payload: Record<
-          string,
-          unknown
-        >,
+        payload: Record<string, unknown>,
       ) => {
+        if (inspectionMode) throw new Error("BVN verification is disabled during read-only customer inspection.");
         const {
           data,
           error,
@@ -223,7 +231,7 @@ const ProfilePage = ({
 
         return data;
       },
-      [],
+      [inspectionMode],
     );
 
   // ==========================================================
@@ -307,6 +315,7 @@ const ProfilePage = ({
       [
         user?.id,
         invokeBvn,
+        inspectionMode,
       ],
     );
 
@@ -411,9 +420,11 @@ const ProfilePage = ({
     async (
       data: ProfileData,
     ) => {
-      if (!user?.id) {
+      if (inspectionMode) {
+        toast({ title: "Read-only inspection", description: "Profile changes are disabled while inspecting a customer." });
         return;
       }
+      if (!user?.id) return;
 
       setLoading(true);
 
@@ -496,6 +507,7 @@ const ProfilePage = ({
 
   const handleStartEmailChange =
     () => {
+      if (inspectionMode) return;
       const currentEmail =
         user?.email ||
         form.getValues(
@@ -523,6 +535,7 @@ const ProfilePage = ({
 
   const handleSendEmailChangeOtp =
     async () => {
+      if (inspectionMode) return;
       const normalizedNewEmail =
         newEmail
           .trim()
@@ -654,6 +667,7 @@ const ProfilePage = ({
 
   const handleVerifyEmailChange =
     async () => {
+      if (inspectionMode) return;
       const normalizedNewEmail =
         newEmail
           .trim()
@@ -762,6 +776,7 @@ const ProfilePage = ({
 
   const handleResendEmailChangeOtp =
     async () => {
+      if (inspectionMode) return;
       await handleSendEmailChangeOtp();
     };
 
@@ -788,6 +803,7 @@ const ProfilePage = ({
 
   const handleVerifyBvn =
     async () => {
+      if (inspectionMode) return;
       const digits =
         bvn.replace(
           /\D/g,

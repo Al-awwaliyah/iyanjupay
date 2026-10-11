@@ -9,6 +9,7 @@ import React, {
 
 import {
   Banknote,
+  ArrowLeft,
   CreditCard,
   Eye,
   EyeOff,
@@ -39,6 +40,8 @@ import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
+  CardHeader,
+  CardTitle,
 } from "@/components/ui/card";
 
 import ServiceCard from "./services/ServiceCard";
@@ -342,6 +345,31 @@ export type DashboardInspectionPayload = {
     virtual_account_number: string;
   } | null;
   transactions: DashboardTransaction[];
+  profile?: {
+    full_name?: string | null;
+    phone_number?: string | null;
+    nickname?: string | null;
+    gender?: string | null;
+    date_of_birth?: string | null;
+    email?: string | null;
+    address?: string | null;
+    kyc_level?: number;
+    kyc_status?: string;
+    bvn_verified?: boolean;
+  } | null;
+  cards?: Array<{
+    id: string;
+    masked_pan?: string | null;
+    last4?: string | null;
+    card_type?: string | null;
+    currency?: string | null;
+    name_on_card?: string | null;
+    expiry_month?: string | null;
+    expiry_year?: string | null;
+    status?: string | null;
+    amount_funded?: number | string;
+    provider?: string | null;
+  }>;
   notifications: Array<{
     id: string;
     title: string;
@@ -356,6 +384,35 @@ export type DashboardInspectionPayload = {
     created_at: string;
     metadata?: { expires_at?: string | null } | null;
   } | null;
+};
+
+const InspectionReadOnlyPage = ({
+  page,
+  data,
+  onBack,
+  onNavigate,
+}: {
+  page: CurrentPage;
+  data: DashboardInspectionPayload;
+  onBack: () => void;
+  onNavigate: (page: CurrentPage) => void;
+}) => {
+  const profile = data.profile;
+  const name = String(profile?.full_name || profile?.nickname || data.user.user_metadata?.full_name || data.user.email || data.user.id);
+  const money = (value: number | string | null | undefined) => `₦${Number(value ?? 0).toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const label = ({ profile: "Profile", history: "Transaction History", cards: "Virtual Cards", rewards: "Rewards", me: "Me", "customer-service": "Customer Service", support: "Support", "transaction-limit": "Transaction Limit", "payment-pin": "Payment PIN", disputes: "Disputes", security: "Security & Notifications" } as Record<string, string>)[page] || "Customer Account";
+
+  return <div className="iyanjupay-dashboard min-h-screen bg-background px-4 py-6 pb-24 text-foreground sm:px-6">
+    <div className="mx-auto max-w-5xl space-y-5">
+      <div className="flex items-center gap-3"><Button variant="ghost" onClick={onBack} className="rounded-xl"><ArrowLeft className="mr-2 h-4 w-4"/>Back</Button><div><h1 className="text-2xl font-bold">{label}</h1><p className="text-xs text-muted-foreground">Read-only inspection · {name}</p></div></div>
+      {page === "profile" && <Card><CardContent className="grid gap-4 p-5 sm:grid-cols-2">{([["Full name", profile?.full_name || data.user.user_metadata?.full_name || "Not provided"], ["Email", profile?.email || data.user.email || "Not provided"], ["Phone", profile?.phone_number || "Not provided"], ["Nickname", profile?.nickname || "Not provided"], ["Gender", profile?.gender || "Not provided"], ["Date of birth", profile?.date_of_birth || "Not provided"], ["Address", profile?.address || "Not provided"], ["KYC level", String(profile?.kyc_level ?? "Unknown")], ["KYC status", profile?.kyc_status || "Unknown"], ["BVN verified", profile?.bvn_verified ? "Yes" : "No / unavailable"]] as Array<[string, string]>).map(([k,v])=><div key={k} className="rounded-xl border p-3"><p className="text-xs text-muted-foreground">{k}</p><p className="mt-1 break-words text-sm font-medium">{String(v)}</p></div>)}</CardContent></Card>}
+      {page === "history" && <Card><CardHeader><CardTitle>Customer transactions</CardTitle></CardHeader><CardContent className="space-y-3">{data.transactions.length === 0 ? <p className="py-8 text-center text-sm text-muted-foreground">No transactions were returned for this customer.</p> : data.transactions.map(t=><div key={t.id} className="flex flex-wrap items-center justify-between gap-3 border-b pb-3 last:border-0"><div className="min-w-0"><p className="font-medium">{t.description || t.category || t.transaction_type || "Transaction"}</p><p className="text-xs text-muted-foreground">{new Date(t.created_at).toLocaleString("en-NG")} · {t.status}</p></div><p className="font-semibold tabular-nums">{money(t.amount)}</p></div>)}</CardContent></Card>}
+      {page === "cards" && <Card><CardHeader><CardTitle>Customer virtual cards</CardTitle></CardHeader><CardContent className="space-y-3">{!data.cards?.length ? <p className="py-8 text-center text-sm text-muted-foreground">No virtual cards were returned for this customer.</p> : data.cards.map(card=><div key={card.id} className="rounded-2xl border p-4"><div className="flex items-start justify-between gap-3"><div><p className="font-semibold">{card.card_type || "Virtual card"}</p><p className="mt-1 font-mono">{card.masked_pan || `•••• ${card.last4 || "••••"}`}</p><p className="mt-1 text-xs text-muted-foreground">{card.name_on_card || "IyanjuPay"} · {card.expiry_month || "--"}/{card.expiry_year || "--"}</p></div><span className="rounded-full border px-2 py-1 text-xs">{card.status || "Unknown"}</span></div><p className="mt-3 text-sm text-muted-foreground">Amount funded: {money(card.amount_funded)} {card.currency || "NGN"}</p></div>)}</CardContent></Card>}
+      {page === "me" && <><Card><CardContent className="space-y-2 p-5"><p className="text-lg font-semibold">{name}</p><p className="text-sm text-muted-foreground">{data.user.email || "Email unavailable"}</p><p className="break-all text-xs text-muted-foreground">Auth user ID: {data.user.id}</p><p className="pt-2 text-xs text-muted-foreground">Account settings and security actions are disabled during inspection.</p></CardContent></Card><div className="grid gap-2 sm:grid-cols-2">{([["Profile","profile"],["Transaction History","history"],["Virtual Cards","cards"],["Rewards","rewards"],["Disputes","disputes"],["Security & Notifications","security"],["Transaction Limit","transaction-limit"],["Payment PIN","payment-pin"],["Support","support"],["Customer Service","customer-service"]] as Array<[string, CurrentPage]>).map(([title,target])=><Button key={target} variant="outline" className="justify-start" onClick={()=>onNavigate(target)}>{title}<span className="ml-auto text-xs text-muted-foreground">View only</span></Button>)}</div></>}
+      {page === "rewards" && <Card><CardContent className="p-6 text-center"><Gift className="mx-auto mb-3 h-8 w-8 text-muted-foreground"/><h2 className="font-semibold">Rewards overview</h2><p className="mt-2 text-sm text-muted-foreground">Referral and reward records are not included in the current secure inspection payload. They are intentionally not fetched using the administrator's account.</p></CardContent></Card>}
+      {!(["profile","history","cards","me","rewards"] as CurrentPage[]).includes(page) && <Card><CardContent className="p-6 text-center"><Shield className="mx-auto mb-3 h-8 w-8 text-muted-foreground"/><h2 className="font-semibold">Read-only page unavailable</h2><p className="mt-2 text-sm text-muted-foreground">This page uses account-specific services that have not yet been connected to the secure inspection data source. It is blocked here so your administrator account is never shown in place of the customer.</p></CardContent></Card>}
+    </div>
+  </div>;
 };
 
 const Dashboard = ({
@@ -382,9 +439,6 @@ const Dashboard = ({
       : authenticatedUser,
     [inspectionData, authenticatedUser],
   );
-  // Keep a root ref for inspection-mode diagnostics/styling only.
-  // Do not set `inert` here: it disables every descendant control,
-  // including the navigation buttons required to browse the dashboard.
   const dashboardRootRef = useRef<HTMLDivElement | null>(null);
 
   const { toast } = useToast();
@@ -1503,6 +1557,7 @@ const Dashboard = ({
     currentPage ===
     "service-payment"
   ) {
+    if (isInspection && inspectionData) return <InspectionReadOnlyPage page="service-payment" data={inspectionData} onBack={() => setCurrentPage("home")} onNavigate={setCurrentPage} />;
     return (
       <>
         <ServicePayment
@@ -1545,6 +1600,7 @@ const Dashboard = ({
     currentPage ===
     "send-money"
   ) {
+    if (isInspection && inspectionData) return <InspectionReadOnlyPage page="send-money" data={inspectionData} onBack={() => setCurrentPage("home")} onNavigate={setCurrentPage} />;
     return (
       <>
         <SendMoneyPage
@@ -1576,13 +1632,7 @@ const Dashboard = ({
   ) {
     return (
       <>
-        <ProfilePage
-          onBack={() =>
-            setCurrentPage(
-              "me"
-            )
-          }
-        />
+        {isInspection && inspectionData ? <InspectionReadOnlyPage page="profile" data={inspectionData} onBack={() => setCurrentPage("me")} onNavigate={setCurrentPage} /> : <ProfilePage onBack={() => setCurrentPage("me")} />}
       </>
     );
   }
@@ -1599,13 +1649,7 @@ const Dashboard = ({
   ) {
     return (
       <>
-        <TransactionHistory
-          onBack={() =>
-            setCurrentPage(
-              "me"
-            )
-          }
-        />
+        {isInspection && inspectionData ? <InspectionReadOnlyPage page="history" data={inspectionData} onBack={() => setCurrentPage("me")} onNavigate={setCurrentPage} /> : <TransactionHistory onBack={() => setCurrentPage("me")} />}
       </>
     );
   }
@@ -1623,13 +1667,7 @@ const Dashboard = ({
     return (
       <>
         <div className="min-h-screen pb-20">
-          <RewardsPage
-            onBack={() =>
-              setCurrentPage(
-                "home"
-              )
-            }
-          />
+          {isInspection && inspectionData ? <InspectionReadOnlyPage page="rewards" data={inspectionData} onBack={() => setCurrentPage("home")} onNavigate={setCurrentPage} /> : <RewardsPage onBack={() => setCurrentPage("home")} />}
 
           {renderBottomNav(
             "rewards"
@@ -1652,13 +1690,7 @@ const Dashboard = ({
     return (
       <>
         <div className="min-h-screen pb-20">
-          <CardsPage
-            onBack={() =>
-              setCurrentPage(
-                "home"
-              )
-            }
-          />
+          {isInspection && inspectionData ? <InspectionReadOnlyPage page="cards" data={inspectionData} onBack={() => setCurrentPage("home")} onNavigate={setCurrentPage} /> : <CardsPage onBack={() => setCurrentPage("home")} />}
 
           {renderBottomNav(
             "cards"
@@ -1680,13 +1712,7 @@ const Dashboard = ({
   ) {
     return (
       <>
-        <CustomerServicePage
-          onBack={() =>
-            setCurrentPage(
-              "me"
-            )
-          }
-        />
+        {isInspection && inspectionData ? <InspectionReadOnlyPage page="customer-service" data={inspectionData} onBack={() => setCurrentPage("me")} onNavigate={setCurrentPage} /> : <CustomerServicePage onBack={() => setCurrentPage("me")} />}
       </>
     );
   }
@@ -1703,13 +1729,7 @@ const Dashboard = ({
   ) {
     return (
       <>
-        <SupportPage
-          onBack={() =>
-            setCurrentPage(
-              "me"
-            )
-          }
-        />
+        {isInspection && inspectionData ? <InspectionReadOnlyPage page="support" data={inspectionData} onBack={() => setCurrentPage("me")} onNavigate={setCurrentPage} /> : <SupportPage onBack={() => setCurrentPage("me")} />}
       </>
     );
   }
@@ -1726,13 +1746,7 @@ const Dashboard = ({
   ) {
     return (
       <>
-        <TransactionLimitPage
-          onBack={() =>
-            setCurrentPage(
-              "me"
-            )
-          }
-        />
+        {isInspection && inspectionData ? <InspectionReadOnlyPage page="transaction-limit" data={inspectionData} onBack={() => setCurrentPage("me")} onNavigate={setCurrentPage} /> : <TransactionLimitPage onBack={() => setCurrentPage("me")} />}
       </>
     );
   }
@@ -1749,13 +1763,7 @@ const Dashboard = ({
   ) {
     return (
       <>
-        <PaymentPinPage
-          onBack={() =>
-            setCurrentPage(
-              "me"
-            )
-          }
-        />
+        {isInspection && inspectionData ? <InspectionReadOnlyPage page="payment-pin" data={inspectionData} onBack={() => setCurrentPage("me")} onNavigate={setCurrentPage} /> : <PaymentPinPage onBack={() => setCurrentPage("me")} />}
       </>
     );
   }
@@ -1772,13 +1780,7 @@ const Dashboard = ({
   ) {
     return (
       <>
-        <DisputesPage
-          onBack={() =>
-            setCurrentPage(
-              "me"
-            )
-          }
-        />
+        {isInspection && inspectionData ? <InspectionReadOnlyPage page="disputes" data={inspectionData} onBack={() => setCurrentPage("me")} onNavigate={setCurrentPage} /> : <DisputesPage onBack={() => setCurrentPage("me")} />}
       </>
     );
   }
@@ -1786,7 +1788,7 @@ const Dashboard = ({
   if (currentPage === "security") {
     return (
       <>
-        <SecuritySettingsPage onBack={() => setCurrentPage("me")} />
+        {isInspection && inspectionData ? <InspectionReadOnlyPage page="security" data={inspectionData} onBack={() => setCurrentPage("me")} onNavigate={setCurrentPage} /> : <SecuritySettingsPage onBack={() => setCurrentPage("me")} />}
       </>
     );
   }
@@ -1804,7 +1806,7 @@ const Dashboard = ({
     return (
       <>
         <div className="min-h-screen pb-20">
-          <MePage
+          {isInspection && inspectionData ? <InspectionReadOnlyPage page="me" data={inspectionData} onBack={() => setCurrentPage("home")} onNavigate={setCurrentPage} /> : <MePage
             onBack={() =>
               setCurrentPage(
                 "home"
@@ -1846,7 +1848,7 @@ const Dashboard = ({
               )
             }
             onSecurityClick={() => setCurrentPage("security")}
-          />
+          />}
 
           {renderBottomNav(
             "me"
@@ -2106,17 +2108,15 @@ const Dashboard = ({
                   <User className="h-5 w-5" />
                 </Button>
 
-                {!isInspection && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={signOut}
-                    className="iyanjupay-header-action hidden h-10 w-10 rounded-full p-0 sm:flex"
-                    aria-label="Sign out"
-                  >
-                    <LogOut className="h-5 w-5" />
-                  </Button>
-                )}
+                {!isInspection && <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={signOut}
+                  className="iyanjupay-header-action hidden h-10 w-10 rounded-full p-0 sm:flex"
+                  aria-label="Sign out"
+                >
+                  <LogOut className="h-5 w-5" />
+                </Button>}
 
               </div>
             </div>
@@ -2271,10 +2271,6 @@ const Dashboard = ({
 
                     <Button
                       onClick={() => {
-                        if (isInspection) {
-                          toast({ title: "Read-only inspection", description: "Wallet funding is disabled during customer inspection." });
-                          return;
-                        }
                         if (!allowWalletFunding) { toast({ title: "Wallet funding temporarily unavailable", description: "Please try again later." }); return; }
                         setFundModalOpen(true);
                       }}
@@ -2293,7 +2289,7 @@ const Dashboard = ({
                         if (!allowTransfers) { toast({ title: "Transfers temporarily unavailable", description: "Please try again later." }); return; }
                         setCurrentPage("send-money");
                       }}
-                      disabled={!allowTransfers}
+                      disabled={isInspection || !allowTransfers}
                       className="h-12 rounded-2xl border border-white/30 bg-white/10 text-white backdrop-blur-sm hover:bg-white/20"
                     >
                       <Send className="mr-2 h-5 w-5" />
@@ -2699,16 +2695,20 @@ const Dashboard = ({
         {/* FUND WALLET                                           */}
         {/* ====================================================== */}
 
-        {!isInspection && (
-          <FundWalletModal
-            isOpen={fundModalOpen}
-            onClose={() => setFundModalOpen(false)}
-            onFunded={async () => {
-              await refreshWallet();
-              await loadDashboardStats();
-            }}
-          />
-        )}
+        <FundWalletModal
+          isOpen={
+            fundModalOpen
+          }
+          onClose={() =>
+            setFundModalOpen(
+              false
+            )
+          }
+          onFunded={async () => {
+            await refreshWallet();
+            await loadDashboardStats();
+          }}
+        />
 
         {/* ====================================================== */}
         {/* QR CODE                                                */}
@@ -2737,29 +2737,18 @@ const Dashboard = ({
         {/* SUPPORT CHAT                                          */}
         {/* ====================================================== */}
 
-        {!isInspection && (
-          <>
-            <Button
-              type="button"
-              onClick={() => setSupportChatOpen(true)}
-              className="fixed bottom-24 right-4 z-50 h-14 w-14 rounded-full bg-purple-600 p-0 shadow-[0_12px_30px_rgba(124,58,237,0.35)] hover:bg-purple-700 sm:bottom-24 sm:right-6"
-              aria-label="Open live support chat"
-            >
-              <Headphones className="h-6 w-6" />
-            </Button>
-
-            <SupportChat
-              open={supportChatOpen}
-              onClose={() => setSupportChatOpen(false)}
-            />
-          </>
-        )}
-
-        {/* ====================================================== */}
-        {/* WHATSAPP                                              */}
-        {/* ====================================================== */}
-
-        {!isInspection && <WhatsAppFloat />}
+        {!isInspection && <>
+          <Button
+            type="button"
+            onClick={() => setSupportChatOpen(true)}
+            className="fixed bottom-24 right-4 z-50 h-14 w-14 rounded-full bg-purple-600 p-0 shadow-[0_12px_30px_rgba(124,58,237,0.35)] hover:bg-purple-700 sm:bottom-24 sm:right-6"
+            aria-label="Open live support chat"
+          >
+            <Headphones className="h-6 w-6" />
+          </Button>
+          <SupportChat open={supportChatOpen} onClose={() => setSupportChatOpen(false)} />
+          <WhatsAppFloat />
+        </>}
 
       </div>
     </>

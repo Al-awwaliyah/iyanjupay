@@ -37,8 +37,7 @@ ALTER TABLE public.admin_customer_inspection_events ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON public.admin_customer_inspection_sessions FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON public.admin_customer_inspection_events FROM PUBLIC, anon, authenticated;
 
--- Shared role gate: preserve the existing VOID signature in this database.
--- Caller identity is retrieved separately with auth.uid() after this gate passes.
+-- Shared role gate: keep the project's existing admin role system authoritative.
 CREATE OR REPLACE FUNCTION public.admin_customer_inspection_assert_admin()
 RETURNS void
 LANGUAGE plpgsql
@@ -46,10 +45,11 @@ SECURITY DEFINER
 SET search_path = pg_catalog, public, auth
 AS $$
 DECLARE
+  v_admin_id uuid := auth.uid();
   v_role text;
 BEGIN
-  IF auth.uid() IS NULL THEN
-    RAISE EXCEPTION 'Authentication required' USING ERRCODE = '28000';
+  IF v_admin_id IS NULL THEN
+    RAISE EXCEPTION 'Authentication required' USING ERRCODE = '42501';
   END IF;
 
   IF NOT (
@@ -65,11 +65,14 @@ BEGIN
     'finance_admin', 'compliance_admin', 'read_only_admin',
     'operations', 'support', 'compliance', 'read_only'
   ) THEN
-    RAISE EXCEPTION 'Administrator role is not permitted to inspect customers' USING ERRCODE = '42501';
+    RAISE EXCEPTION 'This administrator role cannot inspect customer dashboards' USING ERRCODE = '42501';
   END IF;
+
+  RETURN;
 END;
 $$;
 REVOKE ALL ON FUNCTION public.admin_customer_inspection_assert_admin() FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.admin_customer_inspection_assert_admin() TO authenticated;
 
 -- Customer directory source: auth.users LEFT JOIN wallets. No profiles dependency.
 CREATE OR REPLACE FUNCTION public.get_admin_auth_user_customers(
@@ -83,10 +86,12 @@ SECURITY DEFINER
 SET search_path = pg_catalog, public, auth
 AS $$
 DECLARE
+  v_admin_id uuid;
   v_search text := lower(trim(COALESCE(p_search, '')));
   v_result jsonb;
 BEGIN
   PERFORM public.admin_customer_inspection_assert_admin();
+  v_admin_id := auth.uid();
 
   WITH matched AS (
     SELECT
@@ -170,7 +175,7 @@ BEGIN
     admin_user_id, target_user_id, expires_at, start_metadata
   ) VALUES (
     v_admin_id, p_target_user_id, now() + interval '30 minutes',
-    jsonb_build_object('source', 'admin_read_only_impersonation', 'mode', 'read_only')
+    jsonb_build_object('source', 'admin_customer_dashboard', 'mode', 'read_only')
   ) RETURNING id INTO v_session_id;
 
   INSERT INTO public.admin_customer_inspection_events (
@@ -184,8 +189,8 @@ BEGIN
 END;
 $$;
 
--- The payload is an allowlist built from auth.users, wallets, and transactions.
--- It intentionally excludes profiles, raw BVN/NIN, payment PINs, provider references,
+-- The payload is an allowlist built from auth.users, safe profile fields, wallets, virtual cards, and transactions.
+-- It intentionally excludes raw BVN/NIN, payment PINs, provider references,
 -- virtual account numbers, auth tokens, and arbitrary transaction metadata.
 CREATE OR REPLACE FUNCTION public.admin_customer_inspection_dashboard(p_session_id uuid)
 RETURNS jsonb
@@ -203,6 +208,8 @@ DECLARE
   v_transactions jsonb;
   v_notifications jsonb;
   v_announcement jsonb;
+  v_profile jsonb;
+  v_cards jsonb;
 BEGIN
   PERFORM public.admin_customer_inspection_assert_admin();
   v_admin_id := auth.uid();
@@ -246,6 +253,39 @@ BEGIN
   ) END INTO v_wallet
   FROM (SELECT 1) seed
   LEFT JOIN public.wallets w ON w.user_id = v_target_id;
+
+  -- Safe profile fields for inspection only. Never expose raw BVN/NIN or secrets.
+  SELECT CASE WHEN p.id IS NULL THEN NULL ELSE jsonb_build_object(
+    'full_name', to_jsonb(p)->>'full_name',
+    'phone_number', to_jsonb(p)->>'phone_number',
+    'nickname', to_jsonb(p)->>'nickname',
+    'gender', to_jsonb(p)->>'gender',
+    'date_of_birth', to_jsonb(p)->>'date_of_birth',
+    'email', COALESCE(to_jsonb(p)->>'email', (SELECT u.email FROM auth.users u WHERE u.id = v_target_id)),
+    'address', to_jsonb(p)->>'address',
+    'kyc_level', COALESCE(NULLIF(to_jsonb(p)->>'kyc_level','')::integer, 0),
+    'kyc_status', COALESCE(to_jsonb(p)->>'kyc_status', 'unknown'),
+    'bvn_verified', COALESCE(NULLIF(to_jsonb(p)->>'bvn_verified','')::boolean, false)
+  ) END INTO v_profile
+  FROM (SELECT 1) seed
+  LEFT JOIN public.profiles p ON p.id = v_target_id;
+
+  SELECT COALESCE(jsonb_agg(jsonb_build_object(
+    'id', c.id,
+    'masked_pan', to_jsonb(c)->>'masked_pan',
+    'last4', to_jsonb(c)->>'last4',
+    'card_type', to_jsonb(c)->>'card_type',
+    'currency', to_jsonb(c)->>'currency',
+    'name_on_card', to_jsonb(c)->>'name_on_card',
+    'expiry_month', to_jsonb(c)->>'expiry_month',
+    'expiry_year', to_jsonb(c)->>'expiry_year',
+    'status', to_jsonb(c)->>'status',
+    'amount_funded', COALESCE(NULLIF(to_jsonb(c)->>'amount_funded','')::numeric, 0),
+    'provider', to_jsonb(c)->>'provider'
+  ) ORDER BY c.created_at DESC), '[]'::jsonb)
+  INTO v_cards
+  FROM public.virtual_cards c
+  WHERE c.user_id = v_target_id;
 
   SELECT COALESCE(jsonb_agg(jsonb_build_object(
     'id', t.id,
@@ -317,6 +357,8 @@ BEGIN
     ),
     'user', COALESCE(v_user, '{}'::jsonb),
     'wallet', v_wallet,
+    'profile', v_profile,
+    'cards', COALESCE(v_cards, '[]'::jsonb),
     'transactions', v_transactions,
     'notifications', COALESCE(v_notifications, '[]'::jsonb),
     'announcement', v_announcement

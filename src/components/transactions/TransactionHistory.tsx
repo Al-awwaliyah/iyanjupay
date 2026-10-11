@@ -177,6 +177,10 @@ type NormalizedTransaction = {
 
 type TransactionHistoryProps = {
   onBack?: () => void;
+  inspectionUserId?: string;
+  inspectionUserEmail?: string | null;
+  inspectionTransactions?: Array<{ id: string; amount: number | string; transaction_type: string; status: string; category: string | null; description: string | null; metadata: Record<string, any> | null; created_at: string }>;
+  inspectionMode?: boolean;
 };
 
 /* ================================================================
@@ -1502,8 +1506,13 @@ const DetailRow = ({
 
 const TransactionHistory = ({
   onBack,
+  inspectionUserId,
+  inspectionUserEmail,
+  inspectionTransactions,
+  inspectionMode = false,
 }: TransactionHistoryProps) => {
-  const { user } = useAuth();
+  const { user: authenticatedUser } = useAuth();
+  const user = useMemo(() => inspectionUserId && authenticatedUser ? { ...authenticatedUser, id: inspectionUserId, email: inspectionUserEmail ?? null } : authenticatedUser, [inspectionUserId, inspectionUserEmail, authenticatedUser]);
 
   const { toast } = useToast();
 
@@ -1577,6 +1586,21 @@ const TransactionHistory = ({
       async (
         showRefresh = false
       ) => {
+        if (inspectionMode) {
+          const rows = (inspectionTransactions ?? []).map((item: any) => ({
+            id: String(item.id), user_id: inspectionUserId || "", wallet_id: null,
+            transaction_type: String(item.transaction_type || "transaction"), amount: item.amount ?? 0,
+            description: item.description ?? null, status: String(item.status || "unknown"),
+            reference_number: String(item.id), provider: null, provider_reference: null,
+            category: item.category ?? null, metadata: item.metadata ?? null,
+            created_at: String(item.created_at || ""),
+          })) as Transaction[];
+          setTransactions(rows);
+          setError(null);
+          setLoading(false);
+          setRefreshing(false);
+          return;
+        }
         if (!user?.id) {
           setTransactions([]);
           setLoading(false);
@@ -1648,7 +1672,7 @@ const TransactionHistory = ({
           setRefreshing(false);
         }
       },
-      [user?.id]
+      [user?.id, inspectionMode, inspectionTransactions, inspectionUserId]
     );
 
   /* ============================================================== 
@@ -1664,7 +1688,7 @@ const TransactionHistory = ({
      ============================================================== */
 
   useEffect(() => {
-    if (!user?.id) {
+    if (!user?.id || inspectionMode) {
       return;
     }
 
@@ -1784,7 +1808,7 @@ const TransactionHistory = ({
         channel
       );
     };
-  }, [user?.id]);
+  }, [user?.id, inspectionMode]);
 
   /* ============================================================== 
      NORMALIZED TRANSACTIONS

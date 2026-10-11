@@ -28,6 +28,10 @@ interface MePageProps {
   onPaymentPinClick: () => void;
   onDisputesClick: () => void;
   onSecurityClick: () => void;
+  inspectionMode?: boolean;
+  inspectionUserName?: string;
+  inspectionUserEmail?: string | null;
+  inspectionUserCreatedAt?: string | null;
 }
 
 const MePage = ({
@@ -40,8 +44,13 @@ const MePage = ({
   onPaymentPinClick,
   onDisputesClick,
   onSecurityClick,
+  inspectionMode = false,
+  inspectionUserName,
+  inspectionUserEmail,
+  inspectionUserCreatedAt,
 }: MePageProps) => {
-  const { user, signOut } = useAuth();
+  const { user: authenticatedUser, signOut } = useAuth();
+  const user = inspectionMode && authenticatedUser ? { ...authenticatedUser, email: inspectionUserEmail ?? null, created_at: inspectionUserCreatedAt ?? undefined, user_metadata: { ...authenticatedUser.user_metadata, full_name: inspectionUserName || "Customer" } } : authenticatedUser;
 
   const menuItems = [
     {
@@ -229,7 +238,7 @@ const MePage = ({
               LOGOUT
               ===================================================== */}
 
-          <Card className="mt-6 border-red-200">
+          {!inspectionMode && <Card className="mt-6 border-red-200">
             <CardContent className="p-4">
 
               <Button
@@ -242,7 +251,9 @@ const MePage = ({
               </Button>
 
             </CardContent>
-          </Card>
+          </Card>}
+
+          {inspectionMode && <div className="mt-6 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">Read-only customer inspection. Signing out is disabled to protect your administrator session.</div>}
 
         </div>
       </div>

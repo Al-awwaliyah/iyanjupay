@@ -35,6 +35,9 @@ import { supabase } from "@/integrations/supabase/client";
 
 interface RewardsPageProps {
   onBack: () => void;
+  inspectionUserId?: string;
+  inspectionUserEmail?: string | null;
+  inspectionMode?: boolean;
 }
 
 interface ReferralStats {
@@ -58,8 +61,12 @@ const REFERRAL_REWARD = 500;
 
 const RewardsPage = ({
   onBack,
+  inspectionUserId,
+  inspectionUserEmail,
+  inspectionMode = false,
 }: RewardsPageProps) => {
-  const { user } = useAuth();
+  const { user: authenticatedUser } = useAuth();
+  const user = useMemo(() => inspectionUserId && authenticatedUser ? { ...authenticatedUser, id: inspectionUserId, email: inspectionUserEmail ?? null } : authenticatedUser, [inspectionUserId, inspectionUserEmail, authenticatedUser]);
   const { toast } = useToast();
 
   const [referralCode, setReferralCode] = useState("");
@@ -91,7 +98,9 @@ const RewardsPage = ({
 
   const loadReferralCode =
     useCallback(async () => {
-      if (!user) {
+      if (!user || inspectionMode) {
+        setReferralCode("");
+        setLoading(false);
         return;
       }
 
@@ -129,6 +138,7 @@ const RewardsPage = ({
     }, [
       user,
       toast,
+      inspectionMode,
     ]);
 
   const loadReferralData =
@@ -302,6 +312,7 @@ const RewardsPage = ({
 
   const copyReferralCode =
     async () => {
+      if (inspectionMode) return;
       if (!referralCode) {
         return;
       }

@@ -37,19 +37,19 @@ ALTER TABLE public.admin_customer_inspection_events ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON public.admin_customer_inspection_sessions FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON public.admin_customer_inspection_events FROM PUBLIC, anon, authenticated;
 
--- Shared role gate: keep the project's existing admin role system authoritative.
+-- Shared role gate: preserve the existing VOID signature in this database.
+-- Caller identity is retrieved separately with auth.uid() after this gate passes.
 CREATE OR REPLACE FUNCTION public.admin_customer_inspection_assert_admin()
-RETURNS uuid
+RETURNS void
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = pg_catalog, public, auth
 AS $$
 DECLARE
-  v_admin_id uuid := auth.uid();
   v_role text;
 BEGIN
-  IF v_admin_id IS NULL THEN
-    RAISE EXCEPTION 'Authentication required' USING ERRCODE = '42501';
+  IF auth.uid() IS NULL THEN
+    RAISE EXCEPTION 'Authentication required' USING ERRCODE = '28000';
   END IF;
 
   IF NOT (
@@ -62,12 +62,11 @@ BEGIN
   v_role := lower(COALESCE(public.admin_management_current_role(), ''));
   IF v_role NOT IN (
     'super_admin', 'operations_admin', 'support_admin',
-    'finance_admin', 'compliance_admin', 'read_only_admin'
+    'finance_admin', 'compliance_admin', 'read_only_admin',
+    'operations', 'support', 'compliance', 'read_only'
   ) THEN
-    RAISE EXCEPTION 'This administrator role cannot inspect customer dashboards' USING ERRCODE = '42501';
+    RAISE EXCEPTION 'Administrator role is not permitted to inspect customers' USING ERRCODE = '42501';
   END IF;
-
-  RETURN v_admin_id;
 END;
 $$;
 REVOKE ALL ON FUNCTION public.admin_customer_inspection_assert_admin() FROM PUBLIC, anon, authenticated;
@@ -84,11 +83,10 @@ SECURITY DEFINER
 SET search_path = pg_catalog, public, auth
 AS $$
 DECLARE
-  v_admin_id uuid;
   v_search text := lower(trim(COALESCE(p_search, '')));
   v_result jsonb;
 BEGIN
-  v_admin_id := public.admin_customer_inspection_assert_admin();
+  PERFORM public.admin_customer_inspection_assert_admin();
 
   WITH matched AS (
     SELECT
@@ -157,7 +155,8 @@ DECLARE
   v_admin_id uuid;
   v_session_id uuid;
 BEGIN
-  v_admin_id := public.admin_customer_inspection_assert_admin();
+  PERFORM public.admin_customer_inspection_assert_admin();
+  v_admin_id := auth.uid();
 
   IF p_target_user_id IS NULL OR p_target_user_id = v_admin_id THEN
     RAISE EXCEPTION 'A different customer account must be selected' USING ERRCODE = '22023';
@@ -205,7 +204,8 @@ DECLARE
   v_notifications jsonb;
   v_announcement jsonb;
 BEGIN
-  v_admin_id := public.admin_customer_inspection_assert_admin();
+  PERFORM public.admin_customer_inspection_assert_admin();
+  v_admin_id := auth.uid();
 
   SELECT s.target_user_id, s.started_at, s.expires_at
     INTO v_target_id, v_started_at, v_expires_at

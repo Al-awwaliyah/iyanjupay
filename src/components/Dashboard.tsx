@@ -382,15 +382,10 @@ const Dashboard = ({
       : authenticatedUser,
     [inspectionData, authenticatedUser],
   );
+  // Keep a root ref for inspection-mode diagnostics/styling only.
+  // Do not set `inert` here: it disables every descendant control,
+  // including the navigation buttons required to browse the dashboard.
   const dashboardRootRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    const root = dashboardRootRef.current;
-    if (!root) return;
-    if (isInspection) root.setAttribute("inert", "");
-    else root.removeAttribute("inert");
-    return () => root.removeAttribute("inert");
-  }, [isInspection]);
 
   const { toast } = useToast();
 
@@ -1935,11 +1930,9 @@ const Dashboard = ({
     <>
       <div
         ref={dashboardRootRef}
-        aria-disabled={isInspection ? true : undefined}
-        className={`min-h-screen pb-24 iyanjupay-dashboard ${isInspection ? "pointer-events-none select-none" : ""}`}
-        data-theme={
-          dashboardTheme
-        }
+        data-inspection-mode={isInspection ? "readonly" : undefined}
+        className="min-h-screen pb-24 iyanjupay-dashboard"
+        data-theme={dashboardTheme}
       >
 
         {/* ====================================================== */}
@@ -2113,17 +2106,17 @@ const Dashboard = ({
                   <User className="h-5 w-5" />
                 </Button>
 
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={
-                    signOut
-                  }
-                  className="iyanjupay-header-action hidden h-10 w-10 rounded-full p-0 sm:flex"
-                  aria-label="Sign out"
-                >
-                  <LogOut className="h-5 w-5" />
-                </Button>
+                {!isInspection && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={signOut}
+                    className="iyanjupay-header-action hidden h-10 w-10 rounded-full p-0 sm:flex"
+                    aria-label="Sign out"
+                  >
+                    <LogOut className="h-5 w-5" />
+                  </Button>
+                )}
 
               </div>
             </div>
@@ -2278,10 +2271,14 @@ const Dashboard = ({
 
                     <Button
                       onClick={() => {
+                        if (isInspection) {
+                          toast({ title: "Read-only inspection", description: "Wallet funding is disabled during customer inspection." });
+                          return;
+                        }
                         if (!allowWalletFunding) { toast({ title: "Wallet funding temporarily unavailable", description: "Please try again later." }); return; }
                         setFundModalOpen(true);
                       }}
-                      disabled={!allowWalletFunding}
+                      disabled={isInspection || !allowWalletFunding}
                       className="h-12 rounded-2xl bg-white text-purple-700 shadow-lg hover:bg-purple-50"
                     >
                       <Plus className="mr-2 h-5 w-5" />
@@ -2702,20 +2699,16 @@ const Dashboard = ({
         {/* FUND WALLET                                           */}
         {/* ====================================================== */}
 
-        <FundWalletModal
-          isOpen={
-            fundModalOpen
-          }
-          onClose={() =>
-            setFundModalOpen(
-              false
-            )
-          }
-          onFunded={async () => {
-            await refreshWallet();
-            await loadDashboardStats();
-          }}
-        />
+        {!isInspection && (
+          <FundWalletModal
+            isOpen={fundModalOpen}
+            onClose={() => setFundModalOpen(false)}
+            onFunded={async () => {
+              await refreshWallet();
+              await loadDashboardStats();
+            }}
+          />
+        )}
 
         {/* ====================================================== */}
         {/* QR CODE                                                */}
@@ -2744,35 +2737,29 @@ const Dashboard = ({
         {/* SUPPORT CHAT                                          */}
         {/* ====================================================== */}
 
-        <Button
-          type="button"
-          onClick={() =>
-            setSupportChatOpen(
-              true
-            )
-          }
-          className="fixed bottom-24 right-4 z-50 h-14 w-14 rounded-full bg-purple-600 p-0 shadow-[0_12px_30px_rgba(124,58,237,0.35)] hover:bg-purple-700 sm:bottom-24 sm:right-6"
-          aria-label="Open live support chat"
-        >
-          <Headphones className="h-6 w-6" />
-        </Button>
+        {!isInspection && (
+          <>
+            <Button
+              type="button"
+              onClick={() => setSupportChatOpen(true)}
+              className="fixed bottom-24 right-4 z-50 h-14 w-14 rounded-full bg-purple-600 p-0 shadow-[0_12px_30px_rgba(124,58,237,0.35)] hover:bg-purple-700 sm:bottom-24 sm:right-6"
+              aria-label="Open live support chat"
+            >
+              <Headphones className="h-6 w-6" />
+            </Button>
 
-        <SupportChat
-          open={
-            supportChatOpen
-          }
-          onClose={() =>
-            setSupportChatOpen(
-              false
-            )
-          }
-        />
+            <SupportChat
+              open={supportChatOpen}
+              onClose={() => setSupportChatOpen(false)}
+            />
+          </>
+        )}
 
         {/* ====================================================== */}
         {/* WHATSAPP                                              */}
         {/* ====================================================== */}
 
-        <WhatsAppFloat />
+        {!isInspection && <WhatsAppFloat />}
 
       </div>
     </>

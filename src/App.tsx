@@ -24,6 +24,8 @@ import ForgotPassword from "./pages/ForgotPassword";
 import VerifyEmailOtp from "./pages/VerifyEmailOtp";
 import OnboardingPage from "@/components/onboarding/OnboardingPage";
 import OnboardingBvnPage from "@/components/onboarding/OnboardingBvnPage";
+import OnboardingAccessGuard from "@/components/onboarding/OnboardingAccessGuard";
+import Dashboard from "@/components/Dashboard";
 import SendMoney from "./pages/SendMoney";
 import RewardsPage from "./components/rewards/RewardsPage";
 import TransactionProcessing from "./pages/TransactionProcessing";
@@ -255,7 +257,7 @@ const App = () => {
 
               <Route
                 path="/"
-                element={<Index />}
+                element={<OnboardingAccessGuard><Index /></OnboardingAccessGuard>}
               />
 
               <Route
@@ -318,7 +320,13 @@ const App = () => {
 
               <Route
                 path="/dashboard"
-                element={<Index />}
+                element={
+                  <OnboardingAccessGuard>
+                    <AppLockGuard>
+                      <Dashboard />
+                    </AppLockGuard>
+                  </OnboardingAccessGuard>
+                }
               />
 
               <Route

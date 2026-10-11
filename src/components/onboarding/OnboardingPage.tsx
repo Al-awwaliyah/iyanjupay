@@ -124,8 +124,7 @@ const OnboardingPage = () => {
           String(profile.phone_number ?? "").trim().length >= 7 &&
           Boolean(profile.gender) &&
           Boolean(profile.date_of_birth) &&
-          String(profile.address ?? "").trim().length >= 5 &&
-          String(profile.nin ?? "").replace(/\D/g, "").length === 11;
+          String(profile.address ?? "").trim().length >= 5;
 
         // ------------------------------------------------------
         // ONBOARDING ROUTING
@@ -188,7 +187,7 @@ const OnboardingPage = () => {
   const normalizedNin = nin.replace(/\D/g, "");
 
   const isValidNin =
-    normalizedNin.length === 11;
+    normalizedNin.length === 0 || normalizedNin.length === 11;
 
   // IMPORTANT:
   // Nickname is OPTIONAL.
@@ -255,7 +254,7 @@ const OnboardingPage = () => {
           date_of_birth: dateOfBirth,
           email: user.email ?? userEmail,
           address: normalizedAddress,
-          nin: normalizedNin,
+          nin: normalizedNin.length > 0 ? normalizedNin : null,
         })
         .eq("id", user.id);
 
@@ -478,7 +477,7 @@ const OnboardingPage = () => {
 
             <div className="space-y-2">
               <Label htmlFor="onboarding-nin">
-                NIN
+                NIN (Optional)
               </Label>
 
               <Input
@@ -492,7 +491,7 @@ const OnboardingPage = () => {
 
                   setNin(value);
                 }}
-                placeholder="Enter your 11-digit NIN"
+                placeholder="Enter your 11-digit NIN (optional)"
                 inputMode="numeric"
                 maxLength={11}
                 autoComplete="off"

@@ -255,10 +255,9 @@ const App = () => {
                   PUBLIC / AUTH
               ================================================= */}
 
-              <Route
-                path="/"
-                element={<OnboardingAccessGuard><Index /></OnboardingAccessGuard>}
-              />
+              {/* Keep the public landing/auth page outside the onboarding guard.
+                  Signed-in users are checked when they enter the dashboard route. */}
+              <Route path="/" element={<Index />} />
 
               <Route
                 path="/signup"

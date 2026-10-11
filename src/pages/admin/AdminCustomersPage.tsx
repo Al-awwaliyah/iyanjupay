@@ -4,6 +4,7 @@ import React, {
   useEffect,
   useState,
 } from "react";
+import { useNavigate } from "react-router-dom";
 
 import {
   ArrowLeft,
@@ -281,6 +282,7 @@ const AdminCustomersPage =
   () => {
     const { toast } =
       useToast();
+    const navigate = useNavigate();
 
     const [customers, setCustomers] =
       useState<Customer[]>([]);
@@ -1084,18 +1086,28 @@ const AdminCustomersPage =
 
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSelectedCustomerId(
-                        null
-                      );
-                      setDetails(null);
-                    }}
-                    className="w-9 h-9 rounded-lg hover:bg-gray-100 flex items-center justify-center"
-                  >
-                    <X className="h-5 w-5 text-gray-500" />
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => navigate(`/admin/customer-inspection/${selectedCustomerId}`)}
+                      className="rounded-lg bg-blue-700 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-800"
+                      title="Open a time-limited, read-only customer inspection"
+                    >
+                      Inspect read-only
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedCustomerId(
+                          null
+                        );
+                        setDetails(null);
+                      }}
+                      className="w-9 h-9 rounded-lg hover:bg-gray-100 flex items-center justify-center"
+                    >
+                      <X className="h-5 w-5 text-gray-500" />
+                    </button>
+                  </div>
 
                 </div>
 

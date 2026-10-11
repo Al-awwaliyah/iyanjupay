@@ -63,7 +63,9 @@ const OnboardingAccessGuard = ({ children }: Props) => {
   }, [navigate, location.pathname]);
 
   if (checking) {
-    return <div className="min-h-screen flex items-center justify-center bg-background text-foreground">Checking your onboarding status…</div>;
+    // Keep the access check silent and fail closed: do not expose the dashboard
+    // until onboarding has been verified, but do not show a loading message.
+    return <div className="min-h-screen bg-background" aria-busy="true" />;
   }
 
   if (checkError) {

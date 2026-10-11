@@ -871,8 +871,8 @@ const Dashboard = ({
    */
 
   const services = [
-    { title: "Airtime", description: "", icon: Smartphone, color: "bg-blue-500", type: "airtime" as BillService, available: true },
-    { title: "Data", description: "", icon: Wifi, color: "bg-purple-500", type: "data" as BillService, available: true },
+    { title: "Buy Airtime", description: "", icon: Smartphone, color: "bg-blue-500", type: "airtime" as BillService, available: true },
+    { title: "Buy Data", description: "", icon: Wifi, color: "bg-purple-500", type: "data" as BillService, available: true },
     { title: "Cable TV", description: "", icon: CreditCard, color: "bg-red-500", type: "cable" as BillService, available: true },
     { title: "Electricity", description: "", icon: Zap, color: "bg-yellow-500", type: "electricity" as BillService, available: true },
     { title: "Education", description: "", icon: GraduationCap, color: "bg-orange-500", type: "education" as BillService, available: true },
@@ -1858,29 +1858,8 @@ const Dashboard = ({
     );
   }
 
-  /*
-   * ============================================================
-   * WALLET LOADING
-   * ============================================================
-   */
-
-  if (walletLoading) {
-    return (
-      <>
-        <div className="min-h-screen flex items-center justify-center bg-slate-50">
-          <div className="text-center">
-            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-white shadow-lg">
-              <Loader2 className="h-8 w-8 animate-spin text-purple-600" />
-            </div>
-
-            <p className="mt-5 text-sm font-medium text-slate-600">
-              Loading your wallet...
-            </p>
-          </div>
-        </div>
-      </>
-    );
-  }
+  // Wallet data loads in the background; keep the dashboard interactive.
+  // The balance card shows a neutral placeholder until the first result arrives.
 
   /*
    * ============================================================
@@ -2214,7 +2193,7 @@ const Dashboard = ({
 
                           ₦
                           {showBalance
-                            ? formattedBalance
+                            ? (walletLoading ? "—" : formattedBalance)
                             : "••••••"}
 
                         </span>

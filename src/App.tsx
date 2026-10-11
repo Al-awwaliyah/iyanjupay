@@ -431,6 +431,15 @@ const App = () => {
               />
 
               <Route
+                path="/admin/impersonation"
+                element={
+                  <AdminRouteGuard>
+                    <AdminReadOnlyImpersonationPage />
+                  </AdminRouteGuard>
+                }
+              />
+
+              <Route
                 path="/admin/impersonation/:customerId"
                 element={
                   <AdminRouteGuard>
@@ -442,14 +451,16 @@ const App = () => {
               />
 
               <Route
-                path="/admin/impersonation"
+                path="/admin/customers/:customerId/inspect"
                 element={
                   <AdminRouteGuard>
-                    <AdminReadOnlyImpersonationPage />
+                    <ThemeProvider>
+                      <AdminCustomerInspectionPage />
+                    </ThemeProvider>
                   </AdminRouteGuard>
                 }
               />
-              
+
               <Route
                 path="/admin/customers"
                 element={

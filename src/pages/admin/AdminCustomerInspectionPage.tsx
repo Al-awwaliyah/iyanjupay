@@ -92,7 +92,7 @@ export default function AdminCustomerInspectionPage() {
     try {
       if (activeId) await endInspection(activeId);
       sessionRef.current = null;
-      navigate("/admin/impersonation", { replace: true });
+      navigate("/admin/customers", { replace: true });
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Unable to end inspection.");
       setEnding(false);
@@ -121,8 +121,8 @@ export default function AdminCustomerInspectionPage() {
           <h1 className="mt-4 text-center text-lg font-bold text-slate-900">Unable to inspect customer</h1>
           <p className="mt-2 text-center text-sm text-slate-600">{errorMessage || "Inspection data is unavailable."}</p>
           <div className="mt-5 flex justify-center">
-            <Button onClick={() => navigate("/admin/impersonation")} variant="outline">
-              <ArrowLeft className="mr-2 h-4 w-4" /> Back to account selector
+            <Button onClick={() => navigate("/admin/customers")} variant="outline">
+              <ArrowLeft className="mr-2 h-4 w-4" /> Back to customers
             </Button>
           </div>
         </div>

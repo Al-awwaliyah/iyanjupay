@@ -2,6 +2,8 @@ import { getSafeErrorMessage, getFunctionErrorMessage, sanitizeMessage } from "@
 import React, {
   useCallback,
   useEffect,
+  useMemo,
+  useRef,
   useState,
 } from "react";
 
@@ -319,12 +321,76 @@ const isMoneyOutTransaction = (
  * ============================================================
  */
 
-const Dashboard = () => {
+export type DashboardInspectionPayload = {
+  session: {
+    id: string;
+    target_user_id: string;
+    started_at: string;
+    expires_at: string;
+    read_only: true;
+  };
+  user: {
+    id: string;
+    email: string | null;
+    created_at?: string | null;
+    user_metadata: Record<string, unknown>;
+  };
+  wallet: {
+    id: string;
+    wallet_id: string;
+    balance: number | string;
+    virtual_account_number: string;
+  } | null;
+  transactions: DashboardTransaction[];
+  notifications: Array<{
+    id: string;
+    title: string;
+    message: string;
+    is_read: boolean;
+    created_at: string;
+  }>;
+  announcement: {
+    id: string;
+    title: string;
+    message: string;
+    created_at: string;
+    metadata?: { expires_at?: string | null } | null;
+  } | null;
+};
+
+const Dashboard = ({
+  inspectionData,
+}: {
+  inspectionData?: DashboardInspectionPayload;
+} = {}) => {
   const {
-    user,
+    user: authenticatedUser,
     loading: authLoading,
     signOut,
   } = useAuth();
+
+  // Inspection renders the real customer Dashboard component with a read-only
+  // data payload. It never changes the Supabase Auth session.
+  const isInspection = Boolean(inspectionData);
+  const user = useMemo(
+    () => inspectionData
+      ? ({
+          id: inspectionData.user.id,
+          email: inspectionData.user.email,
+          user_metadata: inspectionData.user.user_metadata,
+        } as NonNullable<typeof authenticatedUser>)
+      : authenticatedUser,
+    [inspectionData, authenticatedUser],
+  );
+  const dashboardRootRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const root = dashboardRootRef.current;
+    if (!root) return;
+    if (isInspection) root.setAttribute("inert", "");
+    else root.removeAttribute("inert");
+    return () => root.removeAttribute("inert");
+  }, [isInspection]);
 
   const { toast } = useToast();
 
@@ -346,6 +412,10 @@ const Dashboard = () => {
   const [currentPage, setCurrentPage] =
     useState<CurrentPage>("home");
 
+  useEffect(() => {
+    if (isInspection) setCurrentPage("home");
+  }, [isInspection]);
+
   /*
    * ============================================================
    * WALLET
@@ -353,10 +423,17 @@ const Dashboard = () => {
    */
 
   const {
-    wallet,
-    loading: walletLoading,
+    wallet: authenticatedWallet,
+    loading: authenticatedWalletLoading,
     refreshWallet,
-  } = useWallet(user?.id);
+  } = useWallet(user?.id, !isInspection);
+
+  const wallet = isInspection
+    ? inspectionData?.wallet ?? null
+    : authenticatedWallet;
+  const walletLoading = isInspection
+    ? false
+    : authenticatedWalletLoading;
 
   /*
    * ============================================================
@@ -473,42 +550,20 @@ const Dashboard = () => {
       try {
         setStatsLoading(true);
 
-        const {
-          data,
-          error,
-        } =
-          await supabase
+        let transactions: DashboardTransaction[];
+
+        if (inspectionData) {
+          transactions = inspectionData.transactions ?? [];
+        } else {
+          const { data, error } = await supabase
             .from("transactions")
-            .select(
-              `
-                id,
-                amount,
-                transaction_type,
-                status,
-                category,
-                description,
-                metadata,
-                created_at
-              `
-            )
-            .eq(
-              "user_id",
-              user.id
-            )
-            .order(
-              "created_at",
-              {
-                ascending: false,
-              }
-            );
+            .select(`id, amount, transaction_type, status, category, description, metadata, created_at`)
+            .eq("user_id", user.id)
+            .order("created_at", { ascending: false });
 
-        if (error) {
-          throw error;
+          if (error) throw error;
+          transactions = (data ?? []) as DashboardTransaction[];
         }
-
-        const transactions =
-          (data ??
-            []) as DashboardTransaction[];
 
         const now = new Date();
 
@@ -630,7 +685,7 @@ const Dashboard = () => {
       } finally {
         setStatsLoading(false);
       }
-    }, [user?.id]);
+    }, [user?.id, inspectionData]);
 
   useEffect(() => {
     if (
@@ -654,7 +709,7 @@ const Dashboard = () => {
    */
 
   useEffect(() => {
-    if (!user?.id) {
+    if (isInspection || !user?.id) {
       return;
     }
 
@@ -685,6 +740,7 @@ const Dashboard = () => {
   }, [
     user?.id,
     loadDashboardStats,
+    isInspection,
   ]);
 
   /*
@@ -694,7 +750,7 @@ const Dashboard = () => {
    */
 
   useEffect(() => {
-    if (!user?.id) {
+    if (isInspection || !user?.id) {
       return;
     }
 
@@ -756,6 +812,7 @@ const Dashboard = () => {
     user?.id,
     refreshWallet,
     loadDashboardStats,
+    isInspection,
   ]);
 
   /*
@@ -854,6 +911,9 @@ const Dashboard = () => {
     amount: number,
     details: Record<string, any>
   ): Promise<any> => {
+    if (isInspection) {
+      throw new Error("Customer dashboard inspection is read-only.");
+    }
     if (!user) {
       throw new Error(
         "Authentication required. Please log in again."
@@ -1081,6 +1141,10 @@ const Dashboard = () => {
     amount: number,
     details: any
   ) => {
+    if (isInspection) {
+      toast({ title: "Read-only inspection", description: "Transfers are disabled during customer inspection." });
+      return;
+    }
     if (!user) {
       toast({
         title:
@@ -1870,7 +1934,9 @@ const Dashboard = () => {
   return (
     <>
       <div
-        className="min-h-screen pb-24 iyanjupay-dashboard"
+        ref={dashboardRootRef}
+        aria-disabled={isInspection ? true : undefined}
+        className={`min-h-screen pb-24 iyanjupay-dashboard ${isInspection ? "pointer-events-none select-none" : ""}`}
         data-theme={
           dashboardTheme
         }
@@ -1932,7 +1998,11 @@ const Dashboard = () => {
                   <QrCode className="h-5 w-5" />
                 </Button>
 
-                <NotificationCenter userId={user.id} />
+                <NotificationCenter
+                  userId={user.id}
+                  readOnly={isInspection}
+                  inspectionNotifications={inspectionData?.notifications}
+                />
 
                 {/* APPEARANCE */}
 
@@ -2066,7 +2136,11 @@ const Dashboard = () => {
 
         <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
 
-          <AnnouncementBanner userId={user.id} />
+          <AnnouncementBanner
+            userId={user.id}
+            readOnly={isInspection}
+            inspectionAnnouncement={inspectionData?.announcement}
+          />
 
           {showMaintenanceBanner && (
             <div className={`mb-5 rounded-2xl border p-4 ${maintenanceMode ? "border-amber-300 bg-amber-50 text-amber-900" : "border-blue-200 bg-blue-50 text-blue-900"}`}>

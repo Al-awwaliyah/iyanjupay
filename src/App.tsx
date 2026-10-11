@@ -441,6 +441,15 @@ const App = () => {
               />
 
               <Route
+                path="/admin/impersonation"
+                element={
+                  <AdminRouteGuard>
+                    <AdminReadOnlyImpersonationPage />
+                  </AdminRouteGuard>
+                }
+              />
+              
+              <Route
                 path="/admin/customers"
                 element={
                   <AdminRouteGuard>

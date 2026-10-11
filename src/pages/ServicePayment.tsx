@@ -377,6 +377,75 @@ function filterCableItems(items: Item[], billerCode: string): Item[] {
   return matching.length ? matching : items;
 }
 
+/**
+ * Resolve a plan's mobile network from explicit catalogue metadata first,
+ * then from descriptive fields / provider-prefixed plan codes. Some providers
+ * return a mixed catalogue even when a network is selected, so filtering must
+ * also happen client-side.
+ */
+function dataPlanNetwork(item: Item): string {
+  const raw = item.raw && typeof item.raw === "object" ? item.raw : {};
+  const explicitNames = [
+    item.network_name, item.networkName, item.network,
+    item.provider_name, item.providerName, item.provider,
+    item.operator_name, item.operatorName, item.operator,
+    item.mobile_network, item.mobileNetwork,
+    raw.network_name, raw.networkName, raw.network,
+    raw.provider_name, raw.providerName, raw.provider,
+    raw.operator_name, raw.operatorName, raw.operator,
+    raw.mobile_network, raw.mobileNetwork,
+  ];
+
+  for (const value of explicitNames) {
+    const network = canonicalNetworkName(value);
+    if (network) return network;
+  }
+
+  const explicitIds = [
+    item.network_id, item.networkId, item.operator_id, item.operatorId,
+    raw.network_id, raw.networkId, raw.operator_id, raw.operatorId,
+  ];
+  for (const value of explicitIds) {
+    const network = canonicalNetworkName("", clean(value));
+    if (network) return network;
+  }
+
+  const descriptive = [
+    item.plan_name, item.planName, item.display_name, item.displayName,
+    item.name, item.description, item.product_name, item.productName,
+    item.item_code, item.itemCode, item.product_code, item.productCode,
+    item.plan_code, item.planCode, item.package_code, item.packageCode,
+    raw.plan_name, raw.planName, raw.display_name, raw.displayName,
+    raw.name, raw.description, raw.product_name, raw.productName,
+    raw.item_code, raw.itemCode, raw.product_code, raw.productCode,
+    raw.plan_code, raw.planCode, raw.package_code, raw.packageCode,
+  ].map(clean).filter(Boolean).join(" ");
+
+  return canonicalNetworkName(descriptive);
+}
+
+function filterDataPlansByNetwork(
+  items: Item[],
+  billerCode: string,
+  biller: Biller | null,
+): Item[] {
+  const selectedNetwork = canonicalNetworkName(
+    biller?.display_name ?? getName(biller),
+    biller?.network_id ?? biller?.networkId ?? billerCode,
+  );
+  if (!selectedNetwork || !items.length) return items;
+
+  const tagged = items.map((item) => ({ item, network: dataPlanNetwork(item) }));
+  // Some catalogues are already scoped by the API and carry no network fields.
+  // Keep those intact, but once any row identifies a network, never show rows
+  // belonging to another network (or ambiguous rows) in the selected network.
+  if (!tagged.some(({ network }) => !!network)) return items;
+
+  return tagged
+    .filter(({ network }) => network === selectedNetwork)
+    .map(({ item }) => item);
+}
+
 function getItemPrice(item: Item | null | undefined): number {
   return num(
     item?.selling_price ??
@@ -2120,7 +2189,9 @@ export default function ServicePayment({
 
           const loaded = isCable
             ? filterCableItems(loadedRaw, billerCode)
-            : loadedRaw;
+            : isData
+              ? filterDataPlansByNetwork(loadedRaw, billerCode, billerForCode)
+              : loadedRaw;
 
           setItems(loaded);
 

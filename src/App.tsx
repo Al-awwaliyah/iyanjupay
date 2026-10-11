@@ -34,6 +34,7 @@ import VerifyRecoveryOtp from "./pages/VerifyRecoveryOtp";
 import AdminSupportPage from "@/pages/admin/AdminSupportPage";
 import AdminDashboardPage from "@/pages/admin/AdminDashboardPage";
 import AdminCustomersPage from "@/pages/admin/AdminCustomersPage";
+import AdminCustomerInspectionPage from "@/pages/admin/AdminCustomerInspectionPage";
 import AdminTransactionsPage from "@/pages/admin/AdminTransactionsPage";
 import AdminDisputesPage from "@/pages/admin/AdminDisputesPage";
 import ReconciliationPage from "@/pages/admin/ReconciliationPage";
@@ -433,6 +434,15 @@ const App = () => {
                 element={
                   <AdminRouteGuard>
                     <AdminCustomersPage />
+                  </AdminRouteGuard>
+                }
+              />
+
+              <Route
+                path="/admin/customer-inspection/:customerId"
+                element={
+                  <AdminRouteGuard>
+                    <AdminCustomerInspectionPage />
                   </AdminRouteGuard>
                 }
               />

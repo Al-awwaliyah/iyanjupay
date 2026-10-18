@@ -23,6 +23,14 @@ import {
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
@@ -724,6 +732,13 @@ const LOGO_PATTERNS: Array<[RegExp, string]> = [
   [/spotify/, "spotify"],
   [/razer/, "razer"],
 ];
+
+/**
+ * Optional generic fallback image shown when a provider logo fails to load.
+ * Leave empty to fall back to the provider's initials instead, or set it to
+ * a file that exists in /public/providers (e.g. "/providers/default.svg").
+ */
+const providerFallbackLogo: string = "";
 
 function providerLogo(
   name: string,
@@ -1709,25 +1724,6 @@ export default function ServicePayment({
   const { allowBillPayments } = useCustomerAppSettings();
   const { toast } = useToast();
 
-  if (!allowBillPayments) {
-    return (
-      <div className="min-h-screen bg-background px-4 py-6 text-foreground">
-        <div className="mx-auto max-w-lg">
-          <Button variant="ghost" onClick={onBack} className="mb-4">
-            <ArrowLeft className="mr-2 h-4 w-4" /> Back
-          </Button>
-          <div className="rounded-2xl border bg-card p-6 text-center shadow-sm">
-            <LockKeyhole className="mx-auto mb-3 h-10 w-10" />
-            <h2 className="text-lg font-bold">Service payments temporarily unavailable</h2>
-            <p className="mt-2 text-sm text-muted-foreground">
-              Bill and service payments have been temporarily disabled by IyanjuPay administration.
-            </p>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   const rawServiceType = clean(
     service?.type
   ).toLowerCase();
@@ -1864,6 +1860,31 @@ export default function ServicePayment({
   const [verifyingPin, setVerifyingPin] =
     useState(false);
 
+  // ==========================================================
+  // CREATE PAYMENT PIN (shown when the user has no PIN yet)
+  // ==========================================================
+
+  const [hasPaymentPin, setHasPaymentPin] =
+    useState<boolean | null>(null);
+
+  const [checkingPaymentPin, setCheckingPaymentPin] =
+    useState(false);
+
+  const [createPinOpen, setCreatePinOpen] =
+    useState(false);
+
+  const [newPin, setNewPin] =
+    useState("");
+
+  const [confirmPin, setConfirmPin] =
+    useState("");
+
+  const [createPinError, setCreatePinError] =
+    useState("");
+
+  const [creatingPin, setCreatingPin] =
+    useState(false);
+
   const [
     processingSession,
     setProcessingSession,
@@ -1948,6 +1969,10 @@ export default function ServicePayment({
     setError("");
     setShowPin(false);
     setPaymentPin("");
+    setCreatePinOpen(false);
+    setNewPin("");
+    setConfirmPin("");
+    setCreatePinError("");
   }, [resetVerification]);
 
   useEffect(() => {
@@ -1994,6 +2019,8 @@ export default function ServicePayment({
   const loadBillers =
     useCallback(async () => {
       if (!serviceType) return;
+      // Do not hit the backend while bill payments are disabled by admin.
+      if (!allowBillPayments) return;
       if (isGiftCard && giftCardMode === "sell") {
         setBillers([]);
         setItems([]);
@@ -2109,6 +2136,7 @@ export default function ServicePayment({
       isGiftCard,
       giftCardMode,
       giftCountry,
+      allowBillPayments,
       toast,
     ]);
 
@@ -2988,7 +3016,143 @@ export default function ServicePayment({
     };
   }, [showPin]);
 
-  const startPurchase = () => {
+  // ==========================================================
+  // PAYMENT PIN: CHECK / CREATE
+  // ==========================================================
+
+  const checkPaymentPin = async (): Promise<boolean> => {
+    setCheckingPaymentPin(true);
+
+    try {
+      const { data, error: pinStatusError } =
+        await supabase.rpc("has_payment_pin");
+
+      if (pinStatusError) {
+        toast({
+          title: "Unable to check Payment PIN",
+          description:
+            getSafeErrorMessage(pinStatusError) ||
+            "Please try again.",
+          variant: "destructive",
+        });
+
+        return false;
+      }
+
+      const exists =
+        typeof data === "boolean"
+          ? data
+          : Boolean(data?.has_payment_pin);
+
+      setHasPaymentPin(exists);
+
+      return exists;
+    } catch (e: any) {
+      toast({
+        title: "Unable to check Payment PIN",
+        description:
+          getSafeErrorMessage(e) ||
+          "Please try again.",
+        variant: "destructive",
+      });
+
+      return false;
+    } finally {
+      setCheckingPaymentPin(false);
+    }
+  };
+
+  const handleCreatePinCancel = () => {
+    if (creatingPin) return;
+
+    setCreatePinOpen(false);
+    setNewPin("");
+    setConfirmPin("");
+    setCreatePinError("");
+  };
+
+  const handleCreatePin = async () => {
+    setCreatePinError("");
+
+    if (!/^\d{4}$/.test(newPin)) {
+      setCreatePinError(
+        "Payment PIN must be exactly 4 digits."
+      );
+      return;
+    }
+
+    if (!/^\d{4}$/.test(confirmPin)) {
+      setCreatePinError(
+        "Confirm your 4-digit Payment PIN."
+      );
+      return;
+    }
+
+    if (newPin !== confirmPin) {
+      setCreatePinError(
+        "Payment PINs do not match."
+      );
+      return;
+    }
+
+    setCreatingPin(true);
+
+    try {
+      const { data, error: createError } =
+        await supabase.rpc(
+          "create_payment_pin",
+          {
+            _pin: newPin,
+          }
+        );
+
+      if (createError) {
+        setCreatePinError(
+          getSafeErrorMessage(createError) ||
+            "Unable to create Payment PIN."
+        );
+        return;
+      }
+
+      if (
+        data &&
+        typeof data === "object" &&
+        data.success === false
+      ) {
+        setCreatePinError(
+          data.message ||
+            "Unable to create Payment PIN."
+        );
+        return;
+      }
+
+      setHasPaymentPin(true);
+      setNewPin("");
+      setConfirmPin("");
+      setCreatePinError("");
+      setCreatePinOpen(false);
+
+      toast({
+        title: "Payment PIN created",
+        description:
+          "Your Payment PIN has been created successfully.",
+      });
+
+      // Continue the purchase the user was in the middle of.
+      setPaymentPin("");
+      setError("");
+      setShowPin(true);
+    } catch (e: any) {
+      setCreatePinError(
+        getSafeErrorMessage(e) ||
+          "Something went wrong while creating your Payment PIN."
+      );
+    } finally {
+      setCreatingPin(false);
+    }
+  };
+
+  const startPurchase = async () => {
     const validationError =
       validateBeforePin();
 
@@ -3001,6 +3165,18 @@ export default function ServicePayment({
         variant: "destructive",
       });
 
+      return;
+    }
+
+    // Always re-check so a stale value never blocks or skips PIN creation.
+    const pinExists =
+      await checkPaymentPin();
+
+    if (!pinExists) {
+      setCreatePinError("");
+      setNewPin("");
+      setConfirmPin("");
+      setCreatePinOpen(true);
       return;
     }
 
@@ -3371,6 +3547,30 @@ export default function ServicePayment({
       </button>
     );
   };
+
+  // ==========================================================
+  // ADMIN CONTROL: BILL PAYMENTS
+  // (kept below all hooks so the hook order never changes)
+  // ==========================================================
+
+  if (!allowBillPayments) {
+    return (
+      <div className="min-h-screen bg-background px-4 py-6 text-foreground">
+        <div className="mx-auto max-w-lg">
+          <Button variant="ghost" onClick={onBack} className="mb-4">
+            <ArrowLeft className="mr-2 h-4 w-4" /> Back
+          </Button>
+          <div className="rounded-2xl border bg-card p-6 text-center shadow-sm">
+            <LockKeyhole className="mx-auto mb-3 h-10 w-10" />
+            <h2 className="text-lg font-bold">Service payments temporarily unavailable</h2>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Bill and service payments have been temporarily disabled by IyanjuPay administration.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (processingSession) {
     return (
@@ -4029,18 +4229,25 @@ export default function ServicePayment({
                 )}
                 <Button
                   className="iyanjupay-service-primary h-11 w-full rounded-xl bg-gradient-to-r from-[#082A63] via-[#1554B8] to-[#2563EB] text-sm font-bold text-white shadow-sm hover:brightness-105"
-                  onClick={startPurchase}
-                  disabled={!canPurchase}
+                  onClick={() => void startPurchase()}
+                  disabled={!canPurchase || checkingPaymentPin}
                 >
-                  {isAirtime
-                    ? "Buy Airtime"
-                    : isInternetAmount
-                      ? "Buy Internet Service"
-                      : isPinService
-                      ? "Generate PINs"
-                      : isGiftCard
-                        ? "Buy Gift Card"
-                        : `Continue${hasAmount ? ` to Pay ${naira(customerPayAmount)}` : ""}`}
+                  {checkingPaymentPin ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Checking Payment PIN...
+                    </>
+                  ) : isAirtime ? (
+                    "Buy Airtime"
+                  ) : isInternetAmount ? (
+                    "Buy Internet Service"
+                  ) : isPinService ? (
+                    "Generate PINs"
+                  ) : isGiftCard ? (
+                    "Buy Gift Card"
+                  ) : (
+                    `Continue${hasAmount ? ` to Pay ${naira(customerPayAmount)}` : ""}`
+                  )}
                 </Button>
                 <p className="mt-2 text-center text-[10px] text-gray-500">
                   Biometric authentication is used when enabled; otherwise your Payment PIN is required.
@@ -4074,6 +4281,163 @@ export default function ServicePayment({
           )}
         </main>
       </div>
+
+      {/*
+       * ======================================================
+       * CREATE PAYMENT PIN DIALOG
+       * Shown when the user tries to pay but has no PIN yet.
+       * ======================================================
+       */}
+      <Dialog
+        open={createPinOpen}
+        onOpenChange={(open) => {
+          if (!open && !creatingPin) {
+            handleCreatePinCancel();
+          }
+        }}
+      >
+        <DialogContent
+          className="sm:max-w-md"
+          onInteractOutside={(event) => {
+            if (creatingPin) {
+              event.preventDefault();
+            }
+          }}
+          onEscapeKeyDown={(event) => {
+            if (creatingPin) {
+              event.preventDefault();
+            }
+          }}
+        >
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ShieldCheck className="h-5 w-5 text-green-600" />
+              Create Payment PIN
+            </DialogTitle>
+
+            <DialogDescription>
+              You need a 4-digit Payment PIN before you can pay for services.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="rounded-lg border p-3">
+              <p className="text-sm">
+                Your Payment PIN is used to authorize transactions securely. Do not share it with anyone.
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="svcNewPin">
+                Create 4-digit PIN
+              </Label>
+
+              <Input
+                id="svcNewPin"
+                type="password"
+                inputMode="numeric"
+                autoComplete="new-password"
+                maxLength={4}
+                autoFocus
+                value={newPin}
+                onChange={(e) => {
+                  setNewPin(
+                    e.target.value
+                      .replace(/\D/g, "")
+                      .slice(0, 4)
+                  );
+
+                  if (createPinError) {
+                    setCreatePinError("");
+                  }
+                }}
+                placeholder="••••"
+                disabled={creatingPin}
+                className="text-center text-2xl tracking-[0.5em]"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="svcConfirmPin">
+                Confirm Payment PIN
+              </Label>
+
+              <Input
+                id="svcConfirmPin"
+                type="password"
+                inputMode="numeric"
+                autoComplete="new-password"
+                maxLength={4}
+                value={confirmPin}
+                onChange={(e) => {
+                  setConfirmPin(
+                    e.target.value
+                      .replace(/\D/g, "")
+                      .slice(0, 4)
+                  );
+
+                  if (createPinError) {
+                    setCreatePinError("");
+                  }
+                }}
+                onKeyDown={(e) => {
+                  if (
+                    e.key === "Enter" &&
+                    !creatingPin
+                  ) {
+                    e.preventDefault();
+                    void handleCreatePin();
+                  }
+                }}
+                placeholder="••••"
+                disabled={creatingPin}
+                className="text-center text-2xl tracking-[0.5em]"
+              />
+            </div>
+
+            {createPinError && (
+              <div
+                className="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive"
+                role="alert"
+              >
+                {createPinError}
+              </div>
+            )}
+          </div>
+
+          <DialogFooter className="flex gap-2 sm:gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              className="flex-1"
+              onClick={handleCreatePinCancel}
+              disabled={creatingPin}
+            >
+              Cancel
+            </Button>
+
+            <Button
+              type="button"
+              className="flex-1 bg-violet-600 text-white hover:bg-violet-700"
+              onClick={() => void handleCreatePin()}
+              disabled={
+                creatingPin ||
+                newPin.length !== 4 ||
+                confirmPin.length !== 4
+              }
+            >
+              {creatingPin ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Creating...
+                </>
+              ) : (
+                "Create PIN"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

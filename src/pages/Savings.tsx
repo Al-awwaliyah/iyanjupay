@@ -106,16 +106,40 @@ export default function SavingsPage({ onBack, onWalletChanged }: { onBack: () =>
       toast({ title: "Check withdrawal amount", description: `Enter an amount greater than ₦0 and no more than ${money(plan.balance)}.`, variant: "destructive" });
       return;
     }
+    if (!user?.id) {
+      toast({ title: "Sign in required", description: "Please sign in again before withdrawing savings.", variant: "destructive" });
+      return;
+    }
+
+    // Keep the same key for this user/plan/amount until the server confirms success.
+    // This also lets a retry after a timeout recover the original transaction.
+    const normalizedAmount = requested.toFixed(2);
+    const storageKey = `iyanjupay:savings-withdrawal:${user.id}:${plan.id}:${normalizedAmount}`;
+    let idempotencyKey: string;
+    try {
+      idempotencyKey = window.localStorage.getItem(storageKey) || crypto.randomUUID();
+      window.localStorage.setItem(storageKey, idempotencyKey);
+    } catch {
+      toast({ title: "Withdrawal not started", description: "Secure request protection is unavailable in this browser. Please enable site storage and try again.", variant: "destructive" });
+      return;
+    }
+
     setBusyPlan(plan.id);
     try {
-      const { error } = await (supabase as any).rpc("withdraw_savings", { _plan_id: plan.id, _amount: requested });
+      const { error } = await (supabase as any).rpc("withdraw_savings", {
+        _plan_id: plan.id,
+        _amount: requested,
+        _idempotency_key: idempotencyKey,
+      });
       if (error) throw error;
+      window.localStorage.removeItem(storageKey);
       toast({ title: "Savings withdrawn", description: `${money(requested)} has been returned to your IyanjuPay wallet.` });
       setWithdrawAmounts((old) => ({ ...old, [plan.id]: "" }));
       await load();
       await onWalletChanged?.();
     } catch (error: any) {
-      toast({ title: "Withdrawal failed", description: error?.message || "Please try again.", variant: "destructive" });
+      // Deliberately retain the key: a network timeout may have happened after commit.
+      toast({ title: "Withdrawal failed", description: error?.message || "Please try again. Retrying the same amount will safely reuse this request.", variant: "destructive" });
     } finally { setBusyPlan(null); }
   };
 

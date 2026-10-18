@@ -22,6 +22,7 @@ import {
   History,
   Loader2,
   Printer,
+  PiggyBank,
   Receipt,
   RefreshCw,
   Search,
@@ -94,6 +95,7 @@ type TransactionKind =
   | "funding"
   | "refund"
   | "fee"
+  | "savings"
   | "other";
 
 type Direction =
@@ -607,6 +609,10 @@ const determineKind = (
     return "fee";
   }
 
+  if (category === "savings" || rawType.startsWith("savings_") || combined.includes("savings contribution") || combined.includes("savings withdrawal")) {
+    return "savings";
+  }
+
   if (
     combined.includes("airtime") ||
     metadataService === "airtime"
@@ -753,6 +759,10 @@ const determineDirection = (
     !metadata.sender
   ) {
     return "outgoing";
+  }
+
+  if (kind === "savings") {
+    return normalizeText(transaction.transaction_type).includes("withdrawal") ? "incoming" : "outgoing";
   }
 
   if (
@@ -1295,6 +1305,11 @@ const normalizeTransaction = (
       "IyanjuPay transaction fee";
   }
 
+  if (kind === "savings") {
+    title = normalizeText(transaction.transaction_type).includes("withdrawal") ? "Savings Withdrawal" : "Savings Contribution";
+    subtitle = transaction.description || "IyanjuPay Savings";
+  }
+
   return {
     transaction,
     kind,
@@ -1428,6 +1443,10 @@ const TransactionIcon = ({
 
     case "fee":
       Icon = Receipt;
+      break;
+
+    case "savings":
+      Icon = PiggyBank;
       break;
   }
 

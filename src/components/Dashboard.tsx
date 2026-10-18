@@ -155,7 +155,6 @@ const COMING_SOON_SERVICES: BillService[] = [
   "airtime-cash",
   "tech-store",
   "esim",
-  "savings",
 ];
 
 /*
@@ -882,7 +881,7 @@ const Dashboard = ({
     { title: "Internet Service", description: "", icon: Wifi, color: "bg-indigo-500", type: "internet" as BillService, available: true },
     { title: "Tech Store", description: "Phones, laptops, gadgets & hardware", icon: Smartphone, color: "bg-cyan-500", type: "tech-store" as BillService, available: false },
     { title: "Internet eSIM", description: "International eSIM & travel data", icon: Wifi, color: "bg-sky-500", type: "esim" as BillService, available: false },
-    { title: "Savings", description: "", icon: PiggyBank, color: "bg-pink-500", type: "savings" as BillService, available: false },
+    { title: "Savings", description: "", icon: PiggyBank, color: "bg-pink-500", type: "savings" as BillService, available: true },
   ];
 
   /*
@@ -894,6 +893,18 @@ const Dashboard = ({
   const handleServiceClick = (
     service: (typeof services)[number]
   ) => {
+    // Savings uses the existing ServicePayment flow, but never calls Topupmate
+    // and remains available independently of the bill-payments setting.
+    if (service.type === "savings") {
+      if (isInspection) {
+        toast({ title: "Read-only customer view", description: "Savings cannot be managed while viewing a customer account." });
+        return;
+      }
+      setSelectedService({ title: service.title, type: service.type });
+      setCurrentPage("service-payment");
+      return;
+    }
+
     if (!allowBillPayments) {
       toast({
         title: "Bill payments temporarily unavailable",
@@ -1576,6 +1587,7 @@ const Dashboard = ({
           onPurchase={
             handlePurchase
           }
+          onWalletChanged={refreshWallet}
           onHistory={() => {
             setSelectedService(
               null

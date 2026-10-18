@@ -37,6 +37,7 @@ import { useToast } from "@/hooks/use-toast";
 import { getFunctionErrorMessage, getSafeErrorMessage } from "@/lib/errorHandling";
 import { supabase } from "@/integrations/supabase/client";
 import { useCustomerAppSettings } from "@/hooks/useCustomerAppSettings";
+import SavingsPage from "@/pages/Savings";
 import {
   authenticateWithBiometric,
   isBiometricEnabled,
@@ -50,6 +51,7 @@ interface ServicePaymentProps {
     amount: number,
     details: Record<string, any>
   ) => Promise<any>;
+  onWalletChanged?: () => Promise<unknown> | void;
 }
 
 type Biller = Record<string, any>;
@@ -1715,7 +1717,7 @@ function ServiceTransactionProcessing({
   );
 }
 
-export default function ServicePayment({
+function ServicePaymentBillFlow({
   service,
   onBack,
   onHistory,
@@ -1814,6 +1816,9 @@ export default function ServicePayment({
 
   const [quantity, setQuantity] =
     useState(1);
+
+  // Printed business name for Topupmate Recharge PIN generation.
+  const [rechargeBusinessName, setRechargeBusinessName] = useState("");
 
   // Gift cards are loaded as one complete catalogue; filtering is local.
   const [giftCategory, setGiftCategory] = useState("ALL");
@@ -2833,6 +2838,8 @@ export default function ServicePayment({
       // Topupmate /rechargepin/ source-of-truth request field.
       ...(isRechargeCard
         ? {
+            businessname: rechargeBusinessName.trim() || "IyanjuPay",
+            business_name: rechargeBusinessName.trim() || "IyanjuPay",
             plan:
               getRechargePinPlanCode(selectedItem) ||
               selectedItemCode,
@@ -4074,6 +4081,22 @@ export default function ServicePayment({
                     )}
                   </section>
 
+                  {isRechargeCard && (
+                    <section className="rounded-2xl border bg-white p-3 shadow-sm sm:p-4">
+                      <Label htmlFor="recharge-pin-business-name" className="text-xs font-bold text-gray-900">Business name printed on PIN</Label>
+                      <Input
+                        id="recharge-pin-business-name"
+                        value={rechargeBusinessName}
+                        onChange={(e) => setRechargeBusinessName(e.target.value.slice(0, 80))}
+                        placeholder="Enter your business name"
+                        maxLength={80}
+                        className="mt-2 h-10 rounded-xl text-sm"
+                        disabled={!!processingSession || verifyingPin}
+                      />
+                      <p className="mt-1.5 text-[10px] text-gray-500">This name is sent to Topupmate for printing where supported. Leave blank to use IyanjuPay.</p>
+                    </section>
+                  )}
+
                   <section className="rounded-2xl border bg-white p-3 shadow-sm sm:p-4">
                     <Label htmlFor="airtime-pin-quantity" className="text-xs font-bold text-gray-900">Quantity</Label>
                     <Input
@@ -4440,4 +4463,18 @@ export default function ServicePayment({
       </Dialog>
     </>
   );
+}
+
+
+/**
+ * The shared service entry point. Savings is a first-party wallet feature
+ * hosted by this page flow, not a Topupmate bill-payment service. Keep it
+ * outside the bill-payment component so its provider effects never execute.
+ */
+export default function ServicePayment(props: ServicePaymentProps) {
+  if (props.service?.type === "savings") {
+    return <SavingsPage onBack={props.onBack} onWalletChanged={props.onWalletChanged} />;
+  }
+
+  return <ServicePaymentBillFlow {...props} />;
 }

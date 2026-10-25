@@ -1020,13 +1020,6 @@ const Dashboard = ({
           .toUpperCase() || "NG",
     };
 
-    toast({
-      title:
-        "Processing payment",
-      description:
-        `Processing ${selectedService.title.toLowerCase()}...`,
-    });
-
     try {
       const {
         data,
@@ -1141,41 +1134,15 @@ const Dashboard = ({
       await refreshWallet();
       await loadDashboardStats();
 
-      const normalizedStatus =
-        String(
-          data?.status ?? ""
-        )
-          .trim()
-          .toLowerCase();
-
-      const isPending =
-        normalizedStatus ===
-          "pending" ||
-        normalizedStatus ===
-          "processing" ||
-        normalizedStatus ===
-          "order_received" ||
-        normalizedStatus ===
-          "order_processed" ||
-        normalizedStatus ===
-          "on_hold" ||
-        normalizedStatus ===
-          "300" ||
-        normalizedStatus ===
-          "399" ||
-        normalizedStatus ===
-          "201";
-
-      toast({
-        title: isPending
-          ? "Payment Processing"
-          : "Payment Successful",
-        description:
-          sanitizeMessage(data?.message, "") ||
-          (isPending
-            ? `${selectedService.title} payment is being processed.`
-            : `${selectedService.title} payment was completed successfully.`),
-      });
+      const normalizedStatus = String(data?.status ?? "").trim().toLowerCase();
+      if (["success", "successful", "completed", "complete"].includes(normalizedStatus)) {
+        toast({
+          title: "Payment Successful",
+          description:
+            sanitizeMessage(data?.message, "") ||
+            `${selectedService.title} payment was completed successfully.`,
+        });
+      }
 
       return data;
     } catch (error: any) {
@@ -1316,13 +1283,6 @@ const Dashboard = ({
       const idempotencyKey =
         `transfer_${user.id}_${Date.now()}_${crypto.randomUUID()}`;
 
-      toast({
-        title:
-          "Processing transfer",
-        description:
-          "Please wait while we send your money.",
-      });
-
       const {
         data,
         error,
@@ -1379,13 +1339,13 @@ const Dashboard = ({
 
       await loadDashboardStats();
 
-      toast({
-        title:
-          "Transfer Processing",
-        description:
-          getSafeErrorMessage(data) ||
-          `₦${amount.toLocaleString()} sent to ${details.recipient}.`,
-      });
+      const transferStatus = String(data?.status ?? "").trim().toLowerCase();
+      if (["success", "successful", "completed", "complete"].includes(transferStatus)) {
+        toast({
+          title: "Transfer Successful",
+          description: `₦${amount.toLocaleString()} sent to ${details.recipient}.`,
+        });
+      }
     } catch (error: any) {
       console.error(
         "Bank transfer failed:",

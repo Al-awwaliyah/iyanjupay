@@ -24,7 +24,16 @@ import {
 type O = Record<string, any>;
 
 const MARKUP = 3;
-const GIFT_CARD_MARKUP_USD = 1;
+// Gift-card provider sender prices are charged in the sender currency (NGN).
+// Apply a transparent 3% markup with a ₦500 minimum to cover FX/provider costs.
+const GIFT_CARD_MARKUP_PERCENT = 3;
+const GIFT_CARD_MIN_MARKUP_NGN = 500;
+const giftCardSellingPrice = (providerPriceNgn: number) => {
+  const base = Number(providerPriceNgn || 0);
+  if (!(base > 0)) return 0;
+  const markup = Math.max(GIFT_CARD_MIN_MARKUP_NGN, base * GIFT_CARD_MARKUP_PERCENT / 100);
+  return Math.ceil((base + markup) / 10) * 10;
+};
 
 const NO = new Set([
   "airtime",
@@ -1174,13 +1183,10 @@ function giftProduct(r: any) {
     providerPrice: firstPrice,
     provider_price_ngn: firstPrice,
     price: firstPrice,
-    markup_usd: GIFT_CARD_MARKUP_USD,
-    selling_price: firstPrice
-      ? Number((firstPrice + GIFT_CARD_MARKUP_USD).toFixed(2))
-      : 0,
-    selling_price_ngn: firstPrice
-      ? Number((firstPrice + GIFT_CARD_MARKUP_USD).toFixed(2))
-      : 0,
+    markup_percent: GIFT_CARD_MARKUP_PERCENT,
+    markup_minimum_ngn: GIFT_CARD_MIN_MARKUP_NGN,
+    selling_price: giftCardSellingPrice(firstPrice),
+    selling_price_ngn: giftCardSellingPrice(firstPrice),
     recipientCurrencyToSenderCurrencyExchangeRate: n(pick(r, [
       "recipientcurrencytosendercurrencyexchangerate",
       "recipient_currency_to_sender_currency_exchange_rate",
@@ -1518,9 +1524,7 @@ async function catalog(service: string, b: O) {
     ) => {
       if (!(recipient > 0) || !(senderPrice > 0)) return;
 
-      const customerPrice = Number(
-        (senderPrice + GIFT_CARD_MARKUP_USD).toFixed(2),
-      );
+      const customerPrice = giftCardSellingPrice(senderPrice);
 
       const effectiveFxRate =
         recipient > 0
@@ -2769,13 +2773,7 @@ async function purchase(
       );
     }
 
-    sAmt =
-      Number(
-        (
-          pAmt +
-          GIFT_CARD_MARKUP_USD
-        ).toFixed(2),
-      ) * units;
+    sAmt = giftCardSellingPrice(pAmt) * units;
   } else if (
     service === "internet" ||
     service === "smile"

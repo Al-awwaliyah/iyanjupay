@@ -1077,84 +1077,9 @@ Deno.serve(async (req) => {
       debitTransaction.id;
 
 
-    // ========================================================
-    // CREATE PENDING NOTIFICATION
-    // ========================================================
-
-    await createTransactionNotification({
-      supabase,
-
-      userId:
-        user.id,
-
-      transactionId:
-
-        transactionId,
-
-      type:
-        "transaction_pending",
-
-      title:
-        "Transfer initiated",
-
-      message:
-        `Your transfer of ₦${amount.toLocaleString(
-          "en-NG",
-          {
-            minimumFractionDigits: 2,
-            maximumFractionDigits: 2,
-          },
-        )} to ${safeBeneficiaryName} has been initiated and is being processed.`,
-
-      amount:
-        amount,
-
-      metadata: {
-        transaction_type:
-          "bank_transfer",
-
-        transaction_category:
-          "transfer",
-
-        direction:
-          "outgoing",
-
-        reference,
-
-        account_number:
-          accountNumber,
-
-        account_number_masked:
-          maskAccountNumber(
-            accountNumber,
-          ),
-
-        account_bank:
-          accountBank,
-
-        beneficiary_name:
-          safeBeneficiaryName,
-
-        transfer_amount:
-          amount,
-
-        fee:
-          iyanjupayFee,
-
-        electronic_fee:
-          electronicFee,
-
-        total_charged:
-          totalCharged,
-
-        currency:
-          "NGN",
-
-        status:
-          "pending",
-      },
-    });
-
+    // Do not emit a transaction_pending notification just because the transfer
+    // was initiated. The transaction itself remains pending until the provider
+    // webhook/status check confirms success or failure.
 
     // ========================================================
     // INITIATE FLUTTERWAVE TRANSFER

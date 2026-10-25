@@ -374,21 +374,10 @@ const TransactionProcessingPage = (props: TransactionProcessingPageProps) => {
       setStatus(finalStatus);
       setSubmitting(false);
 
-      if (finalStatus === "success") {
-        toast({
-          title: isBill ? `${billServiceName} Successful` : "Transfer Successful",
-          description: `Your ${isBill ? billServiceName.toLowerCase() : "transfer"} was completed successfully.`,
-        });
-        return;
-      }
-
-      if (finalStatus === "pending") {
-        toast({
-          title: isBill ? `${billServiceName} Pending` : "Transfer Pending",
-          description: `Your ${isBill ? billServiceName.toLowerCase() : "transfer"} is awaiting final confirmation.`,
-        });
-        return;
-      }
+      // Transaction progress and success are shown in this page's status UI.
+      // Do not emit transaction toasts here: an "initiated/processing" toast
+      // is misleading and must not be used as a transaction status signal.
+      if (finalStatus === "success" || finalStatus === "pending") return;
 
       setErrorMessage(safeCustomerFailure(finalResponse.error ?? finalResponse.message));
     } catch (error: any) {

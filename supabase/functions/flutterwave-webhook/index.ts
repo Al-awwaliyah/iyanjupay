@@ -165,6 +165,61 @@ function amountsMatch(
   return Math.abs(a - b) < 0.01;
 }
 
+
+async function createTransferNotification(
+  supabase: any,
+  params: {
+    userId: string;
+    transactionId: string;
+    type: "transaction_success" | "transaction_failed";
+    title: string;
+    message: string;
+    amount: number;
+    metadata: Record<string, unknown>;
+  },
+) {
+  try {
+    const { data: existing, error: lookupError } = await supabase
+      .from("notifications")
+      .select("id")
+      .eq("user_id", params.userId)
+      .eq("transaction_id", params.transactionId)
+      .eq("type", params.type)
+      .limit(1)
+      .maybeSingle();
+
+    if (lookupError) {
+      console.error("Transfer notification duplicate check failed:", lookupError);
+      return false;
+    }
+
+    if (existing?.id) return true;
+
+    const { error: insertError } = await supabase
+      .from("notifications")
+      .insert({
+        user_id: params.userId,
+        transaction_id: params.transactionId,
+        type: params.type,
+        title: params.title,
+        message: params.message,
+        amount: params.amount,
+        is_read: false,
+        metadata: params.metadata,
+      });
+
+    if (insertError) {
+      console.error("Transfer notification insert failed:", insertError);
+      return false;
+    }
+
+    return true;
+  } catch (error) {
+    console.error("Unexpected transfer notification error:", error);
+    return false;
+  }
+}
+
 /*
  * ============================================================
  * MAIN WEBHOOK
@@ -782,6 +837,38 @@ async function handleTransferWebhook(
       ).toLowerCase() ===
       "successful"
     ) {
+      // Repair a missing notification if an earlier webhook attempt
+      // completed the transaction update but notification delivery failed.
+      const completedBeneficiary = String(
+        metadata?.beneficiary_name ?? "Bank recipient",
+      );
+      const completedTotal = Number(
+        metadata?.total_charged ?? totalCharged,
+      );
+
+      await createTransferNotification(supabase, {
+        userId: transaction.user_id,
+        transactionId: transaction.id,
+        type: "transaction_success",
+        title: "Bank transfer successful",
+        message: `Your transfer of ₦${providerTransferAmount.toLocaleString(
+          "en-NG",
+          { minimumFractionDigits: 2, maximumFractionDigits: 2 },
+        )} to ${completedBeneficiary} was successful.`,
+        amount: completedTotal,
+        metadata: {
+          reference: transaction.reference_number ?? verifiedReference ?? transferReference,
+          transfer_id: transferId,
+          transfer_amount: providerTransferAmount,
+          total_charged: completedTotal,
+          beneficiary_name: completedBeneficiary,
+          account_number_masked: String(metadata?.account_number_masked ?? ""),
+          account_bank: String(metadata?.account_bank ?? ""),
+          status: "successful",
+          direction: "outgoing",
+        },
+      });
+
       return jsonResponse({
         success: true,
         already_processed: true,
@@ -1138,6 +1225,32 @@ async function handleTransferWebhook(
       throw updateError;
     }
 
+    // Notify only after Flutterwave verification and the successful
+    // transaction status update. The insert is idempotent, and its
+    // database trigger fans the notification out to registered devices.
+    await createTransferNotification(supabase, {
+      userId: transaction.user_id,
+      transactionId: transaction.id,
+      type: "transaction_success",
+      title: "Bank transfer successful",
+      message: `Your transfer of ₦${providerTransferAmount.toLocaleString(
+        "en-NG",
+        { minimumFractionDigits: 2, maximumFractionDigits: 2 },
+      )} to ${beneficiaryName} was successful.`,
+      amount: finalTotalCharged,
+      metadata: {
+        reference,
+        transfer_id: transferId,
+        transfer_amount: providerTransferAmount,
+        total_charged: finalTotalCharged,
+        beneficiary_name: beneficiaryName,
+        account_number_masked: maskAccountNumber(accountNumber),
+        account_bank: accountBank,
+        status: "successful",
+        direction: "outgoing",
+      },
+    });
+
     return jsonResponse({
       success: true,
       status: "successful",
@@ -1201,6 +1314,28 @@ async function handleTransferWebhook(
             transaction.id,
           );
       }
+
+      await createTransferNotification(supabase, {
+        userId: transaction.user_id,
+        transactionId: transaction.id,
+        type: "transaction_failed",
+        title: "Bank transfer failed — refund completed",
+        message: `Your transfer to ${String(existingMetadata?.beneficiary_name ?? "the recipient")} failed. ₦${totalCharged.toLocaleString(
+          "en-NG",
+          { minimumFractionDigits: 2, maximumFractionDigits: 2 },
+        )} has been refunded to your wallet.`,
+        amount: totalCharged,
+        metadata: {
+          reference: transaction.reference_number ?? verifiedReference ?? transferReference,
+          transfer_id: transferId,
+          transfer_amount: providerTransferAmount,
+          refund_amount: totalCharged,
+          beneficiary_name: String(existingMetadata?.beneficiary_name ?? "Bank recipient"),
+          status: "failed",
+          refunded: true,
+          direction: "outgoing",
+        },
+      });
 
       return jsonResponse({
         success: true,
@@ -1489,6 +1624,31 @@ async function handleTransferWebhook(
           totalCharged,
       });
     }
+
+    await createTransferNotification(supabase, {
+      userId: transaction.user_id,
+      transactionId: transaction.id,
+      type: "transaction_failed",
+      title: "Bank transfer failed — refund completed",
+      message: `Your transfer of ₦${providerTransferAmount.toLocaleString(
+        "en-NG",
+        { minimumFractionDigits: 2, maximumFractionDigits: 2 },
+      )} to ${String(existingMetadata?.beneficiary_name ?? "the recipient")} failed. ₦${totalCharged.toLocaleString(
+        "en-NG",
+        { minimumFractionDigits: 2, maximumFractionDigits: 2 },
+      )} has been refunded to your wallet.`,
+      amount: totalCharged,
+      metadata: {
+        reference: transaction.reference_number ?? verifiedReference ?? transferReference,
+        transfer_id: transferId,
+        transfer_amount: providerTransferAmount,
+        refund_amount: totalCharged,
+        beneficiary_name: String(existingMetadata?.beneficiary_name ?? "Bank recipient"),
+        status: "failed",
+        refunded: true,
+        direction: "outgoing",
+      },
+    });
 
     return jsonResponse({
       success: true,

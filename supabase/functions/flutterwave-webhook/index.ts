@@ -3075,6 +3075,11 @@ async function handleDepositWebhook(
           transactionId,
           verified,
           webhookData: data,
+          webhookMetaData:
+            payload?.meta_data ??
+            payload?.metaData ??
+            data?.meta_data ??
+            data?.metaData,
         },
       );
 
@@ -3115,12 +3120,14 @@ async function processVerifiedFunding(
     transactionId: string;
     verified: any;
     webhookData: any;
+    webhookMetaData?: any;
   },
 ): Promise<Record<string, unknown>> {
   const {
     transactionId,
     verified,
     webhookData,
+    webhookMetaData,
   } = params;
 
   const data =
@@ -3426,43 +3433,64 @@ async function processVerifiedFunding(
    * ==========================================================
    */
 
-  const senderName =
-    String(
-      data?.customer?.name ??
-        data?.customer?.full_name ??
-        data?.sender_name ??
-        data?.sender?.name ??
-        data?.bank_transfer?.sender_name ??
-        verified?.customer?.name ??
-        verified?.customer?.full_name ??
-        verified?.sender_name ??
-        verified?.sender?.name ??
-        "Bank transfer",
-    ).trim();
+  // Flutterwave's NGN virtual-account webhook places the payer's
+  // originating-bank details in the TOP-LEVEL `meta_data` object,
+  // not in `data.customer` (which describes the virtual-account
+  // customer). Never use the IyanjuPay receiving account as sender data.
+  const originator =
+    webhookMetaData ??
+    data?.meta_data ??
+    data?.metaData ??
+    verified?.meta_data ??
+    verified?.metaData ??
+    data?.meta ??
+    verified?.meta ??
+    {};
 
-  const senderAccount =
-    String(
-      data?.customer?.account_number ??
-        data?.sender_account_number ??
-        data?.sender?.account_number ??
-        data?.bank_transfer?.account_number ??
-        verified?.customer?.account_number ??
-        verified?.sender_account_number ??
-        verified?.sender?.account_number ??
-        "",
-    ).trim();
+  const senderName = String(
+    originator?.originatorname ??
+      originator?.originator_name ??
+      data?.sender_name ??
+      data?.sender?.name ??
+      data?.bank_transfer?.sender_name ??
+      verified?.sender_name ??
+      verified?.sender?.name ??
+      "",
+  ).trim();
 
-  const senderBank =
-    String(
-      data?.customer?.account_bank ??
-        data?.sender_bank ??
-        data?.sender?.bank_name ??
-        data?.bank_transfer?.bank_name ??
-        verified?.customer?.account_bank ??
-        verified?.sender_bank ??
-        verified?.sender?.bank_name ??
-        "Bank transfer",
-    ).trim();
+  // Flutterwave commonly sends this value already masked (for example,
+  // 123*******90). Preserve that masking; if an unmasked number is ever
+  // supplied, mask it before persisting it in transaction metadata.
+  const rawSenderAccount = String(
+    originator?.originatoraccountnumber ??
+      originator?.originator_account_number ??
+      data?.originatoraccountnumber ??
+      data?.sender_account_number ??
+      data?.sender?.account_number ??
+      data?.bank_transfer?.account_number ??
+      verified?.originatoraccountnumber ??
+      verified?.sender_account_number ??
+      verified?.sender?.account_number ??
+      "",
+  ).trim();
+
+  const senderAccount = rawSenderAccount
+    ? /[*xX•]/.test(rawSenderAccount)
+      ? rawSenderAccount
+      : maskAccountNumber(rawSenderAccount)
+    : "";
+
+  const senderBank = String(
+    originator?.bankname ??
+      originator?.bank_name ??
+      originator?.bankName ??
+      data?.sender_bank ??
+      data?.sender?.bank_name ??
+      data?.bank_transfer?.bank_name ??
+      verified?.sender_bank ??
+      verified?.sender?.bank_name ??
+      "",
+  ).trim();
 
   /*
    * ==========================================================
@@ -3765,7 +3793,7 @@ async function processVerifiedFunding(
         fundingReference,
 
       p_description:
-        `Transfer from ${senderName}`,
+        `Transfer from ${senderName || "bank transfer"}`,
 
       p_provider:
         "flutterwave",
@@ -3809,7 +3837,7 @@ async function processVerifiedFunding(
         "CREDIT",
 
       display_title:
-        `Transfer from ${senderName}`,
+        `Transfer from ${senderName || "bank transfer"}`,
 
       counterparty_type:
         "bank_account",
@@ -3827,10 +3855,12 @@ async function processVerifiedFunding(
         senderAccount,
 
       sender_account_masked:
-        maskAccountNumber(
-          senderAccount,
-        ),
+        senderAccount,
 
+      sender_bank_name:
+        senderBank,
+
+      // Compatibility aliases used by older transaction-history views.
       account_bank:
         senderBank,
 
@@ -3838,9 +3868,7 @@ async function processVerifiedFunding(
         senderAccount,
 
       account_number_masked:
-        maskAccountNumber(
-          senderAccount,
-        ),
+        senderAccount,
 
       transfer_amount:
         verifiedAmount,
@@ -3894,12 +3922,6 @@ async function processVerifiedFunding(
 
       virtual_account_number:
         virtualAccount.account_number,
-
-      virtual_account_bank_name:
-        virtualAccount.bank_name,
-
-      virtual_account_account_name:
-        virtualAccount.account_name,
 
       virtual_account_id:
         virtualAccount.id,

@@ -255,6 +255,24 @@ const normalizeText = (
     .replace(/-/g, "_");
 };
 
+const maskSenderAccountForDisplay = (value: unknown): string => {
+  const raw = String(value ?? "").trim();
+  if (!raw) return "";
+
+  // Flutterwave may already mask the middle digits. Preserve its mask
+  // rather than stripping the mask and accidentally displaying wrong digits.
+  if (/[*xX•]/.test(raw)) {
+    const trailingDigits = raw.match(/(\d{1,4})\s*$/)?.[1] ?? "";
+    return trailingDigits
+      ? `••••••${trailingDigits}`
+      : "••••••";
+  }
+
+  const digits = raw.replace(/\D/g, "");
+  if (!digits) return "";
+  return `••••••${digits.slice(-4)}`;
+};
+
 const stringValue = (
   ...values: unknown[]
 ): string => {
@@ -3963,12 +3981,8 @@ const TransactionHistory = ({
                       />
 
                       <DetailRow
-                        label="Sender bank"
+                        label="Bank"
                         value={stringValue(
-                          selectedTransaction
-                            .transaction
-                            .metadata
-                            ?.sender_bank,
                           selectedTransaction
                             .transaction
                             .metadata
@@ -3976,51 +3990,40 @@ const TransactionHistory = ({
                           selectedTransaction
                             .transaction
                             .metadata
-                            ?.bank_name,
-                          "Bank transfer"
+                            ?.sender_bank,
+                          selectedTransaction
+                            .transaction
+                            .metadata
+                            ?.bank_name
                         )}
                       />
 
                       <DetailRow
-                        label="Sender account"
-                        value={(() => {
-                          const senderAccount = stringValue(
-                            selectedTransaction.transaction.metadata?.sender_account
-                          );
-                          return senderAccount
-                            ? `••••••${senderAccount.slice(-4)}`
-                            : "";
-                        })()}
-                        mono
-                      />
-
-                      <DetailRow
-                        label="Deposit bank"
+                        label="Account name"
                         value={stringValue(
-                          selectedTransaction.transaction.metadata?.virtual_account_bank_name,
-                          selectedTransaction.transaction.metadata?.deposit_bank_name,
-                          selectedTransaction.transaction.metadata?.virtualAccountBankName,
-                          selectedTransaction.transaction.metadata?.bank_name,
-                          "Dedicated bank account"
+                          selectedTransaction
+                            .transaction
+                            .metadata
+                            ?.sender_name,
+                          selectedTransaction
+                            .transaction
+                            .metadata
+                            ?.counterparty_name
                         )}
                       />
 
                       <DetailRow
-                        label="Deposit account name"
-                        value={stringValue(
-                          selectedTransaction.transaction.metadata?.virtual_account_account_name,
-                          selectedTransaction.transaction.metadata?.deposit_account_name,
-                          selectedTransaction.transaction.metadata?.virtualAccountAccountName,
-                          selectedTransaction.transaction.metadata?.account_name,
-                          "Account name unavailable"
+                        label="Account number"
+                        value={maskSenderAccountForDisplay(
+                          selectedTransaction
+                            .transaction
+                            .metadata
+                            ?.sender_account_masked ??
+                          selectedTransaction
+                            .transaction
+                            .metadata
+                            ?.sender_account
                         )}
-                      />
-
-                      <DetailRow
-                        label="Deposit account number"
-                        value={selectedTransaction.virtualAccountNumber
-                          ? `••••••${selectedTransaction.virtualAccountNumber.slice(-4)}`
-                          : "Unavailable"}
                         mono
                       />
 

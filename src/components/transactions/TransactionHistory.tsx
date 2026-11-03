@@ -3963,7 +3963,7 @@ const TransactionHistory = ({
                       />
 
                       <DetailRow
-                        label="Bank"
+                        label="Sender bank"
                         value={stringValue(
                           selectedTransaction
                             .transaction
@@ -3983,28 +3983,45 @@ const TransactionHistory = ({
 
                       <DetailRow
                         label="Sender account"
-                        value={stringValue(
-                          selectedTransaction
-                            .transaction
-                            .metadata
-                            ?.sender_account
-                        )}
+                        value={(() => {
+                          const senderAccount = stringValue(
+                            selectedTransaction.transaction.metadata?.sender_account
+                          );
+                          return senderAccount
+                            ? `••••••${senderAccount.slice(-4)}`
+                            : "";
+                        })()}
                         mono
                       />
 
                       <DetailRow
-                        label="Virtual account"
-                        value={
-                          selectedTransaction.virtualAccountNumber
-                        }
+                        label="Deposit bank"
+                        value={stringValue(
+                          selectedTransaction.transaction.metadata?.virtual_account_bank_name,
+                          selectedTransaction.transaction.metadata?.deposit_bank_name,
+                          selectedTransaction.transaction.metadata?.virtualAccountBankName,
+                          selectedTransaction.transaction.metadata?.bank_name,
+                          "Dedicated bank account"
+                        )}
+                      />
+
+                      <DetailRow
+                        label="Deposit account name"
+                        value={stringValue(
+                          selectedTransaction.transaction.metadata?.virtual_account_account_name,
+                          selectedTransaction.transaction.metadata?.deposit_account_name,
+                          selectedTransaction.transaction.metadata?.virtualAccountAccountName,
+                          selectedTransaction.transaction.metadata?.account_name,
+                          "Account name unavailable"
+                        )}
+                      />
+
+                      <DetailRow
+                        label="Deposit account number"
+                        value={selectedTransaction.virtualAccountNumber
+                          ? `••••••${selectedTransaction.virtualAccountNumber.slice(-4)}`
+                          : "Unavailable"}
                         mono
-                        copyable
-                        onCopy={() =>
-                          copyToClipboard(
-                            selectedTransaction.virtualAccountNumber,
-                            "Virtual account number"
-                          )
-                        }
                       />
 
                       <DetailRow

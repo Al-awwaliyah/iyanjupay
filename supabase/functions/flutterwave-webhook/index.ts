@@ -3895,6 +3895,12 @@ async function processVerifiedFunding(
       virtual_account_number:
         virtualAccount.account_number,
 
+      virtual_account_bank_name:
+        virtualAccount.bank_name,
+
+      virtual_account_account_name:
+        virtualAccount.account_name,
+
       virtual_account_id:
         virtualAccount.id,
 

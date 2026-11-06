@@ -17,27 +17,46 @@ jobs:
   process-queue:
     runs-on: ubuntu-latest
     timeout-minutes: 5
+
     steps:
       - name: Validate required secrets
         shell: bash
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
           FLW_WORKER_SECRET: ${{ secrets.FLW_WORKER_SECRET }}
         run: |
           set -euo pipefail
-          test -n "$SUPABASE_URL" || { echo "Missing GitHub secret: SUPABASE_URL"; exit 1; }
-          test -n "$FLW_WORKER_SECRET" || { echo "Missing GitHub secret: FLW_WORKER_SECRET"; exit 1; }
+
+          test -n "$SUPABASE_URL" || {
+            echo "Missing GitHub secret: SUPABASE_URL"
+            exit 1
+          }
+
+          test -n "$SUPABASE_ANON_KEY" || {
+            echo "Missing GitHub secret: SUPABASE_ANON_KEY"
+            exit 1
+          }
+
+          test -n "$FLW_WORKER_SECRET" || {
+            echo "Missing GitHub secret: FLW_WORKER_SECRET"
+            exit 1
+          }
 
       - name: Process queued Flutterwave events
         shell: bash
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
           FLW_WORKER_SECRET: ${{ secrets.FLW_WORKER_SECRET }}
         run: |
           set -euo pipefail
+
           curl --fail-with-body --silent --show-error \
             --request POST \
             "${SUPABASE_URL%/}/functions/v1/flutterwave-webhook-worker" \
             --header "Content-Type: application/json" \
+            --header "apikey: ${SUPABASE_ANON_KEY}" \
+            --header "Authorization: Bearer ${SUPABASE_ANON_KEY}" \
             --header "x-worker-secret: ${FLW_WORKER_SECRET}" \
             --data '{"batch_size":5}'

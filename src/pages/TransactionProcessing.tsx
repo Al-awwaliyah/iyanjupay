@@ -237,7 +237,7 @@ const TransactionProcessingPage = (props: TransactionProcessingPageProps) => {
   const transactionId = result?.transaction_id || result?.transactionId || result?.data?.transaction_id || result?.credit_transaction_id || result?.bill_payment_id || result?.billPaymentId || "";
 
   const checkBankTransferStatus = useCallback(async (transactionIdToCheck: string, initialResponse: TransactionResult): Promise<TransactionResult> => {
-    await new Promise<void>(resolve => window.setTimeout(resolve, 8000));
+    
     if (!mountedRef.current || !transactionIdToCheck) return initialResponse;
 
     try {

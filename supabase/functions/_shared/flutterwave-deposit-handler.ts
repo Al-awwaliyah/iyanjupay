@@ -718,6 +718,12 @@ async function processVerifiedFunding(
   const senderName = String(
     originator?.originatorname ??
       originator?.originator_name ??
+      originator?.sender_name ??
+      originator?.senderName ??
+      originator?.originator?.originatorname ??
+      originator?.originator?.originator_name ??
+      data?.originatorname ??
+      data?.originator_name ??
       data?.sender_name ??
       data?.sender?.name ??
       data?.bank_transfer?.sender_name ??
@@ -732,6 +738,9 @@ async function processVerifiedFunding(
   const rawSenderAccount = String(
     originator?.originatoraccountnumber ??
       originator?.originator_account_number ??
+      originator?.sender_account_number ??
+      originator?.senderAccountNumber ??
+      originator?.originator?.originatoraccountnumber ??
       data?.originatoraccountnumber ??
       data?.sender_account_number ??
       data?.sender?.account_number ??
@@ -752,6 +761,11 @@ async function processVerifiedFunding(
     originator?.bankname ??
       originator?.bank_name ??
       originator?.bankName ??
+      originator?.sender_bank_name ??
+      originator?.sender_bank ??
+      originator?.originator?.bankname ??
+      originator?.originator?.bank_name ??
+      data?.sender_bank_name ??
       data?.sender_bank ??
       data?.sender?.bank_name ??
       data?.bank_transfer?.bank_name ??

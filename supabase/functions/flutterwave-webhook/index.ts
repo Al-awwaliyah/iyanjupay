@@ -73,13 +73,26 @@ function getSubjectKey(payload: any, eventType: string): string | null {
 
 function requestWorkerInBackground() {
   const baseUrl = Deno.env.get("SUPABASE_URL");
+  const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
   const workerSecret = Deno.env.get("FLW_WORKER_SECRET");
-  if (!baseUrl || !workerSecret) return;
+
+  // Supabase's Edge Function gateway validates JWT/API credentials
+  // before the worker code can check x-worker-secret. Send the anon
+  // key only as the gateway credential; the worker still requires
+  // the separate server-only FLW_WORKER_SECRET before processing.
+  if (!baseUrl || !anonKey || !workerSecret) {
+    console.error(
+      "Cannot invoke Flutterwave worker: SUPABASE_URL, SUPABASE_ANON_KEY, or FLW_WORKER_SECRET is missing",
+    );
+    return;
+  }
 
   const task = fetch(`${baseUrl.replace(/\/$/, "")}/functions/v1/flutterwave-webhook-worker`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
+      "apikey": anonKey,
+      "Authorization": `Bearer ${anonKey}`,
       "x-worker-secret": workerSecret,
     },
     body: JSON.stringify({ batch_size: 3 }),

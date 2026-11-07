@@ -62,6 +62,31 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 
+// Resolve Flutterwave/NIP bank codes to customer-facing bank names.
+const NIGERIAN_BANK_CODES: Record<string, string> = {
+  "044": "Access Bank", "050": "Ecobank Nigeria", "057": "Zenith Bank",
+  "058": "Guaranty Trust Bank", "033": "United Bank for Africa",
+  "011": "First Bank of Nigeria", "070": "Fidelity Bank",
+  "032": "Union Bank of Nigeria", "035": "Wema Bank",
+  "214": "First City Monument Bank", "076": "Polaris Bank",
+  "082": "Keystone Bank", "221": "Stanbic IBTC Bank",
+  "232": "Sterling Bank", "215": "Unity Bank",
+  "068": "Standard Chartered Bank", "023": "Citibank Nigeria",
+  "301": "Jaiz Bank", "101": "Providus Bank", "103": "Globus Bank",
+  "100": "SunTrust Bank", "102": "Titan Trust Bank",
+  "104": "Parallex Bank", "110": "VFD Microfinance Bank",
+  "100004": "OPay", "100033": "PalmPay",
+  "090405": "Moniepoint Microfinance Bank", "090175": "Rubies MFB",
+  "090110": "VFD Microfinance Bank", "090267": "Kuda Microfinance Bank",
+};
+
+function resolveNigerianBankName(nameOrCode: string): string {
+  const value = String(nameOrCode ?? "").trim();
+  if (!value) return "";
+  const normalized = value.replace(/\\s+/g, "");
+  return NIGERIAN_BANK_CODES[normalized] || value;
+}
+
 /* ================================================================
    TYPES
    ================================================================ */
@@ -893,6 +918,9 @@ const normalizeTransaction = (
 
   const bankCode =
     stringValue(
+      metadata.recipient_bank_code,
+      metadata.recipientBankCode,
+      metadata.beneficiary_bank_code,
       metadata.account_bank,
       metadata.bank_code,
       metadata.bankCode,
@@ -909,6 +937,12 @@ const normalizeTransaction = (
     stringValue(
       metadata.bank_name,
       metadata.bankName,
+      metadata.recipient_bank_name,
+      metadata.beneficiary_bank_name,
+      metadata.sender_bank,
+      metadata.sender_bank_name,
+      getNested(metadata, [["sender", "bank"]]),
+      getNested(metadata, [["sender", "bank_name"]]),
       getNested(metadata, [
         [
           "flutterwave_response",
@@ -924,6 +958,8 @@ const normalizeTransaction = (
         ],
       ])
     );
+
+  const resolvedBankName = bankName || (bankCode ? resolveNigerianBankName(bankCode) : "");
 
   /* --------------------------------------------------------------
      INTERNAL WALLET TRANSFER
@@ -949,7 +985,11 @@ const normalizeTransaction = (
       sender.name,
       sender.full_name,
       sender.fullName,
-      metadata.sender_name
+      metadata.sender_name,
+      metadata.counterparty_name,
+      getNested(metadata, [["sender", "name"]]),
+      getNested(metadata, [["originator", "originatorname"]]),
+      getNested(metadata, [["originator", "originator_name"]])
     );
 
   const walletId =
@@ -1203,10 +1243,7 @@ const normalizeTransaction = (
           }`;
 
     subtitle =
-      bankName ||
-      (bankCode
-        ? `Bank code ${bankCode}`
-        : "Bank transfer");
+      resolvedBankName || "Bank transfer";
   }
 
   if (
@@ -1296,9 +1333,10 @@ const normalizeTransaction = (
 
     subtitle =
       stringValue(
+        metadata.sender_bank_name,
         metadata.sender_bank,
         metadata.bank_name,
-        metadata.sender_bank_name,
+        bankCode ? resolveNigerianBankName(bankCode) : "",
         "Bank transfer"
       );
   }
@@ -1341,7 +1379,7 @@ const normalizeTransaction = (
     accountNumber,
     accountName,
     bankCode,
-    bankName,
+    bankName: resolvedBankName,
     walletId,
     virtualAccountNumber,
     meterNumber,
@@ -3557,9 +3595,9 @@ const TransactionHistory = ({
                             : "Transfer to"
                         }
                         value={
-                          selectedTransaction.accountName ||
-                          selectedTransaction.recipientName ||
-                          selectedTransaction.senderName
+                          selectedTransaction.direction === "incoming"
+                            ? (selectedTransaction.senderName || selectedTransaction.accountName)
+                            : (selectedTransaction.accountName || selectedTransaction.recipientName || selectedTransaction.senderName)
                         }
                       />
 
@@ -3567,7 +3605,7 @@ const TransactionHistory = ({
                         label="Bank"
                         value={
                           selectedTransaction.bankName ||
-                          selectedTransaction.bankCode
+                          (selectedTransaction.bankCode ? resolveNigerianBankName(selectedTransaction.bankCode) : "")
                         }
                       />
 

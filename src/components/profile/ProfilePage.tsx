@@ -46,13 +46,6 @@ import {
   Loader2,
   Mail,
   Lock,
-  UserRound,
-  ShieldCheck,
-  LockKeyhole,
-  Bell,
-  Palette,
-  CircleHelp,
-  ChevronRight,
 } from "lucide-react";
 
 import { useForm } from "react-hook-form";
@@ -89,8 +82,6 @@ interface KycState {
 
 interface ProfilePageProps {
   onBack: () => void;
-  onNavigate?: (page: "security" | "support" | "customer-service") => void;
-  onAppearance?: () => void;
   inspectionUserId?: string;
   inspectionUserEmail?: string | null;
   inspectionMode?: boolean;
@@ -102,8 +93,6 @@ interface ProfilePageProps {
 
 const ProfilePage = ({
   onBack,
-  onNavigate,
-  onAppearance,
   inspectionUserId,
   inspectionUserEmail,
   inspectionMode = false,
@@ -118,8 +107,6 @@ const ProfilePage = ({
 
   const [loading, setLoading] =
     useState(false);
-
-  const [showDetails, setShowDetails] = useState(false);
 
   const [kyc, setKyc] =
     useState<KycState | null>(null);
@@ -961,7 +948,7 @@ const ProfilePage = ({
           "Verified (₦1,000,000 daily transfer limit)",
 
         color:
-          "text-violet-100",
+          "text-blue-100",
       };
 
     case 3:
@@ -970,7 +957,7 @@ const ProfilePage = ({
           "Premium (₦5,000,000 daily transfer limit)",
 
         color:
-          "text-violet-100",
+          "text-blue-100",
       };
 
     default:
@@ -979,7 +966,7 @@ const ProfilePage = ({
           "Basic (₦300,000 daily transfer limit)",
 
         color:
-          "text-violet-100",
+          "text-blue-100",
       };
   }
 };
@@ -996,97 +983,32 @@ const ProfilePage = ({
 
   return (
     <>
-      {!showDetails ? (
-        <div className="iyanjupay-dashboard min-h-screen bg-[#fbfaff] px-4 pb-28 pt-7 text-slate-900">
-          <div className="mx-auto w-full max-w-md">
-            <header className="mb-7 text-center">
-              <h1 className="text-[21px] font-extrabold tracking-tight text-[#10103d]">My Profile</h1>
-            </header>
-
-            <section className="mb-8 flex flex-col items-center text-center">
-              <div className="relative mb-3 h-24 w-24 overflow-hidden rounded-full border-[5px] border-white bg-gradient-to-br from-violet-100 to-indigo-100 shadow-md">
-                {((user as any)?.user_metadata?.avatar_url || (user as any)?.user_metadata?.picture) ? (
-                  <img src={(user as any).user_metadata.avatar_url || (user as any).user_metadata.picture} alt="Profile" className="h-full w-full object-cover" />
-                ) : (
-                  <div className="flex h-full w-full items-center justify-center text-3xl font-bold text-violet-700">
-                    {(form.watch("full_name")?.trim()?.charAt(0) || user?.email?.charAt(0) || "I").toUpperCase()}
-                  </div>
-                )}
-                <span className="absolute bottom-0 right-0 flex h-6 w-6 items-center justify-center rounded-full border-2 border-white bg-sky-500 text-white">
-                  <CheckCircle className="h-3.5 w-3.5" />
-                </span>
-              </div>
-              <h2 className="text-[21px] font-extrabold tracking-tight text-[#10103d]">
-                {form.watch("full_name") || user?.user_metadata?.full_name || user?.email?.split("@")[0] || "IyanjuPay User"}
-              </h2>
-              <p className="mt-1 text-[14px] text-slate-500">{user?.email || "Email unavailable"}</p>
-              <span className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-3 py-1 text-xs font-bold text-emerald-700">
-                <ShieldCheck className="h-3.5 w-3.5" />
-                {kycLoading ? "Checking status" : kyc?.verified ? "Verified" : "Account"}
-              </span>
-            </section>
-
-            <nav aria-label="Profile settings" className="divide-y divide-violet-100/80">
-              {([
-                { label: "Account Details", icon: UserRound, action: () => setShowDetails(true) },
-                { label: "KYC Verification", icon: ShieldCheck, action: () => setShowDetails(true) },
-                { label: "Security & Privacy", icon: LockKeyhole, action: () => onNavigate?.("security") },
-                { label: "Notifications", icon: Bell, action: () => onNavigate?.("security") },
-                { label: "Appearance", icon: Palette, action: () => onAppearance?.() },
-                { label: "Help & Support", icon: CircleHelp, action: () => onNavigate?.("support") },
-              ] as const).map(({ label, icon: Icon, action }) => (
-                <button key={label} type="button" onClick={action} className="flex min-h-[66px] w-full items-center gap-4 px-2 text-left transition-colors hover:bg-violet-50/70 active:bg-violet-100/70">
-                  <Icon className="h-[21px] w-[21px] shrink-0 text-[#15134f]" strokeWidth={2.4} />
-                  <span className="flex-1 text-[15px] font-semibold tracking-tight text-[#171642]">{label}</span>
-                  <ChevronRight className="h-5 w-5 text-[#5941a4]" />
-                </button>
-              ))}
-            </nav>
-          </div>
-        </div>
-      ) : (
-      <div className="iyanjupay-dashboard min-h-screen bg-gradient-to-br from-[#f7f4ff] via-white to-[#f1edff]">
-        <div className="mx-auto w-full max-w-4xl px-4 py-6 sm:px-6 sm:py-8">
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-sky-50 to-indigo-50">
+        <div className="max-w-4xl mx-auto px-4 py-6">
 
           {/* HEADER */}
 
-          <div className="mb-6 flex items-center gap-3">
+          <div className="flex items-center gap-4 mb-6">
             <Button
               variant="ghost"
-              size="icon"
-              onClick={() => setShowDetails(false)}
-              aria-label="Go back"
-              className="h-10 w-10 rounded-full border border-violet-100 bg-white text-violet-700 shadow-sm hover:bg-violet-50"
+              size="sm"
+              onClick={onBack}
+              className="text-blue-600"
             >
-              <ArrowLeft className="h-4 w-4" />
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              Back
             </Button>
-            <div>
-              <h1 className="text-xl font-bold tracking-tight text-slate-900 sm:text-2xl">
-                My Profile
-              </h1>
 
-            </div>
+            <h1 className="text-2xl font-bold text-gray-900">
+              Personal Information
+            </h1>
           </div>
-
-          <Card className="mb-6 overflow-hidden rounded-2xl border-0 bg-gradient-to-r from-[#6d28d9] via-[#5b21b6] to-[#4520a8] text-white shadow-[0_14px_35px_rgba(91,33,182,0.18)]">
-            <CardContent className="flex items-center gap-4 p-5 sm:p-6">
-              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full border border-white/30 bg-white/15 text-xl font-bold text-white shadow-inner">
-                {(form.watch("full_name")?.trim()?.charAt(0) || "I").toUpperCase()}
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="text-xs font-medium uppercase tracking-[0.16em] text-violet-100">IyanjuPay account</p>
-                <h2 className="mt-1 truncate text-lg font-bold">{form.watch("full_name") || "Your profile"}</h2>
-                <p className="truncate text-sm text-violet-100">{user?.email || form.watch("email") || "Add your email address"}</p>
-              </div>
-              <Shield className="h-7 w-7 shrink-0 text-white/80" />
-            </CardContent>
-          </Card>
 
           {/* ==================================================
               KYC LEVEL CARD
           ================================================== */}
 
-          <Card className="mb-6 overflow-hidden rounded-2xl border-0 bg-gradient-to-r from-[#6d28d9] via-[#5b21b6] to-[#4520a8] text-primary-foreground shadow-[0_12px_30px_rgba(91,33,182,0.16)]">
+          <Card className="mb-6 bg-gradient-to-r from-blue-600 to-indigo-600 text-primary-foreground">
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
                 <div>
@@ -1131,8 +1053,8 @@ const ProfilePage = ({
               BVN VERIFICATION
           ================================================== */}
 
-          <Card className="mb-6 overflow-hidden rounded-2xl border-violet-100/80 bg-white shadow-[0_8px_26px_rgba(71,37,125,0.06)]">
-            <CardHeader className="border-b border-violet-50 bg-violet-50/40">
+          <Card className="mb-6">
+            <CardHeader>
               <CardTitle>
                 BVN Verification
               </CardTitle>
@@ -1197,7 +1119,7 @@ const ProfilePage = ({
 
                   <Button
                     type="button"
-                    className="rounded-xl bg-gradient-to-r from-[#6d28d9] to-[#4f1fc7] text-white shadow-sm hover:brightness-110"
+                    className="bg-blue-600 hover:bg-blue-700"
                     onClick={
                       handleVerifyBvn
                     }
@@ -1231,14 +1153,14 @@ const ProfilePage = ({
               onSubmit={form.handleSubmit(
                 onSubmit,
               )}
-              className="space-y-5"
+              className="space-y-6"
             >
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
 
                 {/* BASIC INFORMATION */}
 
-                <Card className="overflow-hidden rounded-2xl border-violet-100/80 bg-white shadow-[0_8px_26px_rgba(71,37,125,0.06)]">
-                  <CardHeader className="border-b border-violet-50 bg-violet-50/40">
+                <Card>
+                  <CardHeader>
                     <CardTitle>
                       Basic Information
                     </CardTitle>
@@ -1372,8 +1294,8 @@ const ProfilePage = ({
 
                 {/* CONTACT INFORMATION */}
 
-                <Card className="overflow-hidden rounded-2xl border-violet-100/80 bg-white shadow-[0_8px_26px_rgba(71,37,125,0.06)]">
-                  <CardHeader className="border-b border-violet-50 bg-violet-50/40">
+                <Card>
+                  <CardHeader>
                     <CardTitle>
                       Contact Information
                     </CardTitle>
@@ -1513,7 +1435,7 @@ const ProfilePage = ({
 
               <Button
                 type="submit"
-                className="h-12 w-full rounded-xl bg-gradient-to-r from-[#6d28d9] to-[#4f1fc7] text-base font-semibold text-white shadow-[0_8px_20px_rgba(91,33,182,0.2)] hover:brightness-110"
+                className="w-full bg-blue-600 hover:bg-blue-700"
                 disabled={loading}
               >
                 {loading
@@ -1524,8 +1446,6 @@ const ProfilePage = ({
           </Form>
         </div>
       </div>
-
-      )}
 
       {/* ======================================================
           CHANGE EMAIL DIALOG
@@ -1552,11 +1472,11 @@ const ProfilePage = ({
 
             <div>
               <div className="flex items-center gap-2 mb-2">
-                <div className="rounded-full bg-violet-100 p-2">
-                  <Lock className="h-5 w-5 text-violet-700" />
+                <div className="rounded-full bg-blue-100 p-2">
+                  <Lock className="h-5 w-5 text-blue-700" />
                 </div>
 
-                <h2 className="text-xl font-semibold text-[#4f1fc7]">
+                <h2 className="text-xl font-semibold text-[#082A63]">
                   Change Email Address
                 </h2>
               </div>
@@ -1590,7 +1510,7 @@ const ProfilePage = ({
             {!emailChangeRequested ? (
               <Button
                 type="button"
-                className="h-12 w-full rounded-xl bg-gradient-to-r from-[#6d28d9] to-[#4f1fc7] text-base font-semibold text-white shadow-[0_8px_20px_rgba(91,33,182,0.2)] hover:brightness-110"
+                className="w-full bg-[#082A63] hover:bg-[#061F49]"
                 onClick={
                   handleSendEmailChangeOtp
                 }
@@ -1609,12 +1529,12 @@ const ProfilePage = ({
               </Button>
             ) : (
               <>
-                <div className="rounded-lg bg-violet-50 p-4">
+                <div className="rounded-lg bg-blue-50 p-4">
                   <p className="text-sm text-gray-700">
                     We sent a verification code to:
                   </p>
 
-                  <p className="mt-1 font-semibold text-[#4f1fc7] break-all">
+                  <p className="mt-1 font-semibold text-[#082A63] break-all">
                     {newEmail}
                   </p>
                 </div>
@@ -1653,7 +1573,7 @@ const ProfilePage = ({
 
                 <Button
                   type="button"
-                  className="h-12 w-full rounded-xl bg-gradient-to-r from-[#6d28d9] to-[#4f1fc7] text-base font-semibold text-white shadow-[0_8px_20px_rgba(91,33,182,0.2)] hover:brightness-110"
+                  className="w-full bg-[#082A63] hover:bg-[#061F49]"
                   onClick={
                     handleVerifyEmailChange
                   }

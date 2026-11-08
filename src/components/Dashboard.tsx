@@ -1848,7 +1848,7 @@ const Dashboard = ({
     balance.toLocaleString(
       "en-NG",
       {
-        minimumFractionDigits: 0,
+        minimumFractionDigits: 2,
         maximumFractionDigits: 2,
       }
     );
@@ -2101,11 +2101,11 @@ const Dashboard = ({
 
               <div>
 
-                <p className="mb-1 text-sm font-medium text-purple-600">
+                <p className="iyanjupay-welcome-kicker mb-1 text-sm font-semibold">
                   Welcome back
                 </p>
 
-                <h1 className="text-2xl font-black tracking-tight text-slate-950 sm:text-3xl">
+                <h1 className="iyanjupay-home-heading text-2xl font-extrabold tracking-tight sm:text-3xl">
                   Hello, {firstName} 👋
                 </h1>
 
@@ -2132,7 +2132,7 @@ const Dashboard = ({
           <section className="mb-7">
 
             <Card
-              className="relative overflow-hidden rounded-[28px] border-0 bg-gradient-to-br iyanjupay-dashboard-wallet text-white shadow-[0_20px_60px_rgba(79,70,229,0.22)]"
+              className="iyanjupay-wallet-hero relative overflow-hidden rounded-[28px] border-0 bg-gradient-to-br iyanjupay-dashboard-wallet text-white shadow-[0_20px_60px_rgba(79,70,229,0.22)]"
             >
 
               <div className="pointer-events-none absolute -right-20 -top-20 h-56 w-56 rounded-full bg-white/10" />
@@ -2153,8 +2153,8 @@ const Dashboard = ({
                           Available Balance
                         </p>
 
-                        <span className="rounded-full bg-white/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-purple-100">
-                          NGN
+                        <span className="iyanjupay-currency-pill rounded-full px-3 py-1 text-[10px] font-extrabold uppercase tracking-[0.12em]">
+                          NGN · ₦
                         </span>
 
                       </div>
@@ -2273,100 +2273,29 @@ const Dashboard = ({
 
           </section>
 
-          {/* QUICK ACTIONS */}
-
-          <section className="mb-8">
-
-            <div className="mb-3 flex items-center justify-between">
-
+          {/* QUICK ACTIONS: account tools, not duplicate bill-payment shortcuts */}
+          <section className="iyanjupay-home-section mb-8">
+            <div className="mb-3 flex items-end justify-between">
               <div>
-
-                <h2 className="text-lg font-black text-slate-950">
-                  Quick Actions
-                </h2>
-
-                <p className="text-xs text-slate-500">
-                  Get things done faster
-                </p>
-
+                <h2 className="iyanjupay-home-heading text-lg font-extrabold tracking-tight">Quick access</h2>
+                <p className="mt-0.5 text-xs text-muted-foreground">Your most-used account tools</p>
               </div>
-
             </div>
-
-            <div className="grid grid-cols-4 gap-2 sm:gap-3">
-
-              <button
-                type="button"
-                onClick={() =>
-                  handleServiceClick(
-                    services[0]
-                  )
-                }
-                className="group rounded-2xl border border-slate-200 bg-white p-3 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-md sm:p-4"
-              >
-                <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-2xl bg-blue-50 text-blue-600 transition group-hover:scale-105">
-                  <Smartphone className="h-5 w-5" />
-                </div>
-
-                <p className="mt-2 text-[11px] font-bold text-slate-700 sm:text-xs">
-                  Airtime
-                </p>
-              </button>
-
-              <button
-                type="button"
-                onClick={() =>
-                  handleServiceClick(
-                    services[1]
-                  )
-                }
-                className="group rounded-2xl border border-slate-200 bg-white p-3 shadow-sm transition hover:-translate-y-0.5 hover:border-purple-200 hover:shadow-md sm:p-4"
-              >
-                <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-2xl bg-purple-50 text-purple-600 transition group-hover:scale-105">
-                  <Wifi className="h-5 w-5" />
-                </div>
-
-                <p className="mt-2 text-[11px] font-bold text-slate-700 sm:text-xs">
-                  Data
-                </p>
-              </button>
-
-              <button
-                type="button"
-                onClick={() =>
-                  setCurrentPage(
-                    "send-money"
-                  )
-                }
-                className="group rounded-2xl border border-slate-200 bg-white p-3 shadow-sm transition hover:-translate-y-0.5 hover:border-emerald-200 hover:shadow-md sm:p-4"
-              >
-                <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600 transition group-hover:scale-105">
-                  <Send className="h-5 w-5" />
-                </div>
-
-                <p className="mt-2 text-[11px] font-bold text-slate-700 sm:text-xs">
-                  Transfer
-                </p>
-              </button>
-
-              <button
-                type="button"
-                onClick={() =>
-                  setCurrentPage(
-                    "history"
-                  )
-                }
-                className="group rounded-2xl border border-slate-200 bg-white p-3 shadow-sm transition hover:-translate-y-0.5 hover:border-orange-200 hover:shadow-md sm:p-4"
-              >
-                <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-2xl bg-orange-50 text-orange-600 transition group-hover:scale-105">
-                  <History className="h-5 w-5" />
-                </div>
-
-                <p className="mt-2 text-[11px] font-bold text-slate-700 sm:text-xs">
-                  History
-                </p>
-              </button>
-
+            <div className="grid grid-cols-4 gap-2.5 sm:gap-3">
+              {[
+                { label: "History", icon: History, action: () => setCurrentPage("history") },
+                { label: "Savings", icon: PiggyBank, action: () => { setSelectedService({ title: "Savings", type: "savings" }); setCurrentPage("service-payment"); } },
+                { label: "Rewards", icon: Gift, action: () => setCurrentPage("rewards") },
+                { label: "Cards", icon: CreditCard, action: () => setCurrentPage("cards") },
+              ].map(({ label, icon: Icon, action }) => (
+                <button key={label} type="button" onClick={action}
+                  className="iyanjupay-quick-link group flex min-h-[94px] flex-col items-center justify-center gap-2 rounded-2xl border p-2.5 transition duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 active:scale-[0.98] sm:min-h-[104px] sm:gap-2.5">
+                  <span className="iyanjupay-icon-tile flex h-11 w-11 items-center justify-center rounded-[15px] transition-transform group-hover:scale-105">
+                    <Icon className="h-[19px] w-[19px]" strokeWidth={2.1} />
+                  </span>
+                  <span className="text-[10px] font-bold tracking-tight sm:text-xs">{label}</span>
+                </button>
+              ))}
             </div>
           </section>
 
@@ -2378,18 +2307,18 @@ const Dashboard = ({
 
               <div>
 
-                <h2 className="text-xl font-black tracking-tight text-slate-950">
+                <h2 className="iyanjupay-home-heading text-xl font-extrabold tracking-tight">
                   Services
                 </h2>
 
-                <p className="mt-1 text-sm text-slate-500">
-                  Everything you need, in one place
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Payments and everyday essentials
                 </p>
 
               </div>
 
               <span className="hidden rounded-full bg-purple-50 px-3 py-1 text-xs font-bold text-purple-700 sm:block">
-                {services.filter((service) => service.available && !COMING_SOON_SERVICES.includes(service.type)).length} live
+                {services.filter((service) => service.type !== "savings" && service.available && !COMING_SOON_SERVICES.includes(service.type)).length} live
               </span>
 
             </div>
@@ -2398,12 +2327,10 @@ const Dashboard = ({
 
               {[
                 ...services.filter(
-                  (service) =>
-                    !COMING_SOON_SERVICES.includes(service.type)
+                  (service) => service.type !== "savings" && !COMING_SOON_SERVICES.includes(service.type)
                 ),
                 ...services.filter(
-                  (service) =>
-                    COMING_SOON_SERVICES.includes(service.type)
+                  (service) => service.type !== "savings" && COMING_SOON_SERVICES.includes(service.type)
                 ),
               ].map(
                 (

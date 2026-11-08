@@ -18,7 +18,6 @@ const ServiceCard = ({
   title,
   icon: Icon,
   onClick,
-  color,
   available = true,
   comingSoon = false,
 }: ServiceCardProps) => {
@@ -44,7 +43,7 @@ const ServiceCard = ({
       tabIndex={isUnavailable ? -1 : 0}
       aria-label={title}
       aria-disabled={isUnavailable}
-      className="group relative h-full overflow-hidden rounded-2xl border border-slate-200 bg-white p-3 shadow-sm transition hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-[#082A63]/25 focus:ring-offset-1 sm:p-4"
+      className="iyanjupay-service-tile group relative h-full overflow-hidden rounded-2xl border p-3 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-primary/30 focus:ring-offset-1 sm:p-4"
       onClick={
         isUnavailable ? undefined : onClick
       }
@@ -61,13 +60,12 @@ const ServiceCard = ({
 
         <div
           className={[
-            "mx-auto flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl transition group-hover:scale-105",
-            color,
-            comingSoon && "grayscale opacity-70",
+            "iyanjupay-icon-tile mx-auto flex h-11 w-11 shrink-0 items-center justify-center rounded-[15px] transition group-hover:scale-105",
+            comingSoon && "grayscale opacity-60",
           ].join(" ")}
         >
           <Icon
-            className="h-[18px] w-[18px] text-white sm:h-5 sm:w-5"
+            className="h-[18px] w-[18px] sm:h-5 sm:w-5"
             strokeWidth={2}
             aria-hidden="true"
           />
@@ -75,7 +73,7 @@ const ServiceCard = ({
 
         {/* Service Name */}
 
-        <h3 className="min-h-[2.1em] break-words text-center text-[11px] font-bold leading-tight tracking-tight text-slate-900 sm:text-xs">
+        <h3 className="iyanjupay-service-title min-h-[2.1em] break-words text-center text-[11px] font-bold leading-tight tracking-tight sm:text-xs">
           {(() => {
             // Names as long as (or longer than) "Internet Service" are shown
             // on two lines: <p>Internet<br/>Service</p>.

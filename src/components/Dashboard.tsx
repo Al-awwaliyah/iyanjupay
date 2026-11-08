@@ -809,8 +809,8 @@ const Dashboard = ({
    */
 
   const services = [
-    { title: "Buy Airtime", description: "", icon: Smartphone, color: "bg-blue-500", type: "airtime" as BillService, available: true },
-    { title: "Buy Data", description: "", icon: Wifi, color: "bg-purple-500", type: "data" as BillService, available: true },
+    { title: "Airtime", description: "", icon: Smartphone, color: "bg-blue-500", type: "airtime" as BillService, available: true },
+    { title: "Data", description: "", icon: Wifi, color: "bg-purple-500", type: "data" as BillService, available: true },
     { title: "Cable TV", description: "", icon: CreditCard, color: "bg-red-500", type: "cable" as BillService, available: true },
     { title: "Electricity", description: "", icon: Zap, color: "bg-yellow-500", type: "electricity" as BillService, available: true },
     { title: "Education", description: "", icon: GraduationCap, color: "bg-orange-500", type: "education" as BillService, available: true },
@@ -1387,19 +1387,19 @@ const Dashboard = ({
             variant="ghost"
             size="sm"
             onClick={() =>
-              setCurrentPage("history")
+              setCurrentPage("cards")
             }
             className={`h-14 rounded-2xl ${
-              page === "history"
+              page === "cards"
                 ? "bg-purple-50 text-purple-700"
                 : "text-slate-500 hover:bg-slate-50"
             }`}
           >
             <span className="flex flex-col items-center gap-1">
-              <History className="h-5 w-5" />
+              <CreditCard className="h-5 w-5" />
 
               <span className="text-[11px] font-semibold">
-                Transactions
+                Cards
               </span>
             </span>
           </Button>
@@ -2085,7 +2085,7 @@ const Dashboard = ({
 
                       <div className="flex items-center gap-2">
 
-                        <p className="text-xs font-medium text-white/90">
+                        <p className="text-xs font-medium text-white/75">
                           Available Balance
                         </p>
 
@@ -2133,7 +2133,7 @@ const Dashboard = ({
 
                       </div>
 
-                      <p className="mt-1.5 text-[11px] text-white/80">
+                      <p className="mt-1.5 text-[11px] text-white/75">
                         Ready to spend securely
                       </p>
 
@@ -2175,7 +2175,7 @@ const Dashboard = ({
 
                   </div>
 
-                  <div className="flex items-center justify-between border-t border-white/15 px-2 pt-3">
+                  <div className="flex items-center justify-between border-t border-white/15 px-5 pt-3">
 
                     <span className="text-[11px] font-medium text-white/85">
                       Wallet ID
@@ -2198,19 +2198,19 @@ const Dashboard = ({
 
           {/* QUICK ACCESS */}
           <section className="mb-6">
-            <div className="mb-3">
-              <h2 className="text-base font-bold tracking-tight text-slate-950">Quick Access</h2>
+            <div className="mb-3 mt-4 h-auto overflow-visible">
+              <h2 className="m-0 h-auto min-h-0 overflow-visible text-base font-bold leading-normal tracking-tight text-slate-950">Quick Access</h2>
               <p className="mt-1 text-xs text-slate-500">Your everyday essentials</p>
             </div>
             <div className="grid grid-cols-4 gap-2 sm:gap-3">
               {[
-                { label: "Savings", icon: PiggyBank, tone: "bg-violet-100 text-violet-700", action: () => { setSelectedService({ title: "Savings", type: "savings" }); setCurrentPage("service-payment"); } },
-                { label: "Rewards", icon: Gift, tone: "bg-amber-100 text-amber-700", action: () => setCurrentPage("rewards") },
-                { label: "Cards", icon: CreditCard, tone: "bg-blue-100 text-blue-700", action: () => setCurrentPage("cards") },
-                { label: "Support", icon: Headphones, tone: "bg-emerald-100 text-emerald-700", action: () => setCurrentPage("support") },
+                { label: "Savings", icon: PiggyBank, tone: "bg-violet-500", action: () => { setSelectedService({ title: "Savings", type: "savings" }); setCurrentPage("service-payment"); } },
+                { label: "Rewards", icon: Gift, tone: "bg-amber-500", action: () => setCurrentPage("rewards") },
+                { label: "Cards", icon: CreditCard, tone: "bg-blue-500", action: () => setCurrentPage("cards") },
+                { label: "Support", icon: Headphones, tone: "bg-emerald-500", action: () => setCurrentPage("support") },
               ].map((item) => { const Icon = item.icon; return (
                 <button key={item.label} type="button" onClick={item.action} className="group flex min-h-[82px] flex-col items-center justify-center gap-1.5 rounded-xl border border-slate-200/80 bg-white p-2 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
-                  <span className={`flex h-9 w-9 items-center justify-center rounded-xl ${item.tone}`}><Icon className="h-4 w-4" /></span>
+                  <span className={`flex h-9 w-9 items-center justify-center rounded-xl ${item.tone} text-white shadow-sm`}><Icon className="h-4 w-4" strokeWidth={2.25} /></span>
                   <span className="text-[10px] font-semibold text-slate-700 sm:text-[11px]">{item.label}</span>
                 </button>
               ); })}
@@ -2309,7 +2309,7 @@ const Dashboard = ({
                   return <div key={transaction.id} className="flex items-center gap-2.5 px-3 py-2.5">
                     <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${outgoing ? "bg-rose-50 text-rose-600" : "bg-emerald-50 text-emerald-600"}`}>{outgoing ? <Send className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}</span>
                     <div className="min-w-0 flex-1"><p className="truncate text-xs font-semibold text-slate-800">{transaction.description || transaction.category || transaction.transaction_type || "Transaction"}</p><p className="mt-0.5 text-[11px] text-slate-500">{new Date(transaction.created_at).toLocaleDateString("en-NG", { day: "numeric", month: "short" })} · <span className={successful ? "text-emerald-600" : failed ? "text-rose-600" : "text-amber-600"}>{transaction.status}</span></p></div>
-                    <p className={`shrink-0 text-sm font-extrabold tabular-nums ${outgoing ? "text-slate-900" : "text-emerald-600"}`}>{outgoing ? "−" : "+"}₦{Number.isFinite(amount) ? amount.toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "0.00"}</p>
+                    <p className={`shrink-0 text-sm font-extrabold tabular-nums ${outgoing ? "text-slate-900" : successful ? "text-[#10B981]" : failed ? "text-rose-600" : "text-emerald-600"}`}>{outgoing ? "−" : "+"}{" "}₦{Number.isFinite(amount) ? amount.toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "0.00"}</p>
                   </div>;
                 })}
               </CardContent>

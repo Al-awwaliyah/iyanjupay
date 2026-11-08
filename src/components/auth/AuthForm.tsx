@@ -233,16 +233,6 @@ const AuthForm = () => {
       ? "signup"
       : "signin";
 
-  // The public root route opens on the welcome/onboarding screen.
-  // Deep links to /signup continue directly to the existing sign-up form.
-  const [showWelcome, setShowWelcome] = useState(
-    location.pathname === "/",
-  );
-
-  useEffect(() => {
-    if (location.pathname === "/signup") setShowWelcome(false);
-  }, [location.pathname]);
-
   // ============================================================
   // READ REFERRAL CODE FROM URL
   // ============================================================
@@ -966,33 +956,9 @@ const AuthForm = () => {
   // UI
   // ============================================================
 
-  if (showWelcome) {
-    return (
-      <div className="iyanjupay-welcome-screen min-h-screen flex items-center justify-center p-5">
-        <div className="w-full max-w-md overflow-hidden rounded-[30px] border border-violet-100 bg-white shadow-[0_24px_70px_rgba(44,0,130,.16)]">
-          <div className="relative flex min-h-[300px] flex-col items-center justify-center overflow-hidden bg-gradient-to-br from-[#170052] via-[#3900a8] to-[#08083b] px-7 py-10 text-center text-white">
-            <div className="absolute -right-16 -top-16 h-56 w-56 rounded-full bg-violet-500/30 blur-3xl" />
-            <div className="absolute -bottom-20 -left-12 h-52 w-52 rounded-full bg-fuchsia-500/20 blur-3xl" />
-            <div className="relative flex h-28 w-28 items-center justify-center rounded-[28px] bg-white/10 p-3 shadow-[0_0_50px_rgba(151,86,255,.35)] ring-1 ring-white/20">
-              <img src="/icon-512.png" alt="IyanjuPay" className="h-full w-full object-contain" />
-            </div>
-            <p className="relative mt-5 text-xs font-bold uppercase tracking-[.28em] text-violet-200">Money, made effortless.</p>
-            <h1 className="relative mt-3 text-3xl font-extrabold tracking-tight">Welcome to IyanjuPay</h1>
-            <p className="relative mt-3 max-w-xs text-sm leading-6 text-violet-100">Your complete financial companion in one app. Pay, transfer, save and grow with confidence.</p>
-            <div className="relative mt-6 flex items-center gap-2"><span className="h-2 w-6 rounded-full bg-white"/><span className="h-2 w-2 rounded-full bg-white/40"/><span className="h-2 w-2 rounded-full bg-white/40"/></div>
-          </div>
-          <div className="space-y-3 p-6">
-            <Button type="button" onClick={() => navigate("/signup")} className="h-12 w-full rounded-full bg-gradient-to-r from-[#6500f5] to-[#3900b8] text-sm font-bold shadow-lg shadow-violet-200">Get Started</Button>
-            <Button type="button" variant="outline" onClick={() => setShowWelcome(false)} className="h-12 w-full rounded-full border-violet-200 font-bold text-violet-800">Sign In</Button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <>
-      <div className="iyanjupay-auth-screen min-h-screen flex items-center justify-center bg-gradient-to-br from-violet-50 via-white to-indigo-50 p-4">
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-green-50 to-blue-50 p-4">
         <Card className="w-full max-w-md">
           <CardHeader className="text-center">
             <CardTitle className="text-2xl font-bold text-blue-700">

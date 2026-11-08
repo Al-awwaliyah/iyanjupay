@@ -4963,3 +4963,68 @@ html[data-iyanjupay-theme="dark"] .iyanjupay-customer-page .rounded-xl {
 html[data-iyanjupay-theme="dark"] button,
 html[data-iyanjupay-theme="dark"] a { -webkit-tap-highlight-color: transparent; }
 html[data-iyanjupay-theme="dark"] :focus-visible { outline-color: #b77cff; }
+
+/* ============================================================
+   PREMIUM DARK MODE — FINAL CONTRAST OVERRIDES
+   Some legacy screens use literal hex Tailwind utilities instead
+   of semantic slate tokens. Map those foregrounds explicitly so
+   profile, cards, forms and transaction screens remain readable.
+   ============================================================ */
+html[data-iyanjupay-theme="dark"] [class*="text-[#171044]"],
+html[data-iyanjupay-theme="dark"] [class*="text-[#17133D]"],
+html[data-iyanjupay-theme="dark"] [class*="text-[#17133d]"],
+html[data-iyanjupay-theme="dark"] [class*="text-[#21194c]"],
+html[data-iyanjupay-theme="dark"] [class*="text-[#24145F]"],
+html[data-iyanjupay-theme="dark"] [class*="text-[#30245C]"],
+html[data-iyanjupay-theme="dark"] [class*="text-[#343044]"],
+html[data-iyanjupay-theme="dark"] [class*="text-[#202033]"],
+html.iyanjupay-theme-dark [class*="text-[#171044]"],
+html.iyanjupay-theme-dark [class*="text-[#17133D]"],
+html.iyanjupay-theme-dark [class*="text-[#17133d]"],
+html.iyanjupay-theme-dark [class*="text-[#21194c]"],
+html.iyanjupay-theme-dark [class*="text-[#24145F]"],
+html.iyanjupay-theme-dark [class*="text-[#30245C]"],
+html.iyanjupay-theme-dark [class*="text-[#343044]"],
+html.iyanjupay-theme-dark [class*="text-[#202033]"] {
+  color: #f4f2ff !important;
+}
+
+html[data-iyanjupay-theme="dark"] [class*="text-[#082A63]"],
+html[data-iyanjupay-theme="dark"] [class*="text-[#4C1D95]"],
+html[data-iyanjupay-theme="dark"] [class*="text-[#3513A7]"],
+html.iyanjupay-theme-dark [class*="text-[#082A63]"],
+html.iyanjupay-theme-dark [class*="text-[#4C1D95]"],
+html.iyanjupay-theme-dark [class*="text-[#3513A7]"] {
+  color: #c4b5fd !important;
+}
+
+html[data-iyanjupay-theme="dark"] [class*="text-[#5D5A70]"],
+html[data-iyanjupay-theme="dark"] [class*="text-[#77718C]"],
+html[data-iyanjupay-theme="dark"] [class*="text-[#77738e]"],
+html[data-iyanjupay-theme="dark"] [class*="text-[#8A879B]"],
+html[data-iyanjupay-theme="dark"] [class*="text-[#918da5]"],
+html.iyanjupay-theme-dark [class*="text-[#5D5A70]"],
+html.iyanjupay-theme-dark [class*="text-[#77718C]"],
+html.iyanjupay-theme-dark [class*="text-[#77738e]"],
+html.iyanjupay-theme-dark [class*="text-[#8A879B]"],
+html.iyanjupay-theme-dark [class*="text-[#918da5]"] {
+  color: #b9b5ca !important;
+}
+
+/* Darken pale legacy panels and form surfaces without touching
+   branded gradients, provider logos, or success/error states. */
+html[data-iyanjupay-theme="dark"] [class*="bg-[#FBFAFF]"],
+html[data-iyanjupay-theme="dark"] [class*="bg-[#F7F5FF]"],
+html[data-iyanjupay-theme="dark"] [class*="bg-[#FAF9FF]"],
+html.iyanjupay-theme-dark [class*="bg-[#FBFAFF]"],
+html.iyanjupay-theme-dark [class*="bg-[#F7F5FF]"],
+html.iyanjupay-theme-dark [class*="bg-[#FAF9FF]"] {
+  background-color: #111827 !important;
+}
+
+html[data-iyanjupay-theme="dark"] [class*="border-[#E"],
+html[data-iyanjupay-theme="dark"] [class*="border-[#D"],
+html.iyanjupay-theme-dark [class*="border-[#E"],
+html.iyanjupay-theme-dark [class*="border-[#D"] {
+  border-color: #30364a !important;
+}

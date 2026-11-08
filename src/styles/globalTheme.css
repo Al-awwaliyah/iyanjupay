@@ -1,3 +1,16 @@
+/* IyanjuPay global theme stylesheet. Theme state is controlled only by ThemeProvider/Dashboard. */
+
+/* ===== Migrated from ThemeProvider.tsx ===== */
+
+    /*
+     * ============================================================
+     * IYANJUPAY GLOBAL THEME
+     * ============================================================
+     *
+     * The theme is attached to <html> so it survives route changes.
+     * Individual pages do NOT need their own theme state.
+     */
+
     html {
       background: #f7f8fc;
     }
@@ -3612,407 +3625,410 @@ html[data-iyanjupay-theme="dark"] {
 }
 
 /* ============================================================
-   FINAL GLOBAL LIGHT/DARK CONTRAST RULES
-   The Dashboard theme is the single source of truth.
+   IYANJUPAY THEME CONTRACT
+   Theme state is applied by ThemeProvider to <html> using both:
+   - data-iyanjupay-theme="light|blue|dark"
+   - iyanjupay-theme-light|blue|dark class
 
-   LIGHT / BLUE:
-   - page surfaces are light/white
-   - normal text is dark
-   - explicitly white text remains white for colored controls
-
-   DARK:
-   - page surfaces are dark
-   - normal text is white/light
-   - explicitly white text remains white
-   - white utility surfaces are converted to dark surfaces so
-     hard-coded Tailwind classes do not create white cards on a
-     dark page unless a component explicitly opts into a white
-     surface.
+   Keep this section as the final theme layer. Earlier page-specific
+   styles above are intentionally preserved.
    ============================================================ */
 
-/* LIGHT */
-html[data-iyanjupay-theme="light"],
-html.iyanjupay-theme-light {
+/* ---------- Theme tokens ---------- */
+:is(html[data-iyanjupay-theme="light"], html.iyanjupay-theme-light) {
   color-scheme: light;
-  background-color: #ffffff;
-  color: #111827;
+  --iyanjupay-page: #f7f8fc;
+  --iyanjupay-surface: #ffffff;
+  --iyanjupay-surface-raised: #ffffff;
+  --iyanjupay-surface-muted: #f1f5f9;
+  --iyanjupay-border: #e2e8f0;
+  --iyanjupay-border-strong: #cbd5e1;
+  --iyanjupay-text: #111827;
+  --iyanjupay-text-secondary: #475569;
+  --iyanjupay-text-muted: #64748b;
+  --iyanjupay-input: #ffffff;
+  --iyanjupay-primary: #6d28d9;
+  --iyanjupay-primary-hover: #5b21b6;
+  background-color: var(--iyanjupay-page);
+  color: var(--iyanjupay-text);
 }
 
-html[data-iyanjupay-theme="light"] body,
-html.iyanjupay-theme-light body {
-  background-color: #ffffff;
-  color: #111827;
-}
-
-html[data-iyanjupay-theme="light"] .bg-white,
-html.iyanjupay-theme-light .bg-white {
-  background-color: #ffffff !important;
-}
-
-html[data-iyanjupay-theme="light"] .text-slate-950,
-html[data-iyanjupay-theme="light"] .text-slate-900,
-html[data-iyanjupay-theme="light"] .text-slate-800,
-html[data-iyanjupay-theme="light"] .text-gray-950,
-html[data-iyanjupay-theme="light"] .text-gray-900,
-html[data-iyanjupay-theme="light"] .text-gray-800,
-html.iyanjupay-theme-light .text-slate-950,
-html.iyanjupay-theme-light .text-slate-900,
-html.iyanjupay-theme-light .text-slate-800,
-html.iyanjupay-theme-light .text-gray-950,
-html.iyanjupay-theme-light .text-gray-900,
-html.iyanjupay-theme-light .text-gray-800 {
-  color: #111827 !important;
-}
-
-/* BLUE */
-html[data-iyanjupay-theme="blue"],
-html.iyanjupay-theme-blue {
+:is(html[data-iyanjupay-theme="blue"], html.iyanjupay-theme-blue) {
   color-scheme: light;
-  background-color: #f4f8ff;
-  color: #111827;
+  --iyanjupay-page: #f2f7ff;
+  --iyanjupay-surface: #ffffff;
+  --iyanjupay-surface-raised: #ffffff;
+  --iyanjupay-surface-muted: #eaf2ff;
+  --iyanjupay-border: #d8e4f4;
+  --iyanjupay-border-strong: #bfd0e8;
+  --iyanjupay-text: #111827;
+  --iyanjupay-text-secondary: #475569;
+  --iyanjupay-text-muted: #64748b;
+  --iyanjupay-input: #ffffff;
+  --iyanjupay-primary: #1d4ed8;
+  --iyanjupay-primary-hover: #1e40af;
+  background-color: var(--iyanjupay-page);
+  color: var(--iyanjupay-text);
 }
 
-html[data-iyanjupay-theme="blue"] body,
-html.iyanjupay-theme-blue body {
-  background-color: #f4f8ff;
-  color: #111827;
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) {
+  color-scheme: dark;
+  --iyanjupay-page: #080d18;
+  --iyanjupay-surface: #111827;
+  --iyanjupay-surface-raised: #172235;
+  --iyanjupay-surface-muted: #1e293b;
+  --iyanjupay-border: #293750;
+  --iyanjupay-border-strong: #40516c;
+  --iyanjupay-text: #f8fafc;
+  --iyanjupay-text-secondary: #cbd5e1;
+  --iyanjupay-text-muted: #94a3b8;
+  --iyanjupay-input: #0f172a;
+  --iyanjupay-primary: #818cf8;
+  --iyanjupay-primary-hover: #a5b4fc;
+  background-color: var(--iyanjupay-page);
+  color: var(--iyanjupay-text);
 }
 
-html[data-iyanjupay-theme="blue"] .bg-white,
-html.iyanjupay-theme-blue .bg-white {
-  background-color: #ffffff !important;
+/* ---------- Page and root ---------- */
+:is(html[data-iyanjupay-theme], html[class*="iyanjupay-theme-"]) {
+  min-height: 100%;
+}
+:is(html[data-iyanjupay-theme="light"], html.iyanjupay-theme-light,
+    html[data-iyanjupay-theme="blue"], html.iyanjupay-theme-blue,
+    html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) body,
+:is(html[data-iyanjupay-theme="light"], html.iyanjupay-theme-light,
+    html[data-iyanjupay-theme="blue"], html.iyanjupay-theme-blue,
+    html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) #root {
+  min-height: 100vh;
 }
 
-html[data-iyanjupay-theme="blue"] .text-slate-950,
-html[data-iyanjupay-theme="blue"] .text-slate-900,
-html[data-iyanjupay-theme="blue"] .text-slate-800,
-html[data-iyanjupay-theme="blue"] .text-gray-950,
-html[data-iyanjupay-theme="blue"] .text-gray-900,
-html[data-iyanjupay-theme="blue"] .text-gray-800,
-html.iyanjupay-theme-blue .text-slate-950,
-
-/* =====================================================================
-   IYANJUPAY — CONSOLIDATED GLOBAL THEME CONTRACT
-   Theme state is owned by ThemeProvider/Dashboard and applied to <html>
-   through data-iyanjupay-theme plus the legacy theme class.
-   Keep this section last: it resolves legacy page-level utility conflicts.
-   ===================================================================== */
-
-:root {
-  --iyj-page-light: #f7f8fc;
-  --iyj-page-blue: #f2f7ff;
-  --iyj-page-dark: #080d18;
-  --iyj-surface-light: #ffffff;
-  --iyj-surface-blue: #ffffff;
-  --iyj-surface-dark: #111a2b;
-  --iyj-surface-raised-dark: #182438;
-  --iyj-text-light: #111827;
-  --iyj-muted-light: #64748b;
-  --iyj-text-dark: #f8fafc;
-  --iyj-muted-dark: #a8b3c7;
-  --iyj-border-light: #e2e8f0;
-  --iyj-border-blue: #d8e4f3;
-  --iyj-border-dark: #293750;
-}
-
-html, body, #root { min-height: 100%; }
-html { background: var(--iyj-page-light); }
-body {
-  background: var(--iyj-page-light);
-  color: var(--iyj-text-light);
+:is(html[data-iyanjupay-theme="light"], html.iyanjupay-theme-light,
+    html[data-iyanjupay-theme="blue"], html.iyanjupay-theme-blue,
+    html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) body {
+  background-color: var(--iyanjupay-page);
+  color: var(--iyanjupay-text);
   transition: background-color 180ms ease, color 180ms ease;
 }
 
-/* ---------- Light theme ---------- */
-:is(html[data-iyanjupay-theme="light"], html.iyanjupay-theme-light) {
-  color-scheme: light;
-  background: var(--iyj-page-light);
-  color: var(--iyj-text-light);
-  --background: 220 33% 98%;
-  --foreground: 222 47% 11%;
-  --card: 0 0% 100%;
-  --card-foreground: 222 47% 11%;
-  --popover: 0 0% 100%;
-  --popover-foreground: 222 47% 11%;
-  --primary: 262 70% 45%;
-  --primary-foreground: 0 0% 100%;
-  --secondary: 220 20% 96%;
-  --secondary-foreground: 222 47% 11%;
-  --muted: 220 20% 96%;
-  --muted-foreground: 215 16% 47%;
-  --accent: 262 80% 96%;
-  --accent-foreground: 262 70% 35%;
-  --destructive: 0 72% 51%;
-  --destructive-foreground: 0 0% 100%;
-  --border: 214 25% 90%;
-  --input: 214 25% 88%;
-  --ring: 262 70% 55%;
-}
-:is(html[data-iyanjupay-theme="light"], html.iyanjupay-theme-light) body {
-  background: var(--iyj-page-light);
-  color: var(--iyj-text-light);
+:is(html[data-iyanjupay-theme], html[class*="iyanjupay-theme-"]) button,
+:is(html[data-iyanjupay-theme], html[class*="iyanjupay-theme-"]) input,
+:is(html[data-iyanjupay-theme], html[class*="iyanjupay-theme-"]) select,
+:is(html[data-iyanjupay-theme], html[class*="iyanjupay-theme-"]) textarea {
+  -webkit-tap-highlight-color: transparent;
 }
 
-/* ---------- Blue theme ---------- */
-:is(html[data-iyanjupay-theme="blue"], html.iyanjupay-theme-blue) {
-  color-scheme: light;
-  background: var(--iyj-page-blue);
-  color: var(--iyj-text-light);
-  --background: 214 100% 98%;
-  --foreground: 222 47% 11%;
-  --card: 0 0% 100%;
-  --card-foreground: 222 47% 11%;
-  --popover: 0 0% 100%;
-  --popover-foreground: 222 47% 11%;
-  --primary: 218 85% 42%;
-  --primary-foreground: 0 0% 100%;
-  --secondary: 214 75% 94%;
-  --secondary-foreground: 222 47% 11%;
-  --muted: 214 65% 95%;
-  --muted-foreground: 215 20% 42%;
-  --accent: 214 85% 92%;
-  --accent-foreground: 218 85% 32%;
-  --destructive: 0 72% 51%;
-  --destructive-foreground: 0 0% 100%;
-  --border: 214 45% 88%;
-  --input: 214 45% 86%;
-  --ring: 218 85% 48%;
-}
-:is(html[data-iyanjupay-theme="blue"], html.iyanjupay-theme-blue) body {
-  background: var(--iyj-page-blue);
-  color: var(--iyj-text-light);
+/* ---------- Surfaces and cards ---------- */
+:is(html[data-iyanjupay-theme="light"], html.iyanjupay-theme-light,
+    html[data-iyanjupay-theme="blue"], html.iyanjupay-theme-blue) .bg-white {
+  background-color: var(--iyanjupay-surface) !important;
 }
 
-/* ---------- Dark theme ---------- */
-:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) {
-  color-scheme: dark;
-  background: var(--iyj-page-dark);
-  color: var(--iyj-text-dark);
-  --background: 222 47% 8%;
-  --foreground: 210 40% 98%;
-  --card: 220 38% 12%;
-  --card-foreground: 210 40% 98%;
-  --popover: 220 38% 12%;
-  --popover-foreground: 210 40% 98%;
-  --primary: 250 90% 72%;
-  --primary-foreground: 222 47% 11%;
-  --secondary: 218 32% 18%;
-  --secondary-foreground: 210 40% 98%;
-  --muted: 218 32% 18%;
-  --muted-foreground: 215 20% 68%;
-  --accent: 247 45% 22%;
-  --accent-foreground: 250 90% 86%;
-  --destructive: 0 62% 40%;
-  --destructive-foreground: 0 0% 100%;
-  --border: 217 32% 25%;
-  --input: 217 32% 25%;
-  --ring: 250 85% 72%;
-}
-:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) body {
-  background: var(--iyj-page-dark) !important;
-  color: var(--iyj-text-dark) !important;
-}
-
-/* ---------- Consistent page surfaces ---------- */
-:is(html[data-iyanjupay-theme="light"], html.iyanjupay-theme-light) .bg-white,
-:is(html[data-iyanjupay-theme="blue"], html.iyanjupay-theme-blue) .bg-white {
-  background-color: #fff !important;
-}
 :is(html[data-iyanjupay-theme="light"], html.iyanjupay-theme-light) .bg-slate-50,
 :is(html[data-iyanjupay-theme="light"], html.iyanjupay-theme-light) .bg-gray-50 {
   background-color: #f7f8fc !important;
 }
 :is(html[data-iyanjupay-theme="blue"], html.iyanjupay-theme-blue) .bg-slate-50,
 :is(html[data-iyanjupay-theme="blue"], html.iyanjupay-theme-blue) .bg-gray-50 {
-  background-color: #edf4ff !important;
+  background-color: #eaf2ff !important;
 }
-:is(html[data-iyanjupay-theme="light"], html.iyanjupay-theme-light) .bg-slate-100,
-:is(html[data-iyanjupay-theme="light"], html.iyanjupay-theme-light) .bg-gray-100 {
-  background-color: #f1f5f9 !important;
-}
-:is(html[data-iyanjupay-theme="blue"], html.iyanjupay-theme-blue) .bg-slate-100,
-:is(html[data-iyanjupay-theme="blue"], html.iyanjupay-theme-blue) .bg-gray-100 {
-  background-color: #e6effc !important;
-}
+
 :is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) .bg-white,
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) [class*="bg-white/"] {
+  background-color: var(--iyanjupay-surface) !important;
+}
 :is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) .bg-gray-50,
-:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) .bg-slate-50 {
-  background-color: var(--iyj-surface-dark) !important;
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) .bg-slate-50,
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) .bg-background {
+  background-color: var(--iyanjupay-page) !important;
 }
 :is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) .bg-gray-100,
-:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) .bg-slate-100 {
-  background-color: var(--iyj-surface-raised-dark) !important;
-}
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) .bg-slate-100,
 :is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) .bg-gray-200,
 :is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) .bg-slate-200 {
-  background-color: #24334b !important;
+  background-color: var(--iyanjupay-surface-muted) !important;
+}
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) .bg-card,
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) .bg-popover,
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) [data-slot="card"] {
+  background-color: var(--iyanjupay-surface) !important;
 }
 
-/* ---------- Text contrast; preserve semantic/status colors ---------- */
-:is(html[data-iyanjupay-theme="light"], html.iyanjupay-theme-light, html[data-iyanjupay-theme="blue"], html.iyanjupay-theme-blue)
-:is(.text-slate-950, .text-slate-900, .text-slate-800, .text-slate-700,
-    .text-gray-950, .text-gray-900, .text-gray-800, .text-gray-700) {
-  color: #111827 !important;
+/* ---------- Text hierarchy ---------- */
+:is(html[data-iyanjupay-theme="light"], html.iyanjupay-theme-light,
+    html[data-iyanjupay-theme="blue"], html.iyanjupay-theme-blue) .text-gray-950,
+:is(html[data-iyanjupay-theme="light"], html.iyanjupay-theme-light,
+    html[data-iyanjupay-theme="blue"], html.iyanjupay-theme-blue) .text-gray-900,
+:is(html[data-iyanjupay-theme="light"], html.iyanjupay-theme-light,
+    html[data-iyanjupay-theme="blue"], html.iyanjupay-theme-blue) .text-gray-800,
+:is(html[data-iyanjupay-theme="light"], html.iyanjupay-theme-light,
+    html[data-iyanjupay-theme="blue"], html.iyanjupay-theme-blue) .text-gray-700,
+:is(html[data-iyanjupay-theme="light"], html.iyanjupay-theme-light,
+    html[data-iyanjupay-theme="blue"], html.iyanjupay-theme-blue) .text-slate-950,
+:is(html[data-iyanjupay-theme="light"], html.iyanjupay-theme-light,
+    html[data-iyanjupay-theme="blue"], html.iyanjupay-theme-blue) .text-slate-900,
+:is(html[data-iyanjupay-theme="light"], html.iyanjupay-theme-light,
+    html[data-iyanjupay-theme="blue"], html.iyanjupay-theme-blue) .text-slate-800,
+:is(html[data-iyanjupay-theme="light"], html.iyanjupay-theme-light,
+    html[data-iyanjupay-theme="blue"], html.iyanjupay-theme-blue) .text-slate-700 {
+  color: var(--iyanjupay-text) !important;
 }
-:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark)
-:is(.text-slate-950, .text-slate-900, .text-slate-800, .text-slate-700,
-    .text-gray-950, .text-gray-900, .text-gray-800, .text-gray-700) {
-  color: #f1f5f9 !important;
+
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) .text-gray-950,
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) .text-gray-900,
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) .text-gray-800,
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) .text-gray-700,
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) .text-slate-950,
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) .text-slate-900,
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) .text-slate-800,
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) .text-slate-700,
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) .text-black {
+  color: var(--iyanjupay-text) !important;
 }
-:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark)
-:is(.text-slate-600, .text-slate-500, .text-gray-600, .text-gray-500,
-    .text-slate-400, .text-gray-400) {
-  color: #a8b3c7 !important;
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) .text-gray-600,
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) .text-gray-500,
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) .text-gray-400,
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) .text-slate-600,
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) .text-slate-500,
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) .text-slate-400,
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) .text-muted-foreground {
+  color: var(--iyanjupay-text-secondary) !important;
 }
-:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) .text-white {
-  color: #fff !important;
-}
+
+/* Brand and semantic status colors must not be flattened by text rules. */
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) .text-purple-500,
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) .text-purple-600,
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) .text-purple-700,
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) .text-violet-500,
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) .text-violet-600,
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) .text-violet-700 { color: #c4b5fd !important; }
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) .text-blue-500,
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) .text-blue-600,
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) .text-blue-700 { color: #93c5fd !important; }
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) .text-green-500,
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) .text-green-600,
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) .text-green-700,
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) .text-emerald-500,
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) .text-emerald-600,
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) .text-emerald-700 { color: #6ee7b7 !important; }
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) .text-red-500,
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) .text-red-600,
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) .text-red-700 { color: #fca5a5 !important; }
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) .text-orange-500,
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) .text-orange-600,
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) .text-orange-700 { color: #fdba74 !important; }
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) .text-white { color: #ffffff !important; }
 
 /* ---------- Borders ---------- */
-:is(html[data-iyanjupay-theme="light"], html.iyanjupay-theme-light) :is(
-  .border-gray-100, .border-gray-200, .border-slate-100, .border-slate-200
-) { border-color: var(--iyj-border-light) !important; }
-:is(html[data-iyanjupay-theme="blue"], html.iyanjupay-theme-blue) :is(
-  .border-gray-100, .border-gray-200, .border-slate-100, .border-slate-200
-) { border-color: var(--iyj-border-blue) !important; }
-:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) :is(
-  .border-gray-100, .border-gray-200, .border-slate-100, .border-slate-200,
-  .border-slate-300, .border-gray-300
-) { border-color: var(--iyj-border-dark) !important; }
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) [class*="border-gray-100"],
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) [class*="border-gray-200"],
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) [class*="border-gray-300"],
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) [class*="border-slate-100"],
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) [class*="border-slate-200"],
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) [class*="border-slate-300"],
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) .border-border,
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) .border-input {
+  border-color: var(--iyanjupay-border) !important;
+}
 
 /* ---------- Form controls ---------- */
 :is(html[data-iyanjupay-theme="light"], html.iyanjupay-theme-light,
-    html[data-iyanjupay-theme="blue"], html.iyanjupay-theme-blue)
-:is(input, select, textarea, [role="combobox"]) {
-  color-scheme: light;
-  background-color: #fff !important;
-  color: #111827 !important;
-  border-color: #dbe2ea;
+    html[data-iyanjupay-theme="blue"], html.iyanjupay-theme-blue) input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]),
+:is(html[data-iyanjupay-theme="light"], html.iyanjupay-theme-light,
+    html[data-iyanjupay-theme="blue"], html.iyanjupay-theme-blue) select,
+:is(html[data-iyanjupay-theme="light"], html.iyanjupay-theme-light,
+    html[data-iyanjupay-theme="blue"], html.iyanjupay-theme-blue) textarea,
+:is(html[data-iyanjupay-theme="light"], html.iyanjupay-theme-light,
+    html[data-iyanjupay-theme="blue"], html.iyanjupay-theme-blue) [role="combobox"] {
+  background-color: var(--iyanjupay-input) !important;
+  color: var(--iyanjupay-text) !important;
+  border-color: var(--iyanjupay-border) !important;
 }
-:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark)
-:is(input, select, textarea, [role="combobox"]) {
-  color-scheme: dark;
-  background-color: #0f172a !important;
-  color: #f8fafc !important;
-  border-color: #334155 !important;
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]),
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) select,
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) textarea,
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) [role="combobox"] {
+  background-color: var(--iyanjupay-input) !important;
+  color: var(--iyanjupay-text) !important;
+  border-color: var(--iyanjupay-border) !important;
 }
 :is(html[data-iyanjupay-theme="light"], html.iyanjupay-theme-light,
-    html[data-iyanjupay-theme="blue"], html.iyanjupay-theme-blue)
-:is(input, textarea)::placeholder { color: #94a3b8 !important; opacity: 1; }
-:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark)
-:is(input, textarea)::placeholder { color: #8290a5 !important; opacity: 1; }
+    html[data-iyanjupay-theme="blue"], html.iyanjupay-theme-blue,
+    html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) input::placeholder,
+:is(html[data-iyanjupay-theme="light"], html.iyanjupay-theme-light,
+    html[data-iyanjupay-theme="blue"], html.iyanjupay-theme-blue,
+    html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) textarea::placeholder {
+  color: var(--iyanjupay-text-muted) !important;
+  opacity: 1;
+}
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) input:focus,
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) select:focus,
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) textarea:focus,
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) [role="combobox"]:focus {
+  border-color: #818cf8 !important;
+  box-shadow: 0 0 0 2px rgba(129, 140, 248, .2) !important;
+}
 
-/* ---------- Dialogs, menus and popovers ---------- */
-:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) [role="dialog"],
-:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) [data-radix-popper-content-wrapper] > * {
-  background-color: var(--iyj-surface-dark);
-  color: var(--iyj-text-dark);
-  border-color: var(--iyj-border-dark);
-}
+/* ---------- Dialogs, menus and select portals ---------- */
 :is(html[data-iyanjupay-theme="light"], html.iyanjupay-theme-light,
-    html[data-iyanjupay-theme="blue"], html.iyanjupay-theme-blue)
-:is([role="dialog"], [data-radix-popper-content-wrapper] > *) {
+    html[data-iyanjupay-theme="blue"], html.iyanjupay-theme-blue) [role="dialog"],
+:is(html[data-iyanjupay-theme="light"], html.iyanjupay-theme-light,
+    html[data-iyanjupay-theme="blue"], html.iyanjupay-theme-blue) [data-radix-popper-content-wrapper] > * {
+  background-color: #ffffff;
   color: #111827;
+  border-color: var(--iyanjupay-border);
+}
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) [role="dialog"],
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) [data-radix-popper-content-wrapper] > *,
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) [data-radix-select-content] {
+  background-color: var(--iyanjupay-surface) !important;
+  color: var(--iyanjupay-text) !important;
+  border-color: var(--iyanjupay-border) !important;
 }
 
-/* ---------- Brand headers and wallet ---------- */
-:is(html[data-iyanjupay-theme="light"], html.iyanjupay-theme-light) :is(
-  .iyanjupay-dashboard-header, .iyanjupay-service-header
-) {
-  background: linear-gradient(100deg, #5b21b6 0%, #6d28d9 52%, #2563eb 100%) !important;
-  color: #fff !important;
+/* ---------- Semantic accent surfaces in dark mode ---------- */
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) .bg-pink-100 { background-color: #3b1f35 !important; }
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) .text-pink-700 { color: #f9a8d4 !important; }
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) [class~="dark:bg-pink-950"] { background-color: #3b1f35 !important; }
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) [class~="dark:text-pink-300"] { color: #f9a8d4 !important; }
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) [class~="dark:bg-emerald-950"] { background-color: #062f2a !important; }
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) [class~="dark:text-emerald-300"] { color: #6ee7b7 !important; }
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) [class~="dark:bg-red-950"] { background-color: #3a161d !important; }
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) [class~="dark:text-red-300"] { color: #fca5a5 !important; }
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) [class~="dark:border-destructive"] { border-color: hsl(var(--destructive)) !important; }
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) .bg-purple-50,
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) .bg-purple-100,
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) .bg-violet-50,
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) .bg-violet-100 { background-color: #241b4f !important; }
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) .bg-blue-50,
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) .bg-blue-100 { background-color: #102a4d !important; }
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) .bg-green-50,
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) .bg-green-100,
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) .bg-emerald-50,
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) .bg-emerald-100 { background-color: #062f2a !important; }
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) .bg-red-50,
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) .bg-red-100 { background-color: #3a161d !important; }
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) .bg-orange-50,
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) .bg-orange-100 { background-color: #3a2815 !important; }
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) .bg-yellow-50,
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) .bg-yellow-100 { background-color: #3a3010 !important; }
+
+/* ---------- Primary controls and branded page chrome ---------- */
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) .bg-purple-600 { background-color: #4f46e5 !important; }
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) .bg-blue-600 { background-color: #2563eb !important; }
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) [class*="hover:bg-purple-700"]:hover { background-color: #4338ca !important; }
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) [class*="hover:bg-blue-700"]:hover { background-color: #1d4ed8 !important; }
+
+:is(html[data-iyanjupay-theme="light"], html.iyanjupay-theme-light) .iyanjupay-dashboard-header,
+:is(html[data-iyanjupay-theme="light"], html.iyanjupay-theme-light) .iyanjupay-service-header {
+  background: linear-gradient(100deg, #5b21b6, #6d28d9, #2563eb) !important;
+  color: #ffffff !important;
 }
-:is(html[data-iyanjupay-theme="blue"], html.iyanjupay-theme-blue) :is(
-  .iyanjupay-dashboard-header, .iyanjupay-service-header
-) {
-  background: linear-gradient(100deg, #082a63 0%, #1554b8 55%, #2563eb 100%) !important;
-  color: #fff !important;
+:is(html[data-iyanjupay-theme="blue"], html.iyanjupay-theme-blue) .iyanjupay-dashboard-header,
+:is(html[data-iyanjupay-theme="blue"], html.iyanjupay-theme-blue) .iyanjupay-service-header {
+  background: linear-gradient(100deg, #082a63, #1554b8, #2563eb) !important;
+  color: #ffffff !important;
 }
-:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) :is(
-  .iyanjupay-dashboard-header, .iyanjupay-service-header
-) {
-  background: linear-gradient(100deg, #111827 0%, #312e81 55%, #1e3a8a 100%) !important;
-  color: #fff !important;
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) .iyanjupay-dashboard-header,
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) .iyanjupay-service-header {
+  background: linear-gradient(100deg, #111827, #312e81, #1e40af) !important;
+  color: #ffffff !important;
 }
-:is(html[data-iyanjupay-theme="light"], html.iyanjupay-theme-light) .iyanjupay-dashboard-wallet {
+
+:is(html[data-iyanjupay-theme="light"], html.iyanjupay-theme-light) .iyanjupay-dashboard-wallet,
+:is(html[data-iyanjupay-theme="light"], html.iyanjupay-theme-light) .iyanjupay-service-primary {
   background: linear-gradient(135deg, #4c1d95, #6d28d9, #2563eb) !important;
-  color: #fff !important;
+  color: #ffffff !important;
 }
-:is(html[data-iyanjupay-theme="blue"], html.iyanjupay-theme-blue) .iyanjupay-dashboard-wallet {
+:is(html[data-iyanjupay-theme="blue"], html.iyanjupay-theme-blue) .iyanjupay-dashboard-wallet,
+:is(html[data-iyanjupay-theme="blue"], html.iyanjupay-theme-blue) .iyanjupay-service-primary {
   background: linear-gradient(135deg, #082a63, #1554b8, #2563eb) !important;
-  color: #fff !important;
+  color: #ffffff !important;
 }
-:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) .iyanjupay-dashboard-wallet {
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) .iyanjupay-dashboard-wallet,
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) .iyanjupay-service-primary {
   background: linear-gradient(135deg, #111827, #312e81, #1e40af) !important;
-  color: #fff !important;
+  color: #ffffff !important;
 }
-:is(html[data-iyanjupay-theme], html.iyanjupay-theme-light, html.iyanjupay-theme-blue, html.iyanjupay-theme-dark)
-.iyanjupay-dashboard-wallet :is(.text-white, .text-purple-100) { color: #fff !important; }
-.iyanjupay-dashboard-wallet .bg-white { background-color: #fff !important; }
-.iyanjupay-dashboard-wallet .bg-white.text-purple-700,
-.iyanjupay-dashboard-wallet .bg-white .text-purple-700 { color: #5b21b6 !important; }
 
-/* Header icon controls deliberately remain translucent and white. */
-.iyanjupay-header-logo {
-  background: rgba(255,255,255,.08) !important;
-  border: 1px solid rgba(255,255,255,.14);
-  box-shadow: 0 8px 24px rgba(0,0,0,.18);
+/* Wallet labels and header controls remain white on branded surfaces. */
+:is(html[data-iyanjupay-theme], html[class*="iyanjupay-theme-"]) .iyanjupay-dashboard-wallet .text-white,
+:is(html[data-iyanjupay-theme], html[class*="iyanjupay-theme-"]) .iyanjupay-dashboard-wallet .text-purple-100,
+:is(html[data-iyanjupay-theme], html[class*="iyanjupay-theme-"]) .iyanjupay-dashboard-header .text-white,
+:is(html[data-iyanjupay-theme], html[class*="iyanjupay-theme-"]) .iyanjupay-dashboard-header .text-purple-100,
+:is(html[data-iyanjupay-theme], html[class*="iyanjupay-theme-"]) .iyanjupay-service-header .text-white {
+  color: #ffffff !important;
 }
-.iyanjupay-header-logo img { display: block; width: 100%; height: 100%; object-fit: cover; }
-.iyanjupay-header-action {
-  color: #fff !important;
-  background: rgba(255,255,255,.08) !important;
-  border: 1px solid rgba(255,255,255,.12) !important;
-  box-shadow: 0 5px 16px rgba(0,0,0,.12);
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) .iyanjupay-dashboard-wallet .bg-white {
+  background-color: #ffffff !important;
 }
-.iyanjupay-header-action:hover,
-.iyanjupay-header-action:focus-visible { background: rgba(255,255,255,.17) !important; color: #fff !important; }
-.iyanjupay-header-action:focus-visible { outline: 2px solid rgba(255,255,255,.75); outline-offset: 2px; }
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) .iyanjupay-dashboard-wallet .bg-white.text-purple-700,
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) .iyanjupay-dashboard-wallet .bg-white .text-purple-700 {
+  color: #5b21b6 !important;
+}
 
-/* Keep provider logos white even when their surrounding card is dark. */
+/* Service provider logo tiles intentionally stay white for logo fidelity. */
 :is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) .iyanjupay-service-biller-logo {
-  background: #fff !important;
+  background-color: #ffffff !important;
   color: #334155 !important;
 }
 
-/* Violet accent panels remain violet rather than being flattened to grey. */
-:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) :is(.bg-violet-50, .bg-violet-100) {
-  background-color: #241b4f !important;
-}
-:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) :is(.text-violet-600, .text-violet-700, .text-violet-800) {
-  color: #c4b5fd !important;
-}
-:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) :is(.border-violet-100, .border-violet-200, .border-violet-300) {
-  border-color: #4338ca !important;
-}
-
-/* Bottom navigation translucent white surfaces in light/blue modes. */
+/* Bottom navigation: translucent light surface in light/blue, layered navy in dark. */
 :is(html[data-iyanjupay-theme="light"], html.iyanjupay-theme-light,
-    html[data-iyanjupay-theme="blue"], html.iyanjupay-theme-blue)
-:is([class*="bg-white/95"], [class*="bg-white/90"], [class*="bg-white/80"]) {
-  background-color: rgba(255,255,255,.96) !important;
+    html[data-iyanjupay-theme="blue"], html.iyanjupay-theme-blue) [class*="bg-white/95"],
+:is(html[data-iyanjupay-theme="light"], html.iyanjupay-theme-light,
+    html[data-iyanjupay-theme="blue"], html.iyanjupay-theme-blue) [class*="bg-white/90"],
+:is(html[data-iyanjupay-theme="light"], html.iyanjupay-theme-light,
+    html[data-iyanjupay-theme="blue"], html.iyanjupay-theme-blue) [class*="bg-white/80"] {
+  background-color: rgba(255, 255, 255, .96) !important;
+}
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) [class*="bg-white/95"],
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) [class*="bg-white/90"],
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) [class*="bg-white/80"] {
+  background-color: rgba(17, 24, 39, .96) !important;
+  border-color: var(--iyanjupay-border) !important;
 }
 
-/* Appearance selector is a deliberate menu surface, independent of page cards. */
-.iyanjupay-appearance-menu {
-  background: #fff !important;
-  border: 1px solid #dbe2ea;
-  color: #0f172a;
+/* Header logo/action glass treatment; never apply generic card colors here. */
+.iyanjupay-header-logo {
+  background: rgba(255, 255, 255, .08) !important;
+  border: 1px solid rgba(255, 255, 255, .14);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .18);
 }
-.iyanjupay-appearance-label { color: #94a3b8; }
+.iyanjupay-header-logo img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.iyanjupay-header-action {
+  color: #ffffff !important;
+  background: rgba(255, 255, 255, .08) !important;
+  border: 1px solid rgba(255, 255, 255, .12) !important;
+  box-shadow: 0 5px 16px rgba(0, 0, 0, .12);
+}
+.iyanjupay-header-action:hover,
+.iyanjupay-header-action:focus-visible { background: rgba(255, 255, 255, .17) !important; color: #ffffff !important; }
+.iyanjupay-header-action:focus-visible { outline: 2px solid rgba(255, 255, 255, .7); outline-offset: 2px; }
+
+/* Appearance menu is a deliberate floating surface. */
+.iyanjupay-appearance-menu { background: #ffffff !important; border: 1px solid #dbe2ea; color: #0f172a; }
+.iyanjupay-appearance-label { color: #64748b; }
 .iyanjupay-appearance-option { color: #475569; }
 .iyanjupay-appearance-option:hover { background: #f1f5f9; color: #0f172a; }
 .iyanjupay-appearance-option.is-selected { background: #e2e8f0; color: #0f172a; }
 .iyanjupay-appearance-icon { background: #f1f5f9; color: #475569; }
-:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) .iyanjupay-appearance-menu {
-  background: #111827 !important;
-  border-color: #334155;
-  color: #f8fafc;
-}
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) .iyanjupay-appearance-menu { background: #111827 !important; border-color: #334155; color: #f8fafc; }
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) .iyanjupay-appearance-label { color: #94a3b8; }
 :is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) .iyanjupay-appearance-option { color: #cbd5e1; }
 :is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) .iyanjupay-appearance-option:hover { background: #1e293b; color: #f8fafc; }
 :is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) .iyanjupay-appearance-option.is-selected { background: #243044; color: #f8fafc; }
 :is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) .iyanjupay-appearance-icon { background: #1e293b; color: #cbd5e1; }
+
+/* Service processing surfaces and generic card borders. */
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) .iyanjupay-processing-card,
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) .iyanjupay-processing-summary,
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) .iyanjupay-processing-reference,
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) .iyanjupay-processing-reference-value,
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) .card,
+:is(html[data-iyanjupay-theme="dark"], html.iyanjupay-theme-dark) [data-slot="card"] {
+  border-color: var(--iyanjupay-border) !important;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .22), 0 10px 30px rgba(0, 0, 0, .12);
+}
 
 /* ---------- Announcement ticker ---------- */
 .iyanjupay-announcement-marquee { position: relative; width: 100%; overflow: hidden; }

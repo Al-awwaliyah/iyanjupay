@@ -4631,3 +4631,171 @@ html[data-iyanjupay-theme="dark"] .iyanjupay-appearance-option.is-selected,
 html.iyanjupay-theme-dark .iyanjupay-appearance-option.is-selected { background: #243044; color: #f8fafc; }
 html[data-iyanjupay-theme="dark"] .iyanjupay-appearance-icon,
 html.iyanjupay-theme-dark .iyanjupay-appearance-icon { background: #1e293b; color: #cbd5e1; }
+
+/* ============================================================
+   IYANJUPAY THREE-THEME DESIGN TOKENS — APPROVED SYSTEM
+   Light / Blue / Dark. Applied to customer-facing surfaces.
+   ============================================================ */
+html.iyanjupay-theme-light,
+html[data-iyanjupay-theme="light"] {
+  --iyj-page: #f7f9fc;
+  --iyj-card: #ffffff;
+  --iyj-text: #101b33;
+  --iyj-text-muted: #64748b;
+  --iyj-input: #ffffff;
+  --iyj-border: #e5eaf1;
+  --iyj-brand-gradient: linear-gradient(115deg, #6d28d9 0%, #7c3aed 48%, #4338ca 100%);
+  --background: 216 33% 98%; --foreground: 222 47% 13%;
+  --card: 0 0% 100%; --card-foreground: 222 47% 13%;
+  --popover: 0 0% 100%; --popover-foreground: 222 47% 13%;
+  --secondary: 214 32% 95%; --secondary-foreground: 222 47% 18%;
+  --muted: 214 32% 95%; --muted-foreground: 215 16% 47%;
+  --border: 214 24% 91%; --input: 0 0% 100%;
+  --iy-canvas: 216 33% 98%; --iy-surface: 0 0% 100%;
+  --iy-text: 222 47% 13%; --iy-text-muted: 215 16% 47%; --iy-outline: 214 24% 91%;
+  color-scheme: light;
+}
+
+html.iyanjupay-theme-blue,
+html[data-iyanjupay-theme="blue"] {
+  --iyj-page: #f1f6ff;
+  --iyj-card: #ffffff;
+  --iyj-text: #10203d;
+  --iyj-text-muted: #64748b;
+  --iyj-input: #ffffff;
+  --iyj-border: #d7e3f3;
+  --iyj-brand-gradient: linear-gradient(115deg, #1d4ed8 0%, #2563eb 52%, #0e7490 100%);
+  --background: 216 100% 97%; --foreground: 219 58% 15%;
+  --card: 0 0% 100%; --card-foreground: 219 58% 15%;
+  --popover: 0 0% 100%; --popover-foreground: 219 58% 15%;
+  --secondary: 214 70% 94%; --secondary-foreground: 219 58% 20%;
+  --muted: 214 70% 94%; --muted-foreground: 215 18% 46%;
+  --border: 214 43% 90%; --input: 0 0% 100%; --ring: 218 92% 52%;
+  --iy-brand: 218 92% 52%; --iy-brand-strong: 221 83% 40%; --iy-brand-soft: 214 100% 96%;
+  --iy-canvas: 216 100% 97%; --iy-surface: 0 0% 100%;
+  --iy-text: 219 58% 15%; --iy-text-muted: 215 18% 46%; --iy-outline: 214 43% 90%;
+  color-scheme: light;
+}
+
+html.iyanjupay-theme-dark,
+html[data-iyanjupay-theme="dark"] {
+  --iyj-page: #0a1224;
+  --iyj-card: #14213a;
+  --iyj-text: #f8fafc;
+  --iyj-text-muted: #a8b5c9;
+  --iyj-input: #101d33;
+  --iyj-border: #34445f;
+  --iyj-brand-gradient: linear-gradient(115deg, #111b35 0%, #312e81 52%, #3730a3 100%);
+  --background: 222 47% 9%; --foreground: 210 40% 98%;
+  --card: 218 47% 15%; --card-foreground: 210 40% 98%;
+  --popover: 218 47% 15%; --popover-foreground: 210 40% 98%;
+  --secondary: 217 34% 19%; --secondary-foreground: 210 40% 96%;
+  --muted: 217 34% 19%; --muted-foreground: 216 20% 72%;
+  --border: 217 28% 29%; --input: 218 47% 13%; --ring: 258 88% 68%;
+  --iy-brand: 258 88% 68%; --iy-brand-strong: 258 88% 74%; --iy-brand-soft: 258 42% 20%;
+  --iy-navy: 222 47% 9%; --iy-canvas: 222 47% 9%; --iy-surface: 218 47% 15%;
+  --iy-muted: 217 34% 19%; --iy-text: 210 40% 98%; --iy-text-muted: 216 20% 72%; --iy-outline: 217 28% 29%;
+  --sidebar-background: 222 47% 9%; --sidebar-foreground: 210 40% 98%;
+  --sidebar-accent: 217 34% 19%; --sidebar-accent-foreground: 210 40% 98%; --sidebar-border: 217 28% 29%;
+  color-scheme: dark;
+}
+
+/* The customer page canvas follows the selected theme. */
+html[data-iyanjupay-theme] .iyanjupay-dashboard,
+html[data-iyanjupay-theme] .iyanjupay-customer-page {
+  background-color: var(--iyj-page) !important;
+  background-image: none !important;
+  color: var(--iyj-text);
+}
+
+/* Ordinary cards use white in Light/Blue and navy in Dark. */
+html[data-iyanjupay-theme] .iyanjupay-dashboard .bg-white,
+html[data-iyanjupay-theme] .iyanjupay-customer-page .bg-white {
+  background-color: var(--iyj-card) !important;
+}
+
+/* Page backgrounds and secondary surfaces. */
+html[data-iyanjupay-theme] .iyanjupay-dashboard .bg-slate-50,
+html[data-iyanjupay-theme] .iyanjupay-customer-page .bg-slate-50,
+html[data-iyanjupay-theme] .iyanjupay-dashboard .bg-gray-50,
+html[data-iyanjupay-theme] .iyanjupay-customer-page .bg-gray-50 {
+  background-color: var(--iyj-page) !important;
+}
+html[data-iyanjupay-theme] .iyanjupay-dashboard .bg-slate-100,
+html[data-iyanjupay-theme] .iyanjupay-customer-page .bg-slate-100,
+html[data-iyanjupay-theme] .iyanjupay-dashboard .bg-gray-100,
+html[data-iyanjupay-theme] .iyanjupay-customer-page .bg-gray-100 {
+  background-color: var(--iyj-border) !important;
+}
+
+/* Inputs retain a distinct but related surface and readable values. */
+html[data-iyanjupay-theme] .iyanjupay-dashboard input,
+html[data-iyanjupay-theme] .iyanjupay-dashboard select,
+html[data-iyanjupay-theme] .iyanjupay-dashboard textarea,
+html[data-iyanjupay-theme] .iyanjupay-customer-page input,
+html[data-iyanjupay-theme] .iyanjupay-customer-page select,
+html[data-iyanjupay-theme] .iyanjupay-customer-page textarea {
+  background-color: var(--iyj-input);
+  border-color: var(--iyj-border);
+  color: var(--iyj-text);
+}
+html[data-iyanjupay-theme] .iyanjupay-dashboard input::placeholder,
+html[data-iyanjupay-theme] .iyanjupay-dashboard textarea::placeholder,
+html[data-iyanjupay-theme] .iyanjupay-customer-page input::placeholder,
+html[data-iyanjupay-theme] .iyanjupay-customer-page textarea::placeholder {
+  color: var(--iyj-text-muted);
+  opacity: 1;
+}
+
+/* Consistent border treatment on customer content. */
+html[data-iyanjupay-theme] .iyanjupay-dashboard [class*="border-slate-200"],
+html[data-iyanjupay-theme] .iyanjupay-customer-page [class*="border-slate-200"],
+html[data-iyanjupay-theme] .iyanjupay-dashboard [class*="border-gray-200"],
+html[data-iyanjupay-theme] .iyanjupay-customer-page [class*="border-gray-200"] {
+  border-color: var(--iyj-border) !important;
+}
+
+/* Primary and secondary text colors. */
+html[data-iyanjupay-theme] .iyanjupay-dashboard .text-slate-950,
+html[data-iyanjupay-theme] .iyanjupay-dashboard .text-slate-900,
+html[data-iyanjupay-theme] .iyanjupay-customer-page .text-slate-950,
+html[data-iyanjupay-theme] .iyanjupay-customer-page .text-slate-900,
+html[data-iyanjupay-theme] .iyanjupay-dashboard .text-gray-900,
+html[data-iyanjupay-theme] .iyanjupay-customer-page .text-gray-900 {
+  color: var(--iyj-text) !important;
+}
+html[data-iyanjupay-theme] .iyanjupay-dashboard .text-slate-700,
+html[data-iyanjupay-theme] .iyanjupay-dashboard .text-slate-600,
+html[data-iyanjupay-theme] .iyanjupay-dashboard .text-slate-500,
+html[data-iyanjupay-theme] .iyanjupay-customer-page .text-slate-700,
+html[data-iyanjupay-theme] .iyanjupay-customer-page .text-slate-600,
+html[data-iyanjupay-theme] .iyanjupay-customer-page .text-slate-500,
+html[data-iyanjupay-theme] .iyanjupay-dashboard .text-gray-700,
+html[data-iyanjupay-theme] .iyanjupay-dashboard .text-gray-600,
+html[data-iyanjupay-theme] .iyanjupay-dashboard .text-gray-500,
+html[data-iyanjupay-theme] .iyanjupay-customer-page .text-gray-700,
+html[data-iyanjupay-theme] .iyanjupay-customer-page .text-gray-600,
+html[data-iyanjupay-theme] .iyanjupay-customer-page .text-gray-500 {
+  color: var(--iyj-text-muted) !important;
+}
+
+/* Preserve explicit brand headers and white header controls. */
+html[data-iyanjupay-theme="light"] .iyanjupay-dashboard-header,
+html[data-iyanjupay-theme="blue"] .iyanjupay-dashboard-header,
+html[data-iyanjupay-theme="dark"] .iyanjupay-dashboard-header,
+html[data-iyanjupay-theme="light"] .iyanjupay-service-header,
+html[data-iyanjupay-theme="blue"] .iyanjupay-service-header,
+html[data-iyanjupay-theme="dark"] .iyanjupay-service-header {
+  background-image: var(--iyj-brand-gradient) !important;
+}
+html[data-iyanjupay-theme] .iyanjupay-dashboard-header,
+html[data-iyanjupay-theme] .iyanjupay-service-header,
+html[data-iyanjupay-theme] .iyanjupay-header-action {
+  color: #ffffff !important;
+}
+
+/* Intentional white logo plates and brand controls are not cards. */
+html[data-iyanjupay-theme] .iyanjupay-service-biller-logo,
+html[data-iyanjupay-theme] .iyanjupay-header-logo {
+  color: inherit;
+}

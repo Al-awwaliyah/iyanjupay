@@ -17,7 +17,8 @@ interface Wallet {
 
 export const useWallet = (
   userId: string | undefined,
-  enabled = true
+  enabled = true,
+  ensureLedgerOnLoad = false,
 ) => {
   const [
     wallet,
@@ -42,10 +43,6 @@ export const useWallet = (
 
   const fetchWallet =
     useCallback(async () => {
-      /*
-       * Do absolutely nothing while the dashboard is not ready.
-       */
-
       if (!enabled || !userId) {
         setWallet(null);
         setLoading(false);
@@ -55,186 +52,83 @@ export const useWallet = (
       try {
         setLoading(true);
 
-        /*
-         * ------------------------------------------------------
-         * FIRST: CHECK EXISTING WALLET
-         * ------------------------------------------------------
-         */
-
-        const {
-          data,
-          error,
-        } =
-          await supabase
-            .from("wallets")
-            .select(
-              "id, wallet_id, balance, virtual_account_number"
-            )
-            .eq(
-              "user_id",
-              userId
-            )
-            .maybeSingle();
-
-        if (error) {
-          throw error;
+        // The customer Dashboard requests the full bootstrap once so the
+        // wallet and its available/held ledger accounts are both ensured.
+        // Other useWallet consumers keep the lightweight existing-wallet
+        // lookup and only bootstrap when the wallet row is missing.
+        if (ensureLedgerOnLoad) {
+          const { data, error } = await supabase.functions.invoke(
+            "wallet-bootstrap",
+            { body: {} },
+          );
+          if (error) throw error;
+          const item = data?.wallet;
+          if (!item?.id) throw new Error("Wallet bootstrap returned no wallet.");
+          setWallet({
+            id: item.id,
+            wallet_id: item.wallet_id || "",
+            balance: Number(item.balance) || 0,
+            virtual_account_number: item.virtual_account_number || "",
+          });
+          return;
         }
 
-        /*
-         * ------------------------------------------------------
-         * WALLET EXISTS
-         * ------------------------------------------------------
-         */
+        const { data, error } = await supabase
+          .from("wallets")
+          .select("id, wallet_id, balance, virtual_account_number")
+          .eq("user_id", userId)
+          .maybeSingle();
+        if (error) throw error;
 
         if (data) {
           setWallet({
             id: data.id,
-
-            wallet_id:
-              data.wallet_id || "",
-
-            balance:
-              Number(
-                data.balance
-              ) || 0,
-
-            virtual_account_number:
-              data.virtual_account_number ||
-              "",
+            wallet_id: data.wallet_id || "",
+            balance: Number(data.balance) || 0,
+            virtual_account_number: data.virtual_account_number || "",
           });
-
           return;
         }
 
-        /*
-         * ------------------------------------------------------
-         * WALLET DOES NOT EXIST
-         *
-         * Let the secure Edge Function create it.
-         * ------------------------------------------------------
-         */
+        const { data: bootstrapData, error: bootstrapError } =
+          await supabase.functions.invoke("wallet-bootstrap", { body: {} });
+        if (bootstrapError) throw bootstrapError;
 
-        const {
-          data: bootstrapData,
-          error: bootstrapError,
-        } =
-          await supabase.functions.invoke(
-            "wallet-bootstrap",
-            {
-              body: {},
-            }
-          );
-
-        if (bootstrapError) {
-          throw bootstrapError;
-        }
-
-        /*
-         * ------------------------------------------------------
-         * BOOTSTRAP RETURNED WALLET
-         * ------------------------------------------------------
-         */
-
-        if (
-          bootstrapData?.wallet
-        ) {
+        if (bootstrapData?.wallet?.id) {
+          const item = bootstrapData.wallet;
           setWallet({
-            id:
-              bootstrapData.wallet.id,
-
-            wallet_id:
-              bootstrapData.wallet
-                .wallet_id || "",
-
-            balance:
-              Number(
-                bootstrapData.wallet
-                  .balance
-              ) || 0,
-
-            virtual_account_number:
-              bootstrapData.wallet
-                .virtual_account_number ||
-              "",
+            id: item.id,
+            wallet_id: item.wallet_id || "",
+            balance: Number(item.balance) || 0,
+            virtual_account_number: item.virtual_account_number || "",
           });
-
           return;
         }
 
-        /*
-         * ------------------------------------------------------
-         * FETCH AGAIN AFTER BOOTSTRAP
-         * ------------------------------------------------------
-         */
-
-        const {
-          data: refreshedWallet,
-          error: refreshedError,
-        } =
-          await supabase
-            .from("wallets")
-            .select(
-              "id, wallet_id, balance, virtual_account_number"
-            )
-            .eq(
-              "user_id",
-              userId
-            )
-            .maybeSingle();
-
-        if (refreshedError) {
-          throw refreshedError;
-        }
-
-        if (refreshedWallet) {
-          setWallet({
-            id:
-              refreshedWallet.id,
-
-            wallet_id:
-              refreshedWallet.wallet_id ||
-              "",
-
-            balance:
-              Number(
-                refreshedWallet.balance
-              ) || 0,
-
-            virtual_account_number:
-              refreshedWallet.virtual_account_number ||
-              "",
-          });
-        } else {
-          setWallet(null);
-        }
+        const { data: refreshedWallet, error: refreshedError } = await supabase
+          .from("wallets")
+          .select("id, wallet_id, balance, virtual_account_number")
+          .eq("user_id", userId)
+          .maybeSingle();
+        if (refreshedError) throw refreshedError;
+        setWallet(refreshedWallet ? {
+          id: refreshedWallet.id,
+          wallet_id: refreshedWallet.wallet_id || "",
+          balance: Number(refreshedWallet.balance) || 0,
+          virtual_account_number: refreshedWallet.virtual_account_number || "",
+        } : null);
       } catch (error) {
-        console.error(
-          "Error fetching wallet:",
-          error
-        );
-
-        /*
-         * Don't block the entire dashboard because wallet
-         * loading failed.
-         */
-
+        console.error("Error fetching wallet:", error);
         setWallet(null);
-
         toast({
           title: "Wallet Error",
-          description:
-            "Failed to load wallet information.",
-          variant:
-            "destructive",
+          description: "Failed to load wallet information.",
+          variant: "destructive",
         });
       } finally {
         setLoading(false);
       }
-    }, [
-      userId,
-      enabled,
-      toast,
-    ]);
+    }, [userId, enabled, ensureLedgerOnLoad, toast]);
 
   /*
    * ============================================================

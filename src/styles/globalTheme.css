@@ -4631,3 +4631,33 @@ html[data-iyanjupay-theme="dark"] .iyanjupay-appearance-option.is-selected,
 html.iyanjupay-theme-dark .iyanjupay-appearance-option.is-selected { background: #243044; color: #f8fafc; }
 html[data-iyanjupay-theme="dark"] .iyanjupay-appearance-icon,
 html.iyanjupay-theme-dark .iyanjupay-appearance-icon { background: #1e293b; color: #cbd5e1; }
+
+/* IyanjuPay fintech home: unified iconography, high-contrast wallet and surfaces. */
+.iyanjupay-dashboard { --iyanjupay-home-border: #e8eaf2; --iyanjupay-home-text: #151a2d; }
+.iyanjupay-home-heading, .iyanjupay-service-title { color: var(--iyanjupay-home-text); }
+.iyanjupay-welcome-kicker { color: #6250c7; }
+.iyanjupay-quick-link, .iyanjupay-service-tile {
+  background: hsl(var(--card)) !important; border-color: var(--iyanjupay-home-border) !important;
+  color: hsl(var(--card-foreground)); box-shadow: 0 2px 8px rgba(24,28,56,.035);
+}
+.iyanjupay-icon-tile {
+  color: #5140b5 !important;
+  background: linear-gradient(145deg,#f0edff 0%,#e8edff 100%) !important;
+  border: 1px solid rgba(91,73,190,.07);
+}
+.iyanjupay-currency-pill {
+  color: #fff !important; background: rgba(255,255,255,.17) !important;
+  border: 1px solid rgba(255,255,255,.24); box-shadow: inset 0 1px 0 rgba(255,255,255,.12);
+}
+.iyanjupay-wallet-hero {
+  background-image: linear-gradient(118deg,#30206f 0%,#5037a9 48%,#2457b7 100%) !important;
+  box-shadow: 0 18px 46px rgba(57,48,137,.20) !important;
+}
+.iyanjupay-wallet-hero .text-purple-100 { color: rgba(255,255,255,.91) !important; }
+.iyanjupay-wallet-hero .text-3xl { color: #fff !important; letter-spacing: -.045em; font-variant-numeric: tabular-nums; }
+html[data-iyanjupay-theme="dark"] .iyanjupay-dashboard,
+html.iyanjupay-theme-dark .iyanjupay-dashboard { --iyanjupay-home-border: #29334a; --iyanjupay-home-text: #f1f5f9; }
+html[data-iyanjupay-theme="dark"] .iyanjupay-welcome-kicker,
+html.iyanjupay-theme-dark .iyanjupay-welcome-kicker { color: #b7aaff; }
+html[data-iyanjupay-theme="dark"] .iyanjupay-icon-tile,
+html.iyanjupay-theme-dark .iyanjupay-icon-tile { color: #c4baff !important; background: linear-gradient(145deg,#30295b,#25365e) !important; border-color: rgba(196,186,255,.12); }

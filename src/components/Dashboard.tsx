@@ -9,9 +9,6 @@ import React, {
 
 import {
   Banknote,
-  ArrowDownLeft,
-  ArrowUpRight,
-  ChevronRight,
   ArrowLeft,
   CreditCard,
   Eye,
@@ -50,7 +47,6 @@ import {
 import ServiceCard from "./services/ServiceCard";
 import FundWalletModal from "./modals/FundWalletModal";
 import ServicePayment from "@/pages/ServicePayment";
-import SavingsPage from "@/pages/Savings";
 import QRCodeModal from "./modals/QRCodeModal";
 import WhatsAppFloat from "./WhatsAppFloat";
 import SupportChat from "./support/SupportChat";
@@ -102,7 +98,6 @@ type BillService =
 
 type CurrentPage =
   | "home"
-  | "savings"
   | "rewards"
   | "cards"
   | "me"
@@ -1424,31 +1419,106 @@ const Dashboard = ({
    * ============================================================
    */
 
-  const renderBottomNav = (page: CurrentPage) => {
-    const items = [
-      { label: "Home", icon: Home, active: page === "home", action: () => setCurrentPage("home") },
-      { label: "Transactions", icon: History, active: page === "history", action: () => setCurrentPage("history") },
-      { label: "Savings", icon: PiggyBank, active: page === "savings", action: () => setCurrentPage("savings") },
-      { label: "Profile", icon: User, active: page === "me" || page === "profile", action: () => setCurrentPage("me") },
-    ];
-    return (
-      <nav aria-label="Main navigation" className="iyanjupay-bottom-nav fixed bottom-0 left-0 right-0 z-40 border-t px-3 py-2 shadow-[0_-8px_30px_rgba(15,23,42,0.06)] backdrop-blur-xl">
-        <div className="mx-auto grid max-w-3xl grid-cols-4 gap-1">
-          {items.map(({ label, icon: Icon, active, action }) => (
-            <Button key={label} variant="ghost" size="sm" onClick={action} aria-current={active ? "page" : undefined}
-              className={`h-14 rounded-2xl ${active ? "bg-purple-50 text-purple-700 dark:bg-indigo-500/15 dark:text-indigo-300" : "text-slate-500 hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800"}`}>
-              <span className="flex flex-col items-center gap-1"><Icon className="h-5 w-5" /><span className="text-[10px] font-semibold sm:text-[11px]">{label}</span></span>
-            </Button>
-          ))}
-        </div>
-      </nav>
-    );
-  };
+  const renderBottomNav = (
+    page: CurrentPage
+  ) => (
+    <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-slate-200/80 bg-white/95 px-3 py-2 shadow-[0_-8px_30px_rgba(15,23,42,0.06)] backdrop-blur-xl">
+      <div className="mx-auto max-w-3xl">
+        <div className="grid grid-cols-4 gap-1">
 
-  if (currentPage === "savings") {
-    if (isInspection && inspectionData) return <InspectionReadOnlyPage page="savings" data={inspectionData} onBack={() => setCurrentPage("home")} onNavigate={setCurrentPage} />;
-    return <><SavingsPage onBack={() => setCurrentPage("home")} onWalletChanged={refreshWallet} />{renderBottomNav("savings")}</>;
-  }
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() =>
+              setCurrentPage(
+                "home"
+              )
+            }
+            className={`h-14 rounded-2xl ${
+              page === "home"
+                ? "bg-purple-50 text-purple-700"
+                : "text-slate-500 hover:bg-slate-50"
+            }`}
+          >
+            <span className="flex flex-col items-center gap-1">
+              <Home className="h-5 w-5" />
+
+              <span className="text-[11px] font-semibold">
+                Home
+              </span>
+            </span>
+          </Button>
+
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() =>
+              setCurrentPage("history")
+            }
+            className={`h-14 rounded-2xl ${
+              page === "history"
+                ? "bg-purple-50 text-purple-700"
+                : "text-slate-500 hover:bg-slate-50"
+            }`}
+          >
+            <span className="flex flex-col items-center gap-1">
+              <History className="h-5 w-5" />
+
+              <span className="text-[11px] font-semibold">
+                Transactions
+              </span>
+            </span>
+          </Button>
+
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              setSelectedService({ title: "Savings", type: "savings" });
+              setCurrentPage("service-payment");
+            }}
+            className={`h-14 rounded-2xl ${
+              page === "service-payment"
+                ? "bg-purple-50 text-purple-700"
+                : "text-slate-500 hover:bg-slate-50"
+            }`}
+          >
+            <span className="flex flex-col items-center gap-1">
+              <PiggyBank className="h-5 w-5" />
+
+              <span className="text-[11px] font-semibold">
+                Savings
+              </span>
+            </span>
+          </Button>
+
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() =>
+              setCurrentPage(
+                "me"
+              )
+            }
+            className={`h-14 rounded-2xl ${
+              page === "me"
+                ? "bg-purple-50 text-purple-700"
+                : "text-slate-500 hover:bg-slate-50"
+            }`}
+          >
+            <span className="flex flex-col items-center gap-1">
+              <User className="h-5 w-5" />
+
+              <span className="text-[11px] font-semibold">
+                Profile
+              </span>
+            </span>
+          </Button>
+
+        </div>
+      </div>
+    </div>
+  );
 
   /*
    * ============================================================
@@ -1830,15 +1900,35 @@ const Dashboard = ({
           <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
             <div className="flex h-[72px] items-center justify-between">
 
-              <div className="flex min-w-0 items-center gap-3">
+              <button
+                type="button"
+                onClick={() =>
+                  setCurrentPage(
+                    "home"
+                  )
+                }
+                className="flex items-center gap-3"
+                aria-label="Go to IyanjuPay home"
+              >
                 <div className="iyanjupay-header-logo flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-2xl">
-                  <img src="/icon-180.png" alt="IyanjuPay" className="h-full w-full object-cover" draggable={false} />
+                  <img
+                    src="/icon-180.png"
+                    alt="IyanjuPay"
+                    className="h-full w-full object-cover"
+                    draggable={false}
+                  />
                 </div>
-                <div className="min-w-0">
-                  <p className="text-[11px] font-semibold text-purple-100">Welcome back</p>
-                  <h1 className="truncate text-base font-extrabold tracking-tight sm:text-lg">Hello, {firstName} 👋</h1>
+
+                <div className="hidden sm:block">
+                  <p className="text-lg font-black tracking-tight">
+                    IyanjuPay
+                  </p>
+
+                  <p className="text-[10px] font-medium text-purple-100">
+                    Your money. Your control.
+                  </p>
                 </div>
-              </div>
+              </button>
 
               <div className="flex items-center gap-1 sm:gap-2">
 
@@ -1948,6 +2038,20 @@ const Dashboard = ({
                   size="sm"
                   onClick={() =>
                     setCurrentPage(
+                      "history"
+                    )
+                  }
+                  className="iyanjupay-header-action hidden h-10 w-10 rounded-full p-0 sm:flex"
+                  aria-label="Transaction history"
+                >
+                  <History className="h-5 w-5" />
+                </Button>
+
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() =>
+                    setCurrentPage(
                       "me"
                     )
                   }
@@ -1990,6 +2094,40 @@ const Dashboard = ({
               <p className="mt-1 text-sm">{maintenanceReason}</p>
             </div>
           )}
+
+          {/* GREETING */}
+
+          <section className="mb-6">
+
+            <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
+
+              <div>
+
+                <p className="mb-1 text-sm font-medium text-purple-600">
+                  Welcome back
+                </p>
+
+                <h1 className="text-2xl font-black tracking-tight text-slate-950 sm:text-3xl">
+                  Hello, {firstName} 👋
+                </h1>
+
+                <p className="mt-1 text-sm text-slate-500 sm:text-base">
+                  What would you like to do today?
+                </p>
+
+              </div>
+
+              <div className="hidden rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-500 shadow-sm sm:flex sm:items-center sm:gap-2">
+
+                <span className="h-2 w-2 rounded-full bg-emerald-500" />
+
+                Account active
+
+              </div>
+
+            </div>
+
+          </section>
 
           {/* WALLET HERO */}
 
@@ -2137,21 +2275,24 @@ const Dashboard = ({
 
           </section>
 
-          {/* QUICK ACCESS: secondary destinations only; primary money actions are in the wallet card */}
-          <section className="mb-7">
-            <div className="mb-3"><h2 className="text-lg font-black tracking-tight text-slate-950 dark:text-white">Quick Access</h2><p className="text-xs text-slate-500 dark:text-slate-400">Your account shortcuts</p></div>
+          {/* QUICK ACCESS */}
+          <section className="mb-8">
+            <div className="mb-4">
+              <h2 className="text-lg font-extrabold tracking-tight text-slate-950">Quick Access</h2>
+              <p className="mt-1 text-xs text-slate-500">Your everyday essentials</p>
+            </div>
             <div className="grid grid-cols-4 gap-2 sm:gap-3">
               {[
-                { label: "Savings", icon: PiggyBank, tone: "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300", action: () => setCurrentPage("savings") },
-                { label: "Rewards", icon: Gift, tone: "bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300", action: () => setCurrentPage("rewards") },
-                { label: "Cards", icon: CreditCard, tone: "bg-violet-50 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300", action: () => setCurrentPage("cards") },
-                { label: "Support", icon: Headphones, tone: "bg-blue-50 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300", action: () => setCurrentPage("support") },
-              ].map(({ label, icon: Icon, tone, action }) => (
-                <button key={label} type="button" onClick={action} className="iyanjupay-quick-link group rounded-2xl border p-3 text-center shadow-sm transition hover:-translate-y-0.5 hover:shadow-md sm:p-4">
-                  <span className={`mx-auto flex h-11 w-11 items-center justify-center rounded-2xl ${tone}`}><Icon className="h-5 w-5" /></span>
-                  <span className="mt-2 block text-[11px] font-bold sm:text-xs">{label}</span>
+                { label: "Savings", icon: PiggyBank, tone: "bg-violet-100 text-violet-700", action: () => { setSelectedService({ title: "Savings", type: "savings" }); setCurrentPage("service-payment"); } },
+                { label: "Rewards", icon: Gift, tone: "bg-amber-100 text-amber-700", action: () => setCurrentPage("rewards") },
+                { label: "Cards", icon: CreditCard, tone: "bg-blue-100 text-blue-700", action: () => setCurrentPage("cards") },
+                { label: "Support", icon: Headphones, tone: "bg-emerald-100 text-emerald-700", action: () => setCurrentPage("support") },
+              ].map((item) => { const Icon = item.icon; return (
+                <button key={item.label} type="button" onClick={item.action} className="group flex min-h-[104px] flex-col items-center justify-center gap-2 rounded-2xl border border-slate-200/80 bg-white p-3 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
+                  <span className={`flex h-12 w-12 items-center justify-center rounded-2xl ${item.tone}`}><Icon className="h-5 w-5" /></span>
+                  <span className="text-[11px] font-bold text-slate-700 sm:text-xs">{item.label}</span>
                 </button>
-              ))}
+              ); })}
             </div>
           </section>
 
@@ -2167,14 +2308,14 @@ const Dashboard = ({
                   Services
                 </h2>
 
-                <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                  Payments and everyday essentials
+                <p className="mt-1 text-sm text-slate-500">
+                  Everything you need, in one place
                 </p>
 
               </div>
 
               <span className="hidden rounded-full bg-purple-50 px-3 py-1 text-xs font-bold text-purple-700 sm:block">
-                {services.filter((service) => service.type !== "savings" && service.available && !COMING_SOON_SERVICES.includes(service.type)).length} live
+                {services.filter((service) => service.available && !COMING_SOON_SERVICES.includes(service.type)).length} live
               </span>
 
             </div>
@@ -2232,38 +2373,28 @@ const Dashboard = ({
           </section>
 
           {/* RECENT TRANSACTIONS */}
-          <section className="mb-7">
-            <div className="mb-3 flex items-center justify-between gap-3">
-              <div><h2 className="text-xl font-black tracking-tight text-slate-950 dark:text-white">Recent Transactions</h2><p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Your latest wallet activity</p></div>
-              <button type="button" onClick={() => setCurrentPage("history")} className="inline-flex shrink-0 items-center gap-1 text-xs font-bold text-purple-700 hover:text-purple-900 dark:text-indigo-300">View all <ChevronRight className="h-4 w-4" /></button>
+          <section className="mb-8">
+            <div className="mb-4 flex items-center justify-between">
+              <div><h2 className="text-lg font-extrabold tracking-tight text-slate-950">Recent Transactions</h2><p className="mt-1 text-xs text-slate-500">Your latest wallet activity</p></div>
+              <button type="button" onClick={() => setCurrentPage("history")} className="text-xs font-bold text-violet-700 hover:text-violet-900">View All</button>
             </div>
-            <Card className="iyanjupay-recent-card overflow-hidden rounded-3xl border shadow-sm"><CardContent className="p-0">
-              {statsLoading && recentTransactions.length === 0 ? (
-                <div className="px-5 py-9 text-center"><p className="text-sm text-slate-500 dark:text-slate-400">Loading recent activity…</p></div>
-              ) : recentTransactions.length === 0 ? (
-                <div className="px-5 py-9 text-center"><span className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-300"><Receipt className="h-5 w-5" /></span><p className="mt-3 text-sm font-semibold text-slate-800 dark:text-slate-100">No transactions yet</p><p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Your recent activity will appear here.</p></div>
-              ) : recentTransactions.map((transaction, index) => {
-                const outgoing = isMoneyOutTransaction(transaction);
-                const amount = Number(transaction.amount ?? 0);
-                const successful = isSuccessfulTransaction(transaction);
-                const failed = isFailedTransaction(transaction);
-                const statusLabel = successful ? "Successful" : failed ? "Failed" : String(transaction.status || "Pending").replace(/[_-]/g, " ");
-                const title = transaction.description || transaction.category || transaction.transaction_type || "Transaction";
-                return <div key={transaction.id} className={`flex items-center gap-3 px-4 py-3.5 sm:px-5 ${index ? "border-t border-slate-100 dark:border-slate-800" : ""}`}>
-                  <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl ${outgoing ? "bg-orange-50 text-orange-600 dark:bg-orange-500/10 dark:text-orange-300" : "bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-300"}`}>{outgoing ? <ArrowUpRight className="h-5 w-5" /> : <ArrowDownLeft className="h-5 w-5" />}</span>
-                  <div className="min-w-0 flex-1"><p className="truncate text-sm font-bold text-slate-900 dark:text-slate-100">{String(title).replace(/[_-]/g, " ")}</p><div className="mt-1 flex items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400"><span>{new Date(transaction.created_at).toLocaleDateString("en-NG", { day: "numeric", month: "short" })}</span><span>·</span><span className={`font-semibold ${successful ? "text-emerald-600 dark:text-emerald-400" : failed ? "text-red-600 dark:text-red-400" : "text-amber-600 dark:text-amber-400"}`}>{statusLabel}</span></div></div>
-                  <p className={`shrink-0 text-sm font-extrabold tabular-nums ${outgoing ? "text-slate-900 dark:text-slate-100" : "text-emerald-700 dark:text-emerald-400"}`}>{outgoing ? "−" : "+"}₦{(Number.isFinite(amount) ? Math.abs(amount) : 0).toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
-                </div>;
-              })}
-            </CardContent></Card>
+            <Card className="overflow-hidden rounded-2xl border-slate-200/80 bg-white shadow-sm">
+              <CardContent className="divide-y divide-slate-100 p-0">
+                {recentTransactions.length === 0 ? <p className="px-4 py-8 text-center text-sm text-slate-500">{statsLoading ? "Loading transactions…" : "No transactions yet"}</p> : recentTransactions.map((transaction) => {
+                  const outgoing = isMoneyOutTransaction(transaction);
+                  const successful = isSuccessfulTransaction(transaction);
+                  const failed = isFailedTransaction(transaction);
+                  const amount = Number(transaction.amount);
+                  return <div key={transaction.id} className="flex items-center gap-3 px-4 py-3.5">
+                    <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${outgoing ? "bg-rose-50 text-rose-600" : "bg-emerald-50 text-emerald-600"}`}>{outgoing ? <Send className="h-4 w-4" /> : <Plus className="h-4 w-4" />}</span>
+                    <div className="min-w-0 flex-1"><p className="truncate text-sm font-bold text-slate-800">{transaction.description || transaction.category || transaction.transaction_type || "Transaction"}</p><p className="mt-0.5 text-[11px] text-slate-500">{new Date(transaction.created_at).toLocaleDateString("en-NG", { day: "numeric", month: "short" })} · <span className={successful ? "text-emerald-600" : failed ? "text-rose-600" : "text-amber-600"}>{transaction.status}</span></p></div>
+                    <p className={`shrink-0 text-sm font-extrabold tabular-nums ${outgoing ? "text-slate-900" : "text-emerald-600"}`}>{outgoing ? "−" : "+"}₦{Number.isFinite(amount) ? amount.toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "0.00"}</p>
+                  </div>;
+                })}
+              </CardContent>
+            </Card>
           </section>
 
-          {/* COMPACT ACCOUNT SNAPSHOT */}
-          <section className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3">
-            <Card className="iyanjupay-summary-card rounded-2xl border shadow-sm"><CardContent className="p-4"><p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Spent this month</p><p className="mt-2 text-lg font-black text-slate-950 dark:text-white">{statsLoading ? "…" : `₦${stats.monthlySpent.toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}</p></CardContent></Card>
-            <Card className="iyanjupay-summary-card rounded-2xl border shadow-sm"><CardContent className="p-4"><p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Transactions</p><p className="mt-2 text-lg font-black text-slate-950 dark:text-white">{statsLoading ? "…" : stats.monthlyTransactions.toLocaleString("en-NG")}</p></CardContent></Card>
-            <Card className="iyanjupay-summary-card col-span-2 rounded-2xl border shadow-sm sm:col-span-1"><CardContent className="p-4"><p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Success rate</p><p className="mt-2 text-lg font-black text-slate-950 dark:text-white">{statsLoading ? "…" : `${stats.successRate}%`}</p></CardContent></Card>
-          </section>
 
         </main>
 

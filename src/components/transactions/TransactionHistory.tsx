@@ -76,6 +76,11 @@ const NIGERIAN_BANK_CODES: Record<string, string> = {
   "100": "SunTrust Bank", "102": "Titan Trust Bank",
   "104": "Parallex Bank", "110": "VFD Microfinance Bank",
   "100004": "OPay", "100033": "PalmPay",
+  "120001": "9mobile 9Payment Service Bank",
+  "120002": "Hope Payment Service Bank",
+  "120003": "MoMo Payment Service Bank",
+  "120004": "Airtel SmartCash PSB",
+  "120005": "Money Master PSB",
   "090405": "Moniepoint Microfinance Bank", "090175": "Rubies MFB",
   "090110": "VFD Microfinance Bank", "090267": "Kuda Microfinance Bank",
 };
@@ -164,6 +169,12 @@ type NormalizedTransaction = {
   recipientName: string;
 
   senderName: string;
+
+  senderBankName: string;
+
+  senderAccountName: string;
+
+  senderAccountNumber: string;
 
   phoneNumber: string;
 
@@ -959,7 +970,7 @@ const normalizeTransaction = (
       ])
     );
 
-  const resolvedBankName = bankName || (bankCode ? resolveNigerianBankName(bankCode) : "");
+  const resolvedBankName = resolveNigerianBankName(bankName || bankCode);
 
   /* --------------------------------------------------------------
      INTERNAL WALLET TRANSFER
@@ -986,11 +997,79 @@ const normalizeTransaction = (
       sender.full_name,
       sender.fullName,
       metadata.sender_name,
+      metadata.senderName,
       metadata.counterparty_name,
+      metadata.originator_name,
+      metadata.originatorname,
       getNested(metadata, [["sender", "name"]]),
+      getNested(metadata, [["sender", "account_name"]]),
       getNested(metadata, [["originator", "originatorname"]]),
-      getNested(metadata, [["originator", "originator_name"]])
+      getNested(metadata, [["originator", "originator_name"]]),
+      getNested(metadata, [["flutterwave", "data", "sender_name"]]),
+      getNested(metadata, [["flutterwave", "data", "sender", "name"]]),
+      getNested(metadata, [["flutterwave", "data", "customer", "name"]]),
+      getNested(metadata, [["flutterwave_response", "data", "sender_name"]]),
+      getNested(metadata, [["flutterwave_response", "data", "sender", "name"]]),
+      getNested(metadata, [["flutterwave_response", "data", "customer", "name"]]),
+      getNested(metadata, [["data", "sender_name"]]),
+      getNested(metadata, [["data", "sender", "name"]]),
+      getNested(metadata, [["data", "customer", "name"]])
     );
+
+  const senderBankRaw = stringValue(
+    metadata.sender_bank_name,
+    metadata.sender_bank,
+    metadata.sender_bank_code,
+    metadata.bank_name,
+    metadata.bank_code,
+    metadata.account_bank,
+    getNested(metadata, [["sender", "bank_name"]]),
+    getNested(metadata, [["sender", "bank"]]),
+    getNested(metadata, [["flutterwave", "data", "sender_bank_name"]]),
+    getNested(metadata, [["flutterwave", "data", "sender_bank"]]),
+    getNested(metadata, [["flutterwave", "data", "sender_bank_code"]]),
+    getNested(metadata, [["flutterwave", "data", "bank_name"]]),
+    getNested(metadata, [["flutterwave", "data", "bank_code"]]),
+    getNested(metadata, [["flutterwave_response", "data", "sender_bank_name"]]),
+    getNested(metadata, [["flutterwave_response", "data", "sender_bank"]]),
+    getNested(metadata, [["flutterwave_response", "data", "sender_bank_code"]]),
+    getNested(metadata, [["flutterwave_response", "data", "bank_name"]]),
+    getNested(metadata, [["flutterwave_response", "data", "bank_code"]]),
+    getNested(metadata, [["data", "sender_bank_name"]]),
+    getNested(metadata, [["data", "sender_bank"]]),
+    getNested(metadata, [["data", "sender_bank_code"]]),
+    getNested(metadata, [["data", "bank_name"]]),
+    getNested(metadata, [["data", "bank_code"]])
+  );
+  const senderBankName = resolveNigerianBankName(senderBankRaw);
+
+  const senderAccountName = stringValue(
+    metadata.sender_account_name,
+    metadata.sender_name,
+    metadata.counterparty_name,
+    getNested(metadata, [["sender", "account_name"]]),
+    getNested(metadata, [["sender", "name"]]),
+    getNested(metadata, [["flutterwave", "data", "sender_account_name"]]),
+    getNested(metadata, [["flutterwave", "data", "sender_name"]]),
+    getNested(metadata, [["flutterwave_response", "data", "sender_account_name"]]),
+    getNested(metadata, [["flutterwave_response", "data", "sender_name"]]),
+    getNested(metadata, [["data", "sender_account_name"]]),
+    getNested(metadata, [["data", "sender_name"]])
+  );
+
+  const senderAccountNumber = stringValue(
+    metadata.sender_account_masked,
+    metadata.sender_account,
+    metadata.sender_account_number,
+    metadata.originator_account_number,
+    getNested(metadata, [["sender", "account_number"]]),
+    getNested(metadata, [["flutterwave", "data", "sender_account_number"]]),
+    getNested(metadata, [["flutterwave", "data", "sender_account"]]),
+    getNested(metadata, [["flutterwave_response", "data", "sender_account_number"]]),
+    getNested(metadata, [["flutterwave_response", "data", "sender_account"]]),
+    getNested(metadata, [["data", "sender_account_number"]]),
+    getNested(metadata, [["data", "sender_account"]])
+  );
 
   const walletId =
     stringValue(
@@ -1375,6 +1454,9 @@ const normalizeTransaction = (
     serviceProviderName,
     recipientName,
     senderName,
+    senderBankName,
+    senderAccountName,
+    senderAccountNumber,
     phoneNumber,
     accountNumber,
     accountName,
@@ -2422,7 +2504,7 @@ const TransactionHistory = ({
           details += detail(
             "Bank",
             item.bankName ||
-              item.bankCode
+              resolveNigerianBankName(item.bankCode)
           );
         }
 
@@ -2555,20 +2637,17 @@ const TransactionHistory = ({
         ) {
           details += detail(
             "Sender",
-            item.senderName
+            item.senderName || item.senderAccountName
           );
 
           details += detail(
-            "Bank",
-            stringValue(
-              transaction.metadata
-                ?.sender_bank,
-              transaction.metadata
-                ?.bank_name,
-              transaction.metadata
-                ?.sender_bank_name,
-              "Bank transfer"
-            )
+            "Sender bank",
+            item.senderBankName
+          );
+
+          details += detail(
+            "Sender account",
+            maskSenderAccountForDisplay(item.senderAccountNumber)
           );
 
           details += detail(
@@ -4014,53 +4093,25 @@ const TransactionHistory = ({
                       <DetailRow
                         label="From"
                         value={
-                          selectedTransaction.senderName
+                          selectedTransaction.senderName ||
+                          selectedTransaction.senderAccountName
                         }
                       />
 
                       <DetailRow
-                        label="Bank"
-                        value={stringValue(
-                          selectedTransaction
-                            .transaction
-                            .metadata
-                            ?.sender_bank_name,
-                          selectedTransaction
-                            .transaction
-                            .metadata
-                            ?.sender_bank,
-                          selectedTransaction
-                            .transaction
-                            .metadata
-                            ?.bank_name
-                        )}
+                        label="Sender bank"
+                        value={selectedTransaction.senderBankName}
                       />
 
                       <DetailRow
-                        label="Account name"
-                        value={stringValue(
-                          selectedTransaction
-                            .transaction
-                            .metadata
-                            ?.sender_name,
-                          selectedTransaction
-                            .transaction
-                            .metadata
-                            ?.counterparty_name
-                        )}
+                        label="Sender account name"
+                        value={selectedTransaction.senderAccountName}
                       />
 
                       <DetailRow
-                        label="Account number"
+                        label="Sender account number"
                         value={maskSenderAccountForDisplay(
-                          selectedTransaction
-                            .transaction
-                            .metadata
-                            ?.sender_account_masked ??
-                          selectedTransaction
-                            .transaction
-                            .metadata
-                            ?.sender_account
+                          selectedTransaction.senderAccountNumber
                         )}
                         mono
                       />

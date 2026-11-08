@@ -1,3 +1,4 @@
+
 import { getSafeErrorMessage, getFunctionErrorMessage, sanitizeMessage } from "@/lib/errorHandling";
 import React, {
   useCallback,
@@ -317,6 +318,26 @@ const isMoneyOutTransaction = (
     (word) =>
       description.includes(word)
   );
+};
+
+/*
+ * ============================================================
+ * TIME-BASED GREETING
+ * ============================================================
+ */
+
+const getTimeBasedGreeting = (): string => {
+  const hour = new Date().getHours();
+
+  if (hour >= 5 && hour < 12) {
+    return "Good morning,";
+  }
+
+  if (hour >= 12 && hour < 17) {
+    return "Good afternoon,";
+  }
+
+  return "Good evening,";
 };
 
 /*
@@ -1870,7 +1891,9 @@ const Dashboard = ({
           <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
             <div className="flex items-center justify-between gap-3">
               <div className="min-w-0">
-                <p className="text-xs font-medium text-violet-200">Good morning,</p>
+                <p className="text-xs font-medium text-violet-200">
+                  {getTimeBasedGreeting()}
+                </p>
                 <h1 className="truncate text-xl font-extrabold tracking-tight sm:text-2xl">{firstName}</h1>
               </div>
               <div className="flex shrink-0 items-center gap-2">

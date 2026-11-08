@@ -474,7 +474,7 @@ const Dashboard = ({
     wallet: authenticatedWallet,
     loading: authenticatedWalletLoading,
     refreshWallet,
-  } = useWallet(user?.id, !isInspection);
+  } = useWallet(user?.id, !isInspection, !isInspection);
 
   const wallet = isInspection
     ? inspectionData?.wallet ?? null
@@ -751,7 +751,7 @@ const Dashboard = ({
     void loadDashboardStats();
   }, [
     authLoading,
-    user,
+    user?.id,
     loadDashboardStats,
   ]);
 
@@ -797,76 +797,10 @@ const Dashboard = ({
   ]);
 
   /*
-   * ============================================================
-   * WALLET BOOTSTRAP
-   * ============================================================
+   * Wallet loading and first-time bootstrap are owned by useWallet.
+   * Keeping a second dashboard bootstrap here caused duplicate wallet
+   * bootstrap, wallet refresh, and transaction-stat requests on mount.
    */
-
-  useEffect(() => {
-    if (isInspection || !user?.id) {
-      return;
-    }
-
-    let cancelled = false;
-
-    const bootstrapWallet =
-      async () => {
-        try {
-          const {
-            data,
-            error,
-          } =
-            await supabase.functions.invoke(
-              "wallet-bootstrap",
-              {
-                body: {},
-              }
-            );
-
-          if (cancelled) {
-            return;
-          }
-
-          if (error) {
-            console.error(
-              "Wallet bootstrap error:",
-              error
-            );
-
-            return;
-          }
-
-          console.log(
-            "Wallet bootstrap:",
-            data
-          );
-
-          await refreshWallet();
-
-          await loadDashboardStats();
-        } catch (error) {
-          if (cancelled) {
-            return;
-          }
-
-          console.error(
-            "Wallet bootstrap failed:",
-            error
-          );
-        }
-      };
-
-    void bootstrapWallet();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    user?.id,
-    refreshWallet,
-    loadDashboardStats,
-    isInspection,
-  ]);
 
   /*
    * ============================================================
@@ -2151,11 +2085,11 @@ const Dashboard = ({
 
                       <div className="flex items-center gap-2">
 
-                        <p className="text-sm font-medium text-purple-100">
+                        <p className="text-sm font-medium text-white/85">
                           Available Balance
                         </p>
 
-                        <span className="rounded-full bg-white/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-purple-100">
+                        <span className="rounded-full bg-white/15 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-white/90">
                           NGN
                         </span>
 
@@ -2199,28 +2133,15 @@ const Dashboard = ({
 
                       </div>
 
-                      <p className="mt-2 text-xs text-purple-100">
+                      <p className="mt-2 text-xs text-white/80">
                         Ready to spend securely
-                      </p>
-
-                    </div>
-
-                    <div className="hidden text-right sm:block">
-
-                      <p className="text-xs font-medium text-purple-100">
-                        Wallet ID
-                      </p>
-
-                      <p className="mt-1 max-w-[180px] truncate font-mono text-sm font-bold tracking-wider">
-                        {wallet?.wallet_id ||
-                          "—"}
                       </p>
 
                     </div>
 
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-2 gap-3 px-4">
 
                     <Button
                       onClick={() => {
@@ -2254,9 +2175,9 @@ const Dashboard = ({
 
                   </div>
 
-                  <div className="flex items-center justify-between border-t border-white/10 pt-4 sm:hidden">
+                  <div className="flex items-center justify-between border-t border-white/15 px-4 pt-4">
 
-                    <span className="text-xs text-purple-100">
+                    <span className="text-xs font-medium text-white/80">
                       Wallet ID
                     </span>
 
@@ -2456,7 +2377,7 @@ const Dashboard = ({
           <Button
             type="button"
             onClick={() => setSupportChatOpen(true)}
-            className="fixed bottom-24 right-4 z-50 h-14 w-14 rounded-full bg-purple-600 p-0 shadow-[0_12px_30px_rgba(124,58,237,0.35)] hover:bg-purple-700 sm:bottom-24 sm:right-6"
+            className="fixed bottom-[calc(6.5rem+env(safe-area-inset-bottom))] right-3 z-[70] h-14 w-14 rounded-full bg-purple-600 p-0 shadow-[0_12px_30px_rgba(124,58,237,0.35)] hover:bg-purple-700 sm:bottom-28 sm:right-6"
             aria-label="Open live support chat"
           >
             <Headphones className="h-6 w-6" />

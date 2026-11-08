@@ -13,7 +13,7 @@ const WhatsAppFloat = () => {
 
   return (
     <div
-      className="fixed bottom-20 right-5 z-50 cursor-pointer"
+      className="fixed bottom-[calc(6.5rem+env(safe-area-inset-bottom))] left-4 z-40 cursor-pointer sm:bottom-7 sm:left-7"
       onClick={openWhatsApp}
       aria-label="Contact us on WhatsApp"
     >

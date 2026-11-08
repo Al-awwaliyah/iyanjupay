@@ -18,6 +18,7 @@ const ServiceCard = ({
   title,
   icon: Icon,
   onClick,
+  color: _color,
   available = true,
   comingSoon = false,
 }: ServiceCardProps) => {
@@ -43,7 +44,7 @@ const ServiceCard = ({
       tabIndex={isUnavailable ? -1 : 0}
       aria-label={title}
       aria-disabled={isUnavailable}
-      className="iyanjupay-service-tile group relative h-full overflow-hidden rounded-2xl border p-3 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-primary/30 focus:ring-offset-1 sm:p-4"
+      className="iyanjupay-service-card group relative h-full overflow-hidden rounded-2xl border p-3 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-[#082A63]/25 focus:ring-offset-1 sm:p-4"
       onClick={
         isUnavailable ? undefined : onClick
       }
@@ -60,8 +61,8 @@ const ServiceCard = ({
 
         <div
           className={[
-            "iyanjupay-icon-tile mx-auto flex h-11 w-11 shrink-0 items-center justify-center rounded-[15px] transition group-hover:scale-105",
-            comingSoon && "grayscale opacity-60",
+            "iyanjupay-service-icon mx-auto flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl transition group-hover:scale-105",
+            comingSoon && "grayscale opacity-70",
           ].join(" ")}
         >
           <Icon

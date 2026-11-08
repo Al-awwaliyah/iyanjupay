@@ -1320,6 +1320,14 @@ function ServiceTransactionProcessing({
     clean(details?.service_title) ||
     "Service";
 
+  // This is a separate component from ServicePaymentBillFlow, so it must
+  // derive its own service-specific styling instead of reading parent locals.
+  const isLightService = ["airtime", "electricity"].includes(
+    normaliseServiceType(
+      clean(details?.service ?? details?.type)
+    )
+  );
+
   const customerValue = clean(
     details?.smartCardNumber ||
       details?.smartcardNumber ||
@@ -1423,7 +1431,7 @@ function ServiceTransactionProcessing({
               onClick={onBack}
               disabled={isProcessing}
               aria-label="Back"
-              className={isAirtime || isElectricity ? "text-[#4C1D95] hover:bg-violet-50 hover:text-[#4C1D95]" : "text-white hover:bg-white/15 hover:text-white"}
+              className={isLightService ? "text-[#4C1D95] hover:bg-violet-50 hover:text-[#4C1D95]" : "text-white hover:bg-white/15 hover:text-white"}
             >
               <ArrowLeft className="h-5 w-5" />
             </Button>

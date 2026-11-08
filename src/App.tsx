@@ -13,7 +13,6 @@ import {
   BrowserRouter,
   Routes,
   Route,
-  useLocation,
 } from "react-router-dom";
 
 import AppSplash from "@/components/AppSplash";
@@ -69,16 +68,8 @@ const ThemeGate = ({
 }: {
   children: React.ReactNode;
 }) => {
-  const location = useLocation();
-
-  const isAdminRoute =
-    location.pathname === "/admin" ||
-    location.pathname.startsWith("/admin/");
-
-  if (isAdminRoute) {
-    return <>{children}</>;
-  }
-
+  // Keep the shared theme mounted for customer and admin routes alike.
+  // This lets the global design tokens apply consistently on every page.
   return <ThemeProvider>{children}</ThemeProvider>;
 };
 

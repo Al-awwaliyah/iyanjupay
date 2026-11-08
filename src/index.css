@@ -75,8 +75,8 @@ html.iyanjupay-theme-dark {
   --card-foreground: 210 40% 98%;
   --popover: 222 39% 11%;
   --popover-foreground: 210 40% 98%;
-  --primary: 160 84% 39%;
-  --primary-foreground: 222 47% 7%;
+  --primary: 267 88% 63%;
+  --primary-foreground: 0 0% 100%;
   --secondary: 217 33% 17%;
   --secondary-foreground: 210 40% 98%;
   --muted: 217 33% 17%;
@@ -87,15 +87,15 @@ html.iyanjupay-theme-dark {
   --destructive-foreground: 210 40% 98%;
   --border: 217 25% 22%;
   --input: 217 25% 22%;
-  --ring: 160 84% 39%;
+  --ring: 267 88% 68%;
   --sidebar-background: 222 47% 7%;
   --sidebar-foreground: 210 40% 98%;
-  --sidebar-primary: 160 84% 39%;
+  --sidebar-primary: 267 88% 63%;
   --sidebar-primary-foreground: 222 47% 7%;
   --sidebar-accent: 217 33% 17%;
   --sidebar-accent-foreground: 210 40% 98%;
   --sidebar-border: 217 25% 22%;
-  --sidebar-ring: 160 84% 39%;
+  --sidebar-ring: 267 88% 68%;
   color-scheme: dark;
 }
 

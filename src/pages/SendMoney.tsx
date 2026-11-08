@@ -1552,7 +1552,7 @@ const SendMoneyPage = ({
 
   if (!allowTransfers) {
     return (
-      <div className="min-h-screen bg-background px-4 py-6 text-foreground">
+      <div className="iyanjupay-dashboard min-h-screen bg-background px-4 py-6 text-foreground">
         <div className="mx-auto max-w-lg">
           <Button variant="ghost" onClick={onBack} className="mb-4">
             <ArrowLeft className="mr-2 h-4 w-4" /> Back
@@ -1611,10 +1611,7 @@ const SendMoneyPage = ({
         className="
           send-money-page
           min-h-screen
-          bg-gradient-to-br
-          from-purple-50
-          via-blue-50
-          to-indigo-50
+          bg-[#f7f5ff] text-slate-900
         "
       >
         {!isOnline && (
@@ -1630,71 +1627,43 @@ const SendMoneyPage = ({
           </div>
         )}
 
-        <header className="send-money-gradient-header sticky top-0 z-30 bg-gradient-to-r from-purple-600 to-blue-600 text-white shadow-md">
-          <div className="max-w-3xl mx-auto px-4 sm:px-6">
-            <div className="flex items-center h-16">
+        <header className="send-money-gradient-header sticky top-0 z-30 border-b border-violet-100 bg-white/95 text-slate-900 shadow-sm backdrop-blur">
+          <div className="mx-auto max-w-md px-4">
+            <div className="relative flex h-14 items-center justify-center">
               <Button
                 type="button"
                 variant="ghost"
                 onClick={handleBack}
-                className="text-white hover:bg-white/20 mr-2"
+                aria-label="Go back"
+                className="absolute left-0 h-10 w-10 rounded-full p-0 text-slate-700 hover:bg-violet-50"
               >
-                <ArrowLeft className="h-5 w-5 mr-2" />
-                Back
+                <ArrowLeft className="h-5 w-5" />
               </Button>
-
-              <div className="flex items-center gap-2">
-                <Send className="h-5 w-5" />
-                <h1 className="text-lg sm:text-xl font-bold">
-                  Send Money
-                </h1>
+              <h1 className="text-base font-bold tracking-tight">Send Money</h1>
+              <div className="absolute right-0 flex h-9 w-9 items-center justify-center rounded-full bg-violet-50 text-violet-700">
+                <ShieldCheck className="h-4 w-4" />
               </div>
             </div>
           </div>
         </header>
 
-        <main className="max-w-3xl mx-auto px-4 sm:px-6 py-6 pb-12">
-          <div className="mb-6">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <h2 className="send-money-heading text-2xl font-bold">
-                  Send Money
-                </h2>
-
-                <p className="send-money-description mt-1">
-                  Send money securely to an IyanjuPay user or bank account.
-                </p>
-              </div>
-
-              <div
-                className={`hidden sm:flex items-center gap-1.5 text-xs font-medium ${
-                  isOnline
-                    ? "text-green-600"
-                    : "text-red-600"
-                }`}
-              >
-                {isOnline ? (
-                  <>
-                    <Wifi className="h-4 w-4" />
-                    Online
-                  </>
-                ) : (
-                  <>
-                    <WifiOff className="h-4 w-4" />
-                    Offline
-                  </>
-                )}
-              </div>
-            </div>
+        <main className="mx-auto max-w-md px-4 pb-10 pt-5">
+          <div className="mb-5">
+            <h2 className="send-money-heading text-xl font-bold tracking-tight text-slate-900">
+              Select Recipient
+            </h2>
+            <p className="send-money-description mt-1 text-sm text-slate-500">
+              Choose where you want to send money.
+            </p>
           </div>
 
-          <div className="send-money-content-card rounded-2xl shadow-sm border p-5 sm:p-6 space-y-6">
+          <div className="send-money-content-card space-y-5 rounded-[26px] border border-violet-100 bg-white p-4 shadow-[0_12px_35px_rgba(48,24,120,0.08)] sm:p-5">
             <div className="space-y-2">
-              <Label className="send-money-label">
-                Send Money To
+              <Label className="send-money-label text-sm font-semibold text-slate-800">
+                Recipient Type
               </Label>
 
-              <div className="send-money-type-switcher grid grid-cols-2 gap-2 p-1 rounded-lg">
+              <div className="send-money-type-switcher grid grid-cols-2 gap-1 rounded-full bg-[#f0edfb] p-1">
                 <Button
                   type="button"
                   variant={
@@ -1709,8 +1678,8 @@ const SendMoneyPage = ({
                   }
                   className={
                     transferType === "iyanjupay"
-                      ? "bg-green-600 hover:bg-green-700 text-white"
-                      : "send-money-type-inactive"
+                      ? "h-10 rounded-full bg-[#4b12d1] text-white shadow-md hover:bg-[#3d0db4]"
+                      : "h-10 rounded-full text-slate-600 hover:bg-violet-50"
                   }
                 >
                   <User className="h-4 w-4 mr-2" />
@@ -1731,8 +1700,8 @@ const SendMoneyPage = ({
                   }
                   className={
                     transferType === "bank"
-                      ? "bg-green-600 hover:bg-green-700 text-white"
-                      : "send-money-type-inactive"
+                      ? "h-10 rounded-full bg-[#4b12d1] text-white shadow-md hover:bg-[#3d0db4]"
+                      : "h-10 rounded-full text-slate-600 hover:bg-violet-50"
                   }
                 >
                   <Building2 className="h-4 w-4 mr-2" />
@@ -1741,12 +1710,14 @@ const SendMoneyPage = ({
               </div>
             </div>
 
-            <div className="bg-green-50 border border-green-100 p-4 rounded-xl">
-              <p className="text-sm text-green-700">
-                Available Wallet Balance
+            <div className="relative overflow-hidden rounded-2xl border border-violet-500/30 bg-gradient-to-br from-[#6417dc] via-[#4b13c8] to-[#271078] p-4 text-white shadow-[0_10px_24px_rgba(75,19,200,0.24)]">
+              <div className="pointer-events-none absolute -right-7 -top-10 h-32 w-32 rounded-full border border-white/10" />
+              <div className="pointer-events-none absolute -right-1 -bottom-12 h-28 w-28 rounded-full bg-white/5" />
+              <p className="relative text-xs font-medium text-violet-100">
+                Available Balance
               </p>
 
-              <p className="text-2xl font-bold text-green-800 mt-1">
+              <p className="relative mt-1 text-2xl font-bold tracking-tight text-white">
                 ₦
                 {walletBalance.toLocaleString(
                   "en-NG",
@@ -1763,7 +1734,7 @@ const SendMoneyPage = ({
                 <div className="space-y-2">
                   <Label
                     htmlFor="iyanjupayWalletId"
-                    className="send-money-label"
+                    className="send-money-label text-sm font-semibold text-slate-800"
                   >
                     Recipient Wallet ID
                   </Label>
@@ -1797,7 +1768,7 @@ const SendMoneyPage = ({
                     inputMode="numeric"
                     maxLength={8}
                     disabled={!isOnline}
-                    className="send-money-input"
+                    className="send-money-input h-12 rounded-xl border-[#e3def3] bg-white text-slate-900 placeholder:text-slate-400 focus-visible:ring-[#5b18d5]"
                   />
 
                   <p className="send-money-muted text-xs">
@@ -1825,7 +1796,7 @@ const SendMoneyPage = ({
 
                   {!resolvingIyanjuPayRecipient &&
                     resolvedIyanjuPayRecipient && (
-                      <div className="send-money-verified rounded-lg border border-green-200 bg-green-50 p-4">
+                      <div className="send-money-verified rounded-2xl border border-emerald-100 bg-[#f1fbf6] p-4">
                         <div className="flex items-start gap-3">
                           <CheckCircle2 className="h-5 w-5 text-green-600 mt-0.5 shrink-0" />
 
@@ -1862,11 +1833,11 @@ const SendMoneyPage = ({
             )}
 
             {transferType === "bank" && (
-              <div className="space-y-5">
+              <div className="space-y-4">
                 <div className="space-y-2">
                   <Label
                     htmlFor="bank"
-                    className="send-money-label"
+                    className="send-money-label text-sm font-semibold text-slate-800"
                   >
                     Recipient Bank
                   </Label>
@@ -1889,7 +1860,7 @@ const SendMoneyPage = ({
                   >
                     <SelectTrigger
                       id="bank"
-                      className="h-12 send-money-input"
+                      className="send-money-input h-12 rounded-xl border-[#e3def3] bg-white text-slate-900 placeholder:text-slate-400 focus-visible:ring-[#5b18d5]"
                     >
                       <div className="flex items-center gap-2 min-w-0">
                         <Building2 className="h-4 w-4 text-gray-400 shrink-0" />
@@ -2016,7 +1987,7 @@ const SendMoneyPage = ({
                 <div className="space-y-2">
                   <Label
                     htmlFor="accountNumber"
-                    className="send-money-label"
+                    className="send-money-label text-sm font-semibold text-slate-800"
                   >
                     Account Number
                   </Label>
@@ -2044,7 +2015,7 @@ const SendMoneyPage = ({
                     maxLength={10}
                     inputMode="numeric"
                     disabled={!isOnline}
-                    className="send-money-input"
+                    className="send-money-input h-12 rounded-xl border-[#e3def3] bg-white text-slate-900 placeholder:text-slate-400 focus-visible:ring-[#5b18d5]"
                   />
 
                   {resolving && (
@@ -2066,7 +2037,7 @@ const SendMoneyPage = ({
                 </div>
 
                 {resolvedAccount && (
-                  <div className="send-money-verified rounded-lg border border-green-200 bg-green-50 p-4">
+                  <div className="send-money-verified rounded-2xl border border-emerald-100 bg-[#f1fbf6] p-4">
                     <div className="flex items-start gap-3">
                       <CheckCircle2 className="h-5 w-5 text-green-600 mt-0.5 shrink-0" />
 
@@ -2098,7 +2069,7 @@ const SendMoneyPage = ({
             <div className="space-y-2">
               <Label
                 htmlFor="amount"
-                className="send-money-label"
+                className="send-money-label text-sm font-semibold text-slate-800"
               >
                 Amount (₦)
               </Label>
@@ -2114,12 +2085,12 @@ const SendMoneyPage = ({
                 min="1"
                 step="0.01"
                 disabled={!isOnline}
-                className="send-money-input"
+                className="send-money-input h-12 rounded-xl border-[#e3def3] bg-white text-slate-900 placeholder:text-slate-400 focus-visible:ring-[#5b18d5]"
               />
             </div>
 
             {transferAmount > 0 && (
-              <div className="send-money-summary rounded-xl border p-4 space-y-3">
+              <div className="send-money-summary space-y-3 rounded-2xl border border-violet-100 bg-[#faf9ff] p-4">
                 <div className="flex justify-between text-sm">
                   <span className="send-money-summary-muted">
                     Transfer amount
@@ -2209,7 +2180,7 @@ const SendMoneyPage = ({
             <div className="space-y-2">
               <Label
                 htmlFor="narration"
-                className="send-money-label"
+                className="send-money-label text-sm font-semibold text-slate-800"
               >
                 Narration (Optional)
               </Label>
@@ -2224,7 +2195,7 @@ const SendMoneyPage = ({
                 }
                 placeholder="Enter transaction description"
                 disabled={!isOnline}
-                className="send-money-input"
+                className="send-money-input h-12 rounded-xl border-[#e3def3] bg-white text-slate-900 placeholder:text-slate-400 focus-visible:ring-[#5b18d5]"
               />
             </div>
 
@@ -2232,7 +2203,7 @@ const SendMoneyPage = ({
               type="button"
               onClick={handleTransfer}
               disabled={isTransferDisabled}
-              className="send-money-gradient-button w-full h-12 text-base font-semibold"
+              className="send-money-gradient-button h-12 w-full rounded-full bg-gradient-to-r from-[#6515d8] to-[#4510c6] text-base font-semibold text-white shadow-[0_8px_18px_rgba(75,19,200,0.22)] hover:from-[#5710c5] hover:to-[#390da9]"
             >
               {!isOnline ? (
                 <>
@@ -2251,13 +2222,8 @@ const SendMoneyPage = ({
                 </>
               ) : (
                 <>
-                  <Send className="h-4 w-4 mr-2" />
-                  Send ₦
-                  {transferAmount > 0
-                    ? transferAmount.toLocaleString(
-                        "en-NG"
-                      )
-                    : "Money"}
+                  <Send className="mr-2 h-4 w-4" />
+                  Continue
                 </>
               )}
             </Button>

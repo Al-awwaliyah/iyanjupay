@@ -42,6 +42,12 @@ const AuthForm = () => {
   const { toast } = useToast();
   const { allowNewRegistrations, loading: customerSettingsLoading } = useCustomerAppSettings();
 
+  // Show the welcome screen on the main auth entry route. Direct /signup links
+  // continue to open the existing registration form without an extra step.
+  const [showWelcomeScreen, setShowWelcomeScreen] = useState(
+    location.pathname !== "/signup",
+  );
+
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
@@ -959,6 +965,73 @@ const AuthForm = () => {
 
   return (
     <>
+      {showWelcomeScreen ? (
+        <main className="relative min-h-screen w-full overflow-hidden bg-[radial-gradient(ellipse_at_top,_#eee8ff_0%,_#f8f7ff_48%,_#ffffff_100%)] px-5 py-8 sm:px-6">
+          <div className="pointer-events-none absolute -right-24 top-20 h-64 w-64 rounded-full bg-violet-200/40 blur-3xl" />
+          <div className="pointer-events-none absolute -left-24 bottom-10 h-64 w-64 rounded-full bg-purple-200/30 blur-3xl" />
+          <section className="relative mx-auto flex min-h-[calc(100vh-4rem)] w-full max-w-md flex-col items-center justify-center text-center">
+            <div className="mb-7 flex h-16 w-16 items-center justify-center rounded-[1.35rem] bg-gradient-to-br from-[#6816e8] to-[#3510b9] text-3xl font-black italic text-white shadow-[0_12px_30px_rgba(88,25,210,0.28)]">
+              i
+            </div>
+
+            <div className="relative mb-8 flex h-64 w-full max-w-[320px] items-center justify-center">
+              <div className="absolute left-5 top-8 h-16 w-16 rounded-full bg-violet-200/70 blur-sm" />
+              <div className="absolute bottom-7 right-5 h-20 w-20 rounded-full bg-purple-200/70 blur-sm" />
+              <div className="absolute left-8 top-10 flex h-12 w-12 rotate-[-14deg] items-center justify-center rounded-2xl bg-white text-2xl shadow-lg">₦</div>
+              <div className="absolute right-8 top-6 flex h-11 w-11 rotate-[12deg] items-center justify-center rounded-full border-4 border-white bg-[#f5c84c] text-lg font-extrabold text-amber-900 shadow-lg">₦</div>
+              <div className="absolute bottom-8 left-12 flex h-10 w-10 rotate-[10deg] items-center justify-center rounded-full border-4 border-white bg-[#f5c84c] text-base font-extrabold text-amber-900 shadow-lg">₦</div>
+              <div className="relative z-10 w-[245px] rotate-[-5deg] rounded-[2rem] bg-gradient-to-br from-[#7c35ed] via-[#5b18d7] to-[#3510a9] p-5 text-left shadow-[0_24px_55px_rgba(76,29,149,0.30)]">
+                <div className="mb-8 flex items-center justify-between">
+                  <span className="text-sm font-bold tracking-wide text-white">IyanjuPay</span>
+                  <span className="h-7 w-9 rounded-md border border-white/40 bg-white/15" />
+                </div>
+                <div className="mb-2 text-xs font-medium text-violet-100">Available balance</div>
+                <div className="text-2xl font-extrabold tracking-wide text-white">₦25,000.00</div>
+                <div className="mt-6 flex items-center justify-between">
+                  <div className="flex gap-1">
+                    <span className="h-2 w-2 rounded-full bg-white/80" />
+                    <span className="h-2 w-2 rounded-full bg-white/80" />
+                    <span className="h-2 w-2 rounded-full bg-white/80" />
+                    <span className="h-2 w-2 rounded-full bg-white/80" />
+                  </div>
+                  <span className="text-[10px] font-semibold tracking-[0.2em] text-violet-100">SIMPLE • SECURE</span>
+                </div>
+              </div>
+              <div className="absolute bottom-5 right-6 z-20 flex h-14 w-14 items-center justify-center rounded-2xl border-4 border-white bg-[#f5c84c] text-2xl font-black text-amber-900 shadow-xl">₦</div>
+            </div>
+
+            <div className="max-w-sm">
+              <p className="mb-3 text-sm font-bold uppercase tracking-[0.18em] text-violet-700">Welcome to IyanjuPay</p>
+              <h1 className="text-[2rem] font-extrabold leading-tight tracking-tight text-slate-950 sm:text-4xl">
+                Your money, <span className="text-violet-700">made effortless.</span>
+              </h1>
+              <p className="mx-auto mt-4 max-w-xs text-sm leading-6 text-slate-500">
+                Send, receive, pay bills and manage your money with a simple and secure experience.
+              </p>
+            </div>
+
+            <div className="mt-9 w-full max-w-sm space-y-3">
+              <Button
+                type="button"
+                onClick={() => { setShowWelcomeScreen(false); navigate("/signup"); }}
+                disabled={!allowNewRegistrations || customerSettingsLoading}
+                className="h-12 w-full rounded-2xl bg-gradient-to-r from-[#6816e8] to-[#3510b9] text-base font-bold text-white shadow-[0_12px_25px_rgba(79,25,202,0.24)] hover:brightness-110"
+              >
+                Get Started
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setShowWelcomeScreen(false)}
+                className="h-12 w-full rounded-2xl border-violet-200 bg-white/80 text-base font-bold text-violet-800 hover:bg-violet-50"
+              >
+                Sign In
+              </Button>
+            </div>
+            <p className="mt-7 text-xs font-medium text-slate-400">Simple. Secure. Seamless.</p>
+          </section>
+        </main>
+      ) : (
       <main className="min-h-screen w-full bg-[radial-gradient(ellipse_at_top,_#eee8ff_0%,_#f8f7ff_42%,_#ffffff_100%)] px-4 py-8 sm:px-6 sm:py-12">
         <section className="mx-auto flex min-h-[calc(100vh-4rem)] w-full max-w-md flex-col justify-center">
           <header className="mb-7 text-center">
@@ -1131,6 +1204,7 @@ const AuthForm = () => {
           </p>
         </section>
       </main>
+      )}
 
       {/* ==========================================================
           VERIFICATION DIALOG

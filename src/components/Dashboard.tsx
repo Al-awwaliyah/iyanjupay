@@ -1822,7 +1822,7 @@ const Dashboard = ({
     balance.toLocaleString(
       "en-NG",
       {
-        minimumFractionDigits: 0,
+        minimumFractionDigits: 2,
         maximumFractionDigits: 2,
       }
     );
@@ -2158,6 +2158,17 @@ const Dashboard = ({
                       <ServiceCard title={service.title} icon={service.icon} color={service.color} available={service.available} comingSoon={COMING_SOON_SERVICES.includes(service.type)} onClick={() => handleServiceClick(service)} />
                     </div>
                   ))}
+                  <button
+                    type="button"
+                    onClick={() => setCurrentPage("rewards")}
+                    className="flex min-h-[104px] flex-col items-center justify-center rounded-2xl border border-violet-100 bg-white p-3 text-center shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+                    aria-label="Open Rewards"
+                  >
+                    <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-amber-50 text-amber-600">
+                      <Gift className="h-5 w-5" />
+                    </span>
+                    <span className="mt-2 text-xs font-bold text-slate-800">Rewards</span>
+                  </button>
                 </div>
               </div>
             )}

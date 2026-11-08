@@ -508,9 +508,6 @@ const Dashboard = ({
   const [showBalance, setShowBalance] =
     useState(true);
 
-  const [showAllServices, setShowAllServices] =
-    useState(false);
-
   /*
    * ============================================================
    * DASHBOARD APPEARANCE
@@ -1422,53 +1419,95 @@ const Dashboard = ({
   const renderBottomNav = (
     page: CurrentPage
   ) => (
-    <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-violet-100 bg-white/95 px-3 py-2 shadow-[0_-8px_30px_rgba(42,20,95,0.08)] backdrop-blur-xl">
+    <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-slate-200/80 bg-white/95 px-3 py-2 shadow-[0_-8px_30px_rgba(15,23,42,0.06)] backdrop-blur-xl">
       <div className="mx-auto max-w-3xl">
         <div className="grid grid-cols-4 gap-1">
+
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => setCurrentPage("home")}
-            className={`h-14 rounded-2xl ${page === "home" ? "bg-violet-50 text-violet-700" : "text-slate-500 hover:bg-violet-50"}`}
+            onClick={() =>
+              setCurrentPage(
+                "home"
+              )
+            }
+            className={`h-14 rounded-2xl ${
+              page === "home"
+                ? "bg-purple-50 text-purple-700"
+                : "text-slate-500 hover:bg-slate-50"
+            }`}
           >
             <span className="flex flex-col items-center gap-1">
               <Home className="h-5 w-5" />
-              <span className="text-[11px] font-semibold">Home</span>
+
+              <span className="text-[11px] font-semibold">
+                Home
+              </span>
             </span>
           </Button>
+
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => setCurrentPage("cards")}
-            className={`h-14 rounded-2xl ${page === "cards" ? "bg-violet-50 text-violet-700" : "text-slate-500 hover:bg-violet-50"}`}
+            onClick={() =>
+              setCurrentPage(
+                "cards"
+              )
+            }
+            className={`h-14 rounded-2xl ${
+              page === "cards"
+                ? "bg-purple-50 text-purple-700"
+                : "text-slate-500 hover:bg-slate-50"
+            }`}
           >
             <span className="flex flex-col items-center gap-1">
               <CreditCard className="h-5 w-5" />
-              <span className="text-[11px] font-semibold">Card</span>
+
+              <span className="text-[11px] font-semibold">
+                Card
+              </span>
             </span>
           </Button>
+
           <Button
             variant="ghost"
             size="sm"
             onClick={() => setCurrentPage("savings")}
-            className={`h-14 rounded-2xl ${page === "savings" ? "bg-violet-50 text-violet-700" : "text-slate-500 hover:bg-violet-50"}`}
+            className={`h-14 rounded-2xl ${
+              page === "savings"
+                ? "bg-violet-50 text-violet-700"
+                : "text-slate-500 hover:bg-slate-50"
+            }`}
           >
             <span className="flex flex-col items-center gap-1">
               <PiggyBank className="h-5 w-5" />
               <span className="text-[11px] font-semibold">Savings</span>
             </span>
           </Button>
+
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => setCurrentPage("me")}
-            className={`h-14 rounded-2xl ${page === "me" || page === "profile" ? "bg-violet-50 text-violet-700" : "text-slate-500 hover:bg-violet-50"}`}
+            onClick={() =>
+              setCurrentPage(
+                "profile"
+              )
+            }
+            className={`h-14 rounded-2xl ${
+              page === "me" || page === "profile"
+                ? "bg-purple-50 text-purple-700"
+                : "text-slate-500 hover:bg-slate-50"
+            }`}
           >
             <span className="flex flex-col items-center gap-1">
               <User className="h-5 w-5" />
-              <span className="text-[11px] font-semibold">Profile</span>
+
+              <span className="text-[11px] font-semibold">
+                Profile
+              </span>
             </span>
           </Button>
+
         </div>
       </div>
     </div>
@@ -1577,9 +1616,18 @@ const Dashboard = ({
     "profile"
   ) {
     return (
-      <>
-        {isInspection && inspectionData ? <InspectionReadOnlyPage page="profile" data={inspectionData} onBack={() => setCurrentPage("me")} onNavigate={setCurrentPage} /> : <ProfilePage onBack={() => setCurrentPage("me")} />}
-      </>
+      <div className="min-h-screen pb-24">
+        {isInspection && inspectionData ? (
+          <InspectionReadOnlyPage page="profile" data={inspectionData} onBack={() => setCurrentPage("me")} onNavigate={setCurrentPage} />
+        ) : (
+          <ProfilePage
+            onBack={() => setCurrentPage("me")}
+            onNavigate={(page) => setCurrentPage(page)}
+            onAppearance={() => { setCurrentPage("home"); setAppearanceOpen(true); }}
+          />
+        )}
+        {renderBottomNav("me")}
+      </div>
     );
   }
 
@@ -1822,7 +1870,7 @@ const Dashboard = ({
     balance.toLocaleString(
       "en-NG",
       {
-        minimumFractionDigits: 2,
+        minimumFractionDigits: 0,
         maximumFractionDigits: 2,
       }
     );
@@ -1858,7 +1906,7 @@ const Dashboard = ({
       <div
         ref={dashboardRootRef}
         data-inspection-mode={isInspection ? "readonly" : undefined}
-        className="min-h-screen pb-24 bg-[#f7f5ff] iyanjupay-dashboard"
+        className="min-h-screen pb-24 iyanjupay-dashboard"
         data-theme={dashboardTheme}
       >
 
@@ -1866,64 +1914,183 @@ const Dashboard = ({
         {/* TOP HEADER                                             */}
         {/* ====================================================== */}
 
-        <header className="sticky top-0 z-30 overflow-visible bg-gradient-to-r from-[#160b4b] via-[#271078] to-[#3b16a7] text-white shadow-[0_12px_30px_rgba(32,13,91,0.22)]">
-          <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
-            <div className="flex items-center justify-between gap-3">
-              <div className="min-w-0">
-                <p className="text-xs font-medium text-violet-200">Good morning,</p>
-                <h1 className="truncate text-xl font-extrabold tracking-tight sm:text-2xl">{firstName}</h1>
-              </div>
-              <div className="flex shrink-0 items-center gap-2">
+        <header
+          className="sticky top-0 z-30 border-b border-white/10 bg-gradient-to-r iyanjupay-dashboard-header text-white shadow-lg"
+        >
+          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+            <div className="flex h-[72px] items-center justify-between">
+
+              <button
+                type="button"
+                onClick={() =>
+                  setCurrentPage(
+                    "home"
+                  )
+                }
+                className="flex items-center gap-3"
+                aria-label="Go to IyanjuPay home"
+              >
+                <div className="iyanjupay-header-logo flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-2xl">
+                  <img
+                    src="/icon-180.png"
+                    alt="IyanjuPay"
+                    className="h-full w-full object-cover"
+                    draggable={false}
+                  />
+                </div>
+
+                <div className="hidden sm:block">
+                  <p className="text-lg font-black tracking-tight">
+                    IyanjuPay
+                  </p>
+
+                  <p className="text-[10px] font-medium text-purple-100">
+                    Your money. Your control.
+                  </p>
+                </div>
+              </button>
+
+              <div className="flex items-center gap-1 sm:gap-2">
+
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() =>
+                    setQrModalOpen(
+                      true
+                    )
+                  }
+                  className="iyanjupay-header-action h-10 w-10 rounded-full p-0"
+                  aria-label="Show QR code"
+                >
+                  <QrCode className="h-5 w-5" />
+                </Button>
+
                 <NotificationCenter
                   userId={user.id}
                   readOnly={isInspection}
                   inspectionNotifications={inspectionData?.notifications}
                 />
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setCurrentPage("me")}
-                  className="h-10 w-10 overflow-hidden rounded-full border border-white/20 bg-white/10 p-0 text-white hover:bg-white/20"
-                  aria-label="Open profile"
-                >
-                  {user.user_metadata?.avatar_url ? (
-                    <img src={user.user_metadata.avatar_url} alt="Profile" className="h-full w-full object-cover" />
-                  ) : (
-                    <User className="h-5 w-5" />
-                  )}
-                </Button>
+
+                {/* APPEARANCE */}
+
                 <div className="relative">
+
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={() => setAppearanceOpen((open) => !open)}
-                    className="h-10 w-10 rounded-full bg-white/10 p-0 text-white hover:bg-white/20"
+                    onClick={() =>
+                      setAppearanceOpen(
+                        (open) =>
+                          !open
+                      )
+                    }
+                    className="iyanjupay-header-action h-10 w-10 rounded-full p-0"
                     aria-label="Change dashboard appearance"
-                    aria-expanded={appearanceOpen}
+                    aria-expanded={
+                      appearanceOpen
+                    }
                     aria-haspopup="menu"
                   >
                     <ActiveAppearanceIcon className="h-5 w-5" />
                   </Button>
+
                   {appearanceOpen && (
-                    <div role="menu" aria-label="Dashboard appearance" className="iyanjupay-appearance-menu absolute right-0 top-12 z-[60] w-40 overflow-hidden rounded-2xl p-1.5 shadow-2xl">
-                      <div className="iyanjupay-appearance-label px-2.5 pb-1.5 pt-1 text-[10px] font-bold uppercase tracking-wider">Appearance</div>
+                    <div
+                      role="menu"
+                      aria-label="Dashboard appearance"
+                      className="iyanjupay-appearance-menu absolute right-0 top-12 z-[60] w-40 overflow-hidden rounded-2xl p-1.5 shadow-2xl"
+                    >
+
+                      <div className="iyanjupay-appearance-label px-2.5 pb-1.5 pt-1 text-[10px] font-bold uppercase tracking-wider">
+                        Appearance
+                      </div>
+
                       {THEME_OPTIONS.map((option) => {
                         const theme = option.value;
                         const ThemeIcon = option.icon;
+
                         return (
-                          <button key={theme} type="button" role="menuitem" onClick={() => { setDashboardTheme(theme); setAppearanceOpen(false); }} className={`iyanjupay-appearance-option flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left text-xs font-semibold transition ${dashboardTheme === theme ? "is-selected" : ""}`}>
-                            <span className="iyanjupay-appearance-icon flex h-7 w-7 items-center justify-center rounded-lg"><ThemeIcon className="h-3.5 w-3.5" /></span>
-                            <span className="flex-1">{option.label}</span>
-                            {dashboardTheme === theme && <Check className="h-3.5 w-3.5 text-emerald-600" />}
-                          </button>
-                        );
+                            <button
+                              key={
+                                theme
+                              }
+                              type="button"
+                              role="menuitem"
+                              onClick={() => {
+                                setDashboardTheme(
+                                  theme
+                                );
+
+                                setAppearanceOpen(
+                                  false
+                                );
+                              }}
+                              className={`iyanjupay-appearance-option flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left text-xs font-semibold transition ${
+                                dashboardTheme === theme ? "is-selected" : ""
+                              }`}
+                            >
+
+                              <span className="iyanjupay-appearance-icon flex h-7 w-7 items-center justify-center rounded-lg">
+                                <ThemeIcon className="h-3.5 w-3.5" />
+                              </span>
+
+                              <span className="flex-1">
+                                {option.label}
+                              </span>
+
+                              {dashboardTheme ===
+                                theme && (
+                                <Check className="h-3.5 w-3.5 text-emerald-600" />
+                              )}
+
+                            </button>
+                          );
                       })}
+
                     </div>
                   )}
+
                 </div>
-                <Button variant="ghost" size="sm" onClick={() => setQrModalOpen(true)} className="hidden h-10 w-10 rounded-full bg-white/10 p-0 text-white hover:bg-white/20 sm:flex" aria-label="Show QR code">
-                  <QrCode className="h-5 w-5" />
+
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() =>
+                    setCurrentPage(
+                      "history"
+                    )
+                  }
+                  className="iyanjupay-header-action hidden h-10 w-10 rounded-full p-0 sm:flex"
+                  aria-label="Transaction history"
+                >
+                  <History className="h-5 w-5" />
                 </Button>
+
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() =>
+                    setCurrentPage(
+                      "me"
+                    )
+                  }
+                  className="iyanjupay-header-action h-10 w-10 rounded-full p-0"
+                  aria-label="Open profile"
+                >
+                  <User className="h-5 w-5" />
+                </Button>
+
+                {!isInspection && <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={signOut}
+                  className="iyanjupay-header-action hidden h-10 w-10 rounded-full p-0 sm:flex"
+                  aria-label="Sign out"
+                >
+                  <LogOut className="h-5 w-5" />
+                </Button>}
+
               </div>
             </div>
           </div>
@@ -1948,12 +2115,46 @@ const Dashboard = ({
             </div>
           )}
 
+          {/* GREETING */}
+
+          <section className="mb-6">
+
+            <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
+
+              <div>
+
+                <p className="mb-1 text-sm font-medium text-purple-600">
+                  Welcome back
+                </p>
+
+                <h1 className="text-2xl font-black tracking-tight text-slate-950 sm:text-3xl">
+                  Hello, {firstName} 👋
+                </h1>
+
+                <p className="mt-1 text-sm text-slate-500 sm:text-base">
+                  What would you like to do today?
+                </p>
+
+              </div>
+
+              <div className="hidden rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-500 shadow-sm sm:flex sm:items-center sm:gap-2">
+
+                <span className="h-2 w-2 rounded-full bg-emerald-500" />
+
+                Account active
+
+              </div>
+
+            </div>
+
+          </section>
+
           {/* WALLET HERO */}
 
           <section className="mb-7">
 
             <Card
-              className="relative overflow-hidden rounded-[30px] border-0 bg-gradient-to-br from-[#5420ad] via-[#7026dc] to-[#244be8] text-white shadow-[0_20px_55px_rgba(91,42,210,0.28)]"
+              className="relative overflow-hidden rounded-[28px] border-0 bg-gradient-to-br iyanjupay-dashboard-wallet text-white shadow-[0_20px_60px_rgba(79,70,229,0.22)]"
             >
 
               <div className="pointer-events-none absolute -right-20 -top-20 h-56 w-56 rounded-full bg-white/10" />
@@ -2019,7 +2220,7 @@ const Dashboard = ({
                       </div>
 
                       <p className="mt-2 text-xs text-purple-100">
-                        Your money, made effortless.
+                        Ready to spend securely
                       </p>
 
                     </div>
@@ -2094,99 +2295,177 @@ const Dashboard = ({
 
           </section>
 
-          {/* QUICK ACCESS */}
-          <section className="mb-7">
+          {/* QUICK ACTIONS */}
+
+          <section className="mb-8">
+
             <div className="mb-3 flex items-center justify-between">
+
               <div>
-                <h2 className="text-lg font-black text-[#17133d]">Quick Access</h2>
-                <p className="text-xs text-slate-500">Your everyday services</p>
+
+                <h2 className="text-lg font-black text-slate-950">
+                  Quick Actions
+                </h2>
+
+                <p className="text-xs text-slate-500">
+                  Get things done faster
+                </p>
+
               </div>
-              <button type="button" onClick={() => setShowAllServices((value) => !value)} className="text-xs font-bold text-violet-700">
-                {showAllServices ? "Show less" : "See all"} <span aria-hidden="true">→</span>
-              </button>
+
             </div>
+
             <div className="grid grid-cols-4 gap-2 sm:gap-3">
-              {[
-                { label: "Airtime", icon: Smartphone, action: () => handleServiceClick(services[0]), tone: "bg-cyan-50 text-cyan-700" },
-                { label: "Data", icon: Wifi, action: () => handleServiceClick(services[1]), tone: "bg-blue-50 text-blue-700" },
-                { label: "Electricity", icon: Zap, action: () => handleServiceClick(services[3]), tone: "bg-amber-50 text-amber-700" },
-                { label: "Cable TV", icon: CreditCard, action: () => handleServiceClick(services[2]), tone: "bg-indigo-50 text-indigo-700" },
-              ].map((item) => {
-                const Icon = item.icon;
-                return (
-                  <button key={item.label} type="button" onClick={item.action} className="group rounded-2xl border border-violet-100 bg-white p-3 text-center shadow-[0_5px_18px_rgba(46,24,105,0.05)] transition hover:-translate-y-0.5 hover:shadow-md sm:p-4">
-                    <span className={`mx-auto flex h-11 w-11 items-center justify-center rounded-2xl ${item.tone}`}><Icon className="h-5 w-5" /></span>
-                    <span className="mt-2 block text-[10px] font-bold text-slate-800 sm:text-xs">{item.label}</span>
-                  </button>
-                );
-              })}
+
+              <button
+                type="button"
+                onClick={() =>
+                  handleServiceClick(
+                    services[0]
+                  )
+                }
+                className="group rounded-2xl border border-slate-200 bg-white p-3 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-md sm:p-4"
+              >
+                <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-2xl bg-blue-50 text-blue-600 transition group-hover:scale-105">
+                  <Smartphone className="h-5 w-5" />
+                </div>
+
+                <p className="mt-2 text-[11px] font-bold text-slate-700 sm:text-xs">
+                  Airtime
+                </p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() =>
+                  handleServiceClick(
+                    services[1]
+                  )
+                }
+                className="group rounded-2xl border border-slate-200 bg-white p-3 shadow-sm transition hover:-translate-y-0.5 hover:border-purple-200 hover:shadow-md sm:p-4"
+              >
+                <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-2xl bg-purple-50 text-purple-600 transition group-hover:scale-105">
+                  <Wifi className="h-5 w-5" />
+                </div>
+
+                <p className="mt-2 text-[11px] font-bold text-slate-700 sm:text-xs">
+                  Data
+                </p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() =>
+                  setCurrentPage(
+                    "send-money"
+                  )
+                }
+                className="group rounded-2xl border border-slate-200 bg-white p-3 shadow-sm transition hover:-translate-y-0.5 hover:border-emerald-200 hover:shadow-md sm:p-4"
+              >
+                <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600 transition group-hover:scale-105">
+                  <Send className="h-5 w-5" />
+                </div>
+
+                <p className="mt-2 text-[11px] font-bold text-slate-700 sm:text-xs">
+                  Transfer
+                </p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() =>
+                  setCurrentPage(
+                    "history"
+                  )
+                }
+                className="group rounded-2xl border border-slate-200 bg-white p-3 shadow-sm transition hover:-translate-y-0.5 hover:border-orange-200 hover:shadow-md sm:p-4"
+              >
+                <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-2xl bg-orange-50 text-orange-600 transition group-hover:scale-105">
+                  <History className="h-5 w-5" />
+                </div>
+
+                <p className="mt-2 text-[11px] font-bold text-slate-700 sm:text-xs">
+                  History
+                </p>
+              </button>
+
             </div>
           </section>
 
           {/* SERVICES */}
-          <section className="mb-7">
-            <div className="mb-3">
-              <h2 className="text-lg font-black text-[#17133d]">Services</h2>
-            </div>
-            <div className="grid grid-cols-4 gap-2 sm:gap-3">
-              <button type="button" onClick={() => setCurrentPage("cards")} className="rounded-2xl border border-violet-100 bg-white p-3 text-center shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
-                <span className="mx-auto flex h-11 w-11 items-center justify-center rounded-2xl bg-violet-50 text-violet-700"><CreditCard className="h-5 w-5" /></span>
-                <span className="mt-2 block text-[10px] font-bold text-slate-800 sm:text-xs">Cards</span>
-              </button>
-              <button type="button" onClick={() => setCurrentPage("savings")} className="rounded-2xl border border-violet-100 bg-white p-3 text-center shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
-                <span className="mx-auto flex h-11 w-11 items-center justify-center rounded-2xl bg-pink-50 text-pink-600"><PiggyBank className="h-5 w-5" /></span>
-                <span className="mt-2 block text-[10px] font-bold text-slate-800 sm:text-xs">Savings</span>
-              </button>
-              <button type="button" onClick={() => { const gift = services.find((service) => service.type === "gift-card"); if (gift) handleServiceClick(gift); }} className="rounded-2xl border border-violet-100 bg-white p-3 text-center shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
-                <span className="mx-auto flex h-11 w-11 items-center justify-center rounded-2xl bg-fuchsia-50 text-fuchsia-700"><Gift className="h-5 w-5" /></span>
-                <span className="mt-2 block text-[10px] font-bold text-slate-800 sm:text-xs">Gift Cards</span>
-              </button>
-              <button type="button" onClick={() => setShowAllServices((value) => !value)} className="rounded-2xl border border-violet-100 bg-white p-3 text-center shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
-                <span className="mx-auto flex h-11 w-11 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-700"><Plus className="h-5 w-5" /></span>
-                <span className="mt-2 block text-[10px] font-bold text-slate-800 sm:text-xs">More</span>
-              </button>
-            </div>
-            {showAllServices && (
-              <div className="mt-4 rounded-3xl border border-violet-100 bg-white p-4 shadow-sm">
-                <div className="mb-3 flex items-center justify-between">
-                  <h3 className="text-sm font-extrabold text-slate-900">All services</h3>
-                  <button type="button" onClick={() => setShowAllServices(false)} className="text-xs font-bold text-violet-700">Close</button>
-                </div>
-                <div className="grid grid-cols-3 gap-3 sm:grid-cols-4">
-                  {services.filter((service) => service.type !== "savings").map((service, index) => (
-                    <div key={`${service.type}-${index}`} className={service.available ? "" : "opacity-80"}>
-                      <ServiceCard title={service.title} icon={service.icon} color={service.color} available={service.available} comingSoon={COMING_SOON_SERVICES.includes(service.type)} onClick={() => handleServiceClick(service)} />
-                    </div>
-                  ))}
-                  <button
-                    type="button"
-                    onClick={() => setCurrentPage("rewards")}
-                    className="flex min-h-[104px] flex-col items-center justify-center rounded-2xl border border-violet-100 bg-white p-3 text-center shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
-                    aria-label="Open Rewards"
-                  >
-                    <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-amber-50 text-amber-600">
-                      <Gift className="h-5 w-5" />
-                    </span>
-                    <span className="mt-2 text-xs font-bold text-slate-800">Rewards</span>
-                  </button>
-                </div>
-              </div>
-            )}
-          </section>
 
-          {/* SAVINGS PROMOTION */}
           <section className="mb-8">
-            <div className="relative overflow-hidden rounded-[26px] bg-gradient-to-r from-[#4c0db6] via-[#6720dc] to-[#3225a8] p-5 text-white shadow-[0_16px_40px_rgba(84,32,180,0.22)] sm:p-6">
-              <div className="pointer-events-none absolute -right-8 -top-10 h-36 w-36 rounded-full bg-white/10" />
-              <div className="relative flex items-center justify-between gap-3">
-                <div className="max-w-[72%]">
-                  <p className="text-sm font-extrabold">Grow Your Savings</p>
-                  <p className="mt-1 text-xs text-violet-100">Reach your goals faster</p>
-                  <Button type="button" onClick={() => setCurrentPage("savings")} className="mt-3 h-8 rounded-full bg-white px-4 text-[11px] font-extrabold text-violet-800 shadow-sm hover:bg-violet-50">Start Saving <span className="ml-1">→</span></Button>
-                </div>
-                <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-3xl bg-white/10 text-5xl" aria-hidden="true">🐷</div>
+
+            <div className="mb-4 flex items-end justify-between">
+
+              <div>
+
+                <h2 className="text-xl font-black tracking-tight text-slate-950">
+                  Services
+                </h2>
+
+                <p className="mt-1 text-sm text-slate-500">
+                  Everything you need, in one place
+                </p>
+
               </div>
+
+              <span className="hidden rounded-full bg-purple-50 px-3 py-1 text-xs font-bold text-purple-700 sm:block">
+                {services.filter((service) => service.available && !COMING_SOON_SERVICES.includes(service.type)).length} live
+              </span>
+
             </div>
+
+            <div className="grid grid-cols-4 gap-2 sm:gap-3">
+
+              {[
+                ...services.filter(
+                  (service) =>
+                    !COMING_SOON_SERVICES.includes(service.type)
+                ),
+                ...services.filter(
+                  (service) =>
+                    COMING_SOON_SERVICES.includes(service.type)
+                ),
+              ].map(
+                (
+                  service,
+                  index
+                ) => (
+                  <div
+                    key={`${service.type}-${index}`}
+                    className={
+                      service.available
+                        ? "transition hover:-translate-y-0.5"
+                        : "opacity-80"
+                    }
+                  >
+                    <ServiceCard
+                      title={
+                        service.title
+                      }
+                      icon={
+                        service.icon
+                      }
+                      color={
+                        service.color
+                      }
+                      available={
+                        service.available
+                      }
+                      comingSoon={COMING_SOON_SERVICES.includes(service.type)}
+                      onClick={() =>
+                        handleServiceClick(
+                          service
+                        )
+                      }
+                    />
+                  </div>
+                )
+              )}
+
+            </div>
+
           </section>
 
           {/* ACCOUNT OVERVIEW */}
@@ -2195,7 +2474,7 @@ const Dashboard = ({
 
             <div className="mb-4">
 
-              <h2 className="text-xl font-black tracking-tight text-[#17133d]">
+              <h2 className="text-xl font-black tracking-tight text-slate-950">
                 Account Overview
               </h2>
 

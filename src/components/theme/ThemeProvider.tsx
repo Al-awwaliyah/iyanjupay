@@ -18,7 +18,7 @@ const STORAGE_KEY =
   "iyanjupay-dashboard-theme";
 
 const DEFAULT_THEME: IyanjuPayTheme =
-  "dark";
+  "light";
 
 export const THEME_OPTIONS = [
   { value: "light", label: "Light", icon: Sun },

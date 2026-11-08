@@ -46,6 +46,13 @@ import {
   Loader2,
   Mail,
   Lock,
+  UserRound,
+  ShieldCheck,
+  LockKeyhole,
+  Bell,
+  Palette,
+  CircleHelp,
+  ChevronRight,
 } from "lucide-react";
 
 import { useForm } from "react-hook-form";
@@ -82,6 +89,8 @@ interface KycState {
 
 interface ProfilePageProps {
   onBack: () => void;
+  onNavigate?: (page: "security" | "support" | "customer-service") => void;
+  onAppearance?: () => void;
   inspectionUserId?: string;
   inspectionUserEmail?: string | null;
   inspectionMode?: boolean;
@@ -93,6 +102,8 @@ interface ProfilePageProps {
 
 const ProfilePage = ({
   onBack,
+  onNavigate,
+  onAppearance,
   inspectionUserId,
   inspectionUserEmail,
   inspectionMode = false,
@@ -107,6 +118,8 @@ const ProfilePage = ({
 
   const [loading, setLoading] =
     useState(false);
+
+  const [showDetails, setShowDetails] = useState(false);
 
   const [kyc, setKyc] =
     useState<KycState | null>(null);
@@ -983,6 +996,55 @@ const ProfilePage = ({
 
   return (
     <>
+      {!showDetails ? (
+        <div className="iyanjupay-dashboard min-h-screen bg-[#fbfaff] px-4 pb-28 pt-7 text-slate-900">
+          <div className="mx-auto w-full max-w-md">
+            <header className="mb-7 text-center">
+              <h1 className="text-[21px] font-extrabold tracking-tight text-[#10103d]">My Profile</h1>
+            </header>
+
+            <section className="mb-8 flex flex-col items-center text-center">
+              <div className="relative mb-3 h-24 w-24 overflow-hidden rounded-full border-[5px] border-white bg-gradient-to-br from-violet-100 to-indigo-100 shadow-md">
+                {((user as any)?.user_metadata?.avatar_url || (user as any)?.user_metadata?.picture) ? (
+                  <img src={(user as any).user_metadata.avatar_url || (user as any).user_metadata.picture} alt="Profile" className="h-full w-full object-cover" />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center text-3xl font-bold text-violet-700">
+                    {(form.watch("full_name")?.trim()?.charAt(0) || user?.email?.charAt(0) || "I").toUpperCase()}
+                  </div>
+                )}
+                <span className="absolute bottom-0 right-0 flex h-6 w-6 items-center justify-center rounded-full border-2 border-white bg-sky-500 text-white">
+                  <CheckCircle className="h-3.5 w-3.5" />
+                </span>
+              </div>
+              <h2 className="text-[21px] font-extrabold tracking-tight text-[#10103d]">
+                {form.watch("full_name") || user?.user_metadata?.full_name || user?.email?.split("@")[0] || "IyanjuPay User"}
+              </h2>
+              <p className="mt-1 text-[14px] text-slate-500">{user?.email || "Email unavailable"}</p>
+              <span className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-3 py-1 text-xs font-bold text-emerald-700">
+                <ShieldCheck className="h-3.5 w-3.5" />
+                {kycLoading ? "Checking status" : kyc?.verified ? "Verified" : "Account"}
+              </span>
+            </section>
+
+            <nav aria-label="Profile settings" className="divide-y divide-violet-100/80">
+              {([
+                { label: "Account Details", icon: UserRound, action: () => setShowDetails(true) },
+                { label: "KYC Verification", icon: ShieldCheck, action: () => setShowDetails(true) },
+                { label: "Security & Privacy", icon: LockKeyhole, action: () => onNavigate?.("security") },
+                { label: "Notifications", icon: Bell, action: () => onNavigate?.("security") },
+                { label: "Appearance", icon: Palette, action: () => onAppearance?.() },
+                { label: "Help & Support", icon: CircleHelp, action: () => onNavigate?.("support") },
+              ] as const).map(({ label, icon: Icon, action }) => (
+                <button key={label} type="button" onClick={action} className="flex min-h-[66px] w-full items-center gap-4 px-2 text-left transition-colors hover:bg-violet-50/70 active:bg-violet-100/70">
+                  <Icon className="h-[21px] w-[21px] shrink-0 text-[#15134f]" strokeWidth={2.4} />
+                  <span className="flex-1 text-[15px] font-semibold tracking-tight text-[#171642]">{label}</span>
+                  <ChevronRight className="h-5 w-5 text-[#5941a4]" />
+                </button>
+              ))}
+            </nav>
+          </div>
+        </div>
+      ) : (
       <div className="iyanjupay-dashboard min-h-screen bg-gradient-to-br from-[#f7f4ff] via-white to-[#f1edff]">
         <div className="mx-auto w-full max-w-4xl px-4 py-6 sm:px-6 sm:py-8">
 
@@ -992,7 +1054,7 @@ const ProfilePage = ({
             <Button
               variant="ghost"
               size="icon"
-              onClick={onBack}
+              onClick={() => setShowDetails(false)}
               aria-label="Go back"
               className="h-10 w-10 rounded-full border border-violet-100 bg-white text-violet-700 shadow-sm hover:bg-violet-50"
             >
@@ -1002,9 +1064,7 @@ const ProfilePage = ({
               <h1 className="text-xl font-bold tracking-tight text-slate-900 sm:text-2xl">
                 My Profile
               </h1>
-              <p className="mt-0.5 text-sm text-slate-500">
-                Manage your personal details and account verification
-              </p>
+
             </div>
           </div>
 
@@ -1464,6 +1524,8 @@ const ProfilePage = ({
           </Form>
         </div>
       </div>
+
+      )}
 
       {/* ======================================================
           CHANGE EMAIL DIALOG

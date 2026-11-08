@@ -18,7 +18,7 @@ const ServiceCard = ({
   title,
   icon: Icon,
   onClick,
-  color: _color,
+  color,
   available = true,
   comingSoon = false,
 }: ServiceCardProps) => {
@@ -44,7 +44,7 @@ const ServiceCard = ({
       tabIndex={isUnavailable ? -1 : 0}
       aria-label={title}
       aria-disabled={isUnavailable}
-      className="iyanjupay-service-card group relative h-full overflow-hidden rounded-2xl border p-3 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-[#082A63]/25 focus:ring-offset-1 sm:p-4"
+      className="group relative h-full overflow-hidden rounded-xl border border-slate-200 bg-white p-2 shadow-sm transition hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-[#082A63]/25 focus:ring-offset-1 sm:p-2.5"
       onClick={
         isUnavailable ? undefined : onClick
       }
@@ -61,12 +61,13 @@ const ServiceCard = ({
 
         <div
           className={[
-            "iyanjupay-service-icon mx-auto flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl transition group-hover:scale-105",
+            "mx-auto flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition group-hover:scale-105",
+            color,
             comingSoon && "grayscale opacity-70",
           ].join(" ")}
         >
           <Icon
-            className="h-[18px] w-[18px] sm:h-5 sm:w-5"
+            className="h-4 w-4 text-white"
             strokeWidth={2}
             aria-hidden="true"
           />
@@ -74,7 +75,7 @@ const ServiceCard = ({
 
         {/* Service Name */}
 
-        <h3 className="iyanjupay-service-title min-h-[2.1em] break-words text-center text-[11px] font-bold leading-tight tracking-tight sm:text-xs">
+        <h3 className="min-h-[2em] break-words text-center text-[10px] font-semibold leading-tight tracking-tight text-slate-900 sm:text-[11px]">
           {(() => {
             // Names as long as (or longer than) "Internet Service" are shown
             // on two lines: <p>Internet<br/>Service</p>.

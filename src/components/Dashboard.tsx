@@ -474,7 +474,7 @@ const Dashboard = ({
     wallet: authenticatedWallet,
     loading: authenticatedWalletLoading,
     refreshWallet,
-  } = useWallet(user?.id, !isInspection, !isInspection);
+  } = useWallet(user?.id, !isInspection);
 
   const wallet = isInspection
     ? inspectionData?.wallet ?? null
@@ -2014,7 +2014,7 @@ const Dashboard = ({
         {/* MAIN CONTENT                                           */}
         {/* ====================================================== */}
 
-        <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+        <main className="mx-auto max-w-7xl px-3 py-4 sm:px-5 sm:py-5 lg:px-8">
 
           <AnnouncementBanner
             userId={user.id}
@@ -2031,7 +2031,7 @@ const Dashboard = ({
 
           {/* GREETING */}
 
-          <section className="mb-6">
+          <section className="mb-4">
 
             <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
 
@@ -2041,11 +2041,11 @@ const Dashboard = ({
                   Welcome back
                 </p>
 
-                <h1 className="text-2xl font-black tracking-tight text-slate-950 sm:text-3xl">
+                <h1 className="text-xl font-black tracking-tight text-slate-950 sm:text-2xl">
                   Hello, {firstName} 👋
                 </h1>
 
-                <p className="mt-1 text-sm text-slate-500 sm:text-base">
+                <p className="mt-1 text-xs text-slate-500 sm:text-sm">
                   What would you like to do today?
                 </p>
 
@@ -2065,19 +2065,19 @@ const Dashboard = ({
 
           {/* WALLET HERO */}
 
-          <section className="mb-7">
+          <section className="mb-5">
 
             <Card
-              className="relative overflow-hidden rounded-[28px] border-0 bg-gradient-to-br iyanjupay-dashboard-wallet text-white shadow-[0_20px_60px_rgba(79,70,229,0.22)]"
+              className="relative overflow-hidden rounded-3xl border-0 bg-gradient-to-br iyanjupay-dashboard-wallet text-white shadow-[0_12px_32px_rgba(79,70,229,0.18)]"
             >
 
               <div className="pointer-events-none absolute -right-20 -top-20 h-56 w-56 rounded-full bg-white/10" />
 
               <div className="pointer-events-none absolute -bottom-24 right-24 h-48 w-48 rounded-full bg-white/5" />
 
-              <CardContent className="relative p-5 sm:p-7">
+              <CardContent className="relative p-4 sm:p-5">
 
-                <div className="flex flex-col gap-7">
+                <div className="flex flex-col gap-4">
 
                   <div className="flex items-start justify-between gap-4">
 
@@ -2085,7 +2085,7 @@ const Dashboard = ({
 
                       <div className="flex items-center gap-2">
 
-                        <p className="text-sm font-medium text-white/85">
+                        <p className="text-xs font-medium text-white/90">
                           Available Balance
                         </p>
 
@@ -2095,9 +2095,9 @@ const Dashboard = ({
 
                       </div>
 
-                      <div className="mt-2 flex items-center gap-3">
+                      <div className="mt-1.5 flex items-center gap-2">
 
-                        <span className="text-3xl font-black tracking-tight sm:text-4xl">
+                        <span className="text-2xl font-extrabold tracking-tight sm:text-3xl">
 
                           ₦
                           {showBalance
@@ -2117,7 +2117,7 @@ const Dashboard = ({
                                 !previous
                             )
                           }
-                          className="h-9 w-9 rounded-full bg-white/10 p-0 text-white hover:bg-white/20"
+                          className="h-8 w-8 rounded-full bg-white/10 p-0 text-white hover:bg-white/20"
                           aria-label={
                             showBalance
                               ? "Hide balance"
@@ -2133,7 +2133,7 @@ const Dashboard = ({
 
                       </div>
 
-                      <p className="mt-2 text-xs text-white/80">
+                      <p className="mt-1.5 text-[11px] text-white/80">
                         Ready to spend securely
                       </p>
 
@@ -2141,7 +2141,7 @@ const Dashboard = ({
 
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3 px-4">
+                  <div className="grid grid-cols-2 gap-2 px-2">
 
                     <Button
                       onClick={() => {
@@ -2149,9 +2149,9 @@ const Dashboard = ({
                         setFundModalOpen(true);
                       }}
                       disabled={isInspection || !allowWalletFunding}
-                      className="h-12 rounded-2xl bg-white text-purple-700 shadow-lg hover:bg-purple-50"
+                      className="h-10 rounded-xl bg-white text-xs text-purple-700 shadow-md hover:bg-purple-50"
                     >
-                      <Plus className="mr-2 h-5 w-5" />
+                      <Plus className="mr-1.5 h-4 w-4" />
 
                       <span className="font-bold">
                         Add Money
@@ -2164,9 +2164,9 @@ const Dashboard = ({
                         setCurrentPage("send-money");
                       }}
                       disabled={isInspection || !allowTransfers}
-                      className="h-12 rounded-2xl border border-white/30 bg-white/10 text-white backdrop-blur-sm hover:bg-white/20"
+                      className="h-10 rounded-xl border border-white/30 bg-white/10 text-xs text-white backdrop-blur-sm hover:bg-white/20"
                     >
-                      <Send className="mr-2 h-5 w-5" />
+                      <Send className="mr-1.5 h-4 w-4" />
 
                       <span className="font-bold">
                         Send Money
@@ -2175,13 +2175,13 @@ const Dashboard = ({
 
                   </div>
 
-                  <div className="flex items-center justify-between border-t border-white/15 px-4 pt-4">
+                  <div className="flex items-center justify-between border-t border-white/15 px-2 pt-3">
 
-                    <span className="text-xs font-medium text-white/80">
+                    <span className="text-[11px] font-medium text-white/85">
                       Wallet ID
                     </span>
 
-                    <span className="font-mono text-xs font-bold tracking-wider text-white">
+                    <span className="font-mono text-[11px] font-bold tracking-wider text-white">
                       {wallet?.wallet_id ||
                         "—"}
                     </span>
@@ -2197,9 +2197,9 @@ const Dashboard = ({
           </section>
 
           {/* QUICK ACCESS */}
-          <section className="mb-8">
-            <div className="mb-4">
-              <h2 className="text-lg font-extrabold tracking-tight text-slate-950">Quick Access</h2>
+          <section className="mb-6">
+            <div className="mb-3">
+              <h2 className="text-base font-bold tracking-tight text-slate-950">Quick Access</h2>
               <p className="mt-1 text-xs text-slate-500">Your everyday essentials</p>
             </div>
             <div className="grid grid-cols-4 gap-2 sm:gap-3">
@@ -2209,9 +2209,9 @@ const Dashboard = ({
                 { label: "Cards", icon: CreditCard, tone: "bg-blue-100 text-blue-700", action: () => setCurrentPage("cards") },
                 { label: "Support", icon: Headphones, tone: "bg-emerald-100 text-emerald-700", action: () => setCurrentPage("support") },
               ].map((item) => { const Icon = item.icon; return (
-                <button key={item.label} type="button" onClick={item.action} className="group flex min-h-[104px] flex-col items-center justify-center gap-2 rounded-2xl border border-slate-200/80 bg-white p-3 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
-                  <span className={`flex h-12 w-12 items-center justify-center rounded-2xl ${item.tone}`}><Icon className="h-5 w-5" /></span>
-                  <span className="text-[11px] font-bold text-slate-700 sm:text-xs">{item.label}</span>
+                <button key={item.label} type="button" onClick={item.action} className="group flex min-h-[82px] flex-col items-center justify-center gap-1.5 rounded-xl border border-slate-200/80 bg-white p-2 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
+                  <span className={`flex h-9 w-9 items-center justify-center rounded-xl ${item.tone}`}><Icon className="h-4 w-4" /></span>
+                  <span className="text-[10px] font-semibold text-slate-700 sm:text-[11px]">{item.label}</span>
                 </button>
               ); })}
             </div>
@@ -2219,23 +2219,23 @@ const Dashboard = ({
 
           {/* SERVICES */}
 
-          <section className="mb-8">
+          <section className="mb-6">
 
-            <div className="mb-4 flex items-end justify-between">
+            <div className="mb-3 flex items-end justify-between">
 
               <div>
 
-                <h2 className="text-xl font-black tracking-tight text-slate-950">
+                <h2 className="text-base font-bold tracking-tight text-slate-950">
                   Services
                 </h2>
 
-                <p className="mt-1 text-sm text-slate-500">
+                <p className="mt-0.5 text-[11px] text-slate-500">
                   Everything you need, in one place
                 </p>
 
               </div>
 
-              <span className="hidden rounded-full bg-purple-50 px-3 py-1 text-xs font-bold text-purple-700 sm:block">
+              <span className="hidden rounded-full bg-purple-50 px-2.5 py-1 text-[10px] font-semibold text-purple-700 sm:block">
                 {services.filter((service) => service.available && !COMING_SOON_SERVICES.includes(service.type)).length} live
               </span>
 
@@ -2294,9 +2294,9 @@ const Dashboard = ({
           </section>
 
           {/* RECENT TRANSACTIONS */}
-          <section className="mb-8">
-            <div className="mb-4 flex items-center justify-between">
-              <div><h2 className="text-lg font-extrabold tracking-tight text-slate-950">Recent Transactions</h2><p className="mt-1 text-xs text-slate-500">Your latest wallet activity</p></div>
+          <section className="mb-6">
+            <div className="mb-3 flex items-center justify-between">
+              <div><h2 className="text-base font-bold tracking-tight text-slate-950">Recent Transactions</h2><p className="mt-1 text-xs text-slate-500">Your latest wallet activity</p></div>
               <button type="button" onClick={() => setCurrentPage("history")} className="text-xs font-bold text-violet-700 hover:text-violet-900">View All</button>
             </div>
             <Card className="overflow-hidden rounded-2xl border-slate-200/80 bg-white shadow-sm">
@@ -2306,9 +2306,9 @@ const Dashboard = ({
                   const successful = isSuccessfulTransaction(transaction);
                   const failed = isFailedTransaction(transaction);
                   const amount = Number(transaction.amount);
-                  return <div key={transaction.id} className="flex items-center gap-3 px-4 py-3.5">
-                    <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${outgoing ? "bg-rose-50 text-rose-600" : "bg-emerald-50 text-emerald-600"}`}>{outgoing ? <Send className="h-4 w-4" /> : <Plus className="h-4 w-4" />}</span>
-                    <div className="min-w-0 flex-1"><p className="truncate text-sm font-bold text-slate-800">{transaction.description || transaction.category || transaction.transaction_type || "Transaction"}</p><p className="mt-0.5 text-[11px] text-slate-500">{new Date(transaction.created_at).toLocaleDateString("en-NG", { day: "numeric", month: "short" })} · <span className={successful ? "text-emerald-600" : failed ? "text-rose-600" : "text-amber-600"}>{transaction.status}</span></p></div>
+                  return <div key={transaction.id} className="flex items-center gap-2.5 px-3 py-2.5">
+                    <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${outgoing ? "bg-rose-50 text-rose-600" : "bg-emerald-50 text-emerald-600"}`}>{outgoing ? <Send className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}</span>
+                    <div className="min-w-0 flex-1"><p className="truncate text-xs font-semibold text-slate-800">{transaction.description || transaction.category || transaction.transaction_type || "Transaction"}</p><p className="mt-0.5 text-[11px] text-slate-500">{new Date(transaction.created_at).toLocaleDateString("en-NG", { day: "numeric", month: "short" })} · <span className={successful ? "text-emerald-600" : failed ? "text-rose-600" : "text-amber-600"}>{transaction.status}</span></p></div>
                     <p className={`shrink-0 text-sm font-extrabold tabular-nums ${outgoing ? "text-slate-900" : "text-emerald-600"}`}>{outgoing ? "−" : "+"}₦{Number.isFinite(amount) ? amount.toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "0.00"}</p>
                   </div>;
                 })}

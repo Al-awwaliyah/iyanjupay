@@ -62,34 +62,21 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 
-// Resolve Flutterwave/NIP bank codes to customer-facing bank names.
-const NIGERIAN_BANK_CODES: Record<string, string> = {
-  "044": "Access Bank", "050": "Ecobank Nigeria", "057": "Zenith Bank",
-  "058": "Guaranty Trust Bank", "033": "United Bank for Africa",
-  "011": "First Bank of Nigeria", "070": "Fidelity Bank",
-  "032": "Union Bank of Nigeria", "035": "Wema Bank",
-  "214": "First City Monument Bank", "076": "Polaris Bank",
-  "082": "Keystone Bank", "221": "Stanbic IBTC Bank",
-  "232": "Sterling Bank", "215": "Unity Bank",
-  "068": "Standard Chartered Bank", "023": "Citibank Nigeria",
-  "301": "Jaiz Bank", "101": "Providus Bank", "103": "Globus Bank",
-  "100": "SunTrust Bank", "102": "Titan Trust Bank",
-  "104": "Parallex Bank", "110": "VFD Microfinance Bank",
-  "100004": "OPay", "100033": "PalmPay",
-  "120001": "9mobile 9Payment Service Bank",
-  "120002": "Hope Payment Service Bank",
-  "120003": "MoMo Payment Service Bank",
-  "120004": "Airtel SmartCash PSB",
-  "120005": "Money Master PSB",
-  "090405": "Moniepoint Microfinance Bank", "090175": "Rubies MFB",
-  "090110": "VFD Microfinance Bank", "090267": "Kuda Microfinance Bank",
-};
-
-function resolveNigerianBankName(nameOrCode: string): string {
+// Bank names are loaded from the same Flutterwave-backed Edge Function
+// used by Send Money. Do not maintain a second, hardcoded bank-code list.
+function resolveNigerianBankName(
+  nameOrCode: string,
+  bankNamesByCode: Record<string, string> = {}
+): string {
   const value = String(nameOrCode ?? "").trim();
   if (!value) return "";
-  const normalized = value.replace(/\\s+/g, "");
-  return NIGERIAN_BANK_CODES[normalized] || value;
+
+  const normalizedCode = value.replace(/\s+/g, "");
+  const resolved = bankNamesByCode[normalizedCode];
+  if (resolved) return resolved;
+
+  // A numeric identifier must never be presented to customers as a bank name.
+  return /^\d+$/.test(normalizedCode) ? "" : value;
 }
 
 /* ================================================================
@@ -855,7 +842,8 @@ const determineDirection = (
    ================================================================ */
 
 const normalizeTransaction = (
-  transaction: Transaction
+  transaction: Transaction,
+  bankNamesByCode: Record<string, string>
 ): NormalizedTransaction => {
   const metadata =
     transaction.metadata ?? {};
@@ -931,6 +919,8 @@ const normalizeTransaction = (
     stringValue(
       metadata.recipient_bank_code,
       metadata.recipientBankCode,
+      metadata.sender_bank_code,
+      metadata.senderBankCode,
       metadata.beneficiary_bank_code,
       metadata.account_bank,
       metadata.bank_code,
@@ -948,6 +938,8 @@ const normalizeTransaction = (
     stringValue(
       metadata.bank_name,
       metadata.bankName,
+      metadata.bank,
+      getNested(metadata, [["details", "bank"]]),
       metadata.recipient_bank_name,
       metadata.beneficiary_bank_name,
       metadata.sender_bank,
@@ -970,7 +962,10 @@ const normalizeTransaction = (
       ])
     );
 
-  const resolvedBankName = resolveNigerianBankName(bankName || bankCode);
+  const resolvedBankName = resolveNigerianBankName(
+    bankName || bankCode,
+    bankNamesByCode
+  );
 
   /* --------------------------------------------------------------
      INTERNAL WALLET TRANSFER
@@ -1041,7 +1036,10 @@ const normalizeTransaction = (
     getNested(metadata, [["data", "bank_name"]]),
     getNested(metadata, [["data", "bank_code"]])
   );
-  const senderBankName = resolveNigerianBankName(senderBankRaw);
+  const senderBankName = resolveNigerianBankName(
+    senderBankRaw,
+    bankNamesByCode
+  );
 
   const senderAccountName = stringValue(
     metadata.sender_account_name,
@@ -1411,13 +1409,12 @@ const normalizeTransaction = (
         : "Wallet Funding";
 
     subtitle =
-      stringValue(
-        metadata.sender_bank_name,
-        metadata.sender_bank,
-        metadata.bank_name,
-        bankCode ? resolveNigerianBankName(bankCode) : "",
-        "Bank transfer"
-      );
+      senderBankName ||
+      resolvedBankName ||
+      (bankCode
+        ? resolveNigerianBankName(bankCode, bankNamesByCode)
+        : "") ||
+      "Bank transfer";
   }
 
   if (kind === "refund") {
@@ -1672,6 +1669,46 @@ const TransactionHistory = ({
   const user = useMemo(() => inspectionUserId && authenticatedUser ? { ...authenticatedUser, id: inspectionUserId, email: inspectionUserEmail ?? null } : authenticatedUser, [inspectionUserId, inspectionUserEmail, authenticatedUser]);
 
   const { toast } = useToast();
+
+  const [bankNamesByCode, setBankNamesByCode] =
+    useState<Record<string, string>>({});
+
+  // Use Flutterwave's live bank directory, through the existing secured
+  // Edge Function already used by Send Money (never expose the secret key).
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadFlutterwaveBanks = async () => {
+      try {
+        const { data, error } = await supabase.functions.invoke(
+          "flutterwave-banks"
+        );
+
+        if (error) throw error;
+        if (!data?.success || !Array.isArray(data?.banks)) {
+          throw new Error("Flutterwave bank list is unavailable.");
+        }
+
+        const nextBankNames: Record<string, string> = {};
+        for (const bank of data.banks) {
+          const code = String(bank?.code ?? "").trim();
+          const name = String(bank?.name ?? "").trim();
+          if (code && name) nextBankNames[code] = name;
+        }
+
+        if (!cancelled) setBankNamesByCode(nextBankNames);
+      } catch (bankError) {
+        // Keep history usable if Flutterwave is temporarily unavailable.
+        // Numeric bank codes are intentionally not shown as bank names.
+        console.warn("Unable to load Flutterwave bank directory:", bankError);
+      }
+    };
+
+    void loadFlutterwaveBanks();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const [
     transactions,
@@ -1975,9 +2012,13 @@ const TransactionHistory = ({
     useMemo(
       () =>
         transactions.map(
-          normalizeTransaction
+          transaction =>
+            normalizeTransaction(
+              transaction,
+              bankNamesByCode
+            )
         ),
-      [transactions]
+      [transactions, bankNamesByCode]
     );
 
   /* ============================================================== 
@@ -2504,7 +2545,8 @@ const TransactionHistory = ({
           details += detail(
             "Bank",
             item.bankName ||
-              resolveNigerianBankName(item.bankCode)
+              resolveNigerianBankName(item.bankCode, bankNamesByCode) ||
+              "Bank details unavailable"
           );
         }
 
@@ -3684,7 +3726,8 @@ const TransactionHistory = ({
                         label="Bank"
                         value={
                           selectedTransaction.bankName ||
-                          (selectedTransaction.bankCode ? resolveNigerianBankName(selectedTransaction.bankCode) : "")
+                          (selectedTransaction.bankCode ? resolveNigerianBankName(selectedTransaction.bankCode, bankNamesByCode) : "") ||
+                          "Bank details unavailable"
                         }
                       />
 

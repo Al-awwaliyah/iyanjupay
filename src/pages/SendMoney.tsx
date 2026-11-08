@@ -26,13 +26,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-} from "@/components/ui/select";
-
-import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -214,6 +207,7 @@ const SendMoneyPage = ({
 
   const [bank, setBank] = useState("");
   const [bankSearch, setBankSearch] = useState("");
+  const [bankPickerOpen, setBankPickerOpen] = useState(false);
   const [accountNumber, setAccountNumber] =
     useState("");
 
@@ -1600,6 +1594,122 @@ const SendMoneyPage = ({
       ));
 
   // ==========================================================
+  // BANK PICKER PAGE
+  // ==========================================================
+
+  if (bankPickerOpen) {
+    return (
+      <div className="send-money-page min-h-[100dvh] bg-[#f7f5ff] text-slate-900">
+        <header className="sticky top-0 z-30 border-b border-violet-100 bg-white/95 text-slate-900 shadow-sm backdrop-blur">
+          <div className="mx-auto max-w-md px-4">
+            <div className="relative flex h-14 items-center justify-center">
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => setBankPickerOpen(false)}
+                aria-label="Back to Send Money"
+                className="absolute left-0 h-10 w-10 rounded-full p-0 text-slate-700 hover:bg-violet-50"
+              >
+                <ArrowLeft className="h-5 w-5" />
+              </Button>
+              <h1 className="text-base font-bold tracking-tight">Select Bank</h1>
+            </div>
+          </div>
+        </header>
+
+        <main className="mx-auto flex min-h-[calc(100dvh-56px)] max-w-md flex-col px-4 pb-8 pt-5">
+          <div className="mb-5">
+            <h2 className="text-lg font-bold tracking-tight text-slate-900">
+              Recipient's Bank
+            </h2>
+            <p className="mt-1 text-sm text-slate-500">
+              Search and select the bank linked to the account.
+            </p>
+          </div>
+
+          <div className="sticky top-14 z-20 mb-4 bg-[#f7f5ff] pb-2">
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
+              <Input
+                value={bankSearch}
+                onChange={(e) => setBankSearch(e.target.value)}
+                placeholder="Search bank name..."
+                className="send-money-input h-12 rounded-xl border-[#e3def3] bg-white pl-11 pr-4 text-slate-900 shadow-sm placeholder:text-slate-400 focus-visible:ring-[#5b18d5]"
+                autoComplete="off"
+                autoFocus
+                aria-label="Search banks"
+              />
+            </div>
+            {!banksLoading && isOnline && (
+              <p className="mt-2 px-1 text-xs text-slate-500">
+                {filteredBanks.length} {filteredBanks.length === 1 ? "bank" : "banks"} found
+              </p>
+            )}
+          </div>
+
+          <div className="flex-1 overflow-hidden rounded-2xl border border-violet-100 bg-white shadow-[0_8px_24px_rgba(48,24,120,0.06)]">
+            {banksLoading ? (
+              <div className="flex min-h-48 flex-col items-center justify-center gap-3 p-6 text-sm text-gray-500">
+                <Loader2 className="h-6 w-6 animate-spin text-violet-600" />
+                <span>Loading banks...</span>
+              </div>
+            ) : !isOnline ? (
+              <div className="flex min-h-48 flex-col items-center justify-center p-6 text-center">
+                <WifiOff className="mb-3 h-9 w-9 text-red-300" />
+                <p className="text-sm font-semibold text-gray-800">No internet connection</p>
+                <p className="mt-1 text-xs text-gray-500">Reconnect to load the bank list.</p>
+              </div>
+            ) : filteredBanks.length > 0 ? (
+              <div className="max-h-[calc(100dvh-245px)] overflow-y-auto overscroll-contain">
+                {filteredBanks.map((bankItem) => {
+                  const isSelected = bankItem.code === bank;
+                  return (
+                    <button
+                      key={bankItem.code}
+                      type="button"
+                      onClick={() => {
+                        resolveRequestRef.current++;
+                        setBank(bankItem.code);
+                        setResolvedAccount(null);
+                        setResolving(false);
+                        setBankSearch("");
+                        setBankPickerOpen(false);
+                      }}
+                      className={`flex min-h-[64px] w-full items-center gap-3 border-b border-violet-50 px-4 py-3 text-left transition-colors last:border-b-0 hover:bg-violet-50/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#5b18d5] ${isSelected ? "bg-violet-50" : "bg-white"}`}
+                      aria-pressed={isSelected}
+                    >
+                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-50 text-violet-700">
+                        <Building2 className="h-5 w-5" />
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm font-semibold text-slate-800">
+                          {bankItem.name}
+                        </span>
+                        <span className="mt-0.5 block text-[11px] text-slate-400">
+                          Select bank
+                        </span>
+                      </span>
+                      {isSelected && (
+                        <CheckCircle2 className="h-5 w-5 shrink-0 text-violet-600" />
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="flex min-h-48 flex-col items-center justify-center p-6 text-center">
+                <Building2 className="mb-3 h-9 w-9 text-slate-300" />
+                <p className="text-sm font-semibold text-gray-800">No bank found</p>
+                <p className="mt-1 text-xs text-gray-500">Try another bank name.</p>
+              </div>
+            )}
+          </div>
+        </main>
+      </div>
+    );
+  }
+
+  // ==========================================================
   // UI
   // ==========================================================
 
@@ -1842,145 +1952,29 @@ const SendMoneyPage = ({
                     Recipient Bank
                   </Label>
 
-                  <Select
-                    value={bank}
-                    onValueChange={(value) => {
-                      resolveRequestRef.current++;
-
-                      setBank(value);
-                      setResolvedAccount(null);
-                      setResolving(false);
+                  <button
+                    type="button"
+                    id="bank"
+                    onClick={() => {
                       setBankSearch("");
+                      setBankPickerOpen(true);
                     }}
-                    disabled={
-                      banksLoading ||
-                      !isOnline ||
-                      banks.length === 0
-                    }
+                    className="send-money-input flex h-12 w-full items-center justify-between rounded-xl border border-[#e3def3] bg-white px-3 text-left text-slate-900 transition-colors hover:border-[#5b18d5]/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5b18d5]"
+                    aria-label="Search and select recipient bank"
                   >
-                    <SelectTrigger
-                      id="bank"
-                      className="send-money-input h-12 rounded-xl border-[#e3def3] bg-white text-slate-900 placeholder:text-slate-400 focus-visible:ring-[#5b18d5]"
-                    >
-                      <div className="flex items-center gap-2 min-w-0">
-                        <Building2 className="h-4 w-4 text-gray-400 shrink-0" />
-
-                        {selectedBankName ? (
-                          <span className="truncate text-gray-900">
-                            {selectedBankName}
-                          </span>
-                        ) : (
-                          <span className="text-gray-500">
-                            {banksLoading
-                              ? "Loading banks..."
-                              : !isOnline
-                                ? "Reconnect to load banks"
-                                : "Search and select your bank"}
-                          </span>
-                        )}
-                      </div>
-                    </SelectTrigger>
-
-                    <SelectContent
-                      className="send-money-select-content max-h-[420px]"
-                    >
-                      <div
-                        className="send-money-bank-search sticky top-0 z-20 p-2 border-b"
-                        onPointerDown={(e) =>
-                          e.stopPropagation()
-                        }
-                        onKeyDown={(e) =>
-                          e.stopPropagation()
-                        }
-                      >
-                        <div className="relative">
-                          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-
-                          <Input
-                            value={bankSearch}
-                            onChange={(e) =>
-                              setBankSearch(
-                                e.target.value
-                              )
-                            }
-                            onKeyDown={(e) =>
-                              e.stopPropagation()
-                            }
-                            placeholder="Search bank name..."
-                            className="send-money-input pl-9 h-10"
-                            autoComplete="off"
-                            autoFocus
-                          />
-                        </div>
-                      </div>
-
-                      {banksLoading ? (
-                        <div className="flex flex-col items-center justify-center gap-2 p-6 text-sm text-gray-500">
-                          <Loader2 className="h-5 w-5 animate-spin text-green-600" />
-                          <span>
-                            Loading banks...
-                          </span>
-                        </div>
-                      ) : !isOnline ? (
-                        <div className="flex flex-col items-center justify-center p-6 text-center">
-                          <WifiOff className="h-8 w-8 text-red-300 mb-2" />
-
-                          <p className="text-sm font-medium text-gray-700">
-                            No internet connection
-                          </p>
-
-                          <p className="text-xs text-gray-500 mt-1">
-                            Reconnect to load the bank list.
-                          </p>
-                        </div>
-                      ) : filteredBanks.length > 0 ? (
-                        <>
-                          <div className="px-3 py-2 text-xs text-gray-400">
-                            {filteredBanks.length}{" "}
-                            {filteredBanks.length === 1
-                              ? "bank"
-                              : "banks"}{" "}
-                            found
-                          </div>
-
-                          {filteredBanks.map(
-                            (bankItem) => (
-                              <SelectItem
-                                key={bankItem.code}
-                                value={bankItem.code}
-                                className="py-3 text-gray-900"
-                              >
-                                <div className="flex items-center gap-2 min-w-0">
-                                  <div className="send-money-bank-icon w-8 h-8 rounded-lg flex items-center justify-center shrink-0">
-                                    <Building2 className="h-4 w-4" />
-                                  </div>
-
-                                  <span className="truncate">
-                                    {bankItem.name}
-                                  </span>
-                                </div>
-                              </SelectItem>
-                            )
-                          )}
-                        </>
-                      ) : (
-                        <div className="flex flex-col items-center justify-center p-6 text-center">
-                          <Building2 className="h-8 w-8 text-gray-300 mb-2" />
-
-                          <p className="text-sm font-medium text-gray-700">
-                            No bank found
-                          </p>
-
-                          <p className="text-xs text-gray-500 mt-1">
-                            Try another bank name.
-                          </p>
-                        </div>
-                      )}
-                    </SelectContent>
-                  </Select>
-
+                    <span className="flex min-w-0 items-center gap-2">
+                      <Building2 className="h-4 w-4 shrink-0 text-gray-400" />
+                      <span className={selectedBankName ? "truncate text-gray-900" : "truncate text-gray-500"}>
+                        {selectedBankName ||
+                          (banksLoading
+                            ? "Loading banks..."
+                            : "Search and select your bank")}
+                      </span>
+                    </span>
+                    <Search className="ml-3 h-4 w-4 shrink-0 text-gray-400" />
+                  </button>
                   <p className="send-money-muted text-xs">
-                    Search by bank name and select the recipient's bank.
+                    Tap to open the bank list and search for the recipient's bank.
                   </p>
                 </div>
 

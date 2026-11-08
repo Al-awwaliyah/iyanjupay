@@ -1423,7 +1423,7 @@ function ServiceTransactionProcessing({
               onClick={onBack}
               disabled={isProcessing}
               aria-label="Back"
-              className="text-white hover:bg-white/15 hover:text-white"
+              className={isAirtime || isElectricity ? "text-[#4C1D95] hover:bg-violet-50 hover:text-[#4C1D95]" : "text-white hover:bg-white/15 hover:text-white"}
             >
               <ArrowLeft className="h-5 w-5" />
             </Button>
@@ -3562,7 +3562,7 @@ function ServicePaymentBillFlow({
 
   if (!allowBillPayments) {
     return (
-      <div className="min-h-screen bg-background px-4 py-6 text-foreground">
+      <div className="iyanjupay-dashboard min-h-screen bg-background px-4 py-6 text-foreground">
         <div className="mx-auto max-w-lg">
           <Button variant="ghost" onClick={onBack} className="mb-4">
             <ArrowLeft className="mr-2 h-4 w-4" /> Back
@@ -3605,15 +3605,15 @@ function ServicePaymentBillFlow({
     <>
       
 
-      <div className="iyanjupay-service-page min-h-screen bg-gray-50 text-gray-900">
-        <header className="iyanjupay-service-header sticky top-0 z-20 border-b border-violet-900/20 bg-gradient-to-r from-[#4C1D95] via-[#6D28D9] to-[#2563EB] text-white shadow-md">
+      <div className={`iyanjupay-service-page min-h-screen text-gray-900 ${isAirtime || isElectricity ? "bg-[#F7F5FF]" : "bg-gray-50"}`}>
+        <header className={`iyanjupay-service-header sticky top-0 z-20 border-b shadow-sm ${isAirtime || isElectricity ? "border-violet-100 bg-white text-[#172554]" : "border-violet-900/20 bg-gradient-to-r from-[#4C1D95] via-[#6D28D9] to-[#2563EB] text-white shadow-md"}`}>
           <div className="mx-auto flex max-w-3xl items-center justify-between px-4 py-3.5">
             <Button
               variant="ghost"
               size="icon"
               onClick={onBack}
               aria-label="Back"
-              className="text-white hover:bg-white/15 hover:text-white"
+              className={isAirtime || isElectricity ? "text-[#4C1D95] hover:bg-violet-50 hover:text-[#4C1D95]" : "text-white hover:bg-white/15 hover:text-white"}
             >
               <ArrowLeft className="h-5 w-5" />
             </Button>
@@ -3623,8 +3623,8 @@ function ServicePaymentBillFlow({
                 {serviceTitle}
               </h1>
 
-              <p className="text-[10px] text-violet-100 sm:text-xs">
-                Secure service purchase
+              <p className={`text-[10px] sm:text-xs ${isAirtime || isElectricity ? "text-gray-500" : "text-violet-100"}`}>
+                {isAirtime ? "Fast, secure airtime top-up" : isElectricity ? "Pay your electricity bill securely" : "Secure service purchase"}
               </p>
             </div>
 
@@ -3633,7 +3633,7 @@ function ServicePaymentBillFlow({
                 variant="ghost"
                 size="sm"
                 onClick={onHistory}
-                className="text-white hover:bg-white/15 hover:text-white"
+                className={isAirtime || isElectricity ? "text-[#4C1D95] hover:bg-violet-50 hover:text-[#4C1D95]" : "text-white hover:bg-white/15 hover:text-white"}
               >
                 <History className="mr-1.5 h-4 w-4" />
                 History
@@ -3644,7 +3644,7 @@ function ServicePaymentBillFlow({
           </div>
         </header>
 
-        <main className="mx-auto max-w-5xl space-y-3 px-3 py-4 pb-8 sm:px-4">
+        <main className={`mx-auto max-w-5xl space-y-3 px-3 py-4 pb-8 sm:px-4 ${isAirtime || isElectricity ? "max-w-xl space-y-4 py-5" : ""}`}>
           {showPin ? (
             /*
              * ==================================================
@@ -3793,7 +3793,7 @@ function ServicePaymentBillFlow({
               {(!isGiftCard || giftCardMode === "buy") ? (
                 <>
               {/* Compact service selector — intentionally kept separate from the purchase logic. */}
-              <section className="rounded-2xl border bg-white p-3 shadow-sm sm:p-4">
+              <section className={`rounded-2xl border bg-white p-3 shadow-sm sm:p-4 ${isAirtime || isElectricity ? "rounded-3xl border-violet-100 p-4 shadow-[0_8px_28px_rgba(76,29,149,0.06)] sm:p-5" : ""}`}>
                 <div className="mb-3 flex items-center justify-between gap-3">
                   <div className="min-w-0">
                     <h2 className="text-sm font-bold text-gray-900">
@@ -3860,8 +3860,8 @@ function ServicePaymentBillFlow({
               </section>
 
               {isElectricity && selectedBiller && (
-                <section className="rounded-2xl border bg-white p-3 shadow-sm sm:p-4">
-                  <div className="mb-2 text-xs font-bold text-gray-900">Meter type</div>
+                <section className="rounded-3xl border border-violet-100 bg-white p-4 shadow-[0_8px_28px_rgba(76,29,149,0.06)] sm:p-5">
+                  <div className="mb-3 text-sm font-bold text-gray-900">Choose meter type</div>
                   {meterTypes.length ? (
                     <div className="grid grid-cols-2 gap-2">
                       {meterTypes.map((meter: Biller) => {
@@ -3898,8 +3898,8 @@ function ServicePaymentBillFlow({
               )}
 
               {isPhoneService && (
-                <section className="rounded-2xl border bg-white p-3 shadow-sm sm:p-4">
-                  <Label className="text-xs font-bold text-gray-900">{customerLabel}</Label>
+                <section className={`rounded-2xl border bg-white p-3 shadow-sm sm:p-4 ${isAirtime || isElectricity ? "rounded-3xl border-violet-100 p-4 shadow-[0_8px_28px_rgba(76,29,149,0.06)] sm:p-5" : ""}`}>
+                  <Label className="text-xs font-bold text-gray-900">{isAirtime ? "Phone number" : customerLabel}</Label>
                   <Input
                     value={customer}
                     onChange={(e) => {
@@ -3908,9 +3908,10 @@ function ServicePaymentBillFlow({
                     }}
                     placeholder={customerPlaceholder}
                     inputMode="tel"
-                    className="mt-2 h-10 rounded-xl text-sm"
+                    className={`mt-2 h-11 rounded-xl text-sm ${isAirtime ? "border-violet-100 bg-[#FCFBFF] px-4 text-base focus-visible:ring-[#6D28D9]" : ""}`}
                     disabled={!!processingSession}
                   />
+                  {isAirtime && <p className="mt-2 text-[11px] text-gray-500">Enter the phone number you want to recharge.</p>}
                 </section>
               )}
 
@@ -3947,9 +3948,9 @@ function ServicePaymentBillFlow({
               )}
 
               {(isCable || isElectricity) && selectedBillerCode && (
-                <section className="rounded-2xl border bg-white p-3 shadow-sm sm:p-4">
-                  <div className="mb-2 flex items-center justify-between">
-                    <Label className="text-xs font-bold text-gray-900">{customerLabel}</Label>
+                <section className={`rounded-2xl border bg-white p-3 shadow-sm sm:p-4 ${isElectricity ? "rounded-3xl border-violet-100 p-4 shadow-[0_8px_28px_rgba(76,29,149,0.06)] sm:p-5" : ""}`}>
+                  <div className="mb-3 flex items-center justify-between">
+                    <Label className="text-sm font-bold text-gray-900">{customerLabel}</Label>
                     {verified && <CheckCircle2 className="h-4 w-4 text-green-600" />}
                   </div>
                   <Input
@@ -3960,7 +3961,7 @@ function ServicePaymentBillFlow({
                     }}
                     placeholder={customerPlaceholder}
                     inputMode="numeric"
-                    className="h-10 rounded-xl text-sm"
+                    className={`h-11 rounded-xl text-sm ${isElectricity ? "border-violet-100 bg-[#FCFBFF] px-4 focus-visible:ring-[#6D28D9]" : ""}`}
                   />
                   {verifyingIdentifier && (
                     <div className="mt-2 flex items-center gap-2 text-[11px] font-medium text-[#6D28D9]">
@@ -4180,7 +4181,7 @@ function ServicePaymentBillFlow({
               )}
 
               {canEnterAmount && ((isElectricity && verified) || isAirtime || isInternetAmount) && (
-                <section className="rounded-2xl border bg-white p-3 shadow-sm sm:p-4">
+                <section className={`rounded-2xl border bg-white p-3 shadow-sm sm:p-4 ${isAirtime || isElectricity ? "rounded-3xl border-violet-100 p-4 shadow-[0_8px_28px_rgba(76,29,149,0.06)] sm:p-5" : ""}`}>
                   <div className="mb-3 flex items-center justify-between">
                     <div>
                       <h2 className="text-xs font-bold text-gray-900">Select amount</h2>
@@ -4188,7 +4189,7 @@ function ServicePaymentBillFlow({
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-4 gap-2 sm:grid-cols-5 md:grid-cols-8">
+                  <div className={`grid grid-cols-4 gap-2 sm:grid-cols-5 md:grid-cols-8 ${isAirtime ? "grid-cols-3 sm:grid-cols-4" : ""}`}>
                     {(isAirtime ? AIRTIME_AMOUNTS : BILL_AMOUNTS).map((value) => (
                       <button
                         key={value}
@@ -4243,7 +4244,7 @@ function ServicePaymentBillFlow({
                 </div>
               )}
 
-              <section className="rounded-2xl border bg-white p-3 shadow-sm sm:p-4">
+              <section className={`rounded-2xl border bg-white p-3 shadow-sm sm:p-4 ${isAirtime || isElectricity ? "rounded-3xl border-violet-100 p-4 shadow-[0_8px_28px_rgba(76,29,149,0.06)] sm:p-5" : ""}`}>
                 {hasAmount && (
                   <div className="mb-3 flex items-center justify-between rounded-xl bg-gray-50 px-3 py-2.5">
                     <span className="text-xs text-gray-500">Amount</span>
@@ -4251,7 +4252,7 @@ function ServicePaymentBillFlow({
                   </div>
                 )}
                 <Button
-                  className="iyanjupay-service-primary h-11 w-full rounded-xl bg-gradient-to-r from-[#082A63] via-[#1554B8] to-[#2563EB] text-sm font-bold text-white shadow-sm hover:brightness-105"
+                  className={`iyanjupay-service-primary h-11 w-full rounded-xl text-sm font-bold text-white shadow-sm hover:brightness-105 ${isAirtime || isElectricity ? "h-12 bg-gradient-to-r from-[#6D28D9] to-[#4F46E5]" : "bg-gradient-to-r from-[#082A63] via-[#1554B8] to-[#2563EB]"}`}
                   onClick={() => void startPurchase()}
                   disabled={!canPurchase || checkingPaymentPin}
                 >
@@ -4262,6 +4263,8 @@ function ServicePaymentBillFlow({
                     </>
                   ) : isAirtime ? (
                     "Buy Airtime"
+                  ) : isElectricity ? (
+                    "Pay Electricity Bill"
                   ) : isInternetAmount ? (
                     "Buy Internet Service"
                   ) : isPinService ? (

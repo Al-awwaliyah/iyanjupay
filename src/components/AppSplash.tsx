@@ -36,7 +36,7 @@ const AppSplash = () => {
   return (
     <div
       className={[
-        "fixed inset-0 z-[99999]",
+        "iyanjupay-splash fixed inset-0 z-[99999]",
         "flex min-h-[100dvh]",
         "items-center justify-center",
         "overflow-hidden",
@@ -53,7 +53,7 @@ const AppSplash = () => {
           "-translate-x-1/2 -translate-y-1/2",
           "rounded-full blur-[110px]",
           "animate-[splashAmbient_6s_ease-in-out_infinite]",
-          isDark ? "bg-emerald-400/[0.07]" : "bg-emerald-400/[0.055]",
+          isDark ? "bg-violet-500/[0.07]" : "bg-violet-500/[0.055]",
         ].join(" ")}
       />
 
@@ -66,7 +66,7 @@ const AppSplash = () => {
           "-translate-x-1/2 -translate-y-1/2",
           "rounded-full blur-[75px]",
           "animate-[splashLight_5s_ease-in-out_infinite]",
-          isDark ? "bg-emerald-300/[0.075]" : "bg-emerald-400/[0.07]",
+          isDark ? "bg-purple-400/[0.075]" : "bg-violet-500/[0.07]",
         ].join(" ")}
       />
 
@@ -88,8 +88,8 @@ const AppSplash = () => {
             "rotate-[-7deg]",
             "rounded-full",
             isDark
-              ? "bg-gradient-to-r from-transparent via-emerald-400/[0.08] to-transparent"
-              : "bg-gradient-to-r from-transparent via-emerald-500/[0.06] to-transparent",
+              ? "bg-gradient-to-r from-transparent via-violet-500/[0.08] to-transparent"
+              : "bg-gradient-to-r from-transparent via-violet-500/[0.06] to-transparent",
           ].join(" ")}
         />
       </div>
@@ -112,8 +112,8 @@ const AppSplash = () => {
               "rounded-full blur-[38px]",
               "animate-[splashAura_4s_ease-in-out_infinite]",
               isDark
-                ? "bg-emerald-400/[0.055]"
-                : "bg-emerald-400/[0.045]",
+                ? "bg-violet-500/[0.055]"
+                : "bg-violet-500/[0.045]",
             ].join(" ")}
           />
 
@@ -163,7 +163,7 @@ const AppSplash = () => {
             "tracking-[-0.055em]",
             "animate-[splashName_850ms_220ms_cubic-bezier(0.16,1,0.3,1)_both]",
             "sm:text-5xl",
-            isDark ? "text-white" : "text-[#082A63]",
+            isDark ? "text-white" : "text-white",
           ].join(" ")}
         >
           IyanjuPay
@@ -192,7 +192,7 @@ const AppSplash = () => {
             isDark ? "text-white/40" : "text-slate-400",
           ].join(" ")}
         >
-          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.45)]" />
+          <span className="h-1.5 w-1.5 rounded-full bg-violet-500 shadow-[0_0_10px_rgba(16,185,129,0.45)]" />
           Secure fintech experience
         </div>
       </main>
@@ -210,7 +210,7 @@ const AppSplash = () => {
           className="
             h-[2px] w-8
             rounded-full
-            bg-emerald-500/70
+            bg-violet-500/70
             shadow-[0_0_14px_rgba(16,185,129,0.22)]
           "
         />

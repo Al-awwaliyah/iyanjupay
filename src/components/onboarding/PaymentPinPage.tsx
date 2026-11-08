@@ -138,7 +138,7 @@ const PaymentPinPage = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background px-4 py-8">
+    <div className="iyanjupay-dashboard min-h-screen flex items-center justify-center bg-background px-4 py-8">
       <Card className="w-full max-w-md">
         <CardHeader>
           <CardTitle className="text-2xl font-semibold">

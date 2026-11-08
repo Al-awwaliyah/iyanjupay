@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { Fingerprint, LockKeyhole, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useAuth } from "@/hooks/useAuth";
 import { authenticateWithBiometric } from "@/lib/biometricAuth";
+import { useAuth } from "@/hooks/useAuth";
 
 const ENABLED_KEY = "iyanjupay-app-lock-enabled";
 const BIOMETRIC_KEY = "iyanjupay-biometric-enabled";

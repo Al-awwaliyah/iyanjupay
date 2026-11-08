@@ -28,10 +28,12 @@ import { useToast } from "@/hooks/use-toast";
 import { Capacitor } from "@capacitor/core";
 import {
   checkBiometricAvailability,
-  hasRegisteredWebBiometric,
   authenticateWithBiometric,
-  registerWebBiometric,
+  hasRegisteredWebBiometric,
   isNativeBiometricPlatform,
+  isWebAuthnSupported,
+  registerWebBiometric,
+  setBiometricEnabled as persistBiometricEnabled,
 } from "@/lib/biometricAuth";
 import {
   enablePushNotifications,
@@ -39,7 +41,6 @@ import {
   disableNativePush,
   isWebPushSupported,
 } from "@/lib/pushNotifications";
-
 
 const APP_LOCK_KEY = "iyanjupay-app-lock-enabled";
 const APP_LOCK_TIMEOUT_KEY = "iyanjupay-app-lock-timeout";
@@ -76,25 +77,27 @@ export default function SecuritySettingsPage({
     try {
       if (isNativeBiometricPlatform()) {
         const availability = await checkBiometricAvailability();
-        const enabled = availability.available &&
+        const enabled =
+          availability.available &&
           localStorage.getItem(BIOMETRIC_KEY) === "true";
         setHasBiometricCredential(availability.available);
         setBiometricEnabled(enabled);
         if (!availability.available && localStorage.getItem(BIOMETRIC_KEY) === "true") {
-          setBiometricEnabled(false);
-          localStorage.setItem(BIOMETRIC_KEY, "false");
+          persistBiometricEnabled(false);
           localStorage.setItem(APP_LOCK_KEY, "false");
           setAppLock(false);
         }
-      } else {
-        const registered = await hasRegisteredWebBiometric();
-        setHasBiometricCredential(registered);
-        if (!registered && localStorage.getItem(BIOMETRIC_KEY) === "true") {
-          setBiometricEnabled(false);
-          localStorage.setItem(BIOMETRIC_KEY, "false");
-          localStorage.setItem(APP_LOCK_KEY, "false");
-          setAppLock(false);
-        }
+        return;
+      }
+
+      const available = await hasRegisteredWebBiometric();
+      setHasBiometricCredential(available);
+      const enabled = available && localStorage.getItem(BIOMETRIC_KEY) === "true";
+      setBiometricEnabled(enabled);
+      if (!available && localStorage.getItem(BIOMETRIC_KEY) === "true") {
+        persistBiometricEnabled(false);
+        localStorage.setItem(APP_LOCK_KEY, "false");
+        setAppLock(false);
       }
     } catch (error) {
       console.warn("Unable to check biometric status:", error);
@@ -130,39 +133,43 @@ export default function SecuritySettingsPage({
 
   const toggleBiometric = async (enabled: boolean) => {
     if (!enabled) {
+      persistBiometricEnabled(false);
       setBiometricEnabled(false);
-      localStorage.setItem(BIOMETRIC_KEY, "false");
       setAppLock(false);
       localStorage.setItem(APP_LOCK_KEY, "false");
-      toast({
-        title: "Biometric authentication disabled",
-        description: "Biometric unlock has been disabled on this device.",
-      });
+      toast({ title: "Biometric authentication disabled" });
       return;
     }
 
     setWorking(true);
     try {
+      const availability = await checkBiometricAvailability();
+      if (!availability.available) {
+        throw new Error(availability.label || "Biometric authentication is unavailable on this device.");
+      }
+
       if (isNativeBiometricPlatform()) {
-        const availability = await checkBiometricAvailability();
-        if (!availability.available) {
-          throw new Error(availability.label || "No supported biometric is enrolled on this device.");
-        }
+        // Native setup is confirmed by a real device biometric prompt.
         await authenticateWithBiometric("Enable IyanjuPay biometric security");
       } else {
+        if (!isWebAuthnSupported()) {
+          throw new Error("Biometric authentication requires a supported HTTPS browser.");
+        }
         await registerWebBiometric();
       }
 
-      setHasBiometricCredential(true);
+      persistBiometricEnabled(true);
       setBiometricEnabled(true);
-      localStorage.setItem(BIOMETRIC_KEY, "true");
+      setHasBiometricCredential(true);
       toast({
         title: "Biometric authentication enabled",
-        description: "Your device can now verify you when unlocking IyanjuPay.",
+        description: "Your device can now verify you when IyanjuPay is locked.",
       });
     } catch (error: any) {
+      persistBiometricEnabled(false);
       setBiometricEnabled(false);
-      localStorage.setItem(BIOMETRIC_KEY, "false");
+      setAppLock(false);
+      localStorage.setItem(APP_LOCK_KEY, "false");
       toast({
         title: "Biometric setup failed",
         description: error?.message ?? "The biometric setup was cancelled or unavailable.",
@@ -268,7 +275,7 @@ export default function SecuritySettingsPage({
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 px-4 py-6">
+    <main className="iyanjupay-dashboard min-h-screen bg-background px-4 py-6 text-foreground">
       <div className="mx-auto max-w-3xl space-y-5">
         <div className="flex items-center gap-3">
           <Button variant="ghost" onClick={onBack}>
@@ -293,7 +300,7 @@ export default function SecuritySettingsPage({
           </CardHeader>
 
           <CardContent className="space-y-4">
-            {!webAuthnSupported() && (
+            {!isNativeBiometricPlatform() && !isWebAuthnSupported() && (
               <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800">
                 Biometric authentication requires a supported browser/device
                 and HTTPS in production.
@@ -315,9 +322,7 @@ export default function SecuritySettingsPage({
                 id="biometric-auth"
                 checked={biometricEnabled}
                 onCheckedChange={toggleBiometric}
-                disabled={
-                  working || loadingBiometric || !webAuthnSupported()
-                }
+                disabled={working || loadingBiometric}
               />
             </div>
 
@@ -461,6 +466,6 @@ export default function SecuritySettingsPage({
           </CardContent>
         </Card>
       </div>
-    </div>
+    </main>
   );
 }

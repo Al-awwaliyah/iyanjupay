@@ -453,25 +453,25 @@ const TransactionProcessingPage = (props: TransactionProcessingPageProps) => {
 
   const renderStatusIcon = () => {
     if (status === null) return (
-      <div className="relative flex h-[76px] w-[76px] items-center justify-center">
+      <div className="relative flex h-[88px] w-[88px] items-center justify-center">
         <div className="absolute inset-0 rounded-full border-[3px] border-slate-100" />
         <div className="absolute inset-0 animate-spin rounded-full border-[3px] border-transparent border-t-[#F4B400]" />
-        <div className="flex h-[54px] w-[54px] items-center justify-center rounded-full bg-[#082A63] shadow-lg shadow-[#082A63]/20"><Loader2 className="h-6 w-6 animate-spin text-white" /></div>
+        <div className="flex h-[62px] w-[62px] items-center justify-center rounded-full bg-[#082A63] shadow-lg shadow-[#082A63]/20"><Loader2 className="h-6 w-6 animate-spin text-white" /></div>
       </div>
     );
-    if (status === "success") return <div className="relative flex h-[76px] w-[76px] items-center justify-center"><div className="absolute inset-0 rounded-full bg-emerald-50" /><div className="relative flex h-[54px] w-[54px] items-center justify-center rounded-full bg-emerald-600 shadow-lg shadow-emerald-600/20"><Check className="h-7 w-7 text-white" strokeWidth={3} /></div></div>;
-    if (status === "pending") return <div className="relative flex h-[76px] w-[76px] items-center justify-center"><div className="absolute inset-0 rounded-full bg-amber-50" /><div className="relative flex h-[54px] w-[54px] items-center justify-center rounded-full bg-amber-500 shadow-lg shadow-amber-500/20"><Clock3 className="h-7 w-7 text-white" /></div></div>;
-    return <div className="relative flex h-[76px] w-[76px] items-center justify-center"><div className="absolute inset-0 rounded-full bg-red-50" /><div className="relative flex h-[54px] w-[54px] items-center justify-center rounded-full bg-red-600 shadow-lg shadow-red-600/20"><XCircle className="h-7 w-7 text-white" /></div></div>;
+    if (status === "success") return <div className="relative flex h-[88px] w-[88px] items-center justify-center"><div className="absolute inset-0 rounded-full bg-emerald-50" /><div className="relative flex h-[62px] w-[62px] items-center justify-center rounded-full bg-emerald-600 shadow-lg shadow-emerald-600/20"><Check className="h-7 w-7 text-white" strokeWidth={3} /></div></div>;
+    if (status === "pending") return <div className="relative flex h-[88px] w-[88px] items-center justify-center"><div className="absolute inset-0 rounded-full bg-amber-50" /><div className="relative flex h-[62px] w-[62px] items-center justify-center rounded-full bg-amber-500 shadow-lg shadow-amber-500/20"><Clock3 className="h-7 w-7 text-white" /></div></div>;
+    return <div className="relative flex h-[88px] w-[88px] items-center justify-center"><div className="absolute inset-0 rounded-full bg-red-50" /><div className="relative flex h-[62px] w-[62px] items-center justify-center rounded-full bg-red-600 shadow-lg shadow-red-600/20"><XCircle className="h-7 w-7 text-white" /></div></div>;
   };
 
   if (!hasTransactionPayload) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex h-[100dvh] w-full flex-col overflow-hidden bg-[#F6F8FC] text-slate-900">
+    <div className="fixed inset-0 z-50 flex h-[100dvh] w-full flex-col overflow-hidden bg-[#F7F5FF] text-slate-900">
       <header className="shrink-0 border-b border-slate-200 bg-white">
-        <div className="flex h-[58px] items-center justify-between px-4">
+        <div className="flex h-[64px] items-center justify-between px-4">
           <button type="button" onClick={() => void onBack()} disabled={submitting || retrying} className="flex h-9 w-9 items-center justify-center rounded-xl text-slate-600 transition hover:bg-slate-100 disabled:pointer-events-none disabled:opacity-40" aria-label="Go back"><ArrowLeft className="h-5 w-5" /></button>
-          <div className="flex items-center gap-2"><div className="flex h-8 w-8 items-center justify-center rounded-xl bg-[#082A63] text-white">{isBill ? <Receipt className="h-4 w-4" /> : <Send className="h-4 w-4" />}</div><div className="text-center"><p className="text-[9px] font-extrabold uppercase tracking-[0.18em] text-slate-400">IyanjuPay</p><p className="max-w-[140px] truncate text-xs font-bold text-slate-900">{transactionName}</p></div></div>
+          <div className="flex items-center gap-2"><div className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-[#7026D9] to-[#4B35C8] text-white">{isBill ? <Receipt className="h-4 w-4" /> : <Send className="h-4 w-4" />}</div><div className="text-center"><p className="text-[9px] font-extrabold uppercase tracking-[0.18em] text-slate-400">IyanjuPay</p><p className="max-w-[140px] truncate text-xs font-bold text-slate-900">{transactionName}</p></div></div>
           <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-50"><ShieldCheck className="h-4 w-4 text-emerald-600" /></div>
         </div>
       </header>
@@ -484,13 +484,13 @@ const TransactionProcessingPage = (props: TransactionProcessingPageProps) => {
               {status === null ? <Loader2 className="h-2.5 w-2.5 animate-spin text-[#082A63]" /> : status === "success" ? <Sparkles className="h-2.5 w-2.5 text-[#F4B400]" /> : status === "pending" ? <Clock3 className="h-2.5 w-2.5 text-amber-500" /> : <XCircle className="h-2.5 w-2.5 text-red-500" />}
               <span className="text-[8px] font-extrabold uppercase tracking-[0.16em] text-slate-500">{statusConfig.eyebrow}</span>
             </div>
-            <h1 className="mt-2 text-xl font-black tracking-tight text-slate-950">{statusConfig.title}</h1>
+            <h1 className="mt-2 text-2xl font-black tracking-tight text-slate-950">{statusConfig.title}</h1>
             <p className="mt-0.5 max-w-[310px] text-[11px] leading-4 text-slate-500">{statusConfig.description}</p>
-            {status !== "failed" && <div className="mt-2"><p className="text-[8px] font-bold uppercase tracking-[0.16em] text-slate-400">Amount</p><p className="text-2xl font-black tracking-tight" style={{ color: NAVY }}>{formatNaira(amount)}</p></div>}
+            {status !== "failed" && <div className="mt-2"><p className="text-[8px] font-bold uppercase tracking-[0.16em] text-slate-400">Amount</p><p className="text-[30px] font-black tracking-tight" style={{ color: "#5B28C9" }}>{formatNaira(amount)}</p></div>}
           </section>
 
-          <section className="mt-3 min-h-0 shrink rounded-2xl border border-slate-200 bg-white shadow-sm">
-            <div className="flex items-center justify-between border-b border-slate-100 px-3.5 py-2.5"><div className="flex items-center gap-2"><div className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#082A63]/[0.07]"><Receipt className="h-3.5 w-3.5" style={{ color: NAVY }} /></div><div><p className="text-[11px] font-bold text-slate-900">Transaction Details</p><p className="text-[8px] text-slate-400">Secure transaction summary</p></div></div><ShieldCheck className="h-3.5 w-3.5 text-emerald-500" /></div>
+          <section className="mt-4 min-h-0 shrink rounded-[24px] border border-[#E9E2FA] bg-white shadow-[0_12px_35px_rgba(76,44,150,0.08)]">
+            <div className="flex items-center justify-between border-b border-slate-100 px-3.5 py-2.5"><div className="flex items-center gap-2"><div className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#6B35D4]/[0.09]"><Receipt className="h-3.5 w-3.5" style={{ color: "#5B28C9" }} /></div><div><p className="text-[11px] font-bold text-slate-900">Transaction Details</p><p className="text-[8px] text-slate-400">Secure transaction summary</p></div></div><ShieldCheck className="h-3.5 w-3.5 text-emerald-500" /></div>
             <div className="px-3.5">
               {isBill ? <CompactBillIdentity service={billServiceName} customer={billCustomer} customerLabel={billCustomerLabel} packageName={billPackage} /> : <CompactTransferIdentity recipient={recipient} bank={bank} accountNumber={accountNumber} isBank={isBank} />}
               <div className="border-t border-dashed border-slate-200">
@@ -504,7 +504,7 @@ const TransactionProcessingPage = (props: TransactionProcessingPageProps) => {
             </div>
           </section>
 
-          {status === "success" && reference && <section className="mt-2.5 shrink-0 rounded-xl border border-emerald-100 bg-emerald-50/70 px-3 py-2.5"><div className="flex items-center justify-between gap-2"><div className="min-w-0"><p className="text-[8px] font-extrabold uppercase tracking-[0.14em] text-emerald-600">Reference</p><p className="mt-0.5 truncate font-mono text-[10px] font-bold text-slate-700">{reference}</p></div><button type="button" onClick={handleCopyReference} className="flex h-8 shrink-0 items-center gap-1.5 rounded-lg bg-white px-2.5 text-[9px] font-bold text-slate-600 shadow-sm ring-1 ring-emerald-100 transition hover:text-[#082A63]">{copied ? <><Check className="h-3 w-3 text-emerald-600" />Copied</> : <><Copy className="h-3 w-3" />Copy</>}</button></div></section>}
+          {status === "success" && reference && <section className="mt-2.5 shrink-0 rounded-2xl border border-emerald-100 bg-emerald-50/70 px-3 py-2.5"><div className="flex items-center justify-between gap-2"><div className="min-w-0"><p className="text-[8px] font-extrabold uppercase tracking-[0.14em] text-emerald-600">Reference</p><p className="mt-0.5 truncate font-mono text-[10px] font-bold text-slate-700">{reference}</p></div><button type="button" onClick={handleCopyReference} className="flex h-8 shrink-0 items-center gap-1.5 rounded-lg bg-white px-2.5 text-[9px] font-bold text-slate-600 shadow-sm ring-1 ring-emerald-100 transition hover:text-[#082A63]">{copied ? <><Check className="h-3 w-3 text-emerald-600" />Copied</> : <><Copy className="h-3 w-3" />Copy</>}</button></div></section>}
 
           {status === "pending" && <section className="mt-2.5 shrink-0 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5"><div className="flex items-center gap-2.5"><div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-amber-100"><Clock3 className="h-4 w-4 text-amber-600" /></div><div className="min-w-0"><p className="text-[10px] font-bold text-amber-950">Awaiting confirmation</p><p className="mt-0.5 text-[9px] leading-3.5 text-amber-800">Please don't submit this {isBill ? "payment" : "transfer"} again.</p></div></div></section>}
 
@@ -512,7 +512,7 @@ const TransactionProcessingPage = (props: TransactionProcessingPageProps) => {
 
           {submitting && <div className="mt-2.5 flex shrink-0 items-center justify-center gap-1.5 text-center"><ShieldCheck className="h-3 w-3 text-emerald-500" /><p className="text-[8px] font-semibold text-slate-400">Your transaction is securely protected</p></div>}
 
-          {!submitting && status !== null && <div className="mt-auto shrink-0 pt-2.5">{status === "failed" ? <div className="grid grid-cols-2 gap-2"><Button type="button" variant="outline" onClick={() => void onBack()} disabled={retrying} className="h-11 rounded-xl border-slate-200 bg-white text-xs font-bold text-slate-700"><ArrowLeft className="mr-1.5 h-3.5 w-3.5" />Back</Button><Button type="button" onClick={handleRetry} disabled={retrying} className="h-11 rounded-xl bg-[#082A63] text-xs font-bold text-white shadow-lg shadow-[#082A63]/20 hover:bg-[#082A63]/95">{retrying ? <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />Retrying</> : <><RefreshCw className="mr-1.5 h-3.5 w-3.5" />Try Again</>}</Button></div> : <Button type="button" onClick={() => void onDone()} className="h-11 w-full rounded-xl bg-[#082A63] text-xs font-bold text-white shadow-lg shadow-[#082A63]/20 hover:bg-[#082A63]/95">{status === "success" ? <><CheckCircle2 className="mr-1.5 h-4 w-4" />Done</> : <>Continue to Dashboard<ArrowUpRight className="ml-1.5 h-3.5 w-3.5" /></>}</Button>}</div>}
+          {!submitting && status !== null && <div className="mt-auto shrink-0 pt-2.5">{status === "failed" ? <div className="grid grid-cols-2 gap-2"><Button type="button" variant="outline" onClick={() => void onBack()} disabled={retrying} className="h-11 rounded-xl border-slate-200 bg-white text-xs font-bold text-slate-700"><ArrowLeft className="mr-1.5 h-3.5 w-3.5" />Back</Button><Button type="button" onClick={handleRetry} disabled={retrying} className="h-11 rounded-xl bg-gradient-to-r from-[#7026D9] to-[#4B35C8] text-xs font-bold text-white shadow-lg shadow-[#5B28C9]/20 hover:opacity-95">{retrying ? <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />Retrying</> : <><RefreshCw className="mr-1.5 h-3.5 w-3.5" />Try Again</>}</Button></div> : <Button type="button" onClick={() => void onDone()} className="h-11 w-full rounded-xl bg-gradient-to-r from-[#7026D9] to-[#4B35C8] text-xs font-bold text-white shadow-lg shadow-[#5B28C9]/20 hover:opacity-95">{status === "success" ? <><CheckCircle2 className="mr-1.5 h-4 w-4" />Done</> : <>Continue to Dashboard<ArrowUpRight className="ml-1.5 h-3.5 w-3.5" /></>}</Button>}</div>}
 
           <div className="flex shrink-0 items-center justify-center gap-1.5 pb-1 pt-2"><ShieldCheck className="h-2.5 w-2.5 text-emerald-500" /><span className="text-[7px] font-bold uppercase tracking-[0.12em] text-slate-400">Securely processed by IyanjuPay</span></div>
         </div>

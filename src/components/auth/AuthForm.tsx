@@ -1,5 +1,6 @@
 import { getSafeErrorMessage } from "@/lib/errorHandling";
 import React, { useEffect, useState } from "react";
+import { Capacitor } from "@capacitor/core";
 import { Fingerprint, Eye, EyeOff } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 
@@ -1132,6 +1133,7 @@ const AuthForm = () => {
                       <div className="absolute inset-x-0 top-1/2 border-t border-slate-100" />
                     </div>
 
+                    {!Capacitor.isNativePlatform() && (
                     <Button
                       type="button"
                       variant="outline"
@@ -1153,6 +1155,7 @@ const AuthForm = () => {
                       <Fingerprint className="mr-2 h-4 w-4 text-violet-700" />
                       Sign in with biometrics
                     </Button>
+                    )}
                   </form>
                 </TabsContent>
 

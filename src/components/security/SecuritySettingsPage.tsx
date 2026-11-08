@@ -25,8 +25,14 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { supabase } from "@/integrations/supabase/client";
 import { Capacitor } from "@capacitor/core";
+import {
+  checkBiometricAvailability,
+  hasRegisteredWebBiometric,
+  authenticateWithBiometric,
+  registerWebBiometric,
+  isNativeBiometricPlatform,
+} from "@/lib/biometricAuth";
 import {
   enablePushNotifications,
   disableWebPush,
@@ -34,38 +40,11 @@ import {
   isWebPushSupported,
 } from "@/lib/pushNotifications";
 
-const db = supabase as any;
 
 const APP_LOCK_KEY = "iyanjupay-app-lock-enabled";
 const APP_LOCK_TIMEOUT_KEY = "iyanjupay-app-lock-timeout";
 const BIOMETRIC_KEY = "iyanjupay-biometric-enabled";
 const PUSH_ENABLED_KEY = "iyanjupay-push-enabled";
-
-function webAuthnSupported() {
-  return (
-    typeof window !== "undefined" &&
-    "PublicKeyCredential" in window &&
-    !!navigator.credentials
-  );
-}
-
-async function platformAuthenticatorAvailable() {
-  if (!webAuthnSupported()) return false;
-
-  try {
-    const checker = (
-      window.PublicKeyCredential as typeof PublicKeyCredential & {
-        isUserVerifyingPlatformAuthenticatorAvailable?: () => Promise<boolean>;
-      }
-    ).isUserVerifyingPlatformAuthenticatorAvailable;
-
-    return typeof checker === "function"
-      ? await checker.call(window.PublicKeyCredential)
-      : true;
-  } catch {
-    return false;
-  }
-}
 
 export default function SecuritySettingsPage({
   onBack,
@@ -93,30 +72,33 @@ export default function SecuritySettingsPage({
   const [working, setWorking] = useState(false);
 
   const loadBiometricStatus = useCallback(async () => {
-    if (!webAuthnSupported()) {
-      setHasBiometricCredential(false);
-      setLoadingBiometric(false);
-      return;
-    }
-
+    setLoadingBiometric(true);
     try {
-      const { data, error } = await db.auth.passkey.list();
-
-      if (error) throw error;
-
-      const credentials = Array.isArray(data) ? data : [];
-      const available = credentials.length > 0;
-
-      setHasBiometricCredential(available);
-
-      if (!available && localStorage.getItem(BIOMETRIC_KEY) === "true") {
-        localStorage.setItem(BIOMETRIC_KEY, "false");
-        localStorage.setItem(APP_LOCK_KEY, "false");
-        setBiometricEnabled(false);
-        setAppLock(false);
+      if (isNativeBiometricPlatform()) {
+        const availability = await checkBiometricAvailability();
+        const enabled = availability.available &&
+          localStorage.getItem(BIOMETRIC_KEY) === "true";
+        setHasBiometricCredential(availability.available);
+        setBiometricEnabled(enabled);
+        if (!availability.available && localStorage.getItem(BIOMETRIC_KEY) === "true") {
+          setBiometricEnabled(false);
+          localStorage.setItem(BIOMETRIC_KEY, "false");
+          localStorage.setItem(APP_LOCK_KEY, "false");
+          setAppLock(false);
+        }
+      } else {
+        const registered = await hasRegisteredWebBiometric();
+        setHasBiometricCredential(registered);
+        if (!registered && localStorage.getItem(BIOMETRIC_KEY) === "true") {
+          setBiometricEnabled(false);
+          localStorage.setItem(BIOMETRIC_KEY, "false");
+          localStorage.setItem(APP_LOCK_KEY, "false");
+          setAppLock(false);
+        }
       }
     } catch (error) {
-      console.warn("Unable to check biometric credentials:", error);
+      console.warn("Unable to check biometric status:", error);
+      setHasBiometricCredential(false);
     } finally {
       setLoadingBiometric(false);
     }
@@ -150,93 +132,40 @@ export default function SecuritySettingsPage({
     if (!enabled) {
       setBiometricEnabled(false);
       localStorage.setItem(BIOMETRIC_KEY, "false");
-
       setAppLock(false);
       localStorage.setItem(APP_LOCK_KEY, "false");
-
       toast({
         title: "Biometric authentication disabled",
-        description:
-          "Your registered device credential remains available if you enable biometrics again.",
-      });
-
-      return;
-    }
-
-    if (!webAuthnSupported()) {
-      toast({
-        title: "Biometric authentication unavailable",
-        description: "Use a supported HTTPS browser or device.",
-        variant: "destructive",
+        description: "Biometric unlock has been disabled on this device.",
       });
       return;
     }
 
     setWorking(true);
-
     try {
-      const platformAvailable = await platformAuthenticatorAvailable();
-
-      if (!platformAvailable) {
-        throw new Error(
-          "This device does not provide a supported biometric or device-verification authenticator."
-        );
-      }
-
-      // List existing passkeys before attempting replacement.
-      const { data: existingPasskeys, error: listError } =
-        await db.auth.passkey.list();
-
-      if (listError) throw listError;
-
-      const passkeys = Array.isArray(existingPasskeys)
-        ? existingPasskeys
-        : [];
-
-      // Remove existing passkeys before registering a new one.
-      for (const passkey of passkeys) {
-        if (!passkey?.id) {
-          throw new Error(
-            "A registered passkey is missing its ID, so it cannot be safely replaced."
-          );
+      if (isNativeBiometricPlatform()) {
+        const availability = await checkBiometricAvailability();
+        if (!availability.available) {
+          throw new Error(availability.label || "No supported biometric is enrolled on this device.");
         }
-
-        const { error: deleteError } = await db.auth.passkey.delete({
-          passkeyId: passkey.id,
-        });
-
-        if (deleteError) throw deleteError;
-      }
-
-      const { data: registeredPasskey, error: registerError } =
-        await db.auth.registerPasskey();
-
-      if (registerError) throw registerError;
-
-      if (!registeredPasskey?.id) {
-        throw new Error(
-          "The authentication service did not confirm the new passkey registration."
-        );
+        await authenticateWithBiometric("Enable IyanjuPay biometric security");
+      } else {
+        await registerWebBiometric();
       }
 
       setHasBiometricCredential(true);
       setBiometricEnabled(true);
       localStorage.setItem(BIOMETRIC_KEY, "true");
-
       toast({
         title: "Biometric authentication enabled",
-        description:
-          "Your device's biometric or secure device verification can now unlock IyanjuPay.",
+        description: "Your device can now verify you when unlocking IyanjuPay.",
       });
     } catch (error: any) {
       setBiometricEnabled(false);
       localStorage.setItem(BIOMETRIC_KEY, "false");
-
       toast({
         title: "Biometric setup failed",
-        description:
-          error?.message ??
-          "The biometric setup was cancelled or unavailable.",
+        description: error?.message ?? "The biometric setup was cancelled or unavailable.",
         variant: "destructive",
       });
     } finally {

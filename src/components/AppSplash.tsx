@@ -8,23 +8,6 @@ const AppSplash = () => {
       <div className="pointer-events-none absolute -left-24 top-[28%] h-72 w-72 rounded-full bg-violet-600/20 blur-[90px]" />
       <div className="pointer-events-none absolute -right-24 bottom-[13%] h-80 w-80 rounded-full bg-blue-600/25 blur-[100px]" />
 
-      {/* Status bar */}
-      <div className="absolute left-0 right-0 top-0 z-20 flex items-center justify-between px-7 pt-[max(14px,env(safe-area-inset-top))] text-[11px] font-semibold tracking-wide text-white/95">
-        <span>9:41</span>
-        <div className="flex items-center gap-1.5">
-          <svg viewBox="0 0 18 12" className="h-3 w-[18px]" fill="currentColor" aria-hidden="true">
-            <path d="M1 10.5V8.7h2v1.8H1Zm3.2 0V6.7h2v3.8h-2Zm3.2 0V4.6h2v5.9h-2Zm3.2 0V2.4h2v8.1h-2Z" />
-          </svg>
-          <svg viewBox="0 0 16 12" className="h-3 w-4" fill="none" aria-hidden="true">
-            <path d="M1 4.1C4.9.7 11.1.7 15 4.1L8 11 1 4.1Z" fill="currentColor" />
-          </svg>
-          <svg viewBox="0 0 22 12" className="h-3 w-[22px]" fill="none" aria-hidden="true">
-            <rect x=".5" y=".5" width="18" height="11" rx="3" stroke="currentColor" />
-            <rect x="2.3" y="2.3" width="14.3" height="7.4" rx="1.7" fill="currentColor" />
-            <path d="M20 4v4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-          </svg>
-        </div>
-      </div>
 
       {/* Brand lockup */}
       <main className="relative z-10 flex min-h-[100dvh] flex-col items-center">

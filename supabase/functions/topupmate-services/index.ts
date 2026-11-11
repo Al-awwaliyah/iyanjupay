@@ -1526,12 +1526,12 @@ async function catalog(service: string, b: O) {
 
       const customerPrice = giftCardSellingPrice(senderPrice);
 
+      // Match the displayed FX rate to the actual customer charge (including
+      // the configured markup/minimum), not the provider wholesale rate.
       const effectiveFxRate =
         recipient > 0
-          ? Number((senderPrice / recipient).toFixed(6))
-          : Number(
-              gp.recipientCurrencyToSenderCurrencyExchangeRate || 0,
-            );
+          ? Number((customerPrice / recipient).toFixed(6))
+          : 0;
 
       items.push({
         id: `${gp.id}:${recipient}`,

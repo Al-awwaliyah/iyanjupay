@@ -2485,20 +2485,18 @@ function ServicePaymentBillFlow({
     );
 
   const getGiftCardFxRate = (item: Item | null | undefined): number => {
-    const explicitRate = num(
-      item?.fx_rate_usd_ngn ??
-        item?.fx_rate ??
-        item?.recipientCurrencyToSenderCurrencyExchangeRate
-    );
-
-    if (explicitRate > 0) return explicitRate;
-
+    // Show the effective rate the customer actually pays. Provider FX fields
+    // describe the wholesale conversion and can be missing, stale, or expressed
+    // in a different sender-currency unit. The customer-facing NGN price is the
+    // authoritative amount used by checkout, including the disclosed markup.
     const recipient = getGiftCardRecipientAmount(item);
-    const ngnPrice = num(item?.provider_price_ngn ?? item?.providerPrice);
+    const customerPriceNgn = getGiftCardCustomerPriceNgn(item);
 
-    return recipient > 0 && ngnPrice > 0
-      ? ngnPrice / recipient
-      : 0;
+    if (recipient > 0 && customerPriceNgn > 0) {
+      return customerPriceNgn / recipient;
+    }
+
+    return 0;
   };
 
   const handleItemSelect = (

@@ -27,15 +27,10 @@ verify_jwt = true
 [functions.iyanjuPay-transfer]
 verify_jwt = true
 
-[functions.clubkonnect-services]
-verify_jwt = false
-
 
 [functions.send-push-notification]
 verify_jwt = false
 
-[functions.bilalsadasub-webhook]
-verify_jwt = false
 
 [functions.topupmate-services]
 verify_jwt = true
